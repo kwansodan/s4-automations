@@ -107,7 +107,7 @@ Return strictly valid JSON conforming to the schema.
                 ),
             )
             raw_text = response.text
-            parsed = OCRSlipExtraction.model_validate_json(raw_text)
+            parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
             self._reconcile_with_catalog(parsed, item_catalog)
             return parsed
 
@@ -126,15 +126,29 @@ Return strictly valid JSON conforming to the schema.
                     generation_config={"temperature": 0.1},
                 )
                 raw_text = response.text
-                # Strip markdown codeblocks if any
-                cleaned_text = re.sub(r"^```json\s*", "", raw_text.strip(), flags=re.MULTILINE)
-                cleaned_text = re.sub(r"```$", "", cleaned_text.strip(), flags=re.MULTILINE)
-                parsed = OCRSlipExtraction.model_validate_json(cleaned_text)
+                parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
                 self._reconcile_with_catalog(parsed, item_catalog)
                 return parsed
             except Exception as legacy_err:
                 logger.error(f"Gemini extraction failed: {legacy_err}")
                 raise RuntimeError(f"OCR extraction failed for {file_name}: {legacy_err}")
+
+    def _safe_parse_extraction(self, text: str, file_name: str, client_name: str) -> OCRSlipExtraction:
+        """Cleans markdown code fences, injects metadata, and validates schema."""
+        import json
+        cleaned = re.sub(r"^```json\s*", "", text.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
+        try:
+            data = json.loads(cleaned)
+            if isinstance(data, dict):
+                if not data.get("file_name"):
+                    data["file_name"] = file_name
+                if not data.get("client_name") and client_name:
+                    data["client_name"] = client_name
+                return OCRSlipExtraction.model_validate(data)
+        except Exception:
+            pass
+        return OCRSlipExtraction.model_validate_json(cleaned)
 
     def _reconcile_with_catalog(self, extraction: OCRSlipExtraction, item_catalog: List[ZohoItem]):
         """Fuzzy matches and sets missing zoho_item_id and unit_rate for extracted items."""

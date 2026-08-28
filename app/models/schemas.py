@@ -36,8 +36,8 @@ class OCRSlipItem(BaseModel):
 
 
 class OCRSlipExtraction(BaseModel):
-    """Structured extraction returned from Gemini for a single slip document."""
-    file_name: str = Field(description="Name of the physical scan file")
+    """Full extraction response for a single physical slip scan."""
+    file_name: str = Field(default="", description="Name of the physical scan file")
     client_name: str = Field(default="", description="Client name detected or matched")
     slip_date: str = Field(default="", description="Date on slip in DD/MM/YYYY format")
     items: List[OCRSlipItem] = Field(default_factory=list, description="Extracted line items on this slip")
