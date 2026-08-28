@@ -95,6 +95,12 @@ export function renderPipelineModal(container) {
   });
 
   window.openPipelineModal = () => {
-    backdrop.classList.add('active');
+    const el = document.getElementById('pipelineModalBackdrop');
+    if (el) el.classList.add('active');
   };
+}
+
+export function openPipelineModal() {
+  const el = document.getElementById('pipelineModalBackdrop');
+  if (el) el.classList.add('active');
 }

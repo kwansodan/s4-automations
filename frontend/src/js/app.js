@@ -12,13 +12,18 @@ import { renderConfigSection } from './components/configSection.js';
 import { renderSheetsViewer } from './components/sheetsViewer.js';
 import { renderCatalogDrawer } from './components/catalogDrawer.js';
 import { renderLiveConsole } from './components/liveConsole.js';
-import { renderPipelineModal } from './components/pipelineModal.js';
-import { renderInvoiceModal } from './components/invoiceModal.js';
+import { renderPipelineModal, openPipelineModal } from './components/pipelineModal.js';
+import { renderInvoiceModal, openInvoiceModal } from './components/invoiceModal.js';
+
+// Expose globally for inline onclick handlers
+window.openPipelineModal = openPipelineModal;
+window.openInvoiceModal = openInvoiceModal;
 
 async function initApp() {
   const headerContainer = document.getElementById('headerApp');
   const mainContainer = document.getElementById('mainContent');
-  const modalContainer = document.getElementById('modalContainer');
+  const pipelineModalContainer = document.getElementById('pipelineModalContainer');
+  const invoiceModalContainer = document.getElementById('invoiceModalContainer');
 
   // Load initial backend data
   try {
@@ -47,9 +52,23 @@ async function initApp() {
     state.addLog('error', `Failed loading initial state: ${e.message}`);
   }
 
-  // Render Modals once
-  renderPipelineModal(modalContainer);
-  renderInvoiceModal(modalContainer);
+  // Render Modals into their dedicated containers
+  if (pipelineModalContainer) renderPipelineModal(pipelineModalContainer);
+  if (invoiceModalContainer) renderInvoiceModal(invoiceModalContainer);
+
+  // Global delegated click listeners for modal triggers
+  document.addEventListener('click', (e) => {
+    const pipelineTrigger = e.target.closest('[data-action="open-pipeline-modal"]');
+    if (pipelineTrigger) {
+      e.preventDefault();
+      openPipelineModal();
+    }
+    const invoiceTrigger = e.target.closest('[data-action="open-invoice-modal"]');
+    if (invoiceTrigger) {
+      e.preventDefault();
+      openInvoiceModal();
+    }
+  });
 
   // Re-render views on state change
   function updateUI() {
@@ -70,7 +89,7 @@ async function initApp() {
               <p class="card-desc" style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.25rem;">
                 Trigger vision extraction for hotel client folders, audit linen counts, and sync the review workbook.
               </p>
-              <button class="btn btn-primary" style="width: 100%;" onclick="openPipelineModal()">
+              <button class="btn btn-primary" style="width: 100%;" data-action="open-pipeline-modal" onclick="openPipelineModal()">
                 <span>🚀</span> Run Ingestion Pipeline
               </button>
             </div>
@@ -80,7 +99,7 @@ async function initApp() {
               <p class="card-desc" style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.25rem;">
                 Create draft invoices in Zoho Books for all approved billing rows and update sheet status.
               </p>
-              <button class="btn btn-success" style="width: 100%;" onclick="openInvoiceModal()">
+              <button class="btn btn-success" style="width: 100%;" data-action="open-invoice-modal" onclick="openInvoiceModal()">
                 <span>💳</span> Generate Draft Invoices
               </button>
             </div>
@@ -126,7 +145,7 @@ async function initApp() {
           <div class="card">
             <div class="card-header">
               <div class="card-title"><span>💳</span> 1-Click Zoho Books Invoicing Hub</div>
-              <button class="btn btn-success" onclick="openInvoiceModal()"><span>💳</span> Create Draft Invoices Now</button>
+              <button class="btn btn-success" data-action="open-invoice-modal" onclick="openInvoiceModal()"><span>💳</span> Create Draft Invoices Now</button>
             </div>
             <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.25rem;">
               Review the approved items below. Only items with <strong>Approved? = Checked</strong> will be drafted into Zoho Books.

@@ -75,6 +75,12 @@ export function renderInvoiceModal(container) {
   });
 
   window.openInvoiceModal = () => {
-    backdrop.classList.add('active');
+    const el = document.getElementById('invoiceModalBackdrop');
+    if (el) el.classList.add('active');
   };
+}
+
+export function openInvoiceModal() {
+  const el = document.getElementById('invoiceModalBackdrop');
+  if (el) el.classList.add('active');
 }
