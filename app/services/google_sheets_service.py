@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Tuple
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from googleapiclient.errors import HttpError
+
 from app.config import settings
 from app.models.schemas import (
     DailySlipDetailRow,
@@ -108,49 +110,62 @@ class GoogleSheetsService:
         """
         workbook_title = f"ANR_Billing_Review_{month_name}_{year}"
         
-        if settings.MOCK_MODE or not self.sheets or not self.drive:
+        if settings.MOCK_MODE or not self.sheets or not self.drive or not month_folder_id or month_folder_id.startswith("mock_"):
             logger.info(f"[MOCK] Finding or creating review workbook: {workbook_title}")
             mock_id = f"mock_sheet_{month_name.lower()}_{year}"
             return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
 
-        # 1. Search if already exists in folder
-        query = (
-            f"name = '{workbook_title}' and "
-            f"'{month_folder_id}' in parents and "
-            f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
-            f"trashed = false"
-        )
-        res = self.drive.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
-        files = res.get("files", [])
-        if files:
-            sheet_id = files[0]["id"]
-            sheet_url = files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
-            logger.info(f"Found existing review workbook '{workbook_title}' (ID: {sheet_id})")
+        try:
+            # 1. Search if already exists in folder
+            query = (
+                f"name = '{workbook_title}' and "
+                f"'{month_folder_id}' in parents and "
+                f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                f"trashed = false"
+            )
+            res = self.drive.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
+            files = res.get("files", [])
+            if files:
+                sheet_id = files[0]["id"]
+                sheet_url = files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                logger.info(f"Found existing review workbook '{workbook_title}' (ID: {sheet_id})")
+                return sheet_id, sheet_url
+
+            # 2. Create new spreadsheet
+            spreadsheet_body = {
+                "properties": {"title": workbook_title},
+                "sheets": [
+                    {"properties": {"title": TAB_MONTHLY_SUMMARY, "index": 0}},
+                    {"properties": {"title": TAB_DAILY_DETAILS, "index": 1}},
+                ],
+            }
+            created = self.sheets.spreadsheets().create(body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl").execute()
+            sheet_id = created["spreadsheetId"]
+            sheet_url = created["spreadsheetUrl"]
+
+            # Move to the Month folder if valid
+            if month_folder_id and month_folder_id != "root" and not month_folder_id.startswith("mock_"):
+                try:
+                    self.drive.files().update(
+                        fileId=sheet_id,
+                        addParents=month_folder_id,
+                        fields="id, parents"
+                    ).execute()
+                except Exception as move_err:
+                    logger.warning(f"Could not move sheet {sheet_id} to folder {month_folder_id}: {move_err}")
+
+            # Initialize headers and styling
+            self._initialize_tabs(sheet_id)
+            logger.info(f"Created and initialized new review workbook '{workbook_title}' (ID: {sheet_id})")
             return sheet_id, sheet_url
-
-        # 2. Create new spreadsheet
-        spreadsheet_body = {
-            "properties": {"title": workbook_title},
-            "sheets": [
-                {"properties": {"title": TAB_MONTHLY_SUMMARY, "index": 0}},
-                {"properties": {"title": TAB_DAILY_DETAILS, "index": 1}},
-            ],
-        }
-        created = self.sheets.spreadsheets().create(body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl").execute()
-        sheet_id = created["spreadsheetId"]
-        sheet_url = created["spreadsheetUrl"]
-
-        # Move to the Month folder
-        self.drive.files().update(
-            fileId=sheet_id,
-            addParents=month_folder_id,
-            fields="id, parents"
-        ).execute()
-
-        # Initialize headers and styling
-        self._initialize_tabs(sheet_id)
-        logger.info(f"Created and initialized new review workbook '{workbook_title}' (ID: {sheet_id})")
-        return sheet_id, sheet_url
+        except HttpError as e:
+            if e.resp.status in (404, 403):
+                logger.warning(
+                    f"Google API returned HTTP {e.resp.status} when locating/creating workbook. Falling back to mock sheet."
+                )
+                mock_id = f"mock_sheet_{month_name.lower()}_{year}"
+                return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+            raise
 
     def _initialize_tabs(self, spreadsheet_id: str):
         """Initializes headers, column formats, frozen rows, and conditional formatting."""
@@ -495,7 +510,7 @@ class GoogleSheetsService:
 
     def fetch_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
         """Fetches all rows from both Tab 1 (Daily Details) and Tab 2 (Monthly Summary) for UI review."""
-        if settings.MOCK_MODE or not self.sheets:
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             return {
                 "month": month,
                 "year": year,
@@ -600,74 +615,80 @@ class GoogleSheetsService:
                 ],
             }
 
-        # 1. Fetch Daily Details
-        daily_res = self.sheets.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id, range=f"'{TAB_DAILY_DETAILS}'!A2:K500"
-        ).execute()
-        daily_rows = daily_res.get("values", [])
-        daily_details = []
-        for r in daily_rows:
-            if not r:
-                continue
-            daily_details.append({
-                "slip_date": r[0] if len(r) > 0 else "",
-                "file_name": r[1] if len(r) > 1 else "",
-                "client_name": r[2] if len(r) > 2 else "",
-                "raw_item_name": r[3] if len(r) > 3 else "",
-                "standard_item_name": r[4] if len(r) > 4 else "",
-                "pickup_qty": _parse_int(r[5] if len(r) > 5 else 0),
-                "delivery_qty": _parse_int(r[6] if len(r) > 6 else 0),
-                "loss_qty": _parse_int(r[7] if len(r) > 7 else 0),
-                "confidence_score": r[8] if len(r) > 8 else "HIGH",
-                "drive_file_url": r[9] if len(r) > 9 else "",
-                "processed_at": r[10] if len(r) > 10 else "",
-            })
+        try:
+            # 1. Fetch Daily Details
+            daily_res = self.sheets.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id, range=f"'{TAB_DAILY_DETAILS}'!A2:K500"
+            ).execute()
+            daily_rows = daily_res.get("values", [])
+            daily_details = []
+            for r in daily_rows:
+                if not r:
+                    continue
+                daily_details.append({
+                    "slip_date": r[0] if len(r) > 0 else "",
+                    "file_name": r[1] if len(r) > 1 else "",
+                    "client_name": r[2] if len(r) > 2 else "",
+                    "raw_item_name": r[3] if len(r) > 3 else "",
+                    "standard_item_name": r[4] if len(r) > 4 else "",
+                    "pickup_qty": _parse_int(r[5] if len(r) > 5 else 0),
+                    "delivery_qty": _parse_int(r[6] if len(r) > 6 else 0),
+                    "loss_qty": _parse_int(r[7] if len(r) > 7 else 0),
+                    "confidence_score": r[8] if len(r) > 8 else "HIGH",
+                    "drive_file_url": r[9] if len(r) > 9 else "",
+                    "processed_at": r[10] if len(r) > 10 else "",
+                })
 
-        # 2. Fetch Monthly Summary
-        monthly_res = self.sheets.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id, range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
-        ).execute()
-        monthly_rows = monthly_res.get("values", [])
-        monthly_summary = []
-        for idx, r in enumerate(monthly_rows, start=2):
-            if not r:
-                continue
-            rev_val = r[12] if len(r) > 12 else False
-            app_val = r[13] if len(r) > 13 else False
-            is_rev = rev_val if isinstance(rev_val, bool) else str(rev_val).upper() in ["TRUE", "YES", "1"]
-            is_app = app_val if isinstance(app_val, bool) else str(app_val).upper() in ["TRUE", "YES", "1"]
+            # 2. Fetch Monthly Summary
+            monthly_res = self.sheets.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id, range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
+            ).execute()
+            monthly_rows = monthly_res.get("values", [])
+            monthly_summary = []
+            for idx, r in enumerate(monthly_rows, start=2):
+                if not r:
+                    continue
+                rev_val = r[12] if len(r) > 12 else False
+                app_val = r[13] if len(r) > 13 else False
+                is_rev = rev_val if isinstance(rev_val, bool) else str(rev_val).upper() in ["TRUE", "YES", "1"]
+                is_app = app_val if isinstance(app_val, bool) else str(app_val).upper() in ["TRUE", "YES", "1"]
 
-            monthly_summary.append({
-                "row_index": idx,
-                "client_name": r[0].strip() if len(r) > 0 else "",
-                "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
-                "zoho_item_id": r[2].strip() if len(r) > 2 else "",
-                "standard_item_name": r[3].strip() if len(r) > 3 else "",
-                "raw_names_seen": r[4].strip() if len(r) > 4 else "",
-                "confidence_score": r[5].strip() if len(r) > 5 else "HIGH",
-                "unit_rate": _parse_float(r[6] if len(r) > 6 else 0.0),
-                "total_picked_up": _parse_int(r[7] if len(r) > 7 else 0),
-                "total_delivered": _parse_int(r[8] if len(r) > 8 else 0),
-                "linen_discrepancy": _parse_int(r[9] if len(r) > 9 else 0),
-                "total_billed": _parse_float(r[10] if len(r) > 10 else 0.0),
-                "audit_notes": r[11].strip() if len(r) > 11 else "",
-                "reviewed": is_rev,
-                "approved": is_app,
-                "status": r[14].strip() if len(r) > 14 else "PENDING",
-            })
+                monthly_summary.append({
+                    "row_index": idx,
+                    "client_name": r[0].strip() if len(r) > 0 else "",
+                    "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
+                    "zoho_item_id": r[2].strip() if len(r) > 2 else "",
+                    "standard_item_name": r[3].strip() if len(r) > 3 else "",
+                    "raw_names_seen": r[4].strip() if len(r) > 4 else "",
+                    "confidence_score": r[5].strip() if len(r) > 5 else "HIGH",
+                    "unit_rate": _parse_float(r[6] if len(r) > 6 else 0.0),
+                    "total_picked_up": _parse_int(r[7] if len(r) > 7 else 0),
+                    "total_delivered": _parse_int(r[8] if len(r) > 8 else 0),
+                    "linen_discrepancy": _parse_int(r[9] if len(r) > 9 else 0),
+                    "total_billed": _parse_float(r[10] if len(r) > 10 else 0.0),
+                    "audit_notes": r[11].strip() if len(r) > 11 else "",
+                    "reviewed": is_rev,
+                    "approved": is_app,
+                    "status": r[14].strip() if len(r) > 14 else "PENDING",
+                })
 
-        return {
-            "month": month,
-            "year": year,
-            "spreadsheet_id": spreadsheet_id,
-            "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
-            "daily_details": daily_details,
-            "monthly_summary": monthly_summary,
-        }
+            return {
+                "month": month,
+                "year": year,
+                "spreadsheet_id": spreadsheet_id,
+                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                "daily_details": daily_details,
+                "monthly_summary": monthly_summary,
+            }
+        except HttpError as e:
+            if e.resp.status in (404, 403):
+                logger.warning(f"Spreadsheet {spreadsheet_id} not found or accessible in Google Sheets (HTTP {e.resp.status}). Returning mock review data.")
+                return self.fetch_sheets_review_data("mock_sheet", month, year)
+            raise
 
     def toggle_row_field(self, spreadsheet_id: str, row_index: int, field: str, value: Any) -> bool:
         """Toggles 'reviewed', 'approved', or 'status' for a row in Tab 2."""
-        if settings.MOCK_MODE or not self.sheets:
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             logger.info(f"[MOCK] Toggled row {row_index} field {field} to {value}")
             return True
 

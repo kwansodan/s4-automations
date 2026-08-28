@@ -78,3 +78,56 @@ def test_sheets_workbook_and_sync():
 
     # Update status to INVOICED
     sheets.update_invoice_status(sheet_id, [2], "INV-ANR-00100", "https://books.zoho.com/inv/1")
+
+
+def test_google_credentials_decoding(monkeypatch):
+    import base64
+    import json
+    from unittest.mock import patch, MagicMock
+    from app.utils.auth import get_google_credentials
+    from app.config import settings
+
+    fake_sa = {
+        "type": "service_account",
+        "project_id": "anr-test-proj",
+        "private_key_id": "key123",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END PRIVATE KEY-----\n",
+        "client_email": "test@anr-test-proj.iam.gserviceaccount.com",
+    }
+    raw_json_str = json.dumps(fake_sa)
+    b64_json_str = base64.b64encode(raw_json_str.encode("utf-8")).decode("utf-8")
+
+    monkeypatch.setattr(settings, "MOCK_MODE", False)
+
+    with patch("google.oauth2.service_account.Credentials.from_service_account_info") as mock_from_info:
+        mock_creds = MagicMock()
+        mock_from_info.return_value = mock_creds
+
+        # 1. Base64 format
+        monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64", b64_json_str)
+        creds = get_google_credentials()
+        assert creds == mock_creds
+        mock_from_info.assert_called()
+
+        mock_from_info.reset_mock()
+
+        # 2. Raw JSON string format (pasted directly without base64 encoding)
+        monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64", raw_json_str)
+        creds = get_google_credentials()
+        assert creds == mock_creds
+        mock_from_info.assert_called()
+
+        mock_from_info.reset_mock()
+
+        # 3. Base64 wrapped in quotes / whitespace
+        monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64", f'  "{b64_json_str}"  ')
+        creds = get_google_credentials()
+        assert creds == mock_creds
+        mock_from_info.assert_called()
+
+        # 4. Corrupted / invalid input should return None and not crash with UnicodeDecodeError
+        monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64", "not_valid_json_or_b64!!!@@#$")
+        monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_FILE", None)
+        creds = get_google_credentials()
+        assert creds is None
+

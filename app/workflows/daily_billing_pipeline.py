@@ -1,7 +1,7 @@
 """Inngest Workflow 1: Daily Commercial Laundry Billing & Ingestion Pipeline."""
 
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import inngest
 
 from app.inngest_client import inngest_client
@@ -25,20 +25,20 @@ from app.utils.logging import get_logger
 logger = get_logger("daily_billing_pipeline")
 
 
-async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+async def run_daily_pipeline_core(
+    target_month: str,
+    target_year: int,
+    filter_clients: Optional[List[str]] = None,
+    step_runner=None,
+) -> Dict[str, Any]:
     """
-    Automated durable pipeline:
-    1. Pre-flight & Discovery: Sync Zoho catalog, locate Month folder & review spreadsheet, discover client folders.
-    2. Resilient Fan-out: Process loose slips for each hotel client.
-    3. Vision OCR: Extract structured data and reconcile SKUs with Gemini 3.6 Flash.
-    4. Two-Tier Sheets Sync: Append Daily_Slip_Details and upsert Monthly_Summary.
-    5. Archival: Move processed files into client_folder/Processed/.
+    Core implementation of the automated daily billing pipeline.
+    Runs via Inngest step runner or direct asynchronous execution.
     """
-    event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
-    now = datetime.now()
-    target_month = event_data.get("month") or now.strftime("%B")
-    target_year = int(event_data.get("year") or now.year)
-    filter_clients = event_data.get("client_slugs")
+    async def _run_step(step_name: str, fn):
+        if step_runner:
+            return await step_runner(step_name, fn)
+        return await fn()
 
     # Step 1: Discover & Pre-flight
     async def run_preflight() -> Dict[str, Any]:
@@ -70,7 +70,7 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
         )
         return result.model_dump()
 
-    preflight_data = await step.run("preflight-and-discovery", run_preflight)
+    preflight_data = await _run_step("preflight-and-discovery", run_preflight)
     clients_to_process = preflight_data.get("clients", [])
     sheet_id = preflight_data.get("spreadsheet_id", "")
     sheet_url = preflight_data.get("spreadsheet_url", "")
@@ -204,7 +204,7 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
                 sku_summaries_count=len(sku_summaries),
             ).model_dump()
 
-        result = await step.run(step_id, process_single_client)
+        result = await _run_step(step_id, process_single_client)
         client_results.append(result)
         total_slips_processed += result.get("files_processed_count", 0)
 
@@ -222,6 +222,22 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
     )
     logger.info(f"Pipeline completed successfully. Processed {total_slips_processed} slips across {len(client_results)} clients.")
     return final_output.model_dump()
+
+
+async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+    """Inngest entrypoint for the durable daily billing pipeline."""
+    event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
+    now = datetime.now()
+    target_month = event_data.get("month") or now.strftime("%B")
+    target_year = int(event_data.get("year") or now.year)
+    filter_clients = event_data.get("client_slugs")
+
+    return await run_daily_pipeline_core(
+        target_month=target_month,
+        target_year=target_year,
+        filter_clients=filter_clients,
+        step_runner=step.run,
+    )
 
 
 # Register durable Inngest function

@@ -1,7 +1,7 @@
 """Inngest Workflow 2: Zoho Books Draft Invoice Generation for Approved Billing Rows."""
 
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import inngest
 
 from app.inngest_client import inngest_client
@@ -18,21 +18,21 @@ from app.utils.logging import get_logger
 logger = get_logger("zoho_invoice_generator")
 
 
-async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+async def run_zoho_invoices_core(
+    target_month: str,
+    target_year: int,
+    explicit_sheet_id: Optional[str] = None,
+    filter_client_name: Optional[str] = None,
+    step_runner=None,
+) -> Dict[str, Any]:
     """
-    1-Click downstream invoice generator:
-    1. Reads Tab 2 (Monthly_Summary) from Google Sheet.
-    2. Identifies rows where 'Approved?' == True and 'Status' in ['PENDING', 'APPROVED'].
-    3. Groups approved line items by Client / Zoho Contact ID.
-    4. Creates Draft Invoices via Zoho Books API.
-    5. Updates Google Sheet status to 'INVOICED' with Zoho Invoice Number & Audit note.
+    Core implementation of Zoho Draft Invoice generation from approved review rows.
+    Runs via Inngest step runner or direct asynchronous execution.
     """
-    event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
-    now = datetime.now()
-    target_month = event_data.get("month") or now.strftime("%B")
-    target_year = int(event_data.get("year") or now.year)
-    explicit_sheet_id = event_data.get("spreadsheet_id")
-    filter_client_name = event_data.get("client_name")
+    async def _run_step(step_name: str, fn):
+        if step_runner:
+            return await step_runner(step_name, fn)
+        return await fn()
 
     # Step 1: Discover / Locate Review Sheet & Fetch Approved Rows
     async def fetch_approved() -> Dict[str, Any]:
@@ -56,7 +56,7 @@ async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Ste
             "approved_rows": approved_rows,
         }
 
-    fetch_result = await step.run("fetch-approved-items", fetch_approved)
+    fetch_result = await _run_step("fetch-approved-items", fetch_approved)
     sheet_id = fetch_result.get("spreadsheet_id", "")
     approved_rows = fetch_result.get("approved_rows", [])
 
@@ -82,7 +82,6 @@ async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Ste
         created_invoices: List[Dict[str, Any]] = []
 
         for client_name, items in client_groups.items():
-            # Get contact ID
             contact_id = items[0].get("zoho_contact_id")
             if not contact_id:
                 contact = zoho.find_contact_by_name(client_name)
@@ -92,7 +91,6 @@ async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Ste
                 logger.warning(f"Could not determine Zoho Contact ID for client '{client_name}'. Skipping.")
                 continue
 
-            # Build line items
             zoho_line_items: List[ZohoInvoiceLineItem] = []
             row_indices: List[int] = []
 
@@ -144,8 +142,26 @@ async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Ste
             "invoices_created": created_invoices,
         }
 
-    invoice_result = await step.run("generate-draft-invoices", generate_invoices)
+    invoice_result = await _run_step("generate-draft-invoices", generate_invoices)
     return invoice_result
+
+
+async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+    """Inngest entrypoint for draft invoice generator."""
+    event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
+    now = datetime.now()
+    target_month = event_data.get("month") or now.strftime("%B")
+    target_year = int(event_data.get("year") or now.year)
+    explicit_sheet_id = event_data.get("spreadsheet_id")
+    filter_client_name = event_data.get("client_name")
+
+    return await run_zoho_invoices_core(
+        target_month=target_month,
+        target_year=target_year,
+        explicit_sheet_id=explicit_sheet_id,
+        filter_client_name=filter_client_name,
+        step_runner=step.run,
+    )
 
 
 # Register durable Inngest function

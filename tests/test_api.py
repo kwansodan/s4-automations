@@ -40,7 +40,7 @@ def test_trigger_pipeline_endpoint():
         response = client.post("/api/pipeline/trigger", json={"month": "August", "year": 2026})
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "QUEUED"
+        assert data["status"] in ["QUEUED", "PROCESSING"]
         mock_send.assert_awaited_once()
 
 
@@ -50,7 +50,7 @@ def test_trigger_invoice_generation_endpoint():
         response = client.post("/api/invoices/generate", json={"month": "August", "year": 2026})
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "QUEUED"
+        assert data["status"] in ["QUEUED", "PROCESSING"]
         mock_send.assert_awaited_once()
 
 

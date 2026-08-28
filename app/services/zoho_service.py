@@ -19,7 +19,17 @@ logger = get_logger("zoho_service")
 
 
 class ZohoBooksService:
-    """Handles communication with Zoho Books API including OAuth2 token management."""
+    """
+    Service for integrating with Zoho Books API:
+    - Customer Contact Discovery & Matching
+    - Item Catalog Synchronization (SKUs & Unit Rates in GHS)
+    - Draft Invoice Creation & Downstream Status Tracking
+    """
+
+    _global_access_token: Optional[str] = None
+    _global_token_expiry_timestamp: float = 0.0
+    _global_cached_contacts: List[ZohoContact] = []
+    _global_cached_items: List[ZohoItem] = []
 
     def __init__(
         self,
@@ -37,12 +47,11 @@ class ZohoBooksService:
         self.accounts_url = (accounts_url or settings.ZOHO_ACCOUNTS_URL).rstrip("/")
         self.books_api_url = (books_api_url or settings.ZOHO_BOOKS_API_URL).rstrip("/")
 
-        self._access_token: Optional[str] = None
-        self._token_expiry_timestamp: float = 0.0
-
-        # In-memory caches for fast reconciliation
-        self._cached_contacts: List[ZohoContact] = []
-        self._cached_items: List[ZohoItem] = []
+        # Local pointers to shared caches
+        self._access_token = ZohoBooksService._global_access_token
+        self._token_expiry_timestamp = ZohoBooksService._global_token_expiry_timestamp
+        self._cached_contacts = ZohoBooksService._global_cached_contacts
+        self._cached_items = ZohoBooksService._global_cached_items
 
     async def get_access_token(self, force_refresh: bool = False) -> str:
         """Retrieves a valid OAuth2 access token, refreshing if expired."""
@@ -51,9 +60,9 @@ class ZohoBooksService:
             return "mock-zoho-access-token"
 
         current_time = time.time()
-        # Keep a 60-second buffer
-        if not force_refresh and self._access_token and current_time < (self._token_expiry_timestamp - 60):
-            return self._access_token
+        # Keep a 60-second buffer and reuse global token if still valid
+        if not force_refresh and ZohoBooksService._global_access_token and current_time < (ZohoBooksService._global_token_expiry_timestamp - 60):
+            return ZohoBooksService._global_access_token
 
         token_url = f"{self.accounts_url}/oauth/v2/token"
         params = {
@@ -69,19 +78,30 @@ class ZohoBooksService:
             
             if response.status_code != 200:
                 logger.error(f"Zoho token refresh failed ({response.status_code}): {response.text}")
+                # If we already have a previous token, reuse it during rate limit/backoff
+                if ZohoBooksService._global_access_token:
+                    logger.warning("Reusing previous Zoho access token due to rate limiting.")
+                    return ZohoBooksService._global_access_token
                 raise RuntimeError(f"Zoho OAuth token refresh failed: {response.text}")
 
             data = response.json()
             if "access_token" not in data:
                 error_msg = data.get("error", "Unknown OAuth error")
                 logger.error(f"Zoho OAuth returned error: {error_msg}")
+                if ZohoBooksService._global_access_token:
+                    return ZohoBooksService._global_access_token
                 raise RuntimeError(f"Zoho OAuth error: {error_msg}")
 
-            self._access_token = data["access_token"]
+            access_tok = data["access_token"]
             expires_in = data.get("expires_in", 3600)
-            self._token_expiry_timestamp = current_time + expires_in
+            
+            ZohoBooksService._global_access_token = access_tok
+            ZohoBooksService._global_token_expiry_timestamp = current_time + expires_in
+            self._access_token = access_tok
+            self._token_expiry_timestamp = ZohoBooksService._global_token_expiry_timestamp
+            
             logger.info(f"Zoho access token refreshed successfully. Valid for {expires_in}s.")
-            return self._access_token
+            return access_tok
 
     def _get_headers(self, access_token: str) -> Dict[str, str]:
         return {

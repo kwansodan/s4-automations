@@ -5,6 +5,8 @@ from typing import List, Dict, Optional, Any, Tuple
 from googleapiclient.http import MediaIoBaseDownload
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from googleapiclient.errors import HttpError
+
 from app.config import settings
 from app.models.schemas import ClientFolderInfo
 from app.utils.auth import get_google_drive_service
@@ -28,46 +30,58 @@ class GoogleDriveService:
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def find_or_create_folder(self, folder_name: str, parent_id: str) -> str:
         """Finds an existing folder by name inside parent_id or creates a new one."""
-        if settings.MOCK_MODE or not self.service:
+        if settings.MOCK_MODE or not self.service or parent_id.startswith("mock_"):
             logger.info(f"[MOCK] Finding or creating folder '{folder_name}' in parent '{parent_id}'")
             return f"mock_folder_{folder_name.lower().replace(' ', '_')}"
 
-        query = (
-            f"name = '{folder_name}' and "
-            f"'{parent_id}' in parents and "
-            f"mimeType = 'application/vnd.google-apps.folder' and "
-            f"trashed = false"
-        )
-        response = self.service.files().list(
-            q=query,
-            spaces="drive",
-            fields="files(id, name)",
-            pageSize=10
-        ).execute()
-        files = response.get("files", [])
-        if files:
-            folder_id = files[0]["id"]
-            logger.info(f"Found existing folder '{folder_name}' (ID: {folder_id})")
-            return folder_id
+        try:
+            query = (
+                f"name = '{folder_name}' and "
+                f"'{parent_id}' in parents and "
+                f"mimeType = 'application/vnd.google-apps.folder' and "
+                f"trashed = false"
+            )
+            response = self.service.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name)",
+                pageSize=10
+            ).execute()
+            files = response.get("files", [])
+            if files:
+                folder_id = files[0]["id"]
+                logger.info(f"Found existing folder '{folder_name}' (ID: {folder_id})")
+                return folder_id
 
-        # Create folder
-        file_metadata = {
-            "name": folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent_id] if parent_id else []
-        }
-        created = self.service.files().create(
-            body=file_metadata,
-            fields="id, name"
-        ).execute()
-        folder_id = created["id"]
-        logger.info(f"Created new folder '{folder_name}' (ID: {folder_id})")
-        return folder_id
+            # Create folder
+            file_metadata = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": [parent_id] if parent_id and parent_id != "root" else []
+            }
+            created = self.service.files().create(
+                body=file_metadata,
+                fields="id, name"
+            ).execute()
+            folder_id = created["id"]
+            logger.info(f"Created new folder '{folder_name}' (ID: {folder_id})")
+            return folder_id
+        except HttpError as e:
+            if e.resp.status in (404, 403):
+                logger.warning(
+                    f"Parent folder '{parent_id}' was not found or accessible in Google Drive (HTTP {e.resp.status}). "
+                    f"Please verify CONTROL_SHEETS_FOLDER_ID and share permissions with the Service Account email. "
+                    f"Falling back to mock folder for '{folder_name}'."
+                )
+                return f"mock_folder_{folder_name.lower().replace(' ', '_')}"
+            raise
 
     def get_month_folder(self, month_name: str, year: int) -> str:
         """Gets or creates the Month folder '<Month> <YYYY>' under root CONTROL_SHEETS_FOLDER_ID."""
         folder_name = f"{month_name} {year}"
-        root_id = settings.CONTROL_SHEETS_FOLDER_ID or "root"
+        root_id = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+        if not root_id or root_id in ("your_google_drive_folder_id", "your_folder_id", "1aB2cD3eF4gH..."):
+            root_id = "root"
         return self.find_or_create_folder(folder_name, root_id)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -140,8 +154,7 @@ class GoogleDriveService:
         query = (
             f"'{client_folder_id}' in parents and "
             f"mimeType != 'application/vnd.google-apps.folder' and "
-            f"trashed = false and "
-            f"(mimeType contains 'image/' or mimeType = 'application/pdf')"
+            f"trashed = false"
         )
         response = self.service.files().list(
             q=query,
@@ -150,7 +163,14 @@ class GoogleDriveService:
             pageSize=100
         ).execute()
 
-        files = response.get("files", [])
+        raw_files = response.get("files", [])
+        supported_exts = (".jpg", ".jpeg", ".png", ".webp", ".pdf", ".heic", ".bmp", ".tiff", ".tif")
+        files = [
+            f for f in raw_files
+            if f.get("mimeType", "").startswith("image/")
+            or f.get("mimeType") == "application/pdf"
+            or f.get("name", "").lower().endswith(supported_exts)
+        ]
         logger.info(f"Found {len(files)} unprocessed slip files in folder {client_folder_id}")
         return files
 
