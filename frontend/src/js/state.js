@@ -13,11 +13,14 @@ export const state = {
   config: null,
   sheetsData: null,
   catalog: null,
+  pipelineProgress: null,
   logs: [
     { time: new Date().toLocaleTimeString(), type: 'info', message: 'ANR Laundry Billing Engine dashboard initialized.' }
   ],
 
   listeners: new Set(),
+  _pollingInterval: null,
+  _knownLogKeys: new Set(),
 
   subscribe(listener) {
     this.listeners.add(listener);
@@ -38,13 +41,63 @@ export const state = {
     this.notify();
   },
 
-  addLog(type, message) {
+  addLog(type, message, time = null) {
     this.logs.unshift({
-      time: new Date().toLocaleTimeString(),
+      time: time || new Date().toLocaleTimeString(),
       type,
       message,
     });
-    if (this.logs.length > 200) this.logs.pop();
+    if (this.logs.length > 300) this.logs.pop();
     this.notify();
+  },
+
+  updatePipelineProgress(progress) {
+    this.pipelineProgress = progress;
+
+    // Merge recent logs from backend
+    if (progress?.recent_logs && Array.isArray(progress.recent_logs)) {
+      progress.recent_logs.forEach((entry) => {
+        const key = `${entry.time}_${entry.message}`;
+        if (!this._knownLogKeys.has(key)) {
+          this._knownLogKeys.add(key);
+          this.addLog(entry.level || 'info', entry.message, entry.time);
+        }
+      });
+    }
+
+    this.notify();
+  },
+
+  startPolling(fetchFn, onComplete) {
+    if (this._pollingInterval) clearInterval(this._pollingInterval);
+
+    const poll = async () => {
+      try {
+        const progress = await fetchFn();
+        this.updatePipelineProgress(progress);
+
+        if (!progress.is_running && progress.status !== 'RUNNING') {
+          if (this._pollingInterval) {
+            clearInterval(this._pollingInterval);
+            this._pollingInterval = null;
+          }
+          if (typeof onComplete === 'function') {
+            onComplete(progress);
+          }
+        }
+      } catch (err) {
+        console.warn('Status polling error:', err);
+      }
+    };
+
+    poll(); // Run immediately
+    this._pollingInterval = setInterval(poll, 1200);
+  },
+
+  stopPolling() {
+    if (this._pollingInterval) {
+      clearInterval(this._pollingInterval);
+      this._pollingInterval = null;
+    }
   },
 };

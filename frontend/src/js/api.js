@@ -84,3 +84,9 @@ export async function fetchCatalog() {
   if (!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
   return res.json();
 }
+
+export async function fetchPipelineStatus() {
+  const res = await fetch(`${API_BASE}/api/pipeline/status`);
+  if (!res.ok) throw new Error(`Pipeline status fetch failed (${res.status})`);
+  return res.json();
+}

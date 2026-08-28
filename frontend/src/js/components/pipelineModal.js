@@ -3,7 +3,7 @@
  */
 
 import { state } from '../state.js';
-import { triggerPipeline, fetchSheetsData, fetchStats } from '../api.js';
+import { triggerPipeline, fetchSheetsData, fetchStats, fetchPipelineStatus } from '../api.js';
 
 export function renderPipelineModal(container) {
   container.innerHTML = `
@@ -79,13 +79,14 @@ export function renderPipelineModal(container) {
       };
       const res = await triggerPipeline(payload);
       state.addLog('success', `Pipeline Dispatched: ${res.message || 'Queued in Inngest'}`);
-      
-      // Auto refresh sheets and stats
-      setTimeout(async () => {
+
+      // Start real-time progress polling
+      state.startPolling(fetchPipelineStatus, async (finalProgress) => {
         state.sheetsData = await fetchSheetsData(month, year);
         state.stats = await fetchStats();
         state.notify();
-      }, 1500);
+        state.addLog('success', `Pipeline completed: ${finalProgress?.current_step || 'All slips processed.'}`);
+      });
 
     } catch (e) {
       state.addLog('error', `Pipeline execution error: ${e.message}`);

@@ -3,10 +3,11 @@
  */
 
 import { state } from './state.js';
-import { fetchHealth, fetchStats, fetchConfig, fetchSheetsData, fetchCatalog } from './api.js';
+import { fetchHealth, fetchStats, fetchConfig, fetchSheetsData, fetchCatalog, fetchPipelineStatus } from './api.js';
 
 import { renderHeader } from './components/header.js';
 import { renderKpiCards } from './components/kpiCards.js';
+import { renderProgressTracker } from './components/progressTracker.js';
 import { renderConfigSection } from './components/configSection.js';
 import { renderSheetsViewer } from './components/sheetsViewer.js';
 import { renderCatalogDrawer } from './components/catalogDrawer.js';
@@ -21,12 +22,13 @@ async function initApp() {
 
   // Load initial backend data
   try {
-    const [health, stats, config, sheetsData, catalog] = await Promise.all([
+    const [health, stats, config, sheetsData, catalog, pipelineStatus] = await Promise.all([
       fetchHealth().catch(() => null),
       fetchStats().catch(() => null),
       fetchConfig().catch(() => ({ config: {} })),
       fetchSheetsData('August', 2026).catch(() => ({ daily_details: [], monthly_summary: [] })),
       fetchCatalog().catch(() => ({ contacts: [], items: [] })),
+      fetchPipelineStatus().catch(() => null),
     ]);
 
     state.health = health;
@@ -34,6 +36,12 @@ async function initApp() {
     state.config = config?.config || {};
     state.sheetsData = sheetsData;
     state.catalog = catalog;
+    if (pipelineStatus) {
+      state.pipelineProgress = pipelineStatus;
+      if (pipelineStatus.is_running) {
+        state.startPolling(fetchPipelineStatus);
+      }
+    }
     state.addLog('info', 'Loaded backend services, sheets data, and catalog.');
   } catch (e) {
     state.addLog('error', `Failed loading initial state: ${e.message}`);
@@ -51,6 +59,9 @@ async function initApp() {
       mainContainer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 1.75rem;">
           <div id="kpiContainer"></div>
+
+          <!-- Live Pipeline Execution & Progress Tracker -->
+          <div id="progressTrackerContainer"></div>
 
           <!-- Quick Actions Grid -->
           <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
@@ -94,11 +105,18 @@ async function initApp() {
       `;
 
       renderKpiCards(document.getElementById('kpiContainer'));
+      renderProgressTracker(document.getElementById('progressTrackerContainer'));
       renderSheetsViewer(document.getElementById('dashboardSheetsContainer'));
       renderLiveConsole(document.getElementById('dashboardConsoleContainer'));
 
     } else if (state.activeTab === 'sheets') {
-      mainContainer.innerHTML = `<div id="sheetsContainer"></div>`;
+      mainContainer.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div id="sheetsProgressTrackerContainer"></div>
+          <div id="sheetsContainer"></div>
+        </div>
+      `;
+      renderProgressTracker(document.getElementById('sheetsProgressTrackerContainer'));
       renderSheetsViewer(document.getElementById('sheetsContainer'));
 
     } else if (state.activeTab === 'invoicing') {

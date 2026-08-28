@@ -3,7 +3,7 @@
  */
 
 import { state } from '../state.js';
-import { triggerInvoicing, fetchSheetsData, fetchStats } from '../api.js';
+import { triggerInvoicing, fetchSheetsData, fetchStats, fetchPipelineStatus } from '../api.js';
 
 export function renderInvoiceModal(container) {
   container.innerHTML = `
@@ -60,12 +60,13 @@ export function renderInvoiceModal(container) {
       const res = await triggerInvoicing(payload);
       state.addLog('success', `Zoho Invoicing Task Dispatched: ${res.message || 'Queued in Inngest'}`);
 
-      // Refresh sheets & stats
-      setTimeout(async () => {
+      // Start real-time progress polling
+      state.startPolling(fetchPipelineStatus, async (finalProgress) => {
         state.sheetsData = await fetchSheetsData(state.selectedMonth, state.selectedYear);
         state.stats = await fetchStats();
         state.notify();
-      }, 1500);
+        state.addLog('success', `Invoicing completed: ${finalProgress?.current_step || 'Invoices drafted.'}`);
+      });
 
     } catch (e) {
       state.addLog('error', `Invoicing dispatch error: ${e.message}`);

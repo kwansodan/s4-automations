@@ -172,6 +172,15 @@ async def trigger_invoice_generation(
     }
 
 
+@app.get("/api/pipeline/status", tags=["Pipeline"])
+async def get_pipeline_status() -> Dict[str, Any]:
+    """
+    Returns real-time execution status, stage progress, counters, and telemetry logs.
+    """
+    from app.utils.progress_tracker import pipeline_tracker
+    return pipeline_tracker.get_state()
+
+
 @app.get("/api/catalog", tags=["Zoho Books"])
 async def get_zoho_catalog() -> Dict[str, Any]:
     """Returns active Zoho contacts and item catalog for reconciliation."""

@@ -107,3 +107,14 @@ def test_dashboard_stats_endpoint():
     assert data["approved_billing_total_ghs"] >= 0
 
 
+def test_pipeline_status_endpoint():
+    res = client.get("/api/pipeline/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "status" in data
+    assert "percent" in data
+    assert "current_step" in data
+    assert "stats" in data
+    assert "recent_logs" in data
+
+

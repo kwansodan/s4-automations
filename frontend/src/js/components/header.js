@@ -8,7 +8,12 @@ export function renderHeader(container) {
   const isHealthy = state.health?.status === 'healthy';
   const mockBadge = state.config?.MOCK_MODE
     ? `<span class="badge badge-warning">🧪 Mock Mode</span>`
-    : `<span class="badge badge-success">● Production Live</span>`;
+  const isRunning = state.pipelineProgress?.is_running;
+  const runningBadge = isRunning
+    ? `<span class="badge badge-primary" style="animation: pulse-glow 1.5s infinite; font-size: 0.8rem;">
+        <span class="pulse-dot running"></span> ⚡ Pipeline ${state.pipelineProgress?.percent || 0}%
+       </span>`
+    : '';
 
   container.innerHTML = `
     <header class="navbar">
@@ -20,7 +25,9 @@ export function renderHeader(container) {
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 1.25rem;">
+        ${runningBadge}
+
         <nav class="nav-tabs">
           <button class="nav-tab-btn ${state.activeTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">
             <span>📊</span> Dashboard
