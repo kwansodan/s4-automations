@@ -3,25 +3,55 @@
  */
 
 // Supports explicit backend base URL in production (e.g. Komodo host) or relative proxying
-const API_BASE = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
+function resolveApiBase() {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('ANR_API_URL');
+    if (saved) return saved.replace(/\/$/, '');
+    // In production on Vercel or remote host, default to backend API URL
+    const host = window.location.hostname;
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return 'https://autapi.service4gh.com';
+    }
+  }
+  return '';
+}
+
+const API_BASE = resolveApiBase();
+
+async function handleResponse(res, context = 'API request') {
+  if (!res.ok) {
+    let errorDetail = '';
+    try {
+      const errJson = await res.json();
+      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+    } catch {
+      errorDetail = await res.text().catch(() => '');
+    }
+    throw new Error(`${context} failed (${res.status}): ${errorDetail || res.statusText}`);
+  }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
+}
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`);
-
-  if (!res.ok) throw new Error(`Health check failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Health check');
 }
 
 export async function fetchStats() {
   const res = await fetch(`${API_BASE}/api/stats`);
-  if (!res.ok) throw new Error(`Stats fetch failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Stats fetch');
 }
 
 export async function fetchConfig() {
   const res = await fetch(`${API_BASE}/api/config`);
-  if (!res.ok) throw new Error(`Config fetch failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Config fetch');
 }
 
 export async function updateConfig(configData) {
@@ -30,8 +60,7 @@ export async function updateConfig(configData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(configData),
   });
-  if (!res.ok) throw new Error(`Config update failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Config update');
 }
 
 export async function testConnections() {
@@ -39,14 +68,12 @@ export async function testConnections() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
-  if (!res.ok) throw new Error(`Connection test failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Connection test');
 }
 
 export async function fetchSheetsData(month = 'August', year = 2026) {
   const res = await fetch(`${API_BASE}/api/sheets/data?month=${month}&year=${year}`);
-  if (!res.ok) throw new Error(`Sheets data fetch failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Sheets data fetch');
 }
 
 export async function toggleApproval(payload) {
@@ -55,8 +82,7 @@ export async function toggleApproval(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Toggle approval failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Toggle approval');
 }
 
 export async function triggerPipeline(payload = {}) {
@@ -65,8 +91,7 @@ export async function triggerPipeline(payload = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Pipeline trigger failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Pipeline trigger');
 }
 
 export async function triggerInvoicing(payload = {}) {
@@ -75,18 +100,15 @@ export async function triggerInvoicing(payload = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Invoice generation failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Invoice generation');
 }
 
 export async function fetchCatalog() {
   const res = await fetch(`${API_BASE}/api/catalog`);
-  if (!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Catalog fetch');
 }
 
 export async function fetchPipelineStatus() {
   const res = await fetch(`${API_BASE}/api/pipeline/status`);
-  if (!res.ok) throw new Error(`Pipeline status fetch failed (${res.status})`);
-  return res.json();
+  return handleResponse(res, 'Pipeline status fetch');
 }

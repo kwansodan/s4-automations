@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://autapi.service4gh.com/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://autapi.service4gh.com/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

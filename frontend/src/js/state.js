@@ -54,15 +54,24 @@ export const state = {
   updatePipelineProgress(progress) {
     this.pipelineProgress = progress;
 
+    let hasNewLogs = false;
     // Merge recent logs from backend
     if (progress?.recent_logs && Array.isArray(progress.recent_logs)) {
       progress.recent_logs.forEach((entry) => {
         const key = `${entry.time}_${entry.message}`;
         if (!this._knownLogKeys.has(key)) {
           this._knownLogKeys.add(key);
-          this.addLog(entry.level || 'info', entry.message, entry.time);
+          this.logs.unshift({
+            time: entry.time || new Date().toLocaleTimeString(),
+            type: entry.level || 'info',
+            message: entry.message,
+          });
+          hasNewLogs = true;
         }
       });
+      if (this.logs.length > 300) {
+        this.logs = this.logs.slice(0, 300);
+      }
     }
 
     this.notify();

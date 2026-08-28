@@ -41,13 +41,19 @@ async function initApp() {
     state.config = config?.config || {};
     state.sheetsData = sheetsData;
     state.catalog = catalog;
+
+    state.addLog('info', `ANR Billing Engine v1.0 connected to API (${health?.status || 'live'}).`);
+    if (sheetsData?.monthly_summary?.length > 0) {
+      state.addLog('success', `Google Sheets: Loaded ${sheetsData.monthly_summary.length} billing rows for ${state.selectedMonth} ${state.selectedYear}.`);
+    }
+
     if (pipelineStatus) {
-      state.pipelineProgress = pipelineStatus;
+      state.updatePipelineProgress(pipelineStatus);
       if (pipelineStatus.is_running) {
+        state.addLog('info', `⚡ Active background pipeline detected (${pipelineStatus.percent}%). Streaming live progress...`);
         state.startPolling(fetchPipelineStatus);
       }
     }
-    state.addLog('info', 'Loaded backend services, sheets data, and catalog.');
   } catch (e) {
     state.addLog('error', `Failed loading initial state: ${e.message}`);
   }
