@@ -3,8 +3,8 @@ services:
     build: .
     container_name: anr-backend
     restart: unless-stopped
-    ports:
-      - "${HOST_PORT:-8000}:8000"
+    expose:
+      - "8000"
     env_file:
       - .env
     environment:
@@ -12,7 +12,7 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - default
-      - caddy_net
+      - proxy
 
   inngest:
     image: inngest/inngest:latest
@@ -28,8 +28,9 @@ services:
 
 networks:
   default:
-  caddy_net:
+  proxy:
     external: true
-    name: ${CADDY_NETWORK:-caddy_net}
+    name: ${PROXY_NETWORK:-proxy}
+
 
 
