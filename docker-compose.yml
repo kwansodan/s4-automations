@@ -1,24 +1,21 @@
-version: "3.8"
-
 services:
   app:
     build: .
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    environment:
-      - INNGEST_EVENT_KEY=dev-event-key
-      - INNGEST_SIGNING_KEY=dev-signing-key
-      - INNGEST_APP_ID=anr-laundry-billing
-      - INNGEST_DEV_SERVER_URL=http://inngest:8288
-      - ENVIRONMENT=development
-      - MOCK_MODE=true
+      - "${HOST_PORT:-8000}:8000"
     env_file:
       - .env
-    depends_on:
-      - inngest
+    environment:
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
 
   inngest:
     image: inngest/inngest:latest
+    restart: unless-stopped
     ports:
-      - "8288:8288"
+      - "${INNGEST_DEV_PORT:-8288}:8288"
     command: inngest dev -u http://app:8000/api/inngest
+    profiles:
+      - dev
+
