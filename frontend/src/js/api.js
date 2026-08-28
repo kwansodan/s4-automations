@@ -2,10 +2,12 @@
  * Typed REST API client for ANR Commercial Laundry Billing Engine.
  */
 
-const API_BASE = ''; // Uses relative URLs with Vite proxy in dev or FastAPI in prod
+// Supports explicit backend base URL in production (e.g. Komodo host) or relative proxying
+const API_BASE = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`);
+
   if (!res.ok) throw new Error(`Health check failed (${res.status})`);
   return res.json();
 }
