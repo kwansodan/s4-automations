@@ -1,0 +1,254 @@
+"""Pydantic schemas for OCR extraction, Google Sheets rows, and Zoho API."""
+
+from enum import Enum
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, computed_field
+
+
+class ConfidenceLevel(str, Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class SlipStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    INVOICED = "INVOICED"
+    REJECTED = "REJECTED"
+
+
+# -------------------------------------------------------------------------
+# OCR / Gemini Vision Extraction Schemas
+# -------------------------------------------------------------------------
+
+class OCRSlipItem(BaseModel):
+    """Extracted single linen item from a handwritten slip."""
+    raw_item_name: str = Field(description="Original handwritten item name as written on slip, e.g., 'B/Sheet Dbl', 'F/Towel'")
+    standard_item_name: str = Field(default="", description="Reconciled standard item name from Zoho catalog")
+    zoho_item_id: str = Field(default="", description="Matched Zoho Item ID")
+    unit_rate: float = Field(default=0.0, description="Unit rate in GHS or account currency")
+    pickup_qty: int = Field(default=0, ge=0, description="Quantity picked up from client")
+    delivery_qty: int = Field(default=0, ge=0, description="Quantity delivered back to client")
+    unreturned_loss_qty: int = Field(default=0, description="Loss discrepancy (pickup_qty - delivery_qty)")
+    confidence_score: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH, description="OCR extraction confidence")
+    remarks: str = Field(default="", description="Slip line item remarks or notes")
+
+
+class OCRSlipExtraction(BaseModel):
+    """Structured extraction returned from Gemini for a single slip document."""
+    file_name: str = Field(description="Name of the physical scan file")
+    client_name: str = Field(default="", description="Client name detected or matched")
+    slip_date: str = Field(default="", description="Date on slip in DD/MM/YYYY format")
+    items: List[OCRSlipItem] = Field(default_factory=list, description="Extracted line items on this slip")
+    overall_confidence: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH, description="Overall document confidence")
+    notes: str = Field(default="", description="General notes or legibility warnings")
+
+
+# -------------------------------------------------------------------------
+# SKU Aggregation Models
+# -------------------------------------------------------------------------
+
+class MonthlySKUSummary(BaseModel):
+    """Consolidated monthly summary for a single client + SKU."""
+    client_name: str
+    zoho_contact_id: str = ""
+    zoho_item_id: str = ""
+    standard_item_name: str
+    raw_names_seen: List[str] = Field(default_factory=list)
+    confidence_score: ConfidenceLevel = ConfidenceLevel.HIGH
+    unit_rate: float = 0.0
+    total_pickup_qty: int = 0
+    total_delivery_qty: int = 0
+    total_loss_qty: int = 0
+    line_total_amount: float = 0.0
+    daily_trace_summary: str = ""
+    audit_notes: str = ""
+    reviewed: bool = False
+    approved: bool = False
+    status: SlipStatus = SlipStatus.PENDING
+
+    @computed_field
+    def raw_names_display(self) -> str:
+        """Comma-separated list of raw handwritten variations observed."""
+        return ", ".join(sorted(set(self.raw_names_seen))) if self.raw_names_seen else self.standard_item_name
+
+
+# -------------------------------------------------------------------------
+# Google Sheets Row Schemas
+# -------------------------------------------------------------------------
+
+class DailySlipDetailRow(BaseModel):
+    """Row model for Tab 1: Daily_Slip_Details."""
+    slip_date: str
+    file_name: str
+    client_name: str
+    raw_item_name: str
+    standard_item_name: str
+    pickup_qty: int
+    delivery_qty: int
+    loss_qty: int
+    confidence_score: ConfidenceLevel
+    drive_file_url: str
+    processed_at: str
+
+    def to_sheet_row(self) -> List[Any]:
+        """Convert to Google Sheets row values array."""
+        hyperlink_formula = f'=HYPERLINK("{self.drive_file_url}", "View Scan ↗")' if self.drive_file_url else "N/A"
+        return [
+            self.slip_date,
+            self.file_name,
+            self.client_name,
+            self.raw_item_name,
+            self.standard_item_name,
+            self.pickup_qty,
+            self.delivery_qty,
+            self.loss_qty,
+            self.confidence_score.value,
+            hyperlink_formula,
+            self.processed_at,
+        ]
+
+
+class MonthlySummaryRow(BaseModel):
+    """15-Column Schema for Tab 2: Monthly_Summary."""
+    client_name: str
+    zoho_contact_id: str
+    zoho_item_id: str
+    standard_item_name: str
+    raw_names_seen: str
+    confidence_score: ConfidenceLevel
+    unit_rate: float
+    total_picked_up: int
+    total_delivered: int
+    linen_discrepancy: int
+    total_billed: float
+    audit_notes: str
+    reviewed: bool = False
+    approved: bool = False
+    status: SlipStatus = SlipStatus.PENDING
+
+    def to_sheet_row(self) -> List[Any]:
+        """Convert to Google Sheets 15-column row values array."""
+        return [
+            self.client_name,
+            self.zoho_contact_id,
+            self.zoho_item_id,
+            self.standard_item_name,
+            self.raw_names_seen,
+            self.confidence_score.value,
+            round(self.unit_rate, 2),
+            self.total_picked_up,
+            self.total_delivered,
+            self.linen_discrepancy,
+            round(self.total_billed, 2),
+            self.audit_notes,
+            self.reviewed,
+            self.approved,
+            self.status.value,
+        ]
+
+
+# -------------------------------------------------------------------------
+# Zoho Books Schemas
+# -------------------------------------------------------------------------
+
+class ZohoContact(BaseModel):
+    """Zoho Customer / Contact representation."""
+    contact_id: str
+    contact_name: str
+    company_name: Optional[str] = ""
+    email: Optional[str] = ""
+    status: Optional[str] = "active"
+
+
+class ZohoItem(BaseModel):
+    """Zoho Item Catalog entry."""
+    item_id: str
+    name: str
+    rate: float
+    description: Optional[str] = ""
+    status: Optional[str] = "active"
+
+
+class ZohoInvoiceLineItem(BaseModel):
+    """Line item for Zoho Draft Invoice."""
+    item_id: str
+    name: str
+    description: str = ""
+    rate: float
+    quantity: int
+    item_total: Optional[float] = None
+
+
+class ZohoDraftInvoiceRequest(BaseModel):
+    """Request payload to create a draft invoice in Zoho Books."""
+    customer_id: str
+    date: str
+    due_date: Optional[str] = None
+    line_items: List[ZohoInvoiceLineItem]
+    notes: Optional[str] = ""
+    terms: Optional[str] = "Payment due upon receipt"
+    is_inclusive_tax: bool = False
+    status: str = "draft"
+
+
+class ZohoDraftInvoiceResponse(BaseModel):
+    """Response returned from Zoho Books after invoice creation."""
+    code: int = 0
+    message: str = ""
+    invoice_id: str
+    invoice_number: str
+    customer_id: str
+    customer_name: str
+    total: float
+    status: str
+    invoice_url: Optional[str] = ""
+
+
+# -------------------------------------------------------------------------
+# Pipeline Workflow State Schemas
+# -------------------------------------------------------------------------
+
+class ClientFolderInfo(BaseModel):
+    """Information about a discovered client folder in Google Drive."""
+    folder_id: str
+    client_name: str
+    client_slug: str
+    processed_folder_id: str = ""
+    unprocessed_file_count: int = 0
+
+
+class PreflightDiscoveryResult(BaseModel):
+    """Result of Step 1: Pre-flight & Discovery."""
+    month_name: str
+    year: int
+    month_folder_id: str
+    spreadsheet_id: str
+    spreadsheet_url: str
+    clients: List[ClientFolderInfo] = Field(default_factory=list)
+    active_contacts_count: int = 0
+    active_items_count: int = 0
+
+
+class ClientProcessingResult(BaseModel):
+    """Result of Step 2-5 for a single client."""
+    client_name: str
+    client_slug: str
+    files_processed_count: int = 0
+    line_items_extracted_count: int = 0
+    sku_summaries_count: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
+class PipelineRunResult(BaseModel):
+    """Overall outcome of the daily billing pipeline run."""
+    run_id: str
+    month_name: str
+    year: int
+    spreadsheet_id: str
+    spreadsheet_url: str
+    total_clients_discovered: int
+    clients_processed: List[ClientProcessingResult] = Field(default_factory=list)
+    total_slips_processed: int = 0
+    status: str = "COMPLETED"
