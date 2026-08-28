@@ -492,3 +492,195 @@ class GoogleSheetsService:
             body={"valueInputOption": "USER_ENTERED", "data": updates},
         ).execute()
         logger.info(f"Updated {len(row_indices)} rows to INVOICED in {spreadsheet_id}")
+
+    def fetch_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
+        """Fetches all rows from both Tab 1 (Daily Details) and Tab 2 (Monthly Summary) for UI review."""
+        if settings.MOCK_MODE or not self.sheets:
+            return {
+                "month": month,
+                "year": year,
+                "spreadsheet_id": spreadsheet_id,
+                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                "daily_details": [
+                    {
+                        "slip_date": f"15/08/{year}",
+                        "file_name": "slip_luxwood_01.jpg",
+                        "client_name": "Luxwood",
+                        "raw_item_name": "B/Sheet Dbl",
+                        "standard_item_name": "Bed Sheet (Double / King)",
+                        "pickup_qty": 35,
+                        "delivery_qty": 32,
+                        "loss_qty": 3,
+                        "confidence_score": "HIGH",
+                        "drive_file_url": "https://drive.google.com/file/d/mock1/view",
+                        "processed_at": "2026-08-28 10:15:00",
+                    },
+                    {
+                        "slip_date": f"15/08/{year}",
+                        "file_name": "slip_luxwood_01.jpg",
+                        "client_name": "Luxwood",
+                        "raw_item_name": "Bath Towel",
+                        "standard_item_name": "Bath Towel",
+                        "pickup_qty": 50,
+                        "delivery_qty": 50,
+                        "loss_qty": 0,
+                        "confidence_score": "HIGH",
+                        "drive_file_url": "https://drive.google.com/file/d/mock1/view",
+                        "processed_at": "2026-08-28 10:15:00",
+                    },
+                    {
+                        "slip_date": f"16/08/{year}",
+                        "file_name": "slip_thelennox_02.jpg",
+                        "client_name": "The Lennox",
+                        "raw_item_name": "King Duvet Cover",
+                        "standard_item_name": "Duvet Cover (King)",
+                        "pickup_qty": 20,
+                        "delivery_qty": 20,
+                        "loss_qty": 0,
+                        "confidence_score": "HIGH",
+                        "drive_file_url": "https://drive.google.com/file/d/mock2/view",
+                        "processed_at": "2026-08-28 11:30:00",
+                    },
+                ],
+                "monthly_summary": [
+                    {
+                        "row_index": 2,
+                        "client_name": "Luxwood",
+                        "zoho_contact_id": "cnt_luxwood_001",
+                        "zoho_item_id": "item_bed_sheet_dbl",
+                        "standard_item_name": "Bed Sheet (Double / King)",
+                        "raw_names_seen": "B/Sheet Dbl, Double Bedsheet",
+                        "confidence_score": "HIGH",
+                        "unit_rate": 18.50,
+                        "total_picked_up": 50,
+                        "total_delivered": 47,
+                        "linen_discrepancy": 3,
+                        "total_billed": 925.00,
+                        "audit_notes": "Pickup 50, Delivered 47 (3 unreturned)",
+                        "reviewed": True,
+                        "approved": True,
+                        "status": "PENDING",
+                    },
+                    {
+                        "row_index": 3,
+                        "client_name": "Luxwood",
+                        "zoho_contact_id": "cnt_luxwood_001",
+                        "zoho_item_id": "item_bath_towel",
+                        "standard_item_name": "Bath Towel",
+                        "raw_names_seen": "Bath Towel",
+                        "confidence_score": "HIGH",
+                        "unit_rate": 12.00,
+                        "total_picked_up": 80,
+                        "total_delivered": 80,
+                        "linen_discrepancy": 0,
+                        "total_billed": 960.00,
+                        "audit_notes": "Pickup 80, Delivered 80",
+                        "reviewed": True,
+                        "approved": True,
+                        "status": "PENDING",
+                    },
+                    {
+                        "row_index": 4,
+                        "client_name": "The Lennox",
+                        "zoho_contact_id": "cnt_the_lennox_003",
+                        "zoho_item_id": "item_duvet_cover_king",
+                        "standard_item_name": "Duvet Cover (King)",
+                        "raw_names_seen": "King Duvet Cover",
+                        "confidence_score": "HIGH",
+                        "unit_rate": 25.00,
+                        "total_picked_up": 30,
+                        "total_delivered": 30,
+                        "linen_discrepancy": 0,
+                        "total_billed": 750.00,
+                        "audit_notes": "Reconciled",
+                        "reviewed": False,
+                        "approved": False,
+                        "status": "PENDING",
+                    },
+                ],
+            }
+
+        # 1. Fetch Daily Details
+        daily_res = self.sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f"'{TAB_DAILY_DETAILS}'!A2:K500"
+        ).execute()
+        daily_rows = daily_res.get("values", [])
+        daily_details = []
+        for r in daily_rows:
+            if not r:
+                continue
+            daily_details.append({
+                "slip_date": r[0] if len(r) > 0 else "",
+                "file_name": r[1] if len(r) > 1 else "",
+                "client_name": r[2] if len(r) > 2 else "",
+                "raw_item_name": r[3] if len(r) > 3 else "",
+                "standard_item_name": r[4] if len(r) > 4 else "",
+                "pickup_qty": _parse_int(r[5] if len(r) > 5 else 0),
+                "delivery_qty": _parse_int(r[6] if len(r) > 6 else 0),
+                "loss_qty": _parse_int(r[7] if len(r) > 7 else 0),
+                "confidence_score": r[8] if len(r) > 8 else "HIGH",
+                "drive_file_url": r[9] if len(r) > 9 else "",
+                "processed_at": r[10] if len(r) > 10 else "",
+            })
+
+        # 2. Fetch Monthly Summary
+        monthly_res = self.sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
+        ).execute()
+        monthly_rows = monthly_res.get("values", [])
+        monthly_summary = []
+        for idx, r in enumerate(monthly_rows, start=2):
+            if not r:
+                continue
+            rev_val = r[12] if len(r) > 12 else False
+            app_val = r[13] if len(r) > 13 else False
+            is_rev = rev_val if isinstance(rev_val, bool) else str(rev_val).upper() in ["TRUE", "YES", "1"]
+            is_app = app_val if isinstance(app_val, bool) else str(app_val).upper() in ["TRUE", "YES", "1"]
+
+            monthly_summary.append({
+                "row_index": idx,
+                "client_name": r[0].strip() if len(r) > 0 else "",
+                "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
+                "zoho_item_id": r[2].strip() if len(r) > 2 else "",
+                "standard_item_name": r[3].strip() if len(r) > 3 else "",
+                "raw_names_seen": r[4].strip() if len(r) > 4 else "",
+                "confidence_score": r[5].strip() if len(r) > 5 else "HIGH",
+                "unit_rate": _parse_float(r[6] if len(r) > 6 else 0.0),
+                "total_picked_up": _parse_int(r[7] if len(r) > 7 else 0),
+                "total_delivered": _parse_int(r[8] if len(r) > 8 else 0),
+                "linen_discrepancy": _parse_int(r[9] if len(r) > 9 else 0),
+                "total_billed": _parse_float(r[10] if len(r) > 10 else 0.0),
+                "audit_notes": r[11].strip() if len(r) > 11 else "",
+                "reviewed": is_rev,
+                "approved": is_app,
+                "status": r[14].strip() if len(r) > 14 else "PENDING",
+            })
+
+        return {
+            "month": month,
+            "year": year,
+            "spreadsheet_id": spreadsheet_id,
+            "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+            "daily_details": daily_details,
+            "monthly_summary": monthly_summary,
+        }
+
+    def toggle_row_field(self, spreadsheet_id: str, row_index: int, field: str, value: Any) -> bool:
+        """Toggles 'reviewed', 'approved', or 'status' for a row in Tab 2."""
+        if settings.MOCK_MODE or not self.sheets:
+            logger.info(f"[MOCK] Toggled row {row_index} field {field} to {value}")
+            return True
+
+        col_letter = "M" if field == "reviewed" else ("N" if field == "approved" else "O")
+        cell_range = f"'{TAB_MONTHLY_SUMMARY}'!{col_letter}{row_index}"
+
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=cell_range,
+            valueInputOption="USER_ENTERED",
+            body={"values": [[value]]},
+        ).execute()
+
+        logger.info(f"Updated row {row_index} {field} -> {value} in {spreadsheet_id}")
+        return True
+

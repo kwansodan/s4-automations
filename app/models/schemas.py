@@ -252,3 +252,76 @@ class PipelineRunResult(BaseModel):
     clients_processed: List[ClientProcessingResult] = Field(default_factory=list)
     total_slips_processed: int = 0
     status: str = "COMPLETED"
+
+
+# -------------------------------------------------------------------------
+# Frontend & Configuration Schemas
+# -------------------------------------------------------------------------
+
+class ConfigUpdateRequest(BaseModel):
+    """Payload to update and save configuration settings via frontend."""
+    INNGEST_EVENT_KEY: Optional[str] = None
+    INNGEST_SIGNING_KEY: Optional[str] = None
+    INNGEST_APP_ID: Optional[str] = None
+    INNGEST_DEV_SERVER_URL: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: Optional[str] = None
+    ZOHO_CLIENT_ID: Optional[str] = None
+    ZOHO_CLIENT_SECRET: Optional[str] = None
+    ZOHO_REFRESH_TOKEN: Optional[str] = None
+    ZOHO_ORG_ID: Optional[str] = None
+    ZOHO_ACCOUNTS_URL: Optional[str] = None
+    ZOHO_BOOKS_API_URL: Optional[str] = None
+    CONTROL_SHEETS_FOLDER_ID: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_FILE: Optional[str] = None
+    NOTIFICATION_EMAIL: Optional[str] = None
+    PORT: Optional[int] = None
+    ENVIRONMENT: Optional[str] = None
+    LOG_LEVEL: Optional[str] = None
+    MOCK_MODE: Optional[bool] = None
+    persist_to_file: bool = True
+
+
+class ConnectionTestResult(BaseModel):
+    """Result of live integration connectivity test."""
+    gemini_status: str = "UNKNOWN"
+    gemini_message: str = ""
+    zoho_status: str = "UNKNOWN"
+    zoho_message: str = ""
+    google_status: str = "UNKNOWN"
+    google_message: str = ""
+    inngest_status: str = "UNKNOWN"
+    inngest_message: str = ""
+    all_healthy: bool = False
+
+
+class ToggleApprovalRequest(BaseModel):
+    """Request to toggle Reviewed or Approved state for a row in Tab 2."""
+    spreadsheet_id: Optional[str] = None
+    month: Optional[str] = None
+    year: Optional[int] = None
+    row_index: int
+    field: str = Field(description="'reviewed' or 'approved' or 'status'")
+    value: Any
+
+
+class SheetsReviewData(BaseModel):
+    """Data response for Tab 1 (Details) and Tab 2 (Monthly Summary)."""
+    month: str
+    year: int
+    spreadsheet_id: str
+    spreadsheet_url: str
+    daily_details: List[Dict[str, Any]] = Field(default_factory=list)
+    monthly_summary: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class StatsSummary(BaseModel):
+    """High level dashboard stats."""
+    total_slips_ingested: int = 0
+    unreturned_linen_loss_count: int = 0
+    approved_billing_total_ghs: float = 0.0
+    pending_approval_count: int = 0
+    active_clients_count: int = 0
+    mock_mode: bool = False
+

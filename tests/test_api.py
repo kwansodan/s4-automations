@@ -19,7 +19,8 @@ def test_health_check_endpoint():
 def test_dashboard_ui_endpoint():
     response = client.get("/")
     assert response.status_code == 200
-    assert "ANR Laundry Billing Engine" in response.text
+    assert "ANR Laundry Billing" in response.text
+
 
 
 def test_zoho_catalog_endpoint():
@@ -51,4 +52,58 @@ def test_trigger_invoice_generation_endpoint():
         data = response.json()
         assert data["status"] == "QUEUED"
         mock_send.assert_awaited_once()
+
+
+def test_get_and_update_config_endpoint():
+    # 1. GET config
+    get_res = client.get("/api/config")
+    assert get_res.status_code == 200
+    cfg_data = get_res.json()["config"]
+    assert "GEMINI_MODEL" in cfg_data
+    assert "ZOHO_ORG_ID" in cfg_data
+
+    # 2. POST config
+    post_res = client.post("/api/config", json={
+        "NOTIFICATION_EMAIL": "test_billing@service4gh.com",
+        "persist_to_file": False,
+    })
+    assert post_res.status_code == 200
+    assert post_res.json()["config"]["NOTIFICATION_EMAIL"] == "test_billing@service4gh.com"
+
+
+def test_config_connections_endpoint():
+    res = client.post("/api/config/test")
+    assert res.status_code == 200
+    data = res.json()
+    assert "gemini_status" in data
+    assert "zoho_status" in data
+    assert "google_status" in data
+
+
+def test_sheets_review_data_endpoint():
+    res = client.get("/api/sheets/data?month=August&year=2026")
+    assert res.status_code == 200
+    data = res.json()
+    assert "daily_details" in data
+    assert "monthly_summary" in data
+    assert len(data["monthly_summary"]) > 0
+
+
+def test_toggle_sheet_approval_endpoint():
+    res = client.post("/api/sheets/toggle-approval", json={
+        "row_index": 2,
+        "field": "approved",
+        "value": True,
+    })
+    assert res.status_code == 200
+    assert res.json()["status"] == "SUCCESS"
+
+
+def test_dashboard_stats_endpoint():
+    res = client.get("/api/stats")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_slips_ingested"] >= 0
+    assert data["approved_billing_total_ghs"] >= 0
+
 
