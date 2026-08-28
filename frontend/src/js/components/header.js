@@ -8,6 +8,8 @@ export function renderHeader(container) {
   const isHealthy = state.health?.status === 'healthy';
   const mockBadge = state.config?.MOCK_MODE
     ? `<span class="badge badge-warning">🧪 Mock Mode</span>`
+    : `<span class="badge badge-success">● Production Live</span>`;
+
   const isRunning = state.pipelineProgress?.is_running;
   const runningBadge = isRunning
     ? `<span class="badge badge-primary" style="animation: pulse-glow 1.5s infinite; font-size: 0.8rem;">
