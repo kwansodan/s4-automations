@@ -249,6 +249,15 @@ export async function fetchClients(): Promise<any[]> {
   return handleResponse<any[]>(res, 'Fetch clients');
 }
 
+export async function createClient(payload: any): Promise<any> {
+  const res = await resilientFetch('/api/clients', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, 'Create new client');
+}
+
 export async function fetchClientById(clientId: string): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}`, {
     headers: getAuthHeaders(),

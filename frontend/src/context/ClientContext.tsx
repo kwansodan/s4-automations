@@ -68,20 +68,10 @@ interface ClientContextType {
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
 
+import { fetchClients, createClient } from '../lib/api';
+
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [clients, setClients] = useState<ClientProfile[]>(() => {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('S4_CLIENTS_LIST');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.warn('Failed parsing saved clients list:', e);
-        }
-      }
-    }
-    return DEFAULT_CLIENTS;
-  });
+  const [clients, setClients] = useState<ClientProfile[]>(DEFAULT_CLIENTS);
 
   const [currentClientId, setCurrentClientId] = useState<string>(() => {
     if (typeof localStorage !== 'undefined') {
@@ -93,6 +83,40 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [isSwitcherOpen, setIsSwitcherOpen] = useState<boolean>(false);
 
+  // Sync with backend PostgreSQL database on mount
+  useEffect(() => {
+    const loadBackendClients = async () => {
+      try {
+        const dbClients = await fetchClients();
+        if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
+          const mapped: ClientProfile[] = dbClients.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            industry: c.industry,
+            icon: c.icon || '🏢',
+            status: c.status || 'dev',
+            statusText: c.status_text || (c.status === 'live' ? 'Production Live' : 'In Development'),
+            desc: c.description || '',
+            folderId: c.folder_id,
+            zohoOrg: c.zoho_org_id,
+            workflowsCount: (c.blueprints || []).length || 1,
+            projectedMonthlyVolume: 'Active',
+            activeIntegrations: c.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
+            blueprints: c.blueprints || [
+              { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
+              { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
+              { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into Zoho Books', status: 'queued' },
+            ],
+          }));
+          setClients(mapped);
+        }
+      } catch (err) {
+        console.warn('Using local client registry fallback:', err);
+      }
+    };
+    loadBackendClients();
+  }, []);
+
   const currentClient = clients.find((c) => c.id === currentClientId) || clients[0];
 
   const setClient = (clientId: string) => {
@@ -103,27 +127,39 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsSwitcherOpen(false);
   };
 
-  const addClient = (clientData: Omit<ClientProfile, 'id' | 'workflowsCount' | 'projectedMonthlyVolume' | 'activeIntegrations' | 'blueprints'>) => {
+  const addClient = async (clientData: Omit<ClientProfile, 'id' | 'workflowsCount' | 'projectedMonthlyVolume' | 'activeIntegrations' | 'blueprints'>) => {
     const slug = clientData.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const newProfile: ClientProfile = {
       ...clientData,
       id: slug || `client_${Date.now()}`,
       workflowsCount: 1,
       projectedMonthlyVolume: 'Upcoming',
-      activeIntegrations: ['Google Drive', 'Inngest', 'Zoho Books'],
+      activeIntegrations: ['Google Drive', 'Gemini Vision', 'Inngest', 'Zoho Books'],
       blueprints: [
-        { title: 'Source Data Discovery', desc: 'Connect Google Drive or email inbox for automated ingestion', status: 'in_progress' },
-        { title: 'AI Extraction Pipeline', desc: 'Custom vision models for domain-specific document schemas', status: 'queued' },
-        { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into target accounting books', status: 'queued' },
+        { title: 'Source Data Ingestion', desc: 'Automated photo/document polling', status: 'active' },
+        { title: 'AI Sales Extraction', desc: 'Gemini Vision structured daily ledger parsing', status: 'in_progress' },
+        { title: 'Zoho Books Invoicing', desc: 'Sync approved daily sales into accounting records', status: 'queued' },
       ],
     };
 
-    const updated = [...clients, newProfile];
+    // 1. Optimistic local update
+    const updated = [...clients.filter((c) => c.id !== newProfile.id), newProfile];
     setClients(updated);
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(updated));
-    }
     setClient(newProfile.id);
+
+    // 2. Persist to PostgreSQL backend
+    try {
+      await createClient({
+        name: clientData.name,
+        industry: clientData.industry,
+        icon: clientData.icon,
+        status: clientData.status,
+        description: clientData.desc,
+        source_type: 'google_drive',
+      });
+    } catch (err) {
+      console.warn('Backend client creation notice:', err);
+    }
   };
 
   return (
