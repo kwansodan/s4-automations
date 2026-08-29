@@ -1,10 +1,13 @@
 @import "tailwindcss";
+@source "../src/**/*.{ts,tsx,js,jsx,html}";
+@source "./**/*.{ts,tsx,js,jsx,html}";
+@source "../../index.html";
 
 @layer base {
   body {
     background-color: #020617;
     color: #f8fafc;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 }
