@@ -161,8 +161,8 @@ async def run_zoho_invoices_core(
                     terms="Payment due within 14 days of invoice date.",
                 )
 
-                pipeline_tracker.add_log("info", f"Creating Draft Invoice in Zoho Books for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
-                response = await zoho.create_draft_invoice(inv_request)
+                pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
+                response = await zoho.create_or_append_draft_invoice(inv_request, target_month, target_year)
 
                 sheets.update_invoice_status(
                     spreadsheet_id=sheet_id,
@@ -173,7 +173,7 @@ async def run_zoho_invoices_core(
 
                 pipeline_tracker.add_log(
                     "success",
-                    f"🎉 Created Draft Invoice {response.invoice_number} for {client_name} (GHS {response.total:.2f}). Marked INVOICED in sheet.",
+                    f"🎉 Processed Draft Invoice {response.invoice_number} for {client_name} (Total: GHS {response.total:.2f}). Marked INVOICED in sheet.",
                 )
                 created_invoices.append(response.model_dump())
 

@@ -68,3 +68,43 @@ async def test_create_draft_invoice_mock():
     assert response.status == "draft"
     assert response.total == (50 * 18.50 + 40 * 12.00)
     assert response.invoice_number.startswith("INV-ANR-")
+
+
+@pytest.mark.asyncio
+async def test_create_or_append_draft_invoice_mock():
+    zoho = ZohoBooksService()
+    # Step 1: Initial invoice creation
+    req1 = ZohoDraftInvoiceRequest(
+        customer_id="cnt_the_bantree_002",
+        date="2026-08-31",
+        line_items=[
+            ZohoInvoiceLineItem(
+                item_id="item_duvet_king",
+                name="Duvet Cover (King)",
+                rate=25.00,
+                quantity=10,
+            )
+        ],
+    )
+    res1 = await zoho.create_or_append_draft_invoice(req1, "August", 2026)
+    assert res1.total == 250.00
+    first_inv_num = res1.invoice_number
+
+    # Step 2: Next day upload/append new line items
+    req2 = ZohoDraftInvoiceRequest(
+        customer_id="cnt_the_bantree_002",
+        date="2026-08-31",
+        line_items=[
+            ZohoInvoiceLineItem(
+                item_id="item_pillow_case",
+                name="Pillow Case",
+                rate=6.00,
+                quantity=20,
+            )
+        ],
+    )
+    res2 = await zoho.create_or_append_draft_invoice(req2, "August", 2026)
+    # Must append to the same invoice number with updated total
+    assert res2.invoice_number == first_inv_num
+    assert res2.total == (250.00 + 120.00)
+

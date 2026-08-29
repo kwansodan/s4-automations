@@ -248,6 +248,77 @@ class ZohoBooksService:
 
         return None
 
+    _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    async def find_existing_draft_invoice(
+        self, customer_id: str, month: str, year: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Finds an existing draft invoice for this customer and billing month in Zoho Books.
+        Returns the full invoice dict with line items if found, else None.
+        """
+        key = f"{customer_id}_{month}_{year}".lower()
+        if settings.MOCK_MODE or not self.org_id:
+            return ZohoBooksService._global_mock_draft_invoices.get(key)
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/invoices"
+        params = {
+            "organization_id": self.org_id,
+            "customer_id": customer_id,
+            "status": "draft",
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.get(url, headers=headers, params=params)
+
+            if response.status_code != 200:
+                logger.warning(f"Could not query draft invoices for customer {customer_id}: {response.text}")
+                return None
+
+            data = response.json()
+            invoices = data.get("invoices", [])
+            
+            target_str = f"{month} {year}".lower()
+            matched_inv_id = None
+
+            for inv in invoices:
+                # Match by notes/subject containing month & year or date
+                inv_notes = str(inv.get("notes", "")).lower()
+                inv_date = str(inv.get("date", ""))
+                
+                # Parse month number
+                try:
+                    month_num = datetime.strptime(month, "%B").month
+                except Exception:
+                    month_num = 0
+                month_prefix = f"{year:04d}-{month_num:02d}"
+
+                if target_str in inv_notes or (month_num > 0 and inv_date.startswith(month_prefix)):
+                    matched_inv_id = inv.get("invoice_id")
+                    break
+
+            if not matched_inv_id:
+                return None
+
+            # Fetch full invoice details with line items
+            detail_url = f"{self.books_api_url}/invoices/{matched_inv_id}"
+            detail_res = await client.get(detail_url, headers=headers, params={"organization_id": self.org_id})
+            if detail_res.status_code == 200:
+                return detail_res.json().get("invoice")
+
+            return None
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
@@ -262,7 +333,7 @@ class ZohoBooksService:
             total = sum(li.rate * li.quantity for li in request.line_items)
             mock_id = f"inv_mock_{int(time.time())}"
             mock_num = f"INV-ANR-{int(time.time()) % 100000:05d}"
-            return ZohoDraftInvoiceResponse(
+            mock_res = ZohoDraftInvoiceResponse(
                 code=0,
                 message="Invoice created successfully (Mock)",
                 invoice_id=mock_id,
@@ -273,6 +344,7 @@ class ZohoBooksService:
                 status="draft",
                 invoice_url=f"https://books.zoho.com/app#/invoices/{mock_id}",
             )
+            return mock_res
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -324,3 +396,112 @@ class ZohoBooksService:
                 status="draft",
                 invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
             )
+
+    async def create_or_append_draft_invoice(
+        self, request: ZohoDraftInvoiceRequest, month: str, year: int
+    ) -> ZohoDraftInvoiceResponse:
+        """
+        Checks for an existing draft invoice for this customer and month.
+        If found: appends/merges new line items into the existing invoice.
+        If not found: creates a fresh draft invoice.
+        """
+        existing = await self.find_existing_draft_invoice(request.customer_id, month, year)
+        key = f"{request.customer_id}_{month}_{year}".lower()
+
+        if not existing:
+            created = await self.create_draft_invoice(request)
+            if settings.MOCK_MODE or not self.org_id:
+                ZohoBooksService._global_mock_draft_invoices[key] = {
+                    "invoice_id": created.invoice_id,
+                    "invoice_number": created.invoice_number,
+                    "customer_id": request.customer_id,
+                    "customer_name": created.customer_name,
+                    "total": created.total,
+                    "status": "draft",
+                    "notes": request.notes,
+                    "line_items": [li.model_dump() for li in request.line_items],
+                }
+            return created
+
+        # Append new items to existing invoice
+        invoice_id = existing.get("invoice_id", "")
+        invoice_num = existing.get("invoice_number", "")
+        existing_items = existing.get("line_items", [])
+
+        # Build merged line items
+        combined_items = []
+        for old in existing_items:
+            combined_items.append({
+                "item_id": old.get("item_id", ""),
+                "name": old.get("name", ""),
+                "description": old.get("description", ""),
+                "rate": float(old.get("rate", 0.0)),
+                "quantity": int(old.get("quantity", 0)),
+            })
+
+        for new_li in request.line_items:
+            combined_items.append({
+                "item_id": new_li.item_id,
+                "name": new_li.name,
+                "description": new_li.description,
+                "rate": new_li.rate,
+                "quantity": new_li.quantity,
+            })
+
+        if settings.MOCK_MODE or not self.org_id:
+            new_total = sum(i["rate"] * i["quantity"] for i in combined_items)
+            ZohoBooksService._global_mock_draft_invoices[key]["line_items"] = combined_items
+            ZohoBooksService._global_mock_draft_invoices[key]["total"] = new_total
+            logger.info(f"[MOCK] Appended {len(request.line_items)} items to existing Draft Invoice {invoice_num} (Total: GHS {new_total:.2f})")
+            return ZohoDraftInvoiceResponse(
+                code=0,
+                message=f"Appended items to existing draft invoice {invoice_num} (Mock)",
+                invoice_id=invoice_id,
+                invoice_number=invoice_num,
+                customer_id=request.customer_id,
+                customer_name=existing.get("customer_name", "Client"),
+                total=new_total,
+                status="draft",
+                invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/invoices/{invoice_id}"
+        params = {"organization_id": self.org_id}
+
+        payload = {
+            "customer_id": request.customer_id,
+            "date": request.date,
+            "due_date": request.due_date,
+            "line_items": combined_items,
+            "notes": request.notes,
+            "terms": request.terms,
+            "status": "draft",
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.put(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.put(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            updated_inv = data.get("invoice", {})
+            updated_total = float(updated_inv.get("total", 0.0))
+
+            logger.info(f"Successfully appended items to Zoho Draft Invoice {invoice_num} (New Total: GHS {updated_total:.2f})")
+            return ZohoDraftInvoiceResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Appended to existing draft invoice"),
+                invoice_id=invoice_id,
+                invoice_number=invoice_num,
+                customer_id=request.customer_id,
+                customer_name=updated_inv.get("customer_name", ""),
+                total=updated_total,
+                status="draft",
+                invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
+            )
+
