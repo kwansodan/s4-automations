@@ -39,11 +39,19 @@ class Settings(BaseSettings):
     # Authentication & Email OTP
     AUTH_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Admin login email for S4 Automations")
     AUTH_SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens")
-    SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g. smtp.zoho.com or smtp.gmail.com)")
+
+    # Mailjet & Email Dispatch Configuration
+    MAILJET_API_KEY: Optional[str] = Field(default=None, description="Mailjet Public API Key")
+    MAILJET_SECRET_KEY: Optional[str] = Field(default=None, description="Mailjet Secret Key")
+    MAILJET_FROM_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Verified Mailjet Sender Email")
+    MAILJET_FROM_NAME: str = Field(default="S4 Automations Security", description="Sender display name")
+
+    # SMTP Configuration (Mailjet or custom SMTP)
+    SMTP_HOST: Optional[str] = Field(default="in-v3.mailjet.com", description="SMTP Server Host (Mailjet default: in-v3.mailjet.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Server Port")
-    SMTP_USER: Optional[str] = Field(default=None, description="SMTP Username")
-    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password")
-    SMTP_FROM: str = Field(default="s4bookkeeping@service4gh.com", description="Sender Email Address for OTPs")
+    SMTP_USER: Optional[str] = Field(default=None, description="SMTP Username / Mailjet API Key")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password / Mailjet Secret Key")
+    SMTP_FROM: str = Field(default="s4bookkeeping@service4gh.com", description="Sender Email Address")
 
     # Database Configuration (PostgreSQL / SQLModel)
     DATABASE_URL: str = Field(
@@ -85,7 +93,11 @@ class Settings(BaseSettings):
             "CONTROL_SHEETS_FOLDER_ID": self.CONTROL_SHEETS_FOLDER_ID,
             "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64": mask(self.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 or ""),
             "GOOGLE_SERVICE_ACCOUNT_FILE": self.GOOGLE_SERVICE_ACCOUNT_FILE or "",
+            "MAILJET_API_KEY": mask(self.MAILJET_API_KEY or ""),
+            "MAILJET_SECRET_KEY": mask(self.MAILJET_SECRET_KEY or ""),
+            "MAILJET_FROM_EMAIL": self.MAILJET_FROM_EMAIL,
             "NOTIFICATION_EMAIL": self.NOTIFICATION_EMAIL,
+            "DATABASE_URL": mask(self.DATABASE_URL),
             "PORT": self.PORT,
             "ENVIRONMENT": self.ENVIRONMENT,
             "LOG_LEVEL": self.LOG_LEVEL,

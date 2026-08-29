@@ -217,36 +217,27 @@ class AuthService:
 
     @classmethod
     def _send_email(cls, to_email: str, otp: str) -> bool:
-        """Sends OTP via SMTP server."""
-        if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-            logger.info("SMTP credentials not configured. OTP dispatched to server console.")
+        """Sends OTP via Mailjet REST API v3.1 or SMTP."""
+        import asyncio
+        import concurrent.futures
+        from app.services.mailjet_service import MailjetService
+
+        if not MailjetService.is_configured():
+            logger.info("Mailjet credentials not configured. OTP dispatched to server console.")
             return False
 
         try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"⚡ Your S4 Automations Login Code: {otp}"
-            msg["From"] = settings.SMTP_FROM
-            msg["To"] = to_email
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
 
-            html_content = f"""
-            <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 12px;">
-              <h2 style="color: #38bdf8; margin-top: 0;">⚡ S4 Automations Security</h2>
-              <p>Your one-time verification code for the S4 Multi-Client Accounting Suite is:</p>
-              <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #ffffff; background: #1a2234; padding: 16px; text-align: center; border-radius: 8px; margin: 20px 0;">
-                {otp}
-              </div>
-              <p style="color: #94a3b8; font-size: 13px;">This code will expire in 10 minutes. If you did not request this login, please ignore this email.</p>
-            </div>
-            """
-            msg.attach(MIMEText(html_content, "html"))
-
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.starttls()
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                server.sendmail(settings.SMTP_FROM, [to_email], msg.as_string())
-
-            logger.info(f"Dispatched OTP email to {to_email} via {settings.SMTP_HOST}")
-            return True
+            if loop and loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, MailjetService.send_login_otp(to_email, otp))
+                    return future.result()
+            else:
+                return asyncio.run(MailjetService.send_login_otp(to_email, otp))
         except Exception as e:
-            logger.error(f"Failed to dispatch OTP email via SMTP: {e}")
+            logger.error(f"Failed to dispatch OTP email via Mailjet: {e}")
             return False
