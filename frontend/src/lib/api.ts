@@ -265,6 +265,22 @@ export async function runClientStrategy(clientId: string, dryRun = false): Promi
   return handleResponse<any>(res, `Run strategy for ${clientId}`);
 }
 
+export async function fetchClientConfig(clientId: string): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/config`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any>(res, `Fetch configuration for ${clientId}`);
+}
+
+export async function saveClientConfig(clientId: string, payload: any): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/config`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, `Save configuration for ${clientId}`);
+}
+
 export async function updateClientIngestion(clientId: string, payload: { source_type: string; folder_id?: string; source_email?: string; source_config?: any }): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}/ingestion`, {
     method: 'PUT',

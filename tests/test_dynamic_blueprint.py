@@ -46,8 +46,11 @@ async def test_dynamic_blueprint_strategy_execution():
                 source_type="onedrive",
                 custom_config={"default_account": "Fuel & Vehicle Expenses"},
             )
-            session.add(client)
-            session.commit()
+        # Clean previous test transactions to verify fresh extraction
+        existing_txs = session.exec(select(StagedTransaction).where(StagedTransaction.client_id == "apex_logistics")).all()
+        for t in existing_txs:
+            session.delete(t)
+        session.commit()
 
     strategy = StrategyFactory.get("apex_logistics")
     assert isinstance(strategy, DynamicBlueprintStrategy)

@@ -119,6 +119,104 @@ async def get_client(client_id: str, db: Session = Depends(get_db_session)) -> D
     return client.model_dump()
 
 
+class ClientConfigUpdatePayload(BaseModel):
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    icon: Optional[str] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
+    source_type: Optional[str] = None
+    folder_id: Optional[str] = None
+    source_email: Optional[str] = None
+    zoho_org_id: Optional[str] = None
+    zoho_contact_id: Optional[str] = None
+    source_config: Optional[Dict[str, Any]] = None
+    custom_config: Optional[Dict[str, Any]] = None
+
+
+@router.get("/{client_id}/config", summary="Get Isolated Client Configuration")
+async def get_client_config(client_id: str, db: Session = Depends(get_db_session)) -> Dict[str, Any]:
+    """Returns dedicated configuration for a specific accounting client."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+
+    return {
+        "client_id": client.id,
+        "name": client.name,
+        "industry": client.industry,
+        "icon": client.icon,
+        "status": client.status,
+        "status_text": client.status_text,
+        "description": client.description,
+        "source_type": client.source_type,
+        "folder_id": client.folder_id,
+        "source_email": client.source_email,
+        "zoho_org_id": client.zoho_org_id,
+        "zoho_contact_id": client.zoho_contact_id,
+        "source_config": client.source_config or {},
+        "custom_config": client.custom_config or {},
+        "active_integrations": client.active_integrations or [],
+        "updated_at": client.updated_at.isoformat() if client.updated_at else None,
+    }
+
+
+@router.put("/{client_id}/config", summary="Save Isolated Client Configuration")
+async def update_client_config(
+    client_id: str,
+    payload: ClientConfigUpdatePayload,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Updates dedicated configuration for a specific accounting client."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+
+    if payload.name is not None:
+        client.name = payload.name
+    if payload.industry is not None:
+        client.industry = payload.industry
+    if payload.icon is not None:
+        client.icon = payload.icon
+    if payload.status is not None:
+        client.status = payload.status
+        client.status_text = "Production Live" if payload.status == "live" else "In Development"
+    if payload.description is not None:
+        client.description = payload.description
+    if payload.source_type is not None:
+        client.source_type = payload.source_type
+    if payload.folder_id is not None:
+        client.folder_id = payload.folder_id
+    if payload.source_email is not None:
+        client.source_email = payload.source_email
+    if payload.zoho_org_id is not None:
+        client.zoho_org_id = payload.zoho_org_id
+    if payload.zoho_contact_id is not None:
+        client.zoho_contact_id = payload.zoho_contact_id
+    if payload.source_config is not None:
+        client.source_config = payload.source_config
+    if payload.custom_config is not None:
+        client.custom_config = payload.custom_config
+
+    client.updated_at = datetime.now(timezone.utc)
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+
+    AuditService.log(
+        client_id=client_id,
+        action="CLIENT_CONFIG_UPDATED",
+        details=payload.model_dump(exclude_unset=True),
+    )
+
+    return {
+        "success": True,
+        "client_id": client_id,
+        "message": f"Configuration updated successfully for {client.name}.",
+        "config": client.model_dump(),
+    }
+
+
 @router.put("/{client_id}/ingestion", summary="Configure Client Ingestion Method")
 async def update_client_ingestion(
     client_id: str,

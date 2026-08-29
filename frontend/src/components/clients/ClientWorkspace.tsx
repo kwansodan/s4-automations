@@ -6,6 +6,8 @@ import {
   fetchClientTransactions,
   batchApproveTransactions,
   testClientIngestion,
+  fetchClientConfig,
+  saveClientConfig,
 } from '../../lib/api';
 import {
   Layers,
@@ -22,6 +24,13 @@ import {
   Settings2,
   Check,
   CheckCheck,
+  Save,
+  Sliders,
+  Folder,
+  Mail,
+  Cloud,
+  Database,
+  X,
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
@@ -37,6 +46,25 @@ export const ClientWorkspace: React.FC = () => {
   const [selectedTxIds, setSelectedTxIds] = useState<number[]>([]);
   const [isApproving, setIsApproving] = useState(false);
 
+  // Client-Specific Configuration State
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [configSaveSuccess, setConfigSaveSuccess] = useState(false);
+  const [clientConfig, setClientConfig] = useState({
+    name: '',
+    industry: '',
+    icon: '🏢',
+    status: 'dev',
+    description: '',
+    source_type: 'google_drive',
+    folder_id: '',
+    source_email: '',
+    zoho_org_id: '',
+    zoho_contact_id: '',
+    source_config: {} as any,
+    custom_config: {} as any,
+  });
+
   // Load staged transactions for this client
   const loadTransactions = async () => {
     setIsLoadingTx(true);
@@ -50,11 +78,36 @@ export const ClientWorkspace: React.FC = () => {
     }
   };
 
+  // Load dedicated configuration for this client
+  const loadClientConfiguration = async () => {
+    try {
+      const cfg = await fetchClientConfig(currentClient.id);
+      setClientConfig({
+        name: cfg.name || currentClient.name,
+        industry: cfg.industry || currentClient.industry,
+        icon: cfg.icon || currentClient.icon || '🏢',
+        status: cfg.status || currentClient.status,
+        description: cfg.description || currentClient.desc || '',
+        source_type: cfg.source_type || 'google_drive',
+        folder_id: cfg.folder_id || '',
+        source_email: cfg.source_email || `${currentClient.id}@inbound.service4gh.com`,
+        zoho_org_id: cfg.zoho_org_id || '',
+        zoho_contact_id: cfg.zoho_contact_id || '',
+        source_config: cfg.source_config || {},
+        custom_config: cfg.custom_config || {},
+      });
+    } catch (err: any) {
+      console.warn('Could not load client config:', err);
+    }
+  };
+
   useEffect(() => {
     setExecutionResult(null);
     setProbeResult(null);
     setSelectedTxIds([]);
+    setIsConfigOpen(false);
     loadTransactions();
+    loadClientConfiguration();
   }, [currentClient.id]);
 
   const handleSimulateRun = async () => {
@@ -110,8 +163,21 @@ export const ClientWorkspace: React.FC = () => {
     }
   };
 
-  const toggleSelectTx = (id: number) => {
-    setSelectedTxIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingConfig(true);
+    setConfigSaveSuccess(false);
+
+    try {
+      await saveClientConfig(currentClient.id, clientConfig);
+      setConfigSaveSuccess(true);
+      addLog('success', `Updated dedicated configuration for ${clientConfig.name} (${currentClient.id}).`);
+      setTimeout(() => setConfigSaveSuccess(false), 3000);
+    } catch (err: any) {
+      addLog('error', `Failed saving client configuration: ${err.message}`);
+    } finally {
+      setIsSavingConfig(false);
+    }
   };
 
   return (
@@ -121,25 +187,25 @@ export const ClientWorkspace: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-3xl shadow-lg shrink-0">
-              {currentClient.icon}
+              {clientConfig.icon || currentClient.icon}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-extrabold text-white tracking-tight">{currentClient.name}</h1>
+                <h1 className="text-xl font-extrabold text-white tracking-tight">{clientConfig.name || currentClient.name}</h1>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    currentClient.status === 'live'
+                    clientConfig.status === 'live'
                       ? 'bg-emerald-950/80 border border-emerald-500/40 text-emerald-300'
-                      : currentClient.status === 'dev'
+                      : clientConfig.status === 'dev'
                       ? 'bg-sky-950/80 border border-sky-500/40 text-sky-300'
                       : 'bg-amber-950/80 border border-amber-500/40 text-amber-300'
                   }`}
                 >
-                  {currentClient.statusText}
+                  {clientConfig.status === 'live' ? 'Production Live' : 'In Development'}
                 </span>
               </div>
-              <p className="text-xs text-sky-400 font-medium mt-0.5">{currentClient.industry}</p>
-              <p className="text-xs text-slate-400 mt-2 max-w-3xl">{currentClient.desc}</p>
+              <p className="text-xs text-sky-400 font-medium mt-0.5">{clientConfig.industry || currentClient.industry}</p>
+              <p className="text-xs text-slate-400 mt-2 max-w-3xl">{clientConfig.description || currentClient.desc}</p>
             </div>
           </div>
 
@@ -154,12 +220,24 @@ export const ClientWorkspace: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setIsConfigOpen(!isConfigOpen)}
+              className={`flex items-center gap-1.5 border text-xs font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer ${
+                isConfigOpen
+                  ? 'bg-sky-600 border-sky-500 text-white'
+                  : 'bg-slate-950 hover:bg-slate-850 border-slate-800 text-sky-300'
+              }`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Client Settings</span>
+            </button>
+
+            <button
               onClick={handleTestProbe}
               disabled={isProbing}
-              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isProbing ? 'animate-spin' : ''}`} />
-              <span>{isProbing ? 'Probing...' : 'Test Ingestion Channel'}</span>
+              <span>{isProbing ? 'Probing...' : 'Test Ingestion'}</span>
             </button>
 
             <button
@@ -252,6 +330,252 @@ export const ClientWorkspace: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Dedicated Client Configuration Panel (Collapsible / Modal) */}
+      {isConfigOpen && (
+        <div className="bg-slate-900 border border-sky-500/40 rounded-2xl p-6 shadow-2xl backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <Sliders className="w-5 h-5 text-sky-400" />
+              <div>
+                <h2 className="text-base font-bold text-white tracking-tight">
+                  Isolated Client Configuration: {clientConfig.name}
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Dedicated ingestion parameters, Zoho Books credentials, and Chart of Accounts for {currentClient.id}.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsConfigOpen(false)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveConfig} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Section 1: Ingestion Channel */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                  <Cloud className="w-4 h-4" />
+                  <span>1. Ingestion Channel</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Source Ingestion Method</label>
+                  <select
+                    value={clientConfig.source_type}
+                    onChange={(e) => setClientConfig({ ...clientConfig, source_type: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="google_drive">Google Drive (Folder Polling)</option>
+                    <option value="onedrive">Microsoft OneDrive / SharePoint</option>
+                    <option value="email">Inbound Email Forwarding</option>
+                    <option value="bank_feed">Automated Bank Feed / Statements</option>
+                    <option value="manual">Manual Direct Upload</option>
+                    <option value="webhook">REST API Webhook</option>
+                  </select>
+                </div>
+
+                {clientConfig.source_type === 'google_drive' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Google Drive Folder ID</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1a2b3c4d5e6f7g8h9"
+                      value={clientConfig.folder_id}
+                      onChange={(e) => setClientConfig({ ...clientConfig, folder_id: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                )}
+
+                {clientConfig.source_type === 'onedrive' && (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">OneDrive Folder Path</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. /Accounting/2026/Invoices"
+                        value={clientConfig.source_config?.folder_path || ''}
+                        onChange={(e) =>
+                          setClientConfig({
+                            ...clientConfig,
+                            source_config: { ...clientConfig.source_config, folder_path: e.target.value },
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Azure Tenant ID (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 883a48e7-..."
+                        value={clientConfig.source_config?.tenant_id || ''}
+                        onChange={(e) =>
+                          setClientConfig({
+                            ...clientConfig,
+                            source_config: { ...clientConfig.source_config, tenant_id: e.target.value },
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Dedicated Inbound Email</label>
+                  <input
+                    type="email"
+                    placeholder="e.g. polaris@inbound.service4gh.com"
+                    value={clientConfig.source_email}
+                    onChange={(e) => setClientConfig({ ...clientConfig, source_email: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              {/* Section 2: Zoho Books Accounting Target */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <Database className="w-4 h-4" />
+                  <span>2. Zoho Books Target</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Zoho Organization ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 782910482"
+                    value={clientConfig.zoho_org_id}
+                    onChange={(e) => setClientConfig({ ...clientConfig, zoho_org_id: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Default Zoho Contact / Customer ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 9820000001827"
+                    value={clientConfig.zoho_contact_id}
+                    onChange={(e) => setClientConfig({ ...clientConfig, zoho_contact_id: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Default Expense / Revenue Account</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 60020 - Cloud Infrastructure"
+                    value={clientConfig.custom_config?.default_account || ''}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: { ...clientConfig.custom_config, default_account: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Section 3: AI Vision & Rules */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4" />
+                  <span>3. Extraction & Policy</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Environment Status</label>
+                  <select
+                    value={clientConfig.status}
+                    onChange={(e) => setClientConfig({ ...clientConfig, status: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="live">Production Live (Auto Active)</option>
+                    <option value="dev">In Development / Staging</option>
+                    <option value="pending">Pending Client Onboarding</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Anomaly Discrepancy Tolerance (%)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    placeholder="e.g. 5.0"
+                    value={clientConfig.custom_config?.discrepancy_tolerance_pct || 5.0}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: {
+                          ...clientConfig.custom_config,
+                          discrepancy_tolerance_pct: parseFloat(e.target.value) || 5.0,
+                        },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Custom Vision Prompt Instructions</label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Prioritize handwritten meter readings and tax numbers."
+                    value={clientConfig.custom_config?.prompt_notes || ''}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: { ...clientConfig.custom_config, prompt_notes: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Action Buttons */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+              <div className="text-xs text-slate-400">
+                {configSaveSuccess && (
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Configuration saved into PostgreSQL successfully!
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfigOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingConfig}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-lg shadow-emerald-600/30 transition cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingConfig ? 'Saving...' : 'Save Configuration'}</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Staged Review Ledger (Live Data) */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
