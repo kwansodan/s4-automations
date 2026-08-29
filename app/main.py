@@ -43,13 +43,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for internal dashboards & client portals
+# Enable CORS for internal dashboards & client portals (dynamic origin reflection with credentials)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Mount durable Inngest functions
