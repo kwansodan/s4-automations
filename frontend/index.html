@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,26 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-
-  <!-- Design System Styles with Cache-Busting -->
-  <link rel="stylesheet" href="/src/css/variables.css?v=1.2.0" />
-  <link rel="stylesheet" href="/src/css/base.css?v=1.2.0" />
-  <link rel="stylesheet" href="/src/css/components.css?v=1.2.0" />
 </head>
-<body>
-  <div class="app-container">
-    <!-- Header & Navigation Bar -->
-    <div id="headerApp"></div>
-
-    <!-- Main Dynamic View Container -->
-    <main id="mainContent"></main>
-  </div>
-
-  <!-- Dynamic Modals Containers -->
-  <div id="pipelineModalContainer"></div>
-  <div id="invoiceModalContainer"></div>
-
-  <!-- Application Bootstrap with Cache-Busting -->
-  <script type="module" src="/src/js/app.js?v=1.2.0"></script>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
