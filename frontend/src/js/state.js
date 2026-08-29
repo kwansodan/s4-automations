@@ -81,6 +81,17 @@ function loadSavedAuth() {
   if (typeof localStorage === 'undefined') {
     return { isAuthenticated: false, user: null, token: null };
   }
+  // Force sign-out if URL contains ?logout, ?auth=login, or #login
+  if (typeof window !== 'undefined') {
+    const search = window.location.search || '';
+    const hash = window.location.hash || '';
+    if (search.includes('logout') || search.includes('auth=login') || hash.includes('login') || hash.includes('logout')) {
+      localStorage.removeItem('S4_AUTH_TOKEN');
+      localStorage.removeItem('S4_AUTH_USER');
+      return { isAuthenticated: false, user: null, token: null };
+    }
+  }
+
   const token = localStorage.getItem('S4_AUTH_TOKEN');
   let user = null;
   try {

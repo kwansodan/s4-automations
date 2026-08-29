@@ -486,6 +486,13 @@ async def dashboard_ui() -> Any:
     index_path = os.path.join(frontend_dir, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+            return HTMLResponse(
+                content=f.read(),
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
     return HTMLResponse("<h1>ANR Commercial Laundry Billing Engine API</h1><p>Visit /docs for API schema.</p>")
 
