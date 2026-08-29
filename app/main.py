@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 import inngest.fast_api
 
 from app.config import settings
@@ -26,6 +27,8 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Shutting down ANR Commercial Laundry Billing Engine...")
 
+
+from app.services.auth_service import AuthService
 
 app = FastAPI(
     title="ANR Commercial Laundry Billing & OCR Ingestion Engine",
@@ -50,6 +53,47 @@ inngest.fast_api.serve(
     [anr_daily_billing_pipeline, anr_generate_zoho_invoices],
     enable_unauthed_sync=True,
 )
+
+
+# -------------------------------------------------------------------------
+# Authentication & Email OTP Endpoints
+# -------------------------------------------------------------------------
+
+class OtpRequestPayload(BaseModel):
+    email: str = Field(default="s4bookkeeping@service4gh.com", description="Admin email address")
+
+class OtpVerifyPayload(BaseModel):
+    email: str = Field(default="s4bookkeeping@service4gh.com", description="Admin email address")
+    otp: str = Field(description="6-digit verification code")
+
+
+@app.post("/api/auth/otp/request", tags=["Authentication"])
+async def request_login_otp(payload: OtpRequestPayload) -> Dict[str, Any]:
+    """Generates a secure 6-digit OTP and sends it to s4bookkeeping@service4gh.com."""
+    result = AuthService.request_otp(payload.email)
+    if not result.get("success"):
+        raise HTTPException(status_code=403, detail=result.get("message"))
+    return result
+
+
+@app.post("/api/auth/otp/verify", tags=["Authentication"])
+async def verify_login_otp(payload: OtpVerifyPayload) -> Dict[str, Any]:
+    """Verifies the 6-digit OTP and returns a signed bearer access token."""
+    result = AuthService.verify_otp(payload.email, payload.otp)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return result
+
+
+@app.get("/api/auth/me", tags=["Authentication"])
+async def get_current_user(request: Request) -> Dict[str, Any]:
+    """Validates the authorization bearer token and returns current user info."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
+    user = AuthService.validate_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+    return {"authenticated": True, "user": user}
 
 
 @app.get("/health", tags=["Health"])

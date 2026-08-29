@@ -80,6 +80,17 @@ export function renderHeader(container) {
         </nav>
 
         <div>${mockBadge}</div>
+
+        <!-- User Profile & Logout -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; border-left: 1px solid var(--border-color); padding-left: 0.85rem;">
+          <div class="user-profile-pill" title="${state.authState.user?.email || 's4bookkeeping@service4gh.com'}">
+            <span style="font-size: 0.9rem;">👤</span>
+            <span class="user-email-text">${state.authState.user?.email?.split('@')[0] || 's4bookkeeping'}</span>
+          </div>
+          <button class="btn btn-outline btn-sm" id="btnAppLogout" title="Sign out of S4 Accounting Hub" style="padding: 0.35rem 0.6rem; color: var(--text-muted);">
+            <span>🚪</span>
+          </button>
+        </div>
       </div>
     </header>
   `;
@@ -88,6 +99,16 @@ export function renderHeader(container) {
   const switcherContainer = container.querySelector('#headerClientSwitcher');
   if (switcherContainer) {
     renderClientSwitcher(switcherContainer);
+  }
+
+  // Attach logout listener
+  const btnLogout = container.querySelector('#btnAppLogout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      if (confirm('Are you sure you want to sign out of S4 Automations?')) {
+        state.logout();
+      }
+    });
   }
 
   // Attach tab navigation listeners

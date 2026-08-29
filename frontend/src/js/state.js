@@ -77,9 +77,28 @@ function getInitialClientId(clients) {
   return 'anr_group';
 }
 
-const initialClients = loadSavedClients();
+function loadSavedAuth() {
+  if (typeof localStorage === 'undefined') {
+    return { isAuthenticated: false, user: null, token: null };
+  }
+  const token = localStorage.getItem('S4_AUTH_TOKEN');
+  let user = null;
+  try {
+    const savedUser = localStorage.getItem('S4_AUTH_USER');
+    if (savedUser) user = JSON.parse(savedUser);
+  } catch (e) {
+    console.warn('Failed parsing saved auth user:', e);
+  }
+
+  return {
+    isAuthenticated: Boolean(token),
+    user: user || (token ? { email: 's4bookkeeping@service4gh.com', name: 'S4 Bookkeeping Admin', role: 'admin' } : null),
+    token: token || null,
+  };
+}
 
 export const state = {
+  authState: loadSavedAuth(),
   currentClientId: getInitialClientId(initialClients),
   clients: initialClients,
   activeTab: 'dashboard', // 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace'
@@ -108,6 +127,34 @@ export const state = {
 
   notify() {
     this.listeners.forEach((fn) => fn(this));
+  },
+
+  login(token, user) {
+    this.authState = {
+      isAuthenticated: true,
+      token,
+      user: user || { email: 's4bookkeeping@service4gh.com', name: 'S4 Bookkeeping Admin', role: 'admin' },
+    };
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('S4_AUTH_TOKEN', token);
+      localStorage.setItem('S4_AUTH_USER', JSON.stringify(this.authState.user));
+    }
+    this.addLog('success', `Signed in successfully as ${this.authState.user.email}.`);
+    this.notify();
+  },
+
+  logout() {
+    this.authState = {
+      isAuthenticated: false,
+      token: null,
+      user: null,
+    };
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('S4_AUTH_TOKEN');
+      localStorage.removeItem('S4_AUTH_USER');
+    }
+    this.addLog('info', 'Signed out of S4 Accounting Hub.');
+    this.notify();
   },
 
   getCurrentClient() {

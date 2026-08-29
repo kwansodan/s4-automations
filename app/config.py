@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: Optional[str] = Field(default=None, description="Base64-encoded Service Account JSON")
     GOOGLE_SERVICE_ACCOUNT_FILE: Optional[str] = Field(default=None, description="Path to Service Account JSON key file")
 
+    # Authentication & Email OTP
+    AUTH_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Admin login email for S4 Automations")
+    AUTH_SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens")
+    SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g. smtp.zoho.com or smtp.gmail.com)")
+    SMTP_PORT: int = Field(default=587, description="SMTP Server Port")
+    SMTP_USER: Optional[str] = Field(default=None, description="SMTP Username")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password")
+    SMTP_FROM: str = Field(default="s4bookkeeping@service4gh.com", description="Sender Email Address for OTPs")
+
     # System & Notification
     NOTIFICATION_EMAIL: str = Field(default="cdanso@service4gh.com", description="Notification email address")
     PORT: int = Field(default=8000, description="Server port")

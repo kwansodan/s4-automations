@@ -16,8 +16,9 @@ import { renderPipelineModal, openPipelineModal } from './components/pipelineMod
 import { renderInvoiceModal, openInvoiceModal } from './components/invoiceModal.js';
 import { renderClientWorkspace } from './components/clientWorkspace.js';
 import { renderClientsOverview } from './components/clientsOverview.js';
+import { renderLoginView } from './components/loginView.js';
 
-// Expose globally for inline onclick handlers
+// Expose modal open handlers globally for inline event bindings
 window.openPipelineModal = openPipelineModal;
 window.openInvoiceModal = openInvoiceModal;
 
@@ -27,37 +28,39 @@ async function initApp() {
   const pipelineModalContainer = document.getElementById('pipelineModalContainer');
   const invoiceModalContainer = document.getElementById('invoiceModalContainer');
 
-  // Load initial backend data
-  try {
-    const [health, stats, config, sheetsData, catalog, pipelineStatus] = await Promise.all([
-      fetchHealth().catch(() => null),
-      fetchStats().catch(() => null),
-      fetchConfig().catch(() => ({ config: {} })),
-      fetchSheetsData('August', 2026).catch(() => ({ daily_details: [], monthly_summary: [] })),
-      fetchCatalog().catch(() => ({ contacts: [], items: [] })),
-      fetchPipelineStatus().catch(() => null),
-    ]);
+  // Load initial backend data only if authenticated
+  if (state.authState.isAuthenticated) {
+    try {
+      const [health, stats, config, sheetsData, catalog, pipelineStatus] = await Promise.all([
+        fetchHealth().catch(() => null),
+        fetchStats().catch(() => null),
+        fetchConfig().catch(() => ({ config: {} })),
+        fetchSheetsData('August', 2026).catch(() => ({ daily_details: [], monthly_summary: [] })),
+        fetchCatalog().catch(() => ({ contacts: [], items: [] })),
+        fetchPipelineStatus().catch(() => null),
+      ]);
 
-    state.health = health;
-    state.stats = stats;
-    state.config = config?.config || {};
-    state.sheetsData = sheetsData;
-    state.catalog = catalog;
+      state.health = health;
+      state.stats = stats;
+      state.config = config?.config || {};
+      state.sheetsData = sheetsData;
+      state.catalog = catalog;
 
-    state.addLog('info', `ANR Billing Engine v1.0 connected to API (${health?.status || 'live'}).`);
-    if (sheetsData?.monthly_summary?.length > 0) {
-      state.addLog('success', `Google Sheets: Loaded ${sheetsData.monthly_summary.length} billing rows for ${state.selectedMonth} ${state.selectedYear}.`);
-    }
-
-    if (pipelineStatus) {
-      state.updatePipelineProgress(pipelineStatus);
-      if (pipelineStatus.is_running) {
-        state.addLog('info', `⚡ Active background pipeline detected (${pipelineStatus.percent}%). Streaming live progress...`);
-        state.startPolling(fetchPipelineStatus);
+      state.addLog('info', `S4 Accounting Hub connected to API (${health?.status || 'live'}). User: ${state.authState.user?.email}.`);
+      if (sheetsData?.monthly_summary?.length > 0) {
+        state.addLog('success', `Google Sheets: Loaded ${sheetsData.monthly_summary.length} billing rows for ${state.selectedMonth} ${state.selectedYear}.`);
       }
+
+      if (pipelineStatus) {
+        state.updatePipelineProgress(pipelineStatus);
+        if (pipelineStatus.is_running) {
+          state.addLog('info', `⚡ Active background pipeline detected (${pipelineStatus.percent}%). Streaming live progress...`);
+          state.startPolling(fetchPipelineStatus);
+        }
+      }
+    } catch (e) {
+      state.addLog('error', `Failed loading initial state: ${e.message}`);
     }
-  } catch (e) {
-    state.addLog('error', `Failed loading initial state: ${e.message}`);
   }
 
   // Render Modals into their dedicated containers
@@ -80,6 +83,13 @@ async function initApp() {
 
   // Re-render views on state change
   function updateUI() {
+    // 🔒 Full Application Route Guard
+    if (!state.authState.isAuthenticated) {
+      if (headerContainer) headerContainer.innerHTML = '';
+      renderLoginView(mainContainer);
+      return;
+    }
+
     renderHeader(headerContainer);
 
     const isAnr = state.currentClientId === 'anr_group';
