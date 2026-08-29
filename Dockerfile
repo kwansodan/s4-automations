@@ -6,7 +6,7 @@ WORKDIR /frontend
 
 # Install frontend dependencies
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy frontend source and compile optimized production bundle
 COPY frontend/ ./
