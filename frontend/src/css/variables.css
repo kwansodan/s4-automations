@@ -45,4 +45,12 @@
   --radius-pill: 9999px;
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
+
+  /* Compatibility aliases */
+  --text-color: var(--text-primary);
+  --border-color: var(--border-subtle);
+  --warning: var(--accent-warning);
+  --success: var(--accent-success);
+  --danger: var(--accent-danger);
+  --font-mono: 'JetBrains Mono', monospace;
 }

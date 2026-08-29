@@ -70,9 +70,13 @@ async function initApp() {
     loadBackendData();
   }
 
-  // Render Modals into their dedicated containers
-  if (pipelineModalContainer) renderPipelineModal(pipelineModalContainer);
-  if (invoiceModalContainer) renderInvoiceModal(invoiceModalContainer);
+  // Render Modals into their dedicated containers defensively
+  try {
+    if (pipelineModalContainer) renderPipelineModal(pipelineModalContainer);
+    if (invoiceModalContainer) renderInvoiceModal(invoiceModalContainer);
+  } catch (err) {
+    console.warn('Modal initialization notice:', err);
+  }
 
   // Global delegated click listeners for modal triggers
   document.addEventListener('click', (e) => {
@@ -90,14 +94,15 @@ async function initApp() {
 
   // Re-render views on state change
   function updateUI() {
-    // 🔒 Full Application Route Guard
-    if (!state.authState.isAuthenticated) {
-      if (headerContainer) headerContainer.innerHTML = '';
-      renderLoginView(mainContainer);
-      return;
-    }
+    try {
+      // 🔒 Full Application Route Guard
+      if (!state.authState.isAuthenticated) {
+        if (headerContainer) headerContainer.innerHTML = '';
+        if (mainContainer) renderLoginView(mainContainer);
+        return;
+      }
 
-    renderHeader(headerContainer);
+      if (headerContainer) renderHeader(headerContainer);
 
     const isAnr = state.currentClientId === 'anr_group';
 
@@ -213,7 +218,19 @@ async function initApp() {
       mainContainer.innerHTML = `<div id="logsContainer"></div>`;
       renderLiveConsole(document.getElementById('logsContainer'));
     }
+  } catch (err) {
+    console.error('Critical Render Error:', err);
+    if (mainContainer) {
+      mainContainer.innerHTML = `
+        <div style="padding: 3rem 1.5rem; text-align: center; max-width: 500px; margin: 2rem auto; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 12px;">
+          <h2 style="color: #f87171; margin-bottom: 0.5rem;">⚡ Application Notice</h2>
+          <p style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 1.5rem;">${err.message}</p>
+          <button class="btn btn-primary" onclick="window.location.reload()">Reload Application</button>
+        </div>
+      `;
+    }
   }
+}
 
   // Subscribe to reactive state updates
   state.subscribe(updateUI);
