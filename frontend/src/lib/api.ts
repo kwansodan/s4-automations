@@ -15,10 +15,6 @@ function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('S4_API_URL');
     if (saved) return saved.replace(/\/$/, '');
-    const host = window.location.hostname;
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return 'https://autapi.service4gh.com';
-    }
   }
   return '';
 }
