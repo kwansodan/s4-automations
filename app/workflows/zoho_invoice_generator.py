@@ -1,5 +1,4 @@
-"""Inngest Workflow 2: Zoho Books Draft Invoice Generation for Approved Billing Rows."""
-
+import calendar
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import inngest
@@ -38,12 +37,27 @@ async def run_zoho_invoices_core(
     pipeline_tracker.start_pipeline("1-Click Zoho Invoicing", target_month, target_year, total_stages=3)
 
     try:
+        # Calculate Invoice Date as the last day of the billing month (e.g. 2026-08-31)
+        try:
+            month_num = datetime.strptime(target_month, "%B").month
+        except ValueError:
+            try:
+                month_num = datetime.strptime(target_month, "%b").month
+            except ValueError:
+                try:
+                    month_num = int(target_month)
+                except ValueError:
+                    month_num = datetime.now().month
+
+        last_day = calendar.monthrange(target_year, month_num)[1]
+        inv_date = f"{target_year:04d}-{month_num:02d}-{last_day:02d}"
+
         pipeline_tracker.update_progress(
             percent=20,
             stage_index=1,
             current_step="Scanning review sheet for manager-approved billing rows...",
         )
-        pipeline_tracker.add_log("info", f"Fetching approved items from Google Sheet for {target_month} {target_year}...")
+        pipeline_tracker.add_log("info", f"Fetching approved items from Google Sheet for {target_month} {target_year} (Invoice Date: {inv_date})...")
 
         # Step 1: Discover / Locate Review Sheet & Fetch Approved Rows
         async def fetch_approved() -> Dict[str, Any]:
@@ -88,7 +102,7 @@ async def run_zoho_invoices_core(
         pipeline_tracker.update_progress(
             percent=50,
             stage_index=2,
-            current_step=f"Drafting Zoho Invoices for {len(approved_rows)} approved items...",
+            current_step=f"Drafting Zoho Invoices for {len(approved_rows)} approved items (Date: {inv_date})...",
             stats_update={"items_extracted": len(approved_rows)},
         )
         pipeline_tracker.add_log("info", f"Found {len(approved_rows)} approved line items to invoice.")
@@ -139,7 +153,6 @@ async def run_zoho_invoices_core(
                         )
                     )
 
-                inv_date = datetime.now().strftime("%Y-%m-%d")
                 inv_request = ZohoDraftInvoiceRequest(
                     customer_id=contact_id,
                     date=inv_date,
@@ -148,7 +161,7 @@ async def run_zoho_invoices_core(
                     terms="Payment due within 14 days of invoice date.",
                 )
 
-                pipeline_tracker.add_log("info", f"Creating Draft Invoice in Zoho Books for {client_name} ({len(zoho_line_items)} items)...")
+                pipeline_tracker.add_log("info", f"Creating Draft Invoice in Zoho Books for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
                 response = await zoho.create_draft_invoice(inv_request)
 
                 sheets.update_invoice_status(
