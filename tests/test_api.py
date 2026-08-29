@@ -118,3 +118,32 @@ def test_pipeline_status_endpoint():
     assert "recent_logs" in data
 
 
+def test_auth_otp_endpoints_flow():
+    # 1. Request OTP for authorized email
+    res1 = client.post("/api/auth/otp/request", json={"email": "s4bookkeeping@service4gh.com"})
+    assert res1.status_code == 200
+    assert res1.json()["success"] is True
+
+    # 2. Extract active code
+    from app.services.auth_service import _ACTIVE_OTPS
+    active_code = _ACTIVE_OTPS["s4bookkeeping@service4gh.com"]["otp"]
+
+    # 3. Verify OTP
+    res2 = client.post("/api/auth/otp/verify", json={
+        "email": "s4bookkeeping@service4gh.com",
+        "otp": active_code,
+    })
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["status"] == "AUTHENTICATED"
+    assert "access_token" in data2
+    token = data2["access_token"]
+
+    # 4. Check /api/auth/me with Bearer token
+    res3 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert res3.status_code == 200
+    assert res3.json()["authenticated"] is True
+    assert res3.json()["user"]["email"] == "s4bookkeeping@service4gh.com"
+
+
+

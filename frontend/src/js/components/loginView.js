@@ -292,8 +292,15 @@ export function renderLoginView(container) {
         const res = await verifyOtp(userEmail, code);
         isLoading = false;
         if (countdownTimer) clearInterval(countdownTimer);
+        currentStep = 'request';
+        enteredOtp = '';
+        errorMessage = '';
+        successMessage = '';
         // Successful login
         state.login(res.access_token, res.user);
+        if (typeof window.loadBackendData === 'function') {
+          window.loadBackendData();
+        }
       } catch (err) {
         isLoading = false;
         errorMessage = err.message || 'Invalid or expired verification code.';
