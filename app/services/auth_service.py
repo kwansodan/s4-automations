@@ -4,15 +4,14 @@ import hmac
 import hashlib
 import time
 import secrets
-import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, Any, Optional
 from sqlmodel import Session, select
 
 from app.config import settings
-from app.db.session import engine
+from app.db.session import get_engine
 from app.models.db_models import AuthOtpRecord
 from app.utils.logging import get_logger
 
@@ -45,11 +44,11 @@ class AuthService:
         otp = f"{secrets.randbelow(900000) + 100000}"
         salt = secrets.token_hex(8)
         otp_hash = cls._hash_otp(otp, salt)
-        expires_at = datetime.utcnow() + timedelta(seconds=OTP_TTL_SECONDS)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=OTP_TTL_SECONDS)
 
         # Persist to database
         try:
-            with Session(engine) as session:
+            with Session(get_engine()) as session:
                 # Remove any existing active OTP for this email
                 existing = session.exec(select(AuthOtpRecord).where(AuthOtpRecord.email == cleaned_email)).all()
                 for old in existing:
@@ -89,7 +88,7 @@ class AuthService:
         cleaned_otp = otp_code.strip()
 
         try:
-            with Session(engine) as session:
+            with Session(get_engine()) as session:
                 record = session.exec(
                     select(AuthOtpRecord)
                     .where(AuthOtpRecord.email == cleaned_email)
@@ -103,7 +102,12 @@ class AuthService:
                         "message": "No active verification code found. Please request a new code.",
                     }
 
-                if datetime.utcnow() > record.expires_at:
+                now_utc = datetime.now(timezone.utc)
+                record_exp = record.expires_at
+                if record_exp.tzinfo is None:
+                    record_exp = record_exp.replace(tzinfo=timezone.utc)
+
+                if now_utc > record_exp:
                     session.delete(record)
                     session.commit()
                     return {

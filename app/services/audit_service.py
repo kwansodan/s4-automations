@@ -1,7 +1,7 @@
 """Audit Logging Service for S4 Automations."""
 
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import Session, select, desc
 
 from app.db.session import engine
@@ -32,7 +32,7 @@ class AuditService:
             details=details or {},
             source_type=source_type,
             source_identifier=source_identifier,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         try:
             with Session(engine) as session:

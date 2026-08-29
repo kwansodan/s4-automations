@@ -1,7 +1,7 @@
 """Mr. Osei Property Group Rent Ledger & Invoicing Strategy."""
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import Session
 
 from app.strategies.base import BaseAutomationStrategy, SourceDocument, SourceType, ExtractedLineItem
@@ -88,7 +88,7 @@ class MrOseiPropertyStrategy(BaseAutomationStrategy):
         self, month: str, year: int, items: List[ExtractedLineItem]
     ) -> Dict[str, Any]:
         """Stages rent ledger items in PostgreSQL."""
-        batch_id = f"mr_osei_{month.lower()}_{year}_{int(datetime.utcnow().timestamp())}"
+        batch_id = f"mr_osei_{month.lower()}_{year}_{int(datetime.now(timezone.utc).timestamp())}"
         staged_count = 0
 
         with Session(engine) as session:
@@ -96,7 +96,7 @@ class MrOseiPropertyStrategy(BaseAutomationStrategy):
                 staged = StagedTransaction(
                     client_id=self.client_id,
                     batch_id=batch_id,
-                    transaction_date=datetime.utcnow().strftime("%Y-%m-%d"),
+                    transaction_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     source_type="email",
                     source_file_name=f"Rent_Receipt_{month}_{year}.pdf",
                     item_or_description=i.item_or_description,

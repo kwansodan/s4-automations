@@ -93,7 +93,6 @@ async def get_client(client_id: str, db: Session = Depends(get_db_session)) -> D
 async def trigger_client_strategy(
     client_id: str,
     payload: Optional[RunStrategyPayload] = None,
-    background_tasks: BackgroundTasks = None,
 ) -> Dict[str, Any]:
     """
     Executes the tailored automation strategy for this client (ANR, Polaris, Mr. Osei, or custom).

@@ -1,7 +1,7 @@
 """Polaris Capital & Advisory Bank Statement & Journal Posting Strategy."""
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import Session
 
 from app.strategies.base import BaseAutomationStrategy, SourceDocument, SourceType, ExtractedLineItem
@@ -67,7 +67,7 @@ class PolarisBankFeedStrategy(BaseAutomationStrategy):
         self, month: str, year: int, items: List[ExtractedLineItem]
     ) -> Dict[str, Any]:
         """Stages bank transactions in PostgreSQL for accountant review."""
-        batch_id = f"polaris_{month.lower()}_{year}_{int(datetime.utcnow().timestamp())}"
+        batch_id = f"polaris_{month.lower()}_{year}_{int(datetime.now(timezone.utc).timestamp())}"
         staged_count = 0
 
         with Session(engine) as session:
@@ -75,7 +75,7 @@ class PolarisBankFeedStrategy(BaseAutomationStrategy):
                 staged = StagedTransaction(
                     client_id=self.client_id,
                     batch_id=batch_id,
-                    transaction_date=i.raw_extracted_data.get("date", datetime.utcnow().strftime("%Y-%m-%d")),
+                    transaction_date=i.raw_extracted_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
                     source_type="bank_feed",
                     source_file_name=f"Stanbic_Bank_Statement_{month}_{year}.pdf",
                     item_or_description=i.item_or_description,

@@ -1,54 +1,71 @@
 """PostgreSQL & SQLite Database Engine and Session Management."""
 
 import os
-from typing import Generator
+from typing import Generator, Optional
 from sqlmodel import SQLModel, create_engine, Session, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine import Engine
 
 from app.config import settings
 from app.utils.logging import get_logger
 
 logger = get_logger("db.session")
 
-# Build connection engine
-def get_engine():
+_engine: Optional[Engine] = None
+
+
+def get_engine() -> Engine:
+    """Returns singleton database engine, dynamically falling back to SQLite if PostgreSQL is unreachable."""
+    global _engine
+    if _engine is not None:
+        return _engine
+
     db_url = settings.DATABASE_URL
-    
-    # In local testing without Postgres or in mock mode, fallback to sqlite cleanly
-    try:
-        if db_url.startswith("postgresql"):
-            engine = create_engine(
+    if db_url.startswith("postgres"):
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            temp_engine = create_engine(
                 db_url,
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
-                connect_args={"connect_timeout": 3},
+                connect_args={"connect_timeout": 1},
             )
-            # Test connection
-            with engine.connect() as conn:
+            # Test connectivity immediately
+            with temp_engine.connect() as conn:
                 pass
-            return engine
-    except Exception as e:
-        logger.warning(f"PostgreSQL connection at {db_url} unavailable ({e}). Falling back to local SQLite database.")
-    
-    # SQLite Fallback for zero-blocker development & testing
+            _engine = temp_engine
+            logger.info("Connected to PostgreSQL database successfully.")
+            return _engine
+        except Exception as e:
+            logger.info(f"PostgreSQL connection to {db_url} not available ({e}). Using local SQLite database.")
+
+    # SQLite fallback
     os.makedirs("data", exist_ok=True)
     sqlite_url = "sqlite:///data/s4_automations.db"
-    return create_engine(sqlite_url, connect_args={"check_same_thread": False})
+    _engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+    return _engine
 
 
-engine = get_engine()
+# Engine proxy export
+class _EngineProxy:
+    def __getattr__(self, name):
+        return getattr(get_engine(), name)
+
+
+engine = _EngineProxy()
 
 
 def init_db():
     """Initializes database tables and seeds default clients."""
     from app.models.db_models import ClientOrganization
 
+    active_engine = get_engine()
     logger.info("Initializing SQLModel database schemas...")
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(active_engine)
 
     # Seed Default Clients if empty
-    with Session(engine) as session:
+    with Session(active_engine) as session:
         existing = session.exec(select(ClientOrganization)).first()
         if not existing:
             logger.info("Seeding default accounting client organizations...")
@@ -112,5 +129,5 @@ def init_db():
 
 def get_db_session() -> Generator[Session, None, None]:
     """FastAPI dependency yielding database session."""
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         yield session

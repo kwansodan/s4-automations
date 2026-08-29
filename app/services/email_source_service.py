@@ -4,7 +4,7 @@ import imaplib
 import email
 from email.header import decode_header
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.config import settings
 from app.utils.logging import get_logger
@@ -47,7 +47,7 @@ class EmailSourceService:
                     "file_name": "Supplier_Invoice_INV-88912.pdf",
                     "sender_email": "billing@apexlogistics.com",
                     "subject": "Monthly Freight & Clearing Invoice INV-88912",
-                    "received_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "received_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                     "mime_type": "application/pdf",
                     "file_bytes": b"%PDF-1.4 simulated pdf bytes",
                     "metadata": {

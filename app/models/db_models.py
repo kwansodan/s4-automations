@@ -1,8 +1,13 @@
 """SQLModel Database Models for PostgreSQL / SQLite."""
 
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Column, JSON
+
+
+def get_utc_now() -> datetime:
+    """Returns current timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class ClientOrganization(SQLModel, table=True):
@@ -21,8 +26,8 @@ class ClientOrganization(SQLModel, table=True):
     source_email: Optional[str] = Field(default=None, description="Dedicated inbound email address")
     active_integrations: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
 
 
 class AuthOtpRecord(SQLModel, table=True):
@@ -35,7 +40,7 @@ class AuthOtpRecord(SQLModel, table=True):
     expires_at: datetime
     is_verified: bool = Field(default=False)
     attempts: int = Field(default=0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=get_utc_now)
 
 
 class AuditLog(SQLModel, table=True):
@@ -48,7 +53,7 @@ class AuditLog(SQLModel, table=True):
     details: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     source_type: Optional[str] = Field(default="system")
     source_identifier: Optional[str] = Field(default=None, description="Filename, email ID, or sheet row ID")
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
 
 
 class StagedTransaction(SQLModel, table=True):
@@ -71,4 +76,4 @@ class StagedTransaction(SQLModel, table=True):
     approved: bool = Field(default=False)
     status: str = Field(default="PENDING", index=True) # PENDING, INVOICED, JOURNAL_POSTED, REJECTED
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=get_utc_now)

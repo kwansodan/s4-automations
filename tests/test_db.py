@@ -2,7 +2,7 @@
 
 import pytest
 from sqlmodel import Session, select
-from app.db.session import engine, init_db
+from app.db.session import get_engine, init_db
 from app.models.db_models import ClientOrganization, AuthOtpRecord, AuditLog
 from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
@@ -17,7 +17,7 @@ def setup_database():
 
 def test_database_initialization_and_client_seeding():
     """Verify that init_db creates tables and seeds default clients."""
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         clients = session.exec(select(ClientOrganization)).all()
         client_ids = [c.id for c in clients]
 
@@ -37,7 +37,7 @@ def test_auth_service_db_backed_otp_lifecycle():
     assert req["status"] == "OTP_SENT"
 
     # Verify record in DB
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         record = session.exec(select(AuthOtpRecord).where(AuthOtpRecord.email == email)).first()
         assert record is not None
         assert record.is_verified is False
