@@ -265,6 +265,40 @@ export async function runClientStrategy(clientId: string, dryRun = false): Promi
   return handleResponse<any>(res, `Run strategy for ${clientId}`);
 }
 
+export async function updateClientIngestion(clientId: string, payload: { source_type: string; folder_id?: string; source_email?: string; source_config?: any }): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/ingestion`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, `Update ingestion for ${clientId}`);
+}
+
+export async function testClientIngestion(clientId: string): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/ingestion/test`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any>(res, `Test ingestion for ${clientId}`);
+}
+
+export async function fetchClientTransactions(clientId: string, status?: string): Promise<any[]> {
+  const query = status ? `?status=${status}` : '';
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, `Fetch transactions for ${clientId}`);
+}
+
+export async function batchApproveTransactions(clientId: string, transactionIds: number[], notes?: string): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-approve`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ transaction_ids: transactionIds, notes }),
+  });
+  return handleResponse<any>(res, `Batch approve transactions for ${clientId}`);
+}
+
 export async function fetchAuditLogs(limit = 50, clientId?: string): Promise<any[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (clientId) params.append('client_id', clientId);

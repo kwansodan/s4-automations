@@ -22,10 +22,15 @@ class ClientOrganization(SQLModel, table=True):
     description: Optional[str] = Field(default=None)
     folder_id: Optional[str] = Field(default=None, description="Google Drive folder ID")
     zoho_org_id: Optional[str] = Field(default=None, description="Zoho Books Organization ID")
-    source_type: str = Field(default="google_drive", description="google_drive, email, bank_feed, manual")
+    zoho_contact_id: Optional[str] = Field(default=None, description="Zoho Contact/Customer ID")
+    source_type: str = Field(default="google_drive", description="google_drive, onedrive, email, bank_feed, manual, webhook")
     source_email: Optional[str] = Field(default=None, description="Dedicated inbound email address")
+    source_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    custom_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     active_integrations: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    stats_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    last_run_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
 
@@ -66,14 +71,19 @@ class StagedTransaction(SQLModel, table=True):
     source_type: str = Field(default="google_drive")
     source_file_name: str
     source_identifier: Optional[str] = Field(default=None)
+    checksum: Optional[str] = Field(default=None, index=True)
     item_or_description: str
     category_or_account: Optional[str] = Field(default=None)
     quantity_or_debit: float = Field(default=0.0)
     credit_amount: float = Field(default=0.0)
     rate_or_price: float = Field(default=0.0)
     total_amount: float = Field(default=0.0)
+    confidence_score: float = Field(default=1.0)
+    discrepancy_amount: float = Field(default=0.0)
+    discrepancy_reason: Optional[str] = Field(default=None)
+    accounting_ref_id: Optional[str] = Field(default=None, index=True)
     reviewed: bool = Field(default=False)
     approved: bool = Field(default=False)
-    status: str = Field(default="PENDING", index=True) # PENDING, INVOICED, JOURNAL_POSTED, REJECTED
+    status: str = Field(default="PENDING", index=True)  # PENDING, INVOICED, JOURNAL_POSTED, REJECTED
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now)

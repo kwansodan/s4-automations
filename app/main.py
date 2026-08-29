@@ -13,6 +13,7 @@ from app.config import settings
 from app.inngest_client import inngest_client
 from app.workflows.daily_billing_pipeline import anr_daily_billing_pipeline
 from app.workflows.zoho_invoice_generator import anr_generate_zoho_invoices
+from app.workflows.client_strategy_pipeline import client_strategy_pipeline
 from app.api.v1 import api_v1_router
 from app.utils.logging import get_logger
 
@@ -57,7 +58,7 @@ app.add_middleware(
 inngest.fast_api.serve(
     app,
     inngest_client,
-    [anr_daily_billing_pipeline, anr_generate_zoho_invoices],
+    [anr_daily_billing_pipeline, anr_generate_zoho_invoices, client_strategy_pipeline],
     enable_unauthed_sync=True,
 )
 
