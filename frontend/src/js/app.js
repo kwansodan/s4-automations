@@ -14,6 +14,8 @@ import { renderCatalogDrawer } from './components/catalogDrawer.js';
 import { renderLiveConsole } from './components/liveConsole.js';
 import { renderPipelineModal, openPipelineModal } from './components/pipelineModal.js';
 import { renderInvoiceModal, openInvoiceModal } from './components/invoiceModal.js';
+import { renderClientWorkspace } from './components/clientWorkspace.js';
+import { renderClientsOverview } from './components/clientsOverview.js';
 
 // Expose globally for inline onclick handlers
 window.openPipelineModal = openPipelineModal;
@@ -79,6 +81,25 @@ async function initApp() {
   // Re-render views on state change
   function updateUI() {
     renderHeader(headerContainer);
+
+    const isAnr = state.currentClientId === 'anr_group';
+
+    if (state.activeTab === 'clients') {
+      mainContainer.innerHTML = `<div id="clientsHubContainer"></div>`;
+      renderClientsOverview(document.getElementById('clientsHubContainer'));
+      return;
+    }
+
+    if (!isAnr || state.activeTab === 'workspace') {
+      if (state.activeTab === 'logs') {
+        mainContainer.innerHTML = `<div id="logsContainer"></div>`;
+        renderLiveConsole(document.getElementById('logsContainer'));
+      } else {
+        mainContainer.innerHTML = `<div id="workspaceContainer"></div>`;
+        renderClientWorkspace(document.getElementById('workspaceContainer'));
+      }
+      return;
+    }
 
     if (state.activeTab === 'dashboard') {
       mainContainer.innerHTML = `

@@ -609,3 +609,287 @@
 .text-warning {
   color: var(--accent-warning) !important;
 }
+
+/* =========================================================================
+   Client Switcher & Multi-Client Accounting Hub Styles
+   ========================================================================= */
+
+.client-switcher-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.client-switcher-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.85rem;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  backdrop-filter: blur(12px);
+}
+
+.client-switcher-btn:hover {
+  background: rgba(45, 55, 72, 0.8);
+  border-color: var(--primary);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.15);
+}
+
+.client-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.client-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.client-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.client-current-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.client-pill {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.client-industry {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.client-caret {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  margin-left: 0.25rem;
+}
+
+.client-caret.open {
+  transform: rotate(180deg);
+  color: var(--primary);
+}
+
+/* Client Dropdown Menu */
+.client-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  z-index: 999;
+  display: none;
+  overflow: hidden;
+  animation: fadeInDown 0.15s ease-out;
+}
+
+.client-dropdown-menu.show {
+  display: block;
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.client-dropdown-header {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.client-search-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text-color);
+  outline: none;
+}
+
+.client-search-input:focus {
+  border-color: var(--primary);
+}
+
+.client-dropdown-list {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 0.35rem 0;
+}
+
+.client-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-left: 3px solid transparent;
+}
+
+.client-dropdown-item:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.client-dropdown-item.selected {
+  background: rgba(56, 189, 248, 0.12);
+  border-left-color: var(--primary);
+}
+
+.client-item-icon {
+  font-size: 1.25rem;
+}
+
+.client-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.client-item-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.client-item-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #ffffff;
+}
+
+.client-item-sub {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.client-item-check {
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.client-dropdown-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+/* Emoji radio boxes */
+.emoji-radio-label {
+  cursor: pointer;
+}
+
+.emoji-radio-label input {
+  display: none;
+}
+
+.emoji-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  font-size: 1.2rem;
+  transition: all 0.15s ease;
+}
+
+.emoji-radio-label input:checked + .emoji-box {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+/* Client Workspace View */
+.client-workspace-hero {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.workspace-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.3), rgba(168, 85, 247, 0.3));
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.blueprint-step-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s ease;
+}
+
+.blueprint-step-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.blueprint-step-num {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: rgba(56, 189, 248, 0.15);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Master Clients Grid */
+.active-client-border {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+.add-client-card:hover {
+  border-color: var(--primary) !important;
+  background: rgba(56, 189, 248, 0.04);
+}
+
