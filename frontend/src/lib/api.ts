@@ -36,32 +36,64 @@ function getAuthHeaders(additionalHeaders: Record<string, string> = {}): Record<
 }
 
 /**
- * Resilient fetch with automatic fallback from relative URL to direct backend URL.
+ * Builds the ordered list of URLs to try for a given path.
+ *
+ * Both directions matter, so the fallback is bidirectional:
+ *  - An absolute base (VITE_API_URL / S4_API_URL) fails when the client's DNS resolver
+ *    hijacks or sinkholes the backend host, while the same-origin proxy still works
+ *    because the rewrite is resolved server-side.
+ *  - A relative base fails when no proxy sits in front of the app, while the direct
+ *    backend is reachable.
+ */
+function buildCandidateUrls(path: string): string[] {
+  const candidates = [`${API_BASE}${path}`];
+
+  // If we started from an absolute base, retry through the same-origin proxy.
+  if (API_BASE) candidates.push(path);
+
+  // Always keep the known production backend as a last resort.
+  candidates.push(`${DIRECT_BACKEND_URL}${path}`);
+
+  return candidates.filter((url, i) => Boolean(url) && candidates.indexOf(url) === i);
+}
+
+function describeHost(url: string): string {
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    return new URL(url, base).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Fetch with bidirectional fallback across every candidate URL.
+ *
+ * Only network-layer rejections are retried. A `fetch` promise rejects when the request
+ * never completes (offline, DNS failure, TLS interception, blocked CORS preflight); HTTP
+ * error statuses resolve normally and are handed straight to `handleResponse`.
  */
 async function resilientFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const primaryUrl = `${API_BASE}${path}`;
-  console.info(`📡 [S4 API] Fetching: ${primaryUrl || path}`);
+  const candidates = buildCandidateUrls(path);
+  const failedHosts: string[] = [];
 
-  try {
-    const response = await fetch(primaryUrl, options);
-    return response;
-  } catch (primaryErr: any) {
-    console.warn(`⚠️ [S4 API] Request to ${primaryUrl} failed (${primaryErr.message}). Trying direct backend fallback...`);
-    
-    // If primary was relative or empty, try direct live backend
-    if (!primaryUrl.startsWith('http') || primaryUrl.includes('localhost')) {
-      const fallbackUrl = `${DIRECT_BACKEND_URL}${path}`;
-      console.info(`🔄 [S4 API] Fallback Fetching: ${fallbackUrl}`);
-      try {
-        const fallbackResponse = await fetch(fallbackUrl, options);
-        return fallbackResponse;
-      } catch (fallbackErr: any) {
-        console.error(`❌ [S4 API] Direct backend fallback to ${fallbackUrl} also failed:`, fallbackErr);
-        throw new Error(`Unable to reach backend API at ${primaryUrl} or ${fallbackUrl}. Check internet connection or CORS settings.`);
-      }
+  for (let i = 0; i < candidates.length; i++) {
+    const url = candidates[i];
+    console.info(`📡 [S4 API] ${i === 0 ? 'Fetching' : `Fallback ${i} fetching`}: ${url}`);
+    try {
+      return await fetch(url, options);
+    } catch (err: any) {
+      failedHosts.push(describeHost(url));
+      console.warn(`⚠️ [S4 API] ${url} failed at the network layer (${err?.message || err}).`);
     }
-    throw primaryErr;
   }
+
+  throw new Error(
+    `Cannot reach the S4 backend — tried ${failedHosts.join(', ')}. ` +
+      `The request never left the browser, so this is not a server error. ` +
+      `Likely causes: no internet connection, a DNS block or captive portal on this network, ` +
+      `or TLS interception presenting an untrusted certificate for the API host.`
+  );
 }
 
 async function handleResponse<T>(res: Response, context = 'API request'): Promise<T> {
