@@ -24,6 +24,14 @@ async def lifespan(app: FastAPI):
     logger.info("⚡ Initializing S4 Multi-Client Accounting Automation Engine...")
     logger.info(f"Environment: {settings.ENVIRONMENT} | Mock Mode: {settings.MOCK_MODE}")
     logger.info(f"Target Gemini Vision Model: {settings.GEMINI_MODEL}")
+    
+    # Initialize SQLModel PostgreSQL/SQLite tables & seed default clients
+    try:
+        from app.db.session import init_db
+        init_db()
+    except Exception as e:
+        logger.error(f"Database initialization notice: {e}")
+
     yield
     logger.info("Shutting down S4 Accounting Engine...")
 

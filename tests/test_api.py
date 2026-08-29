@@ -124,9 +124,10 @@ def test_auth_otp_endpoints_flow():
     assert res1.status_code == 200
     assert res1.json()["success"] is True
 
-    # 2. Extract active code
-    from app.services.auth_service import _ACTIVE_OTPS
-    active_code = _ACTIVE_OTPS["s4bookkeeping@service4gh.com"]["otp"]
+    # 2. Extract active code from dev_hint
+    dev_hint = res1.json().get("dev_hint")
+    assert dev_hint is not None
+    active_code = dev_hint.split("Code logged to server: ")[1].strip()
 
     # 3. Verify OTP
     res2 = client.post("/api/auth/otp/verify", json={

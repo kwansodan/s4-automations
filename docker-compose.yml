@@ -10,12 +10,34 @@ services:
     environment:
       - PORT=8000
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/s4_automations}
       - INNGEST_DEV_SERVER_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_BASE_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_DEV=1
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - default
       - proxy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: s4-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-s4_automations}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d s4_automations"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
 
   inngest:
     image: inngest/inngest:latest
@@ -29,11 +51,11 @@ services:
     networks:
       - default
 
+volumes:
+  postgres_data:
+
 networks:
   default:
   proxy:
     external: true
     name: ${PROXY_NETWORK:-proxy}
-
-
-

@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password")
     SMTP_FROM: str = Field(default="s4bookkeeping@service4gh.com", description="Sender Email Address for OTPs")
 
+    # Database Configuration (PostgreSQL / SQLModel)
+    DATABASE_URL: str = Field(
+        default="postgresql://postgres:postgres@localhost:5432/s4_automations",
+        description="PostgreSQL or SQLite database connection URL",
+    )
+
     # System & Notification
     NOTIFICATION_EMAIL: str = Field(default="cdanso@service4gh.com", description="Notification email address")
     PORT: int = Field(default=8000, description="Server port")
