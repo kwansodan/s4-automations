@@ -82,12 +82,14 @@ function loadSavedAuth() {
     return { isAuthenticated: false, user: null, token: null };
   }
   // Force sign-out if URL contains ?logout, ?auth=login, or #login
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window?.location) {
     const search = window.location.search || '';
     const hash = window.location.hash || '';
     if (search.includes('logout') || search.includes('auth=login') || hash.includes('login') || hash.includes('logout')) {
-      localStorage.removeItem('S4_AUTH_TOKEN');
-      localStorage.removeItem('S4_AUTH_USER');
+      try {
+        localStorage.removeItem('S4_AUTH_TOKEN');
+        localStorage.removeItem('S4_AUTH_USER');
+      } catch (e) {}
       return { isAuthenticated: false, user: null, token: null };
     }
   }
@@ -107,6 +109,8 @@ function loadSavedAuth() {
     token: token || null,
   };
 }
+
+const initialClients = loadSavedClients();
 
 export const state = {
   authState: loadSavedAuth(),
