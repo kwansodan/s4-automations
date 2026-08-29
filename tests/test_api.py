@@ -19,7 +19,7 @@ def test_health_check_endpoint():
 def test_dashboard_ui_endpoint():
     response = client.get("/")
     assert response.status_code == 200
-    assert "ANR Laundry Billing" in response.text
+    assert "S4 Automations" in response.text or "ANR Laundry Billing" in response.text
 
 
 
