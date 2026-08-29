@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # Mailjet & Email Dispatch Configuration
     MAILJET_API_KEY: Optional[str] = Field(default=None, description="Mailjet Public API Key")
     MAILJET_SECRET_KEY: Optional[str] = Field(default=None, description="Mailjet Secret Key")
-    MAILJET_FROM_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Verified Mailjet Sender Email")
+    MAILJET_FROM_EMAIL: str = Field(default="cdanso@service4gh.com", description="Verified Mailjet Sender Email")
     MAILJET_FROM_NAME: str = Field(default="S4 Automations Security", description="Sender display name")
 
     # SMTP Configuration (Mailjet or custom SMTP)
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = Field(default=587, description="SMTP Server Port")
     SMTP_USER: Optional[str] = Field(default=None, description="SMTP Username / Mailjet API Key")
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password / Mailjet Secret Key")
-    SMTP_FROM: str = Field(default="s4bookkeeping@service4gh.com", description="Sender Email Address")
+    SMTP_FROM: str = Field(default="cdanso@service4gh.com", description="Sender Email Address")
 
     # Database Configuration (PostgreSQL / SQLModel)
     DATABASE_URL: str = Field(
