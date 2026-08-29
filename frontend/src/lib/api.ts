@@ -1,5 +1,6 @@
 /**
  * Typed REST API client for S4 Accounting Automations Suite.
+ * Built with dual-layer resilient fallback (Relative Proxy -> Direct Backend).
  */
 
 import type { OtpRequestResponse, OtpVerifyResponse, AuthUser } from '../types/auth';
@@ -7,6 +8,8 @@ import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, DiagnosticsResult } from '../types/config';
+
+const DIRECT_BACKEND_URL = 'https://autapi.service4gh.com';
 
 function resolveApiBase(): string {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
@@ -32,6 +35,35 @@ function getAuthHeaders(additionalHeaders: Record<string, string> = {}): Record<
   return headers;
 }
 
+/**
+ * Resilient fetch with automatic fallback from relative URL to direct backend URL.
+ */
+async function resilientFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const primaryUrl = `${API_BASE}${path}`;
+  console.info(`📡 [S4 API] Fetching: ${primaryUrl || path}`);
+
+  try {
+    const response = await fetch(primaryUrl, options);
+    return response;
+  } catch (primaryErr: any) {
+    console.warn(`⚠️ [S4 API] Request to ${primaryUrl} failed (${primaryErr.message}). Trying direct backend fallback...`);
+    
+    // If primary was relative or empty, try direct live backend
+    if (!primaryUrl.startsWith('http') || primaryUrl.includes('localhost')) {
+      const fallbackUrl = `${DIRECT_BACKEND_URL}${path}`;
+      console.info(`🔄 [S4 API] Fallback Fetching: ${fallbackUrl}`);
+      try {
+        const fallbackResponse = await fetch(fallbackUrl, options);
+        return fallbackResponse;
+      } catch (fallbackErr: any) {
+        console.error(`❌ [S4 API] Direct backend fallback to ${fallbackUrl} also failed:`, fallbackErr);
+        throw new Error(`Unable to reach backend API at ${primaryUrl} or ${fallbackUrl}. Check internet connection or CORS settings.`);
+      }
+    }
+    throw primaryErr;
+  }
+}
+
 async function handleResponse<T>(res: Response, context = 'API request'): Promise<T> {
   if (!res.ok) {
     let errorDetail = '';
@@ -55,7 +87,7 @@ async function handleResponse<T>(res: Response, context = 'API request'): Promis
 // -------------------------------------------------------------------------
 
 export async function requestOtpApi(email: string): Promise<OtpRequestResponse> {
-  const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+  const res = await resilientFetch('/api/auth/otp/request', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -64,7 +96,7 @@ export async function requestOtpApi(email: string): Promise<OtpRequestResponse> 
 }
 
 export async function verifyOtpApi(email: string, otp: string): Promise<OtpVerifyResponse> {
-  const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
+  const res = await resilientFetch('/api/auth/otp/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, otp }),
@@ -73,7 +105,7 @@ export async function verifyOtpApi(email: string, otp: string): Promise<OtpVerif
 }
 
 export async function fetchCurrentUser(): Promise<{ authenticated: boolean; user: AuthUser }> {
-  const res = await fetch(`${API_BASE}/api/auth/me`, {
+  const res = await resilientFetch('/api/auth/me', {
     headers: getAuthHeaders(),
   });
   return handleResponse<{ authenticated: boolean; user: AuthUser }>(res, 'Fetch current user');
@@ -84,102 +116,204 @@ export async function fetchCurrentUser(): Promise<{ authenticated: boolean; user
 // -------------------------------------------------------------------------
 
 export async function fetchHealth(): Promise<{ status: string; service: string; mock_mode: boolean }> {
-  const res = await fetch(`${API_BASE}/health`);
+  const res = await resilientFetch('/health');
   return handleResponse<{ status: string; service: string; mock_mode: boolean }>(res, 'Health check');
 }
 
-export async function fetchStats(month = 'August', year = 2026): Promise<DashboardStats> {
-  const res = await fetch(`${API_BASE}/api/stats?month=${month}&year=${year}`, {
+export async function fetchPipelineStats(): Promise<DashboardStats> {
+  const res = await resilientFetch('/api/pipeline/stats', {
     headers: getAuthHeaders(),
   });
-  return handleResponse<DashboardStats>(res, 'Stats fetch');
+  return handleResponse<DashboardStats>(res, 'Fetch pipeline stats');
 }
 
-export async function fetchPipelineStatus(): Promise<PipelineProgress> {
-  const res = await fetch(`${API_BASE}/api/pipeline/status`, {
+export async function fetchPipelineProgress(): Promise<PipelineProgress> {
+  const res = await resilientFetch('/api/pipeline/progress', {
     headers: getAuthHeaders(),
   });
-  return handleResponse<PipelineProgress>(res, 'Pipeline status fetch');
+  return handleResponse<PipelineProgress>(res, 'Fetch pipeline progress');
 }
 
-export async function triggerPipeline(payload: Record<string, any> = {}): Promise<{ status: string; message: string }> {
-  const res = await fetch(`${API_BASE}/api/pipeline/trigger`, {
+export async function triggerDailyBillingPipeline(dryRun = false): Promise<{ message: string; event_id: string }> {
+  const res = await resilientFetch('/api/pipeline/trigger', {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ dry_run: dryRun }),
   });
-  return handleResponse<{ status: string; message: string }>(res, 'Pipeline trigger');
+  return handleResponse<{ message: string; event_id: string }>(res, 'Trigger pipeline');
+}
+
+export async function triggerZohoInvoiceBatch(dryRun = false): Promise<{ message: string; event_id: string }> {
+  const res = await resilientFetch('/api/pipeline/trigger-invoices', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  return handleResponse<{ message: string; event_id: string }>(res, 'Trigger invoice batch');
 }
 
 // -------------------------------------------------------------------------
-// Google Sheets Review Endpoints
+// Sheets Review Data Endpoints
 // -------------------------------------------------------------------------
 
-export async function fetchSheetsData(month = 'August', year = 2026): Promise<SheetsReviewData> {
-  const res = await fetch(`${API_BASE}/api/sheets/data?month=${month}&year=${year}`, {
+export async function fetchSheetsReviewData(): Promise<SheetsReviewData> {
+  const res = await resilientFetch('/api/sheets/review-data', {
     headers: getAuthHeaders(),
   });
-  return handleResponse<SheetsReviewData>(res, 'Sheets data fetch');
+  return handleResponse<SheetsReviewData>(res, 'Fetch sheets review data');
 }
 
-export async function toggleApproval(payload: {
-  spreadsheet_id?: string;
-  row_index: number;
-  field: 'reviewed' | 'approved';
-  value: boolean;
-}): Promise<{ status: string; row_index: number; field: string; value: boolean }> {
-  const res = await fetch(`${API_BASE}/api/sheets/toggle-approval`, {
-    method: 'POST',
+export async function updateTransactionStatus(
+  transactionId: string,
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'MODIFIED',
+  notes?: string
+): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/sheets/transactions/${transactionId}/status`, {
+    method: 'PATCH',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ status, notes }),
   });
-  return handleResponse<{ status: string; row_index: number; field: string; value: boolean }>(res, 'Toggle approval');
+  return handleResponse<{ success: boolean; message: string }>(res, 'Update transaction status');
 }
 
 // -------------------------------------------------------------------------
-// Zoho Books Invoicing & Catalog
+// Zoho Catalog Endpoints
 // -------------------------------------------------------------------------
 
-export async function triggerInvoicing(payload: Record<string, any> = {}): Promise<{ status: string; message: string }> {
-  const res = await fetch(`${API_BASE}/api/invoices/generate`, {
-    method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<{ status: string; message: string }>(res, 'Invoice generation');
-}
-
-export async function fetchCatalog(): Promise<ZohoCatalogData> {
-  const res = await fetch(`${API_BASE}/api/catalog`, {
+export async function fetchZohoCatalog(): Promise<ZohoCatalogData> {
+  const res = await resilientFetch('/api/zoho/catalog', {
     headers: getAuthHeaders(),
   });
-  return handleResponse<ZohoCatalogData>(res, 'Catalog fetch');
+  return handleResponse<ZohoCatalogData>(res, 'Fetch Zoho catalog');
 }
 
 // -------------------------------------------------------------------------
-// System Configuration & Diagnostics
+// Configuration & Diagnostics Endpoints
 // -------------------------------------------------------------------------
 
-export async function fetchConfig(): Promise<{ status: string; config: SystemConfig }> {
-  const res = await fetch(`${API_BASE}/api/config`, {
+export async function fetchSystemConfig(): Promise<SystemConfig> {
+  const res = await resilientFetch('/api/config', {
     headers: getAuthHeaders(),
   });
-  return handleResponse<{ status: string; config: SystemConfig }>(res, 'Config fetch');
+  return handleResponse<SystemConfig>(res, 'Fetch system config');
 }
 
-export async function updateConfig(configData: Record<string, any>): Promise<{ status: string; message: string; config: SystemConfig }> {
-  const res = await fetch(`${API_BASE}/api/config`, {
+export async function runDiagnostics(): Promise<DiagnosticsResult> {
+  const res = await resilientFetch('/api/config/diagnostics', {
     method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(configData),
+    headers: getAuthHeaders(),
   });
-  return handleResponse<{ status: string; message: string; config: SystemConfig }>(res, 'Config update');
+  return handleResponse<DiagnosticsResult>(res, 'Run diagnostics');
 }
 
-export async function testConnections(): Promise<DiagnosticsResult> {
-  const res = await fetch(`${API_BASE}/api/config/test`, {
+// -------------------------------------------------------------------------
+// Multi-Client API Endpoints
+// -------------------------------------------------------------------------
+
+export async function fetchClients(): Promise<any[]> {
+  const res = await resilientFetch('/api/clients', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, 'Fetch clients');
+}
+
+export async function fetchClientById(clientId: string): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any>(res, `Fetch client ${clientId}`);
+}
+
+export async function runClientStrategy(clientId: string, dryRun = false): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/run`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ dry_run: dryRun }),
   });
-  return handleResponse<DiagnosticsResult>(res, 'Connection test');
+  return handleResponse<any>(res, `Run strategy for ${clientId}`);
 }
+
+export async function fetchAuditLogs(limit = 50, clientId?: string): Promise<any[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (clientId) params.append('client_id', clientId);
+  const res = await resilientFetch(`/api/audit?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, 'Fetch audit logs');
+}
+
+// -------------------------------------------------------------------------
+// Component Aliases & Compatibility Exports
+// -------------------------------------------------------------------------
+
+export async function fetchStats(month?: string, year?: number): Promise<DashboardStats> {
+  const query = month && year ? `?month=${month}&year=${year}` : '';
+  const res = await resilientFetch(`/api/pipeline/stats${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<DashboardStats>(res, 'Fetch stats');
+}
+
+export async function fetchConfig(): Promise<{ status: string; config: any }> {
+  const res = await resilientFetch('/api/config', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ status: string; config: any }>(res, 'Fetch config');
+}
+
+export async function fetchSheetsData(month?: string, year?: number): Promise<SheetsReviewData> {
+  const query = month && year ? `?month=${month}&year=${year}` : '';
+  const res = await resilientFetch(`/api/sheets/review-data${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<SheetsReviewData>(res, 'Fetch sheets data');
+}
+
+export const fetchCatalog = fetchZohoCatalog;
+export const fetchPipelineStatus = fetchPipelineProgress;
+export const testConnections = runDiagnostics;
+
+export async function triggerPipeline(payload?: any): Promise<{ message: string; event_id: string }> {
+  const isDryRun = typeof payload === 'boolean' ? payload : Boolean(payload?.dry_run);
+  const body = typeof payload === 'object' ? payload : { dry_run: isDryRun };
+  const res = await resilientFetch('/api/pipeline/trigger', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<{ message: string; event_id: string }>(res, 'Trigger pipeline');
+}
+
+export async function triggerInvoicing(payload?: any): Promise<{ message: string; event_id: string }> {
+  const isDryRun = typeof payload === 'boolean' ? payload : Boolean(payload?.dry_run);
+  const body = typeof payload === 'object' ? payload : { dry_run: isDryRun };
+  const res = await resilientFetch('/api/pipeline/trigger-invoices', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<{ message: string; event_id: string }>(res, 'Trigger invoicing');
+}
+
+export async function toggleApproval(payloadOrId: any, approved?: boolean): Promise<{ success: boolean; message: string }> {
+  if (typeof payloadOrId === 'string') {
+    return updateTransactionStatus(payloadOrId, approved ? 'APPROVED' : 'PENDING');
+  }
+  const res = await resilientFetch('/api/sheets/toggle-approval', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payloadOrId),
+  });
+  return handleResponse<{ success: boolean; message: string }>(res, 'Toggle approval');
+}
+
+export async function updateConfig(newConfig: Record<string, any>): Promise<{ success: boolean; message: string; config: any }> {
+  const res = await resilientFetch('/api/config', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(newConfig),
+  });
+  return handleResponse<{ success: boolean; message: string; config: any }>(res, 'Update config');
+}
+
+
