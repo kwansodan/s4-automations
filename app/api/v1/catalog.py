@@ -1,6 +1,6 @@
 """Zoho Books catalog and contacts query endpoints."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter
 
 from app.services.zoho_service import ZohoBooksService
@@ -11,13 +11,14 @@ router = APIRouter(prefix="/catalog", tags=["Zoho Books Catalog"])
 
 
 @router.get("", summary="Get Zoho Contacts and Item Catalog")
-async def get_zoho_catalog() -> Dict[str, Any]:
+async def get_zoho_catalog(organization_id: Optional[str] = None) -> Dict[str, Any]:
     """Returns active Zoho contacts and item catalog for reconciliation."""
-    zoho = ZohoBooksService()
+    zoho = ZohoBooksService(org_id=organization_id)
     try:
         contacts = await zoho.fetch_active_contacts()
         items = await zoho.fetch_item_catalog()
         return {
+            "organization_id": organization_id or zoho.org_id,
             "contacts_count": len(contacts),
             "items_count": len(items),
             "contacts": [c.model_dump() for c in contacts],

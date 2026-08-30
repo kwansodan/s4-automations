@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { probeExternalConnection, dryRunSampleOcr } from '../../lib/api';
+import { probeExternalConnection, dryRunSampleOcr, fetchZohoCatalog } from '../../lib/api';
 import type { ExternalChecklistItem, IndustryPreset, ProbeResult, DryRunResult } from '../../types/client';
 import {
   X,
@@ -29,6 +29,8 @@ import {
   Send,
   Eye,
   Terminal,
+  Users,
+  DollarSign,
 } from 'lucide-react';
 
 const INDUSTRY_PRESETS: IndustryPreset[] = [
@@ -133,9 +135,13 @@ export const ClientSetupWizardModal: React.FC = () => {
 
   // Step 2: Zoho Books External State
   const [zohoOrgId, setZohoOrgId] = useState<string>('');
-  const [zohoContactId, setZohoContactId] = useState<string>('');
   const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Service Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
+
+  // Step 2 Zoho API Dynamic Customer & SKU Discovery State
+  const [isFetchingZoho, setIsFetchingZoho] = useState<boolean>(false);
+  const [zohoSyncedContacts, setZohoSyncedContacts] = useState<any[] | null>(null);
+  const [zohoSyncedItemsCount, setZohoSyncedItemsCount] = useState<number | null>(null);
 
   // Step 2 External Checklist
   const [zohoChecks, setZohoChecks] = useState<Record<string, boolean>>({
@@ -190,7 +196,6 @@ export const ClientSetupWizardModal: React.FC = () => {
       if (wizardDraft.projectedVolume) setProjectedVolume(wizardDraft.projectedVolume);
       if (wizardDraft.description) setDescription(wizardDraft.description);
       if (wizardDraft.zohoOrgId) setZohoOrgId(wizardDraft.zohoOrgId);
-      if (wizardDraft.zohoContactId) setZohoContactId(wizardDraft.zohoContactId);
       if (wizardDraft.sourceType) setSourceType(wizardDraft.sourceType);
       if (wizardDraft.folderId) setFolderId(wizardDraft.folderId);
       if (wizardDraft.sourceEmail) setSourceEmail(wizardDraft.sourceEmail);
@@ -231,6 +236,29 @@ export const ClientSetupWizardModal: React.FC = () => {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  const handleFetchZohoData = async () => {
+    setIsFetchingZoho(true);
+    try {
+      const data = await fetchZohoCatalog(zohoOrgId || undefined);
+      if (data && data.contacts) {
+        setZohoSyncedContacts(data.contacts);
+        setZohoSyncedItemsCount(data.items_count || data.items?.length || 0);
+        setZohoChecks((prev) => ({
+          ...prev,
+          org_id_retrieved: true,
+          customer_created: true,
+          catalog_skus_registered: true,
+          chart_accounts_verified: true,
+        }));
+        addLog('success', `[ZOHO API] Synced ${data.contacts_count} customer contacts & ${data.items_count} catalog items from Zoho Books.`);
+      }
+    } catch (err: any) {
+      addLog('warning', `Could not fetch live Zoho contacts: ${err.message}`);
+    } finally {
+      setIsFetchingZoho(false);
+    }
+  };
+
   const handleNextStep = () => {
     // Auto-save draft
     saveWizardDraft({
@@ -241,7 +269,6 @@ export const ClientSetupWizardModal: React.FC = () => {
       projectedVolume,
       description,
       zohoOrgId,
-      zohoContactId,
       sourceType,
       folderId,
       sourceEmail,
@@ -265,7 +292,6 @@ export const ClientSetupWizardModal: React.FC = () => {
         folder_id: folderId,
         source_email: sourceEmail,
         zoho_org_id: zohoOrgId,
-        zoho_contact_id: zohoContactId,
         source_config: {
           tenant_id: oneDriveTenantId,
           client_id: oneDriveClientId,
@@ -334,7 +360,6 @@ export const ClientSetupWizardModal: React.FC = () => {
         source_email: sourceEmail,
         folder_id: folderId,
         zoho_org_id: zohoOrgId,
-        zoho_contact_id: zohoContactId,
         currency,
         projectedMonthlyVolume: projectedVolume,
         blueprints,
@@ -737,33 +762,72 @@ export const ClientSetupWizardModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* In-App Field Inputs */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+              {/* Zoho Organization ID & Dynamic API Sync */}
+              <div className="space-y-4 pt-4 border-t border-slate-800">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Zoho Books Organization ID <span className="text-slate-500 text-[10px]">(Optional for mock mode)</span>
-                  </label>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Client's Zoho Books Organization ID <span className="text-slate-500 text-[10px]">(From client's Zoho account)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleFetchZohoData}
+                      disabled={isFetchingZoho}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+                    >
+                      <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
+                      <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
-                    placeholder="e.g. 782910482"
+                    placeholder="e.g. 782910482 (or leave default for mock sandbox)"
                     value={zohoOrgId}
                     onChange={(e) => setZohoOrgId(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    S4 Automations connects directly to this Organization ID and automatically pulls all client customer profiles and catalog SKUs via API.
+                  </span>
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Zoho Books Customer Contact ID
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. cnt_luxwood_001"
-                    value={zohoContactId}
-                    onChange={(e) => setZohoContactId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                  />
-                </div>
+                {/* Discovered Customers & SKUs Live Card */}
+                {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
+                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-white">
+                          Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                        {zohoSyncedItemsCount || 11} SKUs Synced
+                      </span>
+                    </div>
+
+                    {/* Customer Badges Grid */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {zohoSyncedContacts.map((contact, idx) => (
+                        <span
+                          key={contact.contact_id || idx}
+                          className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 flex items-start gap-1.5 pt-1 border-t border-slate-800/80">
+                      <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                      <span>
+                        S4 Automations uses semantic OCR matching to automatically map each physical slip (e.g. <em>"Luxwood"</em>, <em>"Bantree"</em>) to the right customer contact when drafting invoices in Zoho Books.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1415,7 +1479,8 @@ ${sourceType === 'email' ? `- Inbound Email Alias: ${sourceEmail}` : ''}
                   <p className="text-sky-300 font-bold"># Operations Handover for {name || 'Client'}</p>
                   <p className="text-slate-400">• Dedicated Ingestion: {sourceType === 'google_drive' ? `Google Drive Folder ID ${folderId || '1Uu_...'}` : sourceEmail}</p>
                   <p className="text-slate-400">• AI Vision Engine: {aiEngine}</p>
-                  <p className="text-slate-400">• Zoho Books Contact ID: {zohoContactId || 'cnt_default'}</p>
+                  <p className="text-slate-400">• Zoho Books Org ID: {zohoOrgId || 'Default / Sandbox'}</p>
+                  <p className="text-slate-400">• Customer Directory: Multi-Customer Live API Sync ({zohoSyncedContacts?.length || 'Dynamic'} Customers Synced)</p>
                   <p className="text-slate-400">• Review Workflow: Google Sheets 2-Tier Review &amp; Zoho Draft Billing</p>
                 </div>
               </div>

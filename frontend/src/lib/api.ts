@@ -212,8 +212,9 @@ export async function updateTransactionStatus(
 // Zoho Catalog Endpoints
 // -------------------------------------------------------------------------
 
-export async function fetchZohoCatalog(): Promise<ZohoCatalogData> {
-  const res = await resilientFetch('/api/zoho/catalog', {
+export async function fetchZohoCatalog(organizationId?: string): Promise<ZohoCatalogData> {
+  const query = organizationId ? `?organization_id=${encodeURIComponent(organizationId)}` : '';
+  const res = await resilientFetch(`/api/zoho/catalog${query}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<ZohoCatalogData>(res, 'Fetch Zoho catalog');

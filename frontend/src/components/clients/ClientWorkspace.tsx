@@ -467,10 +467,12 @@ export const ClientWorkspace: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Default Zoho Contact / Customer ID</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    Fallback Customer ID <span className="text-[10px] text-slate-500 font-normal">(Optional - S4 automatically matches customer names via Zoho Books API)</span>
+                  </label>
                   <input
                     type="text"
-                    placeholder="e.g. 9820000001827"
+                    placeholder="e.g. cnt_default (optional)"
                     value={clientConfig.zoho_contact_id}
                     onChange={(e) => setClientConfig({ ...clientConfig, zoho_contact_id: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
