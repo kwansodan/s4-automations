@@ -5,7 +5,7 @@ import { ChevronDown, Search, Plus, Check, Building2, X } from 'lucide-react';
 import type { ClientProfile } from '../../types/client';
 
 export const ClientSwitcher: React.FC = () => {
-  const { currentClient, clients, setClient, addClient, isSwitcherOpen, setIsSwitcherOpen } = useClient();
+  const { currentClient, clients, setClient, addClient, isSwitcherOpen, setIsSwitcherOpen, setIsWizardOpen } = useClient();
   const { setActiveTab } = useAutomation();
 
   const [search, setSearch] = useState('');
@@ -152,17 +152,19 @@ export const ClientSwitcher: React.FC = () => {
             })}
           </div>
 
-          {/* Register Client Trigger */}
-          <button
-            onClick={() => {
-              setIsSwitcherOpen(false);
-              setIsAddModalOpen(true);
-            }}
-            className="w-full mt-2 pt-2 border-t border-slate-800 flex items-center justify-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 py-1.5 rounded-lg hover:bg-sky-500/10 transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Accounting Client</span>
-          </button>
+          {/* Setup Wizard & Register Client Trigger */}
+          <div className="mt-2 pt-2 border-t border-slate-800 space-y-1">
+            <button
+              onClick={() => {
+                setIsSwitcherOpen(false);
+                setIsWizardOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 py-2 rounded-lg shadow-md transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Client Setup Wizard</span>
+            </button>
+          </div>
         </div>
       )}
 

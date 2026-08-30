@@ -1,11 +1,11 @@
 import React from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { Building2, ArrowRight, CheckCircle2, Zap, Clock, Plus } from 'lucide-react';
+import { Building2, ArrowRight, CheckCircle2, Zap, Clock, Plus, Sparkles, Sliders, Cloud, CheckCheck } from 'lucide-react';
 import type { ClientProfile } from '../../types/client';
 
 export const ClientsHub: React.FC = () => {
-  const { clients, setClient, setIsSwitcherOpen } = useClient();
+  const { clients, setClient, setIsWizardOpen } = useClient();
   const { setActiveTab } = useAutomation();
 
   const handleSelect = (client: ClientProfile) => {
@@ -36,11 +36,36 @@ export const ClientsHub: React.FC = () => {
           </div>
 
           <button
-            onClick={() => setIsSwitcherOpen(true)}
-            className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer shrink-0"
+            onClick={() => setIsWizardOpen(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:from-sky-700 active:to-indigo-700 text-white text-xs font-extrabold py-3 px-5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Register New Client</span>
+            <Sparkles className="w-4 h-4" />
+            <span>Launch Setup Wizard</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Guided Setup Quick-Start Callout Card */}
+      <div className="bg-slate-900/60 border border-sky-500/20 rounded-2xl p-5 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
+            <Zap className="w-5 h-5" />
+          </div>
+          <div className="text-xs space-y-1">
+            <h3 className="font-bold text-white text-sm">Need to onboard a new client?</h3>
+            <p className="text-slate-400 max-w-2xl">
+              Use our guided 6-step Setup Wizard for outside-of-app configurations: Google Drive Service Account permissions, Zoho Books Contact/Tax setup, email forwarding rules, and live OCR dry-run verification.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setIsWizardOpen(true)}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-4 rounded-xl border border-slate-700 transition cursor-pointer"
+          >
+            <Sliders className="w-3.5 h-3.5 text-sky-400" />
+            <span>Setup Checklist &amp; Guide</span>
           </button>
         </div>
       </div>

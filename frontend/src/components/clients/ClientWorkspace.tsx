@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
-  const { currentClient } = useClient();
+  const { currentClient, setIsWizardOpen } = useClient();
   const { setActiveTab, addLog } = useAutomation();
 
   const [isRunning, setIsRunning] = useState(false);
@@ -217,6 +217,14 @@ export const ClientWorkspace: React.FC = () => {
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>All Clients</span>
+            </button>
+
+            <button
+              onClick={() => setIsWizardOpen(true)}
+              className="flex items-center gap-1.5 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-500/40 text-sky-300 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Setup Wizard &amp; Guide</span>
             </button>
 
             <button

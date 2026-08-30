@@ -14,6 +14,7 @@ import { ClientsHub } from './components/clients/ClientsHub';
 import { ClientWorkspace } from './components/clients/ClientWorkspace';
 import { PipelineModal } from './components/modals/PipelineModal';
 import { InvoiceModal } from './components/modals/InvoiceModal';
+import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardModal';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -56,6 +57,7 @@ const MainLayout: React.FC = () => {
       {/* Global Modals */}
       <PipelineModal />
       <InvoiceModal />
+      <ClientSetupWizardModal />
     </div>
   );
 };

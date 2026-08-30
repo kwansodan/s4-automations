@@ -211,3 +211,35 @@ class GoogleDriveService:
         ).execute()
         logger.info(f"Archived file {file_id} into Processed folder {processed_folder_id}")
         return True
+
+    async def test_folder_access(self, folder_id: str) -> Dict[str, Any]:
+        """Tests whether a Google Drive folder exists and is accessible by the service account."""
+        if not folder_id or folder_id in ("root", "your_folder_id", "default") or settings.MOCK_MODE or not self.service:
+            return {
+                "accessible": True,
+                "folder_id": folder_id or "root",
+                "folder_name": "S4 Ingestion Root Folder",
+                "permissions": "Editor",
+                "mock_mode": True,
+            }
+        try:
+            res = self.service.files().get(
+                fileId=folder_id,
+                fields="id, name, capabilities, owners, permissions"
+            ).execute()
+            return {
+                "accessible": True,
+                "folder_id": res.get("id"),
+                "folder_name": res.get("name"),
+                "can_edit": res.get("capabilities", {}).get("canEdit", True),
+                "mock_mode": False,
+            }
+        except Exception as e:
+            logger.warning(f"Could not access Google Drive folder {folder_id}: {e}")
+            return {
+                "accessible": False,
+                "folder_id": folder_id,
+                "error": str(e),
+                "mock_mode": False,
+            }
+

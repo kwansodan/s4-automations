@@ -307,6 +307,35 @@ export async function testClientIngestion(clientId: string): Promise<any> {
   return handleResponse<any>(res, `Test ingestion for ${clientId}`);
 }
 
+export async function probeExternalConnection(payload: {
+  source_type: string;
+  folder_id?: string;
+  source_email?: string;
+  zoho_org_id?: string;
+  zoho_contact_id?: string;
+  source_config?: any;
+}): Promise<any> {
+  const res = await resilientFetch('/api/clients/probe-external', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, 'Probe external connection');
+}
+
+export async function dryRunSampleOcr(payload: {
+  engine_type: string;
+  sample_preset?: string;
+  sample_image_base64?: string;
+}): Promise<any> {
+  const res = await resilientFetch('/api/clients/dry-run-ocr', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, 'Execute dry-run OCR extraction');
+}
+
 export async function fetchClientTransactions(clientId: string, status?: string): Promise<any[]> {
   const query = status ? `?status=${status}` : '';
   const res = await resilientFetch(`/api/clients/${clientId}/transactions${query}`, {
