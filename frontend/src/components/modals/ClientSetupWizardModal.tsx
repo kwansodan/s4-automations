@@ -616,10 +616,10 @@ export const ClientSetupWizardModal: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-sky-400" />
-                  <span>Outside-of-App Setup: Zoho Books ERP & Chart of Accounts</span>
+                  <span>Outside-of-App Setup: Client's Dedicated Zoho Books Organization</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Complete these prerequisite actions in your client's Zoho Books account to enable automated invoice drafting.
+                  Your clients sign up for and own their own Zoho Books accounts. Follow these steps to link this client's organization to your firm's automation pipeline.
                 </p>
               </div>
 
@@ -627,9 +627,9 @@ export const ClientSetupWizardModal: React.FC = () => {
               <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-4 flex items-start gap-3">
                 <Info className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
                 <div className="text-xs text-slate-300 space-y-1">
-                  <span className="font-bold text-white">Why is this done outside of the app?</span>
+                  <span className="font-bold text-white">Multi-Tenant Accounting Architecture</span>
                   <p className="text-slate-400">
-                    S4 Automations posts approved line items into Zoho Books via API. The Customer profile, Chart of Accounts codes, and Item SKUs must exist in Zoho Books first so the AI engine can reconcile against them.
+                    Each client has their own independent Zoho Books organization (with their own Organization ID). S4 Automations connects directly to that client's Zoho environment to draft invoices and post journals for <em>their</em> downstream customers.
                   </p>
                 </div>
               </div>
@@ -637,34 +637,10 @@ export const ClientSetupWizardModal: React.FC = () => {
               {/* Interactive External Checklist */}
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-300 block">
-                  Outside-of-App Checklist (Check each item once completed in Zoho Books)
+                  Outside-of-App Setup Checklist for this Client
                 </label>
 
                 {/* Item 1 */}
-                <div
-                  onClick={() => setZohoChecks((prev) => ({ ...prev, customer_created: !prev.customer_created }))}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    zohoChecks.customer_created
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                      zohoChecks.customer_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                    }`}>
-                      {zohoChecks.customer_created && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">1. Create Customer / Contact in Zoho Books</span>
-                      <p className="text-slate-400 mt-1">
-                        Go to <strong>Zoho Books &gt; Sales &gt; Customers &gt; + New Customer</strong>. Enter the organization name and currency ({currency}). Once created, copy the numeric Contact ID from the browser URL (<code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">contacts/489201...</code>).
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 2 */}
                 <div
                   onClick={() => setZohoChecks((prev) => ({ ...prev, org_id_retrieved: !prev.org_id_retrieved }))}
                   className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
@@ -680,9 +656,33 @@ export const ClientSetupWizardModal: React.FC = () => {
                       {zohoChecks.org_id_retrieved && <Check className="w-3.5 h-3.5" />}
                     </div>
                     <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">2. Retrieve Zoho Organization ID</span>
+                      <span className="font-bold text-white block">1. Client's Zoho Books Organization &amp; Org ID</span>
                       <p className="text-slate-400 mt-1">
-                        Click the top-right profile dropdown in Zoho Books or navigate to <strong>Settings &gt; Organization Profile</strong>. Copy the numeric Organization ID (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">782910482</code>).
+                        The client signs up or logs into their company's Zoho Books portal (<strong>books.zoho.com</strong>). Obtain the client's numeric <strong>Organization ID</strong> (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">782910482</code>) from their top-right profile or <strong>Settings &gt; Organization Profile</strong>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Item 2 */}
+                <div
+                  onClick={() => setZohoChecks((prev) => ({ ...prev, customer_created: !prev.customer_created }))}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                    zohoChecks.customer_created
+                      ? 'bg-emerald-950/30 border-emerald-500/40'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
+                      zohoChecks.customer_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
+                    }`}>
+                      {zohoChecks.customer_created && <Check className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className="flex-1 text-xs">
+                      <span className="font-bold text-white block">2. Invite Your Accounting Firm as Accountant / Admin</span>
+                      <p className="text-slate-400 mt-1">
+                        Inside the client's Zoho Books, they navigate to <strong>Settings &gt; Users &amp; Roles &gt; Invite User</strong> and invite your firm's email (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">{notificationEmail || 'accounting@service4gh.com'}</code>) with the <strong>Accountant</strong> or <strong>Admin</strong> role.
                       </p>
                     </div>
                   </div>
@@ -704,9 +704,9 @@ export const ClientSetupWizardModal: React.FC = () => {
                       {zohoChecks.chart_accounts_verified && <Check className="w-3.5 h-3.5" />}
                     </div>
                     <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">3. Verify Chart of Accounts & Ghana GRA Tax Rates</span>
+                      <span className="font-bold text-white block">3. Register Client's Downstream Customers (Their Buyers/Hotels/Tenants)</span>
                       <p className="text-slate-400 mt-1">
-                        In <strong>Settings &gt; Taxes</strong>, configure standard GRA VAT (15%), NHIL (2.5%), GETFund (2.5%), and COVID-19 Levy (1%). Confirm the default Income account is set up under Chart of Accounts.
+                        In the client's Zoho Books (<strong>Sales &gt; Customers &gt; + New Customer</strong>), add the customers they bill (e.g. for ANR Laundry: <em>Luxwood Hotel</em>, <em>The Bantree</em>, <em>The Lennox</em>). Copy their Customer Contact IDs for downstream invoice drafting.
                       </p>
                     </div>
                   </div>
@@ -728,9 +728,9 @@ export const ClientSetupWizardModal: React.FC = () => {
                       {zohoChecks.catalog_skus_registered && <Check className="w-3.5 h-3.5" />}
                     </div>
                     <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">4. Register Service / Billing Items in Zoho Catalog</span>
+                      <span className="font-bold text-white block">4. Configure Client's Item Catalog &amp; Chart of Accounts</span>
                       <p className="text-slate-400 mt-1">
-                        In <strong>Items &gt; Items</strong>, add the standard items (e.g. <em>Bed Sheet Double</em>, <em>Face Towel</em>, <em>Bath Mat</em>) with unit rates. S4's AI engine uses fuzzy matching to map physical handwritten notes to these SKUs.
+                        In the client's Zoho Books (<strong>Items &gt; Items</strong>), register their service items (e.g. <em>Bed Sheet Double</em>, <em>Face Towel</em>, <em>Bath Mat</em>) and link them to their primary revenue accounts and local tax rules (e.g. Ghana GRA 15% VAT + 2.5% NHIL + 2.5% GETFund).
                       </p>
                     </div>
                   </div>
