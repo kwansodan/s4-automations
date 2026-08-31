@@ -35,6 +35,7 @@ class ClientCreatePayload(BaseModel):
     source_config: Dict[str, Any] = Field(default_factory=dict)
     custom_config: Dict[str, Any] = Field(default_factory=dict)
     blueprints: Optional[List[Dict[str, Any]]] = None
+    pipelines: Optional[List[Dict[str, Any]]] = None
     active_integrations: Optional[List[str]] = None
 
 
@@ -324,6 +325,7 @@ async def create_client(
         custom_config=payload.custom_config,
         active_integrations=default_integrations,
         blueprints=default_blueprints,
+        pipelines=payload.pipelines or [],
     )
     db.add(new_client)
     db.commit()
@@ -332,7 +334,7 @@ async def create_client(
     AuditService.log(
         client_id=slug,
         action="CLIENT_CREATED",
-        details={"name": new_client.name, "source_type": new_client.source_type},
+        details={"name": new_client.name, "source_type": new_client.source_type, "pipelines_count": len(new_client.pipelines or [])},
     )
 
     logger.info(f"Registered new client organization: {new_client.name} (id: {new_client.id})")
@@ -361,6 +363,7 @@ class ClientConfigUpdatePayload(BaseModel):
     zoho_contact_id: Optional[str] = None
     source_config: Optional[Dict[str, Any]] = None
     custom_config: Optional[Dict[str, Any]] = None
+    pipelines: Optional[List[Dict[str, Any]]] = None
 
 
 @router.get("/{client_id}/config", summary="Get Isolated Client Configuration")
@@ -386,6 +389,7 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
         "source_config": client.source_config or {},
         "custom_config": client.custom_config or {},
         "active_integrations": client.active_integrations or [],
+        "pipelines": client.pipelines or [],
         "updated_at": client.updated_at.isoformat() if client.updated_at else None,
     }
 
@@ -426,6 +430,8 @@ async def update_client_config(
         client.source_config = payload.source_config
     if payload.custom_config is not None:
         client.custom_config = payload.custom_config
+    if payload.pipelines is not None:
+        client.pipelines = payload.pipelines
 
     client.updated_at = datetime.now(timezone.utc)
     db.add(client)
@@ -438,12 +444,78 @@ async def update_client_config(
         details=payload.model_dump(exclude_unset=True),
     )
 
-    return {
-        "success": True,
-        "client_id": client_id,
-        "message": f"Configuration updated successfully for {client.name}.",
-        "config": client.model_dump(),
-    }
+    return client.model_dump()
+
+
+@router.get("/{client_id}/pipelines", summary="Get Client Ingestion Pipelines")
+async def get_client_pipelines(client_id: str, db: Session = Depends(get_db_session)) -> List[Dict[str, Any]]:
+    """Returns all active ingestion pipelines configured for this client."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    return client.pipelines or []
+
+
+@router.post("/{client_id}/pipelines", summary="Add or Update an Ingestion Pipeline")
+async def add_or_update_pipeline(
+    client_id: str,
+    pipeline_data: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> List[Dict[str, Any]]:
+    """Adds a new named ingestion pipeline or updates existing pipeline for this client."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+
+    pipe_id = pipeline_data.get("id") or f"pipe_{int(datetime.now(timezone.utc).timestamp())}"
+    pipeline_data["id"] = pipe_id
+
+    current_pipes = list(client.pipelines or [])
+    # Replace if exists, else append
+    existing_idx = next((i for i, p in enumerate(current_pipes) if p.get("id") == pipe_id), None)
+    if existing_idx is not None:
+        current_pipes[existing_idx] = pipeline_data
+    else:
+        current_pipes.append(pipeline_data)
+
+    client.pipelines = current_pipes
+    client.updated_at = datetime.now(timezone.utc)
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+
+    AuditService.log(
+        client_id=client_id,
+        action="PIPELINE_SAVED",
+        details={"pipeline_id": pipe_id, "name": pipeline_data.get("name")},
+    )
+    return client.pipelines
+
+
+@router.delete("/{client_id}/pipelines/{pipeline_id}", summary="Delete an Ingestion Pipeline")
+async def delete_pipeline(
+    client_id: str,
+    pipeline_id: str,
+    db: Session = Depends(get_db_session),
+) -> List[Dict[str, Any]]:
+    """Removes a configured ingestion pipeline from the client."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+
+    current_pipes = [p for p in (client.pipelines or []) if p.get("id") != pipeline_id]
+    client.pipelines = current_pipes
+    client.updated_at = datetime.now(timezone.utc)
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+
+    AuditService.log(
+        client_id=client_id,
+        action="PIPELINE_DELETED",
+        details={"pipeline_id": pipeline_id},
+    )
+    return client.pipelines
 
 
 @router.put("/{client_id}/ingestion", summary="Configure Client Ingestion Method")

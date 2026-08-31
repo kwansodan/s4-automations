@@ -36,6 +36,11 @@ class MailjetService:
         """
         Sends an email using Mailjet REST API v3.1 (preferred) or SMTP fallback.
         """
+        # 0. Mock mode handler
+        if settings.MOCK_MODE:
+            logger.info(f"[MOCK] Dispatched email with subject '{subject}' to {to_email}")
+            return True
+
         # 1. Try Mailjet REST API v3.1 if API keys are provided
         if settings.MAILJET_API_KEY and settings.MAILJET_SECRET_KEY and not settings.MOCK_MODE:
             try:

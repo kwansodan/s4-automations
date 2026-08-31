@@ -133,6 +133,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             activeIntegrations: c.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
             sourceConfig: c.source_config || {},
             customConfig: c.custom_config || {},
+            pipelines: c.pipelines || [],
             blueprints: c.blueprints || [
               { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
               { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
@@ -190,9 +191,10 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       currency: payload.currency || payload.custom_config?.currency || 'GHS',
       varianceTolerance: payload.custom_config?.variance_tolerance || 5,
       confidenceThreshold: payload.custom_config?.confidence_threshold || 80,
-      workflowsCount: (payload.blueprints || []).length || 3,
+      workflowsCount: (payload.pipelines || []).length || (payload.blueprints || []).length || 3,
       projectedMonthlyVolume: payload.projectedMonthlyVolume || payload.custom_config?.volume || 'Active',
       activeIntegrations: payload.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
+      pipelines: payload.pipelines || [],
       blueprints: payload.blueprints || [
         { title: 'Source Ingestion', desc: `Connected via ${payload.source_type || 'Google Drive'}`, status: 'active' },
         { title: 'AI Schema Extraction', desc: 'Automated OCR vision parsing', status: 'in_progress' },
@@ -224,6 +226,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         source_config: newProfile.sourceConfig,
         custom_config: newProfile.customConfig,
         blueprints: newProfile.blueprints,
+        pipelines: newProfile.pipelines,
         active_integrations: newProfile.activeIntegrations,
       });
     } catch (err) {

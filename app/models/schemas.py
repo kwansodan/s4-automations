@@ -230,6 +230,194 @@ class ZohoDraftBillResponse(BaseModel):
     bill_url: Optional[str] = ""
 
 
+class ZohoPaymentInvoiceLink(BaseModel):
+    """Invoice link allocation for customer payment."""
+    invoice_id: str
+    amount_applied: float
+    tax_amount_withheld: Optional[float] = 0.0
+
+
+class ZohoCustomerPaymentRequest(BaseModel):
+    """Payload to record customer payment receipt in Zoho Books."""
+    customer_id: str
+    payment_mode: str = "Bank Transfer"  # Bank Transfer, Mobile Money, Cash, Cheque
+    amount: float
+    date: str
+    account_id: Optional[str] = None  # Deposit to bank / clearing account
+    reference_number: Optional[str] = ""
+    description: Optional[str] = ""
+    invoices: List[ZohoPaymentInvoiceLink] = Field(default_factory=list)
+
+
+class ZohoCustomerPaymentResponse(BaseModel):
+    """Response from Zoho Books Customer Payment creation."""
+    code: int = 0
+    message: str = ""
+    payment_id: str
+    payment_number: str
+    customer_id: str
+    customer_name: str
+    amount: float
+    payment_url: Optional[str] = ""
+
+
+class ZohoBillPaymentLink(BaseModel):
+    """Bill allocation for vendor payment."""
+    bill_id: str
+    amount_applied: float
+
+
+class ZohoVendorPaymentRequest(BaseModel):
+    """Payload to record vendor payment in Zoho Books."""
+    vendor_id: str
+    payment_mode: str = "Bank Transfer"
+    amount: float
+    date: str
+    paid_through_account_id: Optional[str] = None
+    reference_number: Optional[str] = ""
+    description: Optional[str] = ""
+    bills: List[ZohoBillPaymentLink] = Field(default_factory=list)
+
+
+class ZohoVendorPaymentResponse(BaseModel):
+    """Response from Zoho Books Vendor Payment creation."""
+    code: int = 0
+    message: str = ""
+    payment_id: str
+    payment_number: str
+    vendor_id: str
+    vendor_name: str
+    amount: float
+    payment_url: Optional[str] = ""
+
+
+class ZohoExpenseRequest(BaseModel):
+    """Payload to record direct expense / petty cash in Zoho Books."""
+    account_id: str  # Expense Chart of Account ID
+    paid_through_account_id: str  # Paid through Bank/Cash Account
+    date: str
+    amount: float
+    vendor_id: Optional[str] = None
+    reference_number: Optional[str] = ""
+    description: Optional[str] = ""
+    is_inclusive_tax: bool = False
+    tax_id: Optional[str] = None
+
+
+class ZohoExpenseResponse(BaseModel):
+    """Response from Zoho Books Direct Expense creation."""
+    code: int = 0
+    message: str = ""
+    expense_id: str
+    account_name: str
+    amount: float
+    expense_url: Optional[str] = ""
+
+
+class ZohoCreditNoteRequest(BaseModel):
+    """Payload to record customer Credit Note in Zoho Books."""
+    customer_id: str
+    date: str
+    line_items: List[Dict[str, Any]]
+    creditnote_number: Optional[str] = None
+    reference_number: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class ZohoCreditNoteResponse(BaseModel):
+    """Response from Zoho Books Credit Note creation."""
+    code: int = 0
+    message: str = ""
+    creditnote_id: str
+    creditnote_number: str
+    total: float
+    creditnote_url: Optional[str] = ""
+
+
+class ZohoBankTransactionRequest(BaseModel):
+    """Payload to record bank statement line in Zoho Books."""
+    from_account_id: str  # Bank Account ID
+    transaction_type: str = "debit"  # debit or credit
+    date: str
+    amount: float
+    description: Optional[str] = ""
+    reference_number: Optional[str] = ""
+    payee: Optional[str] = ""
+
+
+class ZohoBankTransactionResponse(BaseModel):
+    """Response from Zoho Books Bank Transaction creation."""
+    code: int = 0
+    message: str = ""
+    transaction_id: str
+    transaction_type: str
+    amount: float
+    status: str = "uncategorized"
+
+
+class ZohoJournalEntryItem(BaseModel):
+    """Debit or Credit line in double-entry manual journal."""
+    account_id: str
+    debit_or_credit: str  # debit or credit
+    amount: float
+    description: Optional[str] = ""
+
+
+class ZohoJournalRequest(BaseModel):
+    """Payload to post manual journal entry into Zoho Books."""
+    journal_date: str
+    journal_entries: List[ZohoJournalEntryItem]
+    reference_number: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class ZohoJournalResponse(BaseModel):
+    """Response from Zoho Books Journal Entry creation."""
+    code: int = 0
+    message: str = ""
+    journal_id: str
+    journal_date: str
+    total: float
+    journal_url: Optional[str] = ""
+
+
+# -------------------------------------------------------------------------
+# Modular Pipeline & Validation Schemas
+# -------------------------------------------------------------------------
+
+class IngestionPipelineConfig(BaseModel):
+    """Configuration for a specific accounting ingestion pipeline."""
+    id: str
+    name: str
+    section: str = "AR"  # AR, AP, BANK, GL
+    entity_type: str = "ar_sales_invoice"  # AccountingEntityType value
+    source_type: str = "google_drive"  # google_drive, onedrive, email, manual, webhook
+    source_identifier: str = ""  # Folder ID, email address, drive ID
+    default_account_code: Optional[str] = None
+    default_account_id: Optional[str] = None
+    default_tax_rate: Optional[str] = None
+    auto_post_to_zoho: bool = False
+    is_active: bool = True
+    notes: Optional[str] = ""
+
+
+class ValidationIssue(BaseModel):
+    """Detailed validation issue when an ingested document fails target Zoho API contract."""
+    field_name: str
+    error_type: str  # MISSING_MANDATORY_FIELD, UNMATCHED_ENTITY, MATH_MISMATCH, INVALID_DATE, UNRESOLVED_ACCOUNT
+    message: str
+    received_value: Optional[Any] = None
+    severity: str = "CRITICAL"  # CRITICAL, WARNING
+
+
+class ContractValidationResult(BaseModel):
+    """Result of strict Zoho API Contract validation."""
+    is_valid: bool
+    target_entity: str
+    issues: List[ValidationIssue] = Field(default_factory=list)
+    normalized_payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 # -------------------------------------------------------------------------
 # Pipeline Workflow State Schemas
 # -------------------------------------------------------------------------

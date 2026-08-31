@@ -13,7 +13,10 @@ import {
   mapBankTransaction,
   uploadBankStatement,
   triggerApPipeline,
+  saveClientPipeline,
+  deleteClientPipeline,
 } from '../../lib/api';
+import type { IngestionPipeline, AccountingSection, AccountingEntityType } from '../../types/client';
 import {
   Layers,
   PlayCircle,
@@ -41,6 +44,10 @@ import {
   UploadCloud,
   HelpCircle,
   Send,
+  Plus,
+  Trash2,
+  Edit3,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
@@ -293,6 +300,72 @@ export const ClientWorkspace: React.FC = () => {
       addLog('error', `Failed saving client configuration: ${err.message}`);
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  // Pipeline Configuration Editor States
+  const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
+  const [isSavingPipeline, setIsSavingPipeline] = useState(false);
+  const [pipelineForm, setPipelineForm] = useState<IngestionPipeline>({
+    id: '',
+    name: '',
+    section: 'AR',
+    entity_type: 'ar_sales_invoice',
+    source_type: 'google_drive',
+    source_identifier: '',
+    default_account_code: '4000 - Sales Revenue',
+    auto_post_to_zoho: false,
+    is_active: true,
+  });
+
+  const handleOpenNewPipeline = () => {
+    setPipelineForm({
+      id: `pipe_${Date.now()}`,
+      name: '',
+      section: 'AR',
+      entity_type: 'ar_sales_invoice',
+      source_type: 'google_drive',
+      source_identifier: '',
+      default_account_code: '4000 - Sales Revenue',
+      auto_post_to_zoho: false,
+      is_active: true,
+    });
+    setIsPipelineModalOpen(true);
+  };
+
+  const handleOpenEditPipeline = (pipe: IngestionPipeline) => {
+    setPipelineForm({ ...pipe });
+    setIsPipelineModalOpen(true);
+  };
+
+  const handleSavePipelineSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pipelineForm.name.trim()) return;
+    setIsSavingPipeline(true);
+    try {
+      const updatedPipelines = await saveClientPipeline(currentClient.id, pipelineForm);
+      if (Array.isArray(updatedPipelines)) {
+        currentClient.pipelines = updatedPipelines;
+      }
+      addLog('success', `✅ Successfully saved pipeline configuration for: "${pipelineForm.name}"`);
+      setIsPipelineModalOpen(false);
+    } catch (err: any) {
+      addLog('error', `Failed to save pipeline configuration: ${err.message}`);
+    } finally {
+      setIsSavingPipeline(false);
+    }
+  };
+
+  const handleDeletePipelineSubmit = async (pipelineId: string, pipelineName: string) => {
+    if (!confirm(`Are you sure you want to delete pipeline "${pipelineName}"?`)) return;
+    try {
+      const updatedPipelines = await deleteClientPipeline(currentClient.id, pipelineId);
+      if (Array.isArray(updatedPipelines)) {
+        currentClient.pipelines = updatedPipelines;
+      }
+      addLog('info', `🗑️ Deleted pipeline "${pipelineName}" for ${currentClient.name}`);
+    } catch (err: any) {
+      addLog('error', `Failed to delete pipeline: ${err.message}`);
     }
   };
 
@@ -1179,6 +1252,291 @@ export const ClientWorkspace: React.FC = () => {
         </div>
       )}
 
+      {/* Active Ingestion Pipelines Hub */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white tracking-tight">Active Ingestion Pipelines</h2>
+              <p className="text-xs text-slate-400">
+                Manage entity-driven ingestion streams for AR, AP, and Banking with pipeline-level configurations.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-sky-500/15 border border-sky-500/30 text-sky-300 font-mono font-bold px-2.5 py-1 rounded-full">
+              {(currentClient.pipelines || []).length} Pipelines
+            </span>
+            <button
+              type="button"
+              onClick={handleOpenNewPipeline}
+              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg shadow-sky-600/20 transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Pipeline</span>
+            </button>
+          </div>
+        </div>
+
+        {(currentClient.pipelines || []).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {currentClient.pipelines?.map((pipe, idx) => {
+              const sectionBadge =
+                pipe.section === 'AR'
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                  : pipe.section === 'AP'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : pipe.section === 'BANK'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+
+              return (
+                <div
+                  key={pipe.id || idx}
+                  className="bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-3 transition group relative"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${sectionBadge}`}>
+                        {pipe.section} • {pipe.entity_type?.replace(/_/g, ' ')}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditPipeline(pipe)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition cursor-pointer"
+                          title="Edit Pipeline Configuration"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePipelineSubmit(pipe.id, pipe.name)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition cursor-pointer"
+                          title="Delete Pipeline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${pipe.is_active !== false ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-slate-500'}`} />
+                      <span>{pipe.name}</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Channel: <code className="text-sky-300 font-mono">{pipe.source_type}</code>
+                      {pipe.source_identifier && (
+                        <span className="text-slate-500 block truncate text-[10px] font-mono mt-0.5">
+                          Target: {pipe.source_identifier}
+                        </span>
+                      )}
+                    </p>
+                    {pipe.default_account_code && (
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Account: <span className="text-slate-300 font-mono">{pipe.default_account_code}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>Target: Zoho API</span>
+                    <span className={pipe.auto_post_to_zoho ? 'text-emerald-400 font-bold' : 'text-amber-400 font-medium'}>
+                      {pipe.auto_post_to_zoho ? 'Auto-Post Live' : 'Review Ledger Staging'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-slate-950/50 border border-slate-800/60 rounded-xl p-4 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+            <span>No discrete multi-pipelines configured. Operating on primary <code className="text-sky-300">{currentClient.sourceType || 'google_drive'}</code> stream.</span>
+            <button
+              type="button"
+              onClick={handleOpenNewPipeline}
+              className="text-xs font-bold text-sky-400 hover:text-sky-300 underline cursor-pointer"
+            >
+              + Add your first ingestion stream
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Pipeline Configuration Modal */}
+      {isPipelineModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5 text-sky-400" />
+                <h3 className="text-sm font-bold text-white">
+                  {currentClient.pipelines?.some((p) => p.id === pipelineForm.id) ? 'Edit Ingestion Pipeline' : 'Add New Ingestion Pipeline'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPipelineModalOpen(false)}
+                className="text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePipelineSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Pipeline Name</label>
+                <input
+                  type="text"
+                  value={pipelineForm.name}
+                  onChange={(e) => setPipelineForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Counter Sales Slips, Chinese Supplier Bills"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Accounting Section</label>
+                  <select
+                    value={pipelineForm.section}
+                    onChange={(e) => {
+                      const sec = e.target.value as AccountingSection;
+                      const defaultEntity =
+                        sec === 'AR' ? 'ar_sales_invoice' : sec === 'AP' ? 'ap_vendor_bill' : sec === 'BANK' ? 'bank_statement' : 'gl_journal';
+                      setPipelineForm((prev) => ({ ...prev, section: sec, entity_type: defaultEntity }));
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="AR">Accounts Receivable (AR)</option>
+                    <option value="AP">Accounts Payable (AP)</option>
+                    <option value="BANK">Banking &amp; Treasury (BANK)</option>
+                    <option value="GL">General Ledger (GL)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Target Zoho Entity</label>
+                  <select
+                    value={pipelineForm.entity_type}
+                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, entity_type: e.target.value as AccountingEntityType }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                  >
+                    {pipelineForm.section === 'AR' && (
+                      <>
+                        <option value="ar_sales_invoice">Sales Invoice (/invoices)</option>
+                        <option value="ar_customer_payment">Customer Payment (/customerpayments)</option>
+                        <option value="ar_credit_note">Credit Note (/creditnotes)</option>
+                        <option value="ar_retainer_invoice">Retainer Invoice (/retainerinvoices)</option>
+                        <option value="ar_estimate">Estimate / Quote (/estimates)</option>
+                      </>
+                    )}
+                    {pipelineForm.section === 'AP' && (
+                      <>
+                        <option value="ap_vendor_bill">Vendor Bill (/bills)</option>
+                        <option value="ap_vendor_payment">Vendor Payment (/vendorpayments)</option>
+                        <option value="ap_direct_expense">Direct Expense (/expenses)</option>
+                        <option value="ap_purchase_order">Purchase Order (/purchaseorders)</option>
+                        <option value="ap_vendor_credit">Vendor Credit (/vendorcredits)</option>
+                      </>
+                    )}
+                    {pipelineForm.section === 'BANK' && (
+                      <>
+                        <option value="bank_statement">Bank Statement (/banktransactions)</option>
+                        <option value="momo_statement">Mobile Money (MoMo) Statement</option>
+                      </>
+                    )}
+                    {pipelineForm.section === 'GL' && (
+                      <option value="gl_journal">Manual Journal Entry (/journalentries)</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Ingestion Channel</label>
+                  <select
+                    value={pipelineForm.source_type}
+                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, source_type: e.target.value as any }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="google_drive">Google Drive Folder</option>
+                    <option value="onedrive">OneDrive / SharePoint</option>
+                    <option value="email">Email Inbound Mailbox</option>
+                    <option value="manual">Manual Batch Upload</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Channel Identifier / Target</label>
+                  <input
+                    type="text"
+                    value={pipelineForm.source_identifier || ''}
+                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, source_identifier: e.target.value }))}
+                    placeholder="Folder ID, SharePoint drive ID, or email alias"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-sky-500 text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Default Account Code</label>
+                <input
+                  type="text"
+                  value={pipelineForm.default_account_code || ''}
+                  onChange={(e) => setPipelineForm((prev) => ({ ...prev, default_account_code: e.target.value }))}
+                  placeholder="e.g. 4000 - Sales Revenue or 5000 - Operating Expenses"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-sky-500 text-[11px]"
+                />
+              </div>
+
+              <div className="flex items-center gap-6 pt-2">
+                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pipelineForm.auto_post_to_zoho}
+                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, auto_post_to_zoho: e.target.checked }))}
+                    className="rounded border-slate-800 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Auto-post to Zoho Books</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pipelineForm.is_active !== false}
+                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                    className="rounded border-slate-800 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Stream Active</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPipelineModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPipeline || !pipelineForm.name.trim()}
+                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-1.5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingPipeline ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Save Pipeline Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Blueprint Architecture Steps */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
         <div className="flex items-center gap-2 mb-4">
@@ -1188,29 +1546,37 @@ export const ClientWorkspace: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {currentClient.blueprints?.map((step, idx) => {
-            const isActive = step.status === 'active';
+            const isDone = step.status === 'active';
             const isInProgress = step.status === 'in_progress';
 
             return (
               <div
                 key={idx}
-                className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between"
+                className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 flex items-start gap-3"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-500">
-                      Phase 0{idx + 1}
-                    </span>
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isDone
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : isInProgress
+                      ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                      : 'bg-slate-800 text-slate-500 border border-slate-700'
+                  }`}
+                >
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                        isActive
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                        isDone
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                           : isInProgress
-                          ? 'bg-sky-950 text-sky-300 border border-sky-500/30'
-                          : 'bg-slate-900 text-slate-400 border border-slate-700'
+                          ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                          : 'bg-slate-800 text-slate-500'
                       }`}
                     >
-                      {isActive ? (
+                      {isDone ? (
                         <>
                           <CheckCircle2 className="w-3 h-3" /> Active
                         </>
@@ -1252,4 +1618,3 @@ export const ClientWorkspace: React.FC = () => {
     </div>
   );
 };
-

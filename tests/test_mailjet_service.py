@@ -12,7 +12,8 @@ async def test_mailjet_service_not_configured_fallback():
     with patch.object(settings, "MAILJET_API_KEY", None), \
          patch.object(settings, "MAILJET_SECRET_KEY", None), \
          patch.object(settings, "SMTP_USER", None), \
-         patch.object(settings, "SMTP_PASSWORD", None):
+         patch.object(settings, "SMTP_PASSWORD", None), \
+         patch.object(settings, "MOCK_MODE", False):
         
         res = await MailjetService.send_email(
             to_email="test@service4gh.com",

@@ -16,7 +16,7 @@ from app.workflows.zoho_invoice_generator import anr_generate_zoho_invoices
 from app.workflows.client_strategy_pipeline import client_strategy_pipeline
 from app.workflows.ap_billing_pipeline import inngest_ap_pipeline_fn
 from app.workflows.bank_statement_pipeline import inngest_bank_statement_fn
-from app.api.v1 import api_v1_router
+from app.api.v1 import api_v1_router, api_legacy_router
 from app.utils.logging import get_logger
 
 logger = get_logger("main")
@@ -71,7 +71,8 @@ inngest.fast_api.serve(
 )
 
 
-# Mount modular API v1 routers (/api/*)
+# Mount modular API v1 routers (/api/* and /api/v1/*)
+app.include_router(api_legacy_router)
 app.include_router(api_v1_router)
 
 

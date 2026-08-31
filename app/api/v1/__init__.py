@@ -12,14 +12,20 @@ from app.api.v1.clients import router as clients_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.bank_portal import router as bank_portal_router
 
-api_v1_router = APIRouter(prefix="/api")
+api_sub_router = APIRouter()
 
-api_v1_router.include_router(auth_router)
-api_v1_router.include_router(pipeline_router)
-api_v1_router.include_router(invoices_router)
-api_v1_router.include_router(sheets_router)
-api_v1_router.include_router(catalog_router)
-api_v1_router.include_router(config_router)
-api_v1_router.include_router(clients_router)
-api_v1_router.include_router(audit_router)
-api_v1_router.include_router(bank_portal_router)
+api_sub_router.include_router(auth_router)
+api_sub_router.include_router(pipeline_router)
+api_sub_router.include_router(invoices_router)
+api_sub_router.include_router(sheets_router)
+api_sub_router.include_router(catalog_router)
+api_sub_router.include_router(config_router)
+api_sub_router.include_router(clients_router)
+api_sub_router.include_router(audit_router)
+api_sub_router.include_router(bank_portal_router)
+
+api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router.include_router(api_sub_router)
+
+api_legacy_router = APIRouter(prefix="/api")
+api_legacy_router.include_router(api_sub_router)

@@ -1,5 +1,58 @@
 export type ClientStatus = 'live' | 'dev' | 'pending';
 
+export type AccountingSection = 'AR' | 'AP' | 'BANK' | 'GL';
+
+export type AccountingEntityType =
+  | 'ar_sales_invoice'
+  | 'ar_customer_payment'
+  | 'ar_credit_note'
+  | 'ar_retainer_invoice'
+  | 'ar_estimate'
+  | 'ar_delivery_challan'
+  | 'ap_vendor_bill'
+  | 'ap_vendor_payment'
+  | 'ap_direct_expense'
+  | 'ap_purchase_order'
+  | 'ap_vendor_credit'
+  | 'bank_statement'
+  | 'momo_statement'
+  | 'gl_journal';
+
+export interface IngestionPipeline {
+  id: string;
+  name: string;
+  section: AccountingSection;
+  entity_type: AccountingEntityType;
+  source_type: 'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual';
+  source_identifier: string;
+  default_account_code?: string;
+  default_account_id?: string;
+  default_tax_rate?: string;
+  auto_post_to_zoho?: boolean;
+  is_active?: boolean;
+  notes?: string;
+}
+
+export interface StarterRecipe {
+  id: string;
+  name: string;
+  icon: string;
+  tagline: string;
+  description: string;
+  defaultVolume: string;
+  currency: string;
+  pipelines: IngestionPipeline[];
+  blueprints: BlueprintStep[];
+}
+
+export interface ValidationIssue {
+  field_name: string;
+  error_type: string;
+  message: string;
+  received_value?: any;
+  severity: 'CRITICAL' | 'WARNING';
+}
+
 export interface BlueprintStep {
   title: string;
   desc: string;
@@ -38,6 +91,7 @@ export interface ClientProfile {
   projectedMonthlyVolume: string;
   activeIntegrations: string[];
   blueprints: BlueprintStep[];
+  pipelines?: IngestionPipeline[];
   sourceConfig?: Record<string, any>;
   customConfig?: Record<string, any>;
   externalChecklist?: ExternalChecklistItem[];
@@ -56,6 +110,7 @@ export interface IndustryPreset {
   defaultVolume: string;
   currency: string;
   defaultBlueprints: BlueprintStep[];
+  pipelines?: IngestionPipeline[];
 }
 
 export interface ProbeCheck {

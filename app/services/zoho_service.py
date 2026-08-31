@@ -13,6 +13,18 @@ from app.models.schemas import (
     ZohoDraftInvoiceResponse,
     ZohoDraftBillRequest,
     ZohoDraftBillResponse,
+    ZohoCustomerPaymentRequest,
+    ZohoCustomerPaymentResponse,
+    ZohoVendorPaymentRequest,
+    ZohoVendorPaymentResponse,
+    ZohoExpenseRequest,
+    ZohoExpenseResponse,
+    ZohoCreditNoteRequest,
+    ZohoCreditNoteResponse,
+    ZohoBankTransactionRequest,
+    ZohoBankTransactionResponse,
+    ZohoJournalRequest,
+    ZohoJournalResponse,
     MonthlySKUSummary,
 )
 from app.utils.logging import get_logger
@@ -618,5 +630,368 @@ class ZohoBooksService:
                 status="draft",
                 bill_url=f"https://books.zoho.com/app#/bills/{bill_id}",
             )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_customer_payment(
+        self, request: ZohoCustomerPaymentRequest
+    ) -> ZohoCustomerPaymentResponse:
+        """Records a Customer Payment in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"pay_mock_{int(time.time())}"
+            mock_num = f"PAY-{int(time.time()) % 100000:05d}"
+            logger.info(f"[MOCK] Created Customer Payment {mock_num} of GHS {request.amount:.2f} for customer {request.customer_id}")
+            return ZohoCustomerPaymentResponse(
+                code=0,
+                message="Customer payment recorded successfully (Mock)",
+                payment_id=mock_id,
+                payment_number=mock_num,
+                customer_id=request.customer_id,
+                customer_name="Client",
+                amount=request.amount,
+                payment_url=f"https://books.zoho.com/app#/customerpayments/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/customerpayments"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "customer_id": request.customer_id,
+            "payment_mode": request.payment_mode,
+            "amount": request.amount,
+            "date": request.date,
+            "reference_number": request.reference_number,
+            "description": request.description,
+        }
+        if request.account_id:
+            payload["account_id"] = request.account_id
+        if request.invoices:
+            payload["invoices"] = [
+                {
+                    "invoice_id": inv.invoice_id,
+                    "amount_applied": inv.amount_applied,
+                    "tax_amount_withheld": inv.tax_amount_withheld,
+                }
+                for inv in request.invoices
+            ]
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            payment = data.get("payment", {})
+            return ZohoCustomerPaymentResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                payment_id=str(payment.get("payment_id", "")),
+                payment_number=payment.get("payment_number", ""),
+                customer_id=request.customer_id,
+                customer_name=payment.get("customer_name", ""),
+                amount=float(payment.get("amount", request.amount)),
+                payment_url=f"https://books.zoho.com/app#/customerpayments/{payment.get('payment_id')}",
+            )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_vendor_payment(
+        self, request: ZohoVendorPaymentRequest
+    ) -> ZohoVendorPaymentResponse:
+        """Records a Vendor Payment in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"vpay_mock_{int(time.time())}"
+            mock_num = f"VPAY-{int(time.time()) % 100000:05d}"
+            logger.info(f"[MOCK] Created Vendor Payment {mock_num} of GHS {request.amount:.2f} for vendor {request.vendor_id}")
+            return ZohoVendorPaymentResponse(
+                code=0,
+                message="Vendor payment recorded successfully (Mock)",
+                payment_id=mock_id,
+                payment_number=mock_num,
+                vendor_id=request.vendor_id,
+                vendor_name="Vendor",
+                amount=request.amount,
+                payment_url=f"https://books.zoho.com/app#/vendorpayments/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/vendorpayments"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "vendor_id": request.vendor_id,
+            "payment_mode": request.payment_mode,
+            "amount": request.amount,
+            "date": request.date,
+            "reference_number": request.reference_number,
+            "description": request.description,
+        }
+        if request.paid_through_account_id:
+            payload["paid_through_account_id"] = request.paid_through_account_id
+        if request.bills:
+            payload["bills"] = [{"bill_id": b.bill_id, "amount_applied": b.amount_applied} for b in request.bills]
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            payment = data.get("vendorpayment", {})
+            return ZohoVendorPaymentResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                payment_id=str(payment.get("payment_id", "")),
+                payment_number=payment.get("payment_number", ""),
+                vendor_id=request.vendor_id,
+                vendor_name=payment.get("vendor_name", ""),
+                amount=float(payment.get("amount", request.amount)),
+                payment_url=f"https://books.zoho.com/app#/vendorpayments/{payment.get('payment_id')}",
+            )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_direct_expense(self, request: ZohoExpenseRequest) -> ZohoExpenseResponse:
+        """Records a direct expense / petty cash disbursement in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"exp_mock_{int(time.time())}"
+            logger.info(f"[MOCK] Created Direct Expense of GHS {request.amount:.2f} for account {request.account_id}")
+            return ZohoExpenseResponse(
+                code=0,
+                message="Expense created successfully (Mock)",
+                expense_id=mock_id,
+                account_name="Operating Expense",
+                amount=request.amount,
+                expense_url=f"https://books.zoho.com/app#/expenses/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/expenses"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "account_id": request.account_id,
+            "paid_through_account_id": request.paid_through_account_id,
+            "date": request.date,
+            "amount": request.amount,
+            "reference_number": request.reference_number,
+            "description": request.description,
+        }
+        if request.vendor_id:
+            payload["vendor_id"] = request.vendor_id
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            expense = data.get("expense", {})
+            return ZohoExpenseResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                expense_id=str(expense.get("expense_id", "")),
+                account_name=expense.get("account_name", ""),
+                amount=float(expense.get("amount", request.amount)),
+                expense_url=f"https://books.zoho.com/app#/expenses/{expense.get('expense_id')}",
+            )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_credit_note(self, request: ZohoCreditNoteRequest) -> ZohoCreditNoteResponse:
+        """Creates a Credit Note in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"cn_mock_{int(time.time())}"
+            mock_num = request.creditnote_number or f"CN-{int(time.time()) % 10000:04d}"
+            tot = sum(float(it.get("rate", 0)) * float(it.get("quantity", 1)) for it in request.line_items)
+            logger.info(f"[MOCK] Created Credit Note {mock_num} (Total: GHS {tot:.2f})")
+            return ZohoCreditNoteResponse(
+                code=0,
+                message="Credit Note created (Mock)",
+                creditnote_id=mock_id,
+                creditnote_number=mock_num,
+                total=tot,
+                creditnote_url=f"https://books.zoho.com/app#/creditnotes/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/creditnotes"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "customer_id": request.customer_id,
+            "date": request.date,
+            "line_items": request.line_items,
+            "reference_number": request.reference_number,
+            "notes": request.notes,
+        }
+        if request.creditnote_number:
+            payload["creditnote_number"] = request.creditnote_number
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            cn = data.get("creditnote", {})
+            return ZohoCreditNoteResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                creditnote_id=str(cn.get("creditnote_id", "")),
+                creditnote_number=cn.get("creditnote_number", ""),
+                total=float(cn.get("total", 0.0)),
+                creditnote_url=f"https://books.zoho.com/app#/creditnotes/{cn.get('creditnote_id')}",
+            )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_bank_transaction(
+        self, request: ZohoBankTransactionRequest
+    ) -> ZohoBankTransactionResponse:
+        """Feeds a bank statement transaction line into Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"btx_mock_{int(time.time())}"
+            logger.info(f"[MOCK] Staged Bank Transaction {mock_id} ({request.transaction_type}: GHS {request.amount:.2f})")
+            return ZohoBankTransactionResponse(
+                code=0,
+                message="Bank transaction created (Mock)",
+                transaction_id=mock_id,
+                transaction_type=request.transaction_type,
+                amount=request.amount,
+                status="uncategorized",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/banktransactions"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "from_account_id": request.from_account_id,
+            "transaction_type": request.transaction_type,
+            "date": request.date,
+            "amount": request.amount,
+            "description": request.description,
+            "reference_number": request.reference_number,
+            "payee": request.payee,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            btx = data.get("bank_transaction", {})
+            return ZohoBankTransactionResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                transaction_id=str(btx.get("transaction_id", "")),
+                transaction_type=btx.get("transaction_type", request.transaction_type),
+                amount=float(btx.get("amount", request.amount)),
+                status=btx.get("status", "uncategorized"),
+            )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_journal_entry(self, request: ZohoJournalRequest) -> ZohoJournalResponse:
+        """Posts a balanced double-entry manual journal into Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"jrnl_mock_{int(time.time())}"
+            tot = sum(e.amount for e in request.journal_entries if e.debit_or_credit == "debit")
+            logger.info(f"[MOCK] Posted Manual Journal {mock_id} (Total Debits: GHS {tot:.2f})")
+            return ZohoJournalResponse(
+                code=0,
+                message="Journal posted (Mock)",
+                journal_id=mock_id,
+                journal_date=request.journal_date,
+                total=tot,
+                journal_url=f"https://books.zoho.com/app#/journals/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/journalentries"
+        params = {"organization_id": self.org_id}
+
+        payload: Dict[str, Any] = {
+            "journal_date": request.journal_date,
+            "journal_entries": [
+                {
+                    "account_id": e.account_id,
+                    "debit_or_credit": e.debit_or_credit,
+                    "amount": e.amount,
+                    "description": e.description,
+                }
+                for e in request.journal_entries
+            ],
+            "reference_number": request.reference_number,
+            "notes": request.notes,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            jrnl = data.get("journal_entry", {})
+            return ZohoJournalResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                journal_id=str(jrnl.get("journal_id", "")),
+                journal_date=jrnl.get("journal_date", request.journal_date),
+                total=float(jrnl.get("total", 0.0)),
+                journal_url=f"https://books.zoho.com/app#/journals/{jrnl.get('journal_id')}",
+            )
+
 
 

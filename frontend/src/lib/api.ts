@@ -300,6 +300,30 @@ export async function updateClientIngestion(clientId: string, payload: { source_
   return handleResponse<any>(res, `Update ingestion for ${clientId}`);
 }
 
+export async function fetchClientPipelines(clientId: string): Promise<any[]> {
+  const res = await resilientFetch(`/api/clients/${clientId}/pipelines`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, `Fetch pipelines for ${clientId}`);
+}
+
+export async function saveClientPipeline(clientId: string, pipelineData: any): Promise<any[]> {
+  const res = await resilientFetch(`/api/clients/${clientId}/pipelines`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(pipelineData),
+  });
+  return handleResponse<any[]>(res, `Save pipeline for ${clientId}`);
+}
+
+export async function deleteClientPipeline(clientId: string, pipelineId: string): Promise<any[]> {
+  const res = await resilientFetch(`/api/clients/${clientId}/pipelines/${pipelineId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, `Delete pipeline ${pipelineId} for ${clientId}`);
+}
+
 export async function testClientIngestion(clientId: string): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}/ingestion/test`, {
     method: 'POST',

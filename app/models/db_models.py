@@ -1,5 +1,6 @@
 """SQLModel Database Models for PostgreSQL / SQLite."""
 
+from enum import Enum
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Column, JSON
@@ -10,12 +11,45 @@ def get_utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class AccountingSection(str, Enum):
+    """Core Accounting Workflow Sections."""
+    AR = "AR"       # Accounts Receivable (Revenue, Customer Invoices, Payments, Credits)
+    AP = "AP"       # Accounts Payable (Vendor Bills, Disbursements, Expenses, POs)
+    BANK = "BANK"   # Banking & Treasury (Bank Statements, Feeds, MoMo, Reconciliation)
+    GL = "GL"       # General Ledger (Manual Journals, Chart of Accounts)
+
+
+class AccountingEntityType(str, Enum):
+    """Exhaustive Zoho Books Accounting Entities for Ingestion Pipelines."""
+    # Accounts Receivable (AR)
+    AR_SALES_INVOICE = "ar_sales_invoice"         # Zoho /invoices
+    AR_CUSTOMER_PAYMENT = "ar_customer_payment"   # Zoho /customerpayments
+    AR_CREDIT_NOTE = "ar_credit_note"             # Zoho /creditnotes
+    AR_RETAINER_INVOICE = "ar_retainer_invoice"   # Zoho /retainerinvoices
+    AR_ESTIMATE = "ar_estimate"                   # Zoho /estimates
+    AR_DELIVERY_CHALLAN = "ar_delivery_challan"   # Zoho /deliverychallans
+    
+    # Accounts Payable (AP)
+    AP_VENDOR_BILL = "ap_vendor_bill"             # Zoho /bills
+    AP_VENDOR_PAYMENT = "ap_vendor_payment"       # Zoho /vendorpayments
+    AP_DIRECT_EXPENSE = "ap_direct_expense"       # Zoho /expenses
+    AP_PURCHASE_ORDER = "ap_purchase_order"       # Zoho /purchaseorders
+    AP_VENDOR_CREDIT = "ap_vendor_credit"         # Zoho /vendorcredits
+    
+    # Banking & Treasury
+    BANK_STATEMENT = "bank_statement"             # Zoho /banktransactions
+    MOMO_STATEMENT = "momo_statement"             # Zoho /banktransactions (MoMo)
+    
+    # General Ledger
+    GL_JOURNAL = "gl_journal"                     # Zoho /journalentries
+
+
 class ClientOrganization(SQLModel, table=True):
     __tablename__ = "clients"
 
     id: str = Field(primary_key=True, description="Client slug identifier, e.g. anr_group")
     name: str = Field(index=True, description="Organization name")
-    industry: str = Field(description="Business industry")
+    industry: str = Field(description="Business industry / domain tag")
     icon: str = Field(default="🏢", description="Emoji icon")
     status: str = Field(default="dev", description="live, dev, pending")
     status_text: str = Field(default="In Development")
@@ -29,6 +63,7 @@ class ClientOrganization(SQLModel, table=True):
     custom_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     active_integrations: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    pipelines: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured multi-pipeline ingestion streams")
     stats_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     last_run_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=get_utc_now)
@@ -67,7 +102,10 @@ class StagedTransaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: str = Field(index=True)
     batch_id: str = Field(index=True)
-    pipeline_type: str = Field(default="AR", description="AR (Receivable), AP (Payable)")
+    pipeline_id: Optional[str] = Field(default=None, index=True, description="ID of the specific ingestion pipeline")
+    pipeline_name: Optional[str] = Field(default=None, description="Name of the pipeline")
+    pipeline_type: str = Field(default="AR", description="AR, AP, BANK, GL")
+    entity_type: str = Field(default="ar_sales_invoice", index=True, description="Exact target Zoho entity")
     transaction_date: str
     source_type: str = Field(default="google_drive")
     source_file_name: str
@@ -85,7 +123,9 @@ class StagedTransaction(SQLModel, table=True):
     accounting_ref_id: Optional[str] = Field(default=None, index=True)
     reviewed: bool = Field(default=False)
     approved: bool = Field(default=False)
-    status: str = Field(default="PENDING", index=True)  # PENDING, INVOICED, JOURNAL_POSTED, REJECTED
+    status: str = Field(default="PENDING", index=True)  # PENDING, PENDING_VALIDATION_ERROR, APPROVED, INVOICED, BILLED, JOURNAL_POSTED, REJECTED
+    validation_status: str = Field(default="VALID", index=True)  # VALID, PENDING_VALIDATION_ERROR, RESOLVED
+    validation_errors: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now)
 
@@ -112,3 +152,4 @@ class BankTransaction(SQLModel, table=True):
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
+

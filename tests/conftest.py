@@ -15,6 +15,12 @@ from app.models.schemas import (
 settings.MOCK_MODE = True
 
 
+@pytest.fixture(autouse=True, scope="session")
+def setup_test_db():
+    from app.db.session import init_db
+    init_db()
+
+
 @pytest.fixture
 def sample_zoho_items() -> List[ZohoItem]:
     return [

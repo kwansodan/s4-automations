@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
 import { probeExternalConnection, dryRunSampleOcr, fetchZohoCatalog } from '../../lib/api';
-import type { ExternalChecklistItem, IndustryPreset, ProbeResult, DryRunResult } from '../../types/client';
+import type {
+  ExternalChecklistItem,
+  IndustryPreset,
+  ProbeResult,
+  DryRunResult,
+  IngestionPipeline,
+  StarterRecipe,
+  AccountingSection,
+  AccountingEntityType,
+} from '../../types/client';
 import {
   X,
   Check,
@@ -31,87 +40,229 @@ import {
   Terminal,
   Users,
   DollarSign,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
-const INDUSTRY_PRESETS: IndustryPreset[] = [
+const STARTER_RECIPES: StarterRecipe[] = [
   {
-    id: 'laundry',
+    id: 'wholesale_trading',
+    name: 'Wholesale, Retail & Distribution',
+    icon: '🛍️',
+    tagline: 'Multi-stream AR Sales, AP Supplier Bills & Bank Rec',
+    description: 'Automatic ingestion of daily POS tally slips, counter sales, China/supplier vendor bills, and monthly bank statement reconciliation.',
+    defaultVolume: '1,200+ Docs / mo',
+    currency: 'GHS',
+    pipelines: [
+      {
+        id: 'p_ar_invoices',
+        name: 'Sales Invoices & Counter Delivery Slips',
+        section: 'AR',
+        entity_type: 'ar_sales_invoice',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '4000 - Commercial Sales Revenue',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_ar_payments',
+        name: 'Customer MoMo & Wire Proof of Payments',
+        section: 'AR',
+        entity_type: 'ar_customer_payment',
+        source_type: 'email',
+        source_identifier: '',
+        default_account_code: '1001 - Main Bank / Clearing Account',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_ap_bills',
+        name: 'Vendor & Supplier Bills',
+        section: 'AP',
+        entity_type: 'ap_vendor_bill',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '5000 - Cost of Goods Sold (Inventory)',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_bank_rec',
+        name: 'Bank Statements & Feeds',
+        section: 'BANK',
+        entity_type: 'bank_statement',
+        source_type: 'onedrive',
+        source_identifier: '',
+        default_account_code: '1001 - Main Operating Bank Account',
+        auto_post_to_zoho: false,
+      },
+    ],
+    blueprints: [
+      { title: 'Multi-Channel Ingestion', desc: 'Active ingestion across Drive, Email, and OneDrive', status: 'active' },
+      { title: 'Zoho API Contract Validator', desc: 'Strict entity-driven schema checks & anomaly engine', status: 'active' },
+      { title: 'PostgreSQL Review & Zoho Posting', desc: 'Staging ledger with 1-click draft creation to Zoho Books', status: 'active' },
+    ],
+  },
+  {
+    id: 'hospitality_services',
     name: 'Commercial Laundry & Hospitality',
     icon: '🧺',
-    description: 'Physical handwritten pickup/delivery slip OCR vision, linen loss reconciliation, Google Sheets review sync, and Zoho draft billing.',
-    defaultSource: 'google_drive',
-    defaultEngine: 'gemini_flash_vision',
-    samplePreset: 'laundry_slip',
+    tagline: 'Handwritten Slip OCR Vision & Detergent AP Bills',
+    description: 'Physical handwritten pickup/delivery slip OCR vision, linen loss reconciliation, supplier detergent bills, and Zoho draft billing.',
     defaultVolume: '350+ Slips / mo',
     currency: 'GHS',
-    defaultBlueprints: [
+    pipelines: [
+      {
+        id: 'p_hosp_ar',
+        name: 'Linen Control Delivery Slips',
+        section: 'AR',
+        entity_type: 'ar_sales_invoice',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '4000 - Commercial Laundry Revenue',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_hosp_ap',
+        name: 'Detergent & Utility Vendor Bills',
+        section: 'AP',
+        entity_type: 'ap_vendor_bill',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '5001 - Chemicals & Operating Supplies',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_hosp_bank',
+        name: 'Bank & MoMo Statement Feed',
+        section: 'BANK',
+        entity_type: 'bank_statement',
+        source_type: 'onedrive',
+        source_identifier: '',
+        default_account_code: '1001 - Operating Account',
+        auto_post_to_zoho: false,
+      },
+    ],
+    blueprints: [
       { title: 'Vision OCR Extraction', desc: 'Gemini 3.6 Flash structured JSON extraction on daily control sheets', status: 'active' },
       { title: 'Google Sheets Review Sync', desc: 'Populate Tab 1 (Daily Details) and Tab 2 (Monthly Billing Summary)', status: 'active' },
       { title: 'Zoho Books Draft Invoicing', desc: '1-Click draft invoice creation appending newly approved line items', status: 'active' },
     ],
   },
   {
-    id: 'property',
+    id: 'property_leasing',
     name: 'Real Estate & Property Management',
     icon: '🏢',
+    tagline: 'Tenant Rent Receipts, Utility Apportionment & AP Bills',
     description: 'Tenant rent payment slip & mobile money receipt parsing, monthly recurring billing, utility apportionment, and late notice dispatch.',
-    defaultSource: 'email',
-    defaultEngine: 'rent_receipt_matcher',
-    samplePreset: 'rent_receipt',
     defaultVolume: '100+ Units / mo',
     currency: 'GHS',
-    defaultBlueprints: [
+    pipelines: [
+      {
+        id: 'p_prop_rent',
+        name: 'Tenant Rent MoMo & Bank Receipts',
+        section: 'AR',
+        entity_type: 'ar_customer_payment',
+        source_type: 'email',
+        source_identifier: '',
+        default_account_code: '4002 - Rental Income',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_prop_bills',
+        name: 'Maintenance & Utility Bills',
+        section: 'AP',
+        entity_type: 'ap_vendor_bill',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '5002 - Property Maintenance Expenses',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_prop_bank',
+        name: 'Client Escrow / Bank Statements',
+        section: 'BANK',
+        entity_type: 'bank_statement',
+        source_type: 'onedrive',
+        source_identifier: '',
+        default_account_code: '1002 - Escrow Bank Account',
+        auto_post_to_zoho: false,
+      },
+    ],
+    blueprints: [
       { title: 'Rent Receipt OCR Ingestion', desc: 'Extract tenant mobile money and bank transfer receipts', status: 'active' },
       { title: 'Utility Cost Apportionment', desc: 'Apportion shared power/water bills across occupied units', status: 'in_progress' },
       { title: 'Tenant Monthly Invoicing', desc: 'Generate tenant invoices with automated email/SMS dispatch', status: 'queued' },
     ],
   },
   {
-    id: 'financial',
+    id: 'financial_advisory',
     name: 'Financial Advisory & Asset Management',
     icon: '⚡',
+    tagline: 'Advisory Billing, Multi-Currency Bank Rec & Journals',
     description: 'Multi-currency PDF bank statement parsing, automated chart of accounts matching, and Zoho Books journal batch posting.',
-    defaultSource: 'onedrive',
-    defaultEngine: 'pdf_bank_parser',
-    samplePreset: 'bank_statement',
     defaultVolume: '1,500+ Tx / mo',
     currency: 'USD',
-    defaultBlueprints: [
+    pipelines: [
+      {
+        id: 'p_fin_retainer',
+        name: 'Advisory Retainer Invoices',
+        section: 'AR',
+        entity_type: 'ar_sales_invoice',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '4005 - Retainer Advisory Fees',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_fin_bank',
+        name: 'Multi-Currency Bank Statements',
+        section: 'BANK',
+        entity_type: 'bank_statement',
+        source_type: 'onedrive',
+        source_identifier: '',
+        default_account_code: '1005 - USD Corporate Checking',
+        auto_post_to_zoho: false,
+      },
+      {
+        id: 'p_fin_journal',
+        name: 'Manual Journals & Accruals',
+        section: 'GL',
+        entity_type: 'gl_journal',
+        source_type: 'manual',
+        source_identifier: '',
+        default_account_code: '9000 - General Ledger Accruals',
+        auto_post_to_zoho: false,
+      },
+    ],
+    blueprints: [
       { title: 'Bank Statement PDF Parser', desc: 'Extract structured transactions from multi-bank PDF statements', status: 'active' },
       { title: 'AI Transaction Categorization', desc: 'Fuzzy-match chart of accounts and assign expense categories', status: 'in_progress' },
       { title: 'Zoho Journal Batch Poster', desc: 'Post balanced double-entry journals into Zoho Books API', status: 'queued' },
     ],
   },
   {
-    id: 'logistics',
-    name: 'Logistics & Fleet Transport',
-    icon: '🚛',
-    description: 'Waybill & fuel slip extraction, driver expense logging, delivery confirmation reconciliation, and carrier invoice drafting.',
-    defaultSource: 'google_drive',
-    defaultEngine: 'gemini_flash_vision',
-    samplePreset: 'laundry_slip',
-    defaultVolume: '600+ Waybills / mo',
+    id: 'custom_modular',
+    name: 'Custom Multi-Pipeline Architecture',
+    icon: '🧩',
+    tagline: 'Tailored Multi-Stream Setup Built From Scratch',
+    description: 'Select your own combination of AR, AP, and Banking pipelines with custom extraction schemas and routing rules.',
+    defaultVolume: 'Flexible',
     currency: 'GHS',
-    defaultBlueprints: [
-      { title: 'Waybill Vision Extraction', desc: 'Extract consignee details, cargo weight, and fuel receipts', status: 'active' },
-      { title: 'Driver Expense Ledger', desc: 'Cross-check fuel pump vouchers against GPS trip mileage', status: 'in_progress' },
-      { title: 'Carrier Invoicing Engine', desc: 'Batch invoice freight clients based on signed PODs', status: 'queued' },
+    pipelines: [
+      {
+        id: 'p_custom_1',
+        name: 'Primary Ingestion Stream',
+        section: 'AR',
+        entity_type: 'ar_sales_invoice',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '4000 - General Revenue',
+        auto_post_to_zoho: false,
+      },
     ],
-  },
-  {
-    id: 'retail',
-    name: 'Retail & Wholesale Distribution',
-    icon: '🛍️',
-    description: 'Daily cash register tally sheet OCR, supplier invoice matching, inventory discrepancy logging, and sales tax filing export.',
-    defaultSource: 'google_drive',
-    defaultEngine: 'invoice_ocr',
-    samplePreset: 'commercial_invoice',
-    defaultVolume: '450+ Reports / mo',
-    currency: 'GHS',
-    defaultBlueprints: [
-      { title: 'POS Tally Sheet Parser', desc: 'Capture end-of-day register z-reports and physical count slips', status: 'active' },
-      { title: 'Supplier Invoice Reconciler', desc: 'Match vendor invoices against purchase orders and received goods', status: 'in_progress' },
-      { title: 'Sales Tax Journal Sync', desc: 'Post daily gross revenue and tax breakdown to general ledger', status: 'queued' },
+    blueprints: [
+      { title: 'Custom Stream Ingestion', desc: 'Configured pipeline streams', status: 'active' },
+      { title: 'Zoho Contract Validation', desc: 'Strict field checks', status: 'in_progress' },
+      { title: 'Zoho Books Posting', desc: 'Automated entry synchronization', status: 'queued' },
     ],
   },
 ];
@@ -127,15 +278,21 @@ export const ClientSetupWizardModal: React.FC = () => {
 
   // Form State
   const [name, setName] = useState<string>('');
-  const [selectedIndustry, setSelectedIndustry] = useState<string>('laundry');
-  const [icon, setIcon] = useState<string>('🧺');
+  const [selectedRecipe, setSelectedRecipe] = useState<string>('wholesale_trading');
+  const [icon, setIcon] = useState<string>('🛍️');
   const [currency, setCurrency] = useState<string>('GHS');
-  const [projectedVolume, setProjectedVolume] = useState<string>('350+ Slips / mo');
+  const [projectedVolume, setProjectedVolume] = useState<string>('1,200+ Docs / mo');
   const [description, setDescription] = useState<string>('');
+  const [configuredPipelines, setConfiguredPipelines] = useState<IngestionPipeline[]>(STARTER_RECIPES[0].pipelines);
+  const [isAddingPipeline, setIsAddingPipeline] = useState<boolean>(false);
+  const [newPipeName, setNewPipeName] = useState<string>('');
+  const [newPipeSection, setNewPipeSection] = useState<AccountingSection>('AR');
+  const [newPipeEntity, setNewPipeEntity] = useState<AccountingEntityType>('ar_sales_invoice');
+  const [newPipeSource, setNewPipeSource] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual'>('google_drive');
 
   // Step 2: Zoho Books External State
   const [zohoOrgId, setZohoOrgId] = useState<string>('');
-  const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Service Revenue');
+  const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Sales Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
 
   // Step 2 Zoho API Dynamic Customer & SKU Discovery State
@@ -189,35 +346,119 @@ export const ClientSetupWizardModal: React.FC = () => {
   // Initialize or resume draft
   useEffect(() => {
     if (wizardDraft) {
-      if (wizardDraft.name) setName(wizardDraft.name);
-      if (wizardDraft.selectedIndustry) setSelectedIndustry(wizardDraft.selectedIndustry);
-      if (wizardDraft.icon) setIcon(wizardDraft.icon);
-      if (wizardDraft.currency) setCurrency(wizardDraft.currency);
-      if (wizardDraft.projectedVolume) setProjectedVolume(wizardDraft.projectedVolume);
-      if (wizardDraft.description) setDescription(wizardDraft.description);
-      if (wizardDraft.zohoOrgId) setZohoOrgId(wizardDraft.zohoOrgId);
-      if (wizardDraft.sourceType) setSourceType(wizardDraft.sourceType);
-      if (wizardDraft.folderId) setFolderId(wizardDraft.folderId);
-      if (wizardDraft.sourceEmail) setSourceEmail(wizardDraft.sourceEmail);
-      if (wizardDraft.zohoChecks) setZohoChecks(wizardDraft.zohoChecks);
-      if (wizardDraft.storageChecks) setStorageChecks(wizardDraft.storageChecks);
+      if (wizardDraft.name !== undefined) setName(wizardDraft.name);
+      if (wizardDraft.selectedRecipe || wizardDraft.selectedIndustry) setSelectedRecipe(wizardDraft.selectedRecipe || wizardDraft.selectedIndustry);
+      if (wizardDraft.icon !== undefined) setIcon(wizardDraft.icon);
+      if (wizardDraft.currency !== undefined) setCurrency(wizardDraft.currency);
+      if (wizardDraft.projectedVolume !== undefined) setProjectedVolume(wizardDraft.projectedVolume);
+      if (wizardDraft.description !== undefined) setDescription(wizardDraft.description);
+      if (wizardDraft.zohoOrgId !== undefined) setZohoOrgId(wizardDraft.zohoOrgId);
+      if (wizardDraft.defaultIncomeAccount !== undefined) setDefaultIncomeAccount(wizardDraft.defaultIncomeAccount);
+      if (wizardDraft.taxRateVat !== undefined) setTaxRateVat(wizardDraft.taxRateVat);
+      if (wizardDraft.sourceType !== undefined) setSourceType(wizardDraft.sourceType);
+      if (wizardDraft.folderId !== undefined) setFolderId(wizardDraft.folderId);
+      if (wizardDraft.sourceEmail !== undefined) setSourceEmail(wizardDraft.sourceEmail);
+      if (wizardDraft.allowedSenders !== undefined) setAllowedSenders(wizardDraft.allowedSenders);
+      if (wizardDraft.oneDriveTenantId !== undefined) setOneDriveTenantId(wizardDraft.oneDriveTenantId);
+      if (wizardDraft.oneDriveClientId !== undefined) setOneDriveClientId(wizardDraft.oneDriveClientId);
+      if (wizardDraft.oneDriveSecret !== undefined) setOneDriveSecret(wizardDraft.oneDriveSecret);
+      if (wizardDraft.oneDriveDriveId !== undefined) setOneDriveDriveId(wizardDraft.oneDriveDriveId);
+      if (wizardDraft.zohoChecks !== undefined) setZohoChecks(wizardDraft.zohoChecks);
+      if (wizardDraft.storageChecks !== undefined) setStorageChecks(wizardDraft.storageChecks);
+      if (wizardDraft.configuredPipelines !== undefined) setConfiguredPipelines(wizardDraft.configuredPipelines);
+      if (wizardDraft.aiEngine !== undefined) setAiEngine(wizardDraft.aiEngine);
+      if (wizardDraft.varianceTolerance !== undefined) setVarianceTolerance(wizardDraft.varianceTolerance);
+      if (wizardDraft.confidenceThreshold !== undefined) setConfidenceThreshold(wizardDraft.confidenceThreshold);
+      if (wizardDraft.enableSheetsSync !== undefined) setEnableSheetsSync(wizardDraft.enableSheetsSync);
+      if (wizardDraft.notificationEmail !== undefined) setNotificationEmail(wizardDraft.notificationEmail);
+      if (wizardDraft.currentStep !== undefined) setCurrentStep(wizardDraft.currentStep);
     }
   }, [wizardDraft]);
 
-  // Handle Preset Change
-  const handleSelectIndustryPreset = (presetId: string) => {
-    const preset = INDUSTRY_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setSelectedIndustry(preset.id);
-    setIcon(preset.icon);
-    setSourceType(preset.defaultSource);
-    setAiEngine(preset.defaultEngine);
-    setSelectedSamplePreset(preset.samplePreset);
-    setProjectedVolume(preset.defaultVolume);
-    setCurrency(preset.currency);
-    if (!description || description === INDUSTRY_PRESETS.find((p) => p.id === selectedIndustry)?.description) {
-      setDescription(preset.description);
+  // Auto-persist draft changes to localStorage
+  const syncDraft = (overrideStep?: number) => {
+    saveWizardDraft({
+      name,
+      selectedRecipe,
+      icon,
+      currency,
+      projectedVolume,
+      description,
+      zohoOrgId,
+      defaultIncomeAccount,
+      taxRateVat,
+      sourceType,
+      folderId,
+      sourceEmail,
+      allowedSenders,
+      oneDriveTenantId,
+      oneDriveClientId,
+      oneDriveSecret,
+      oneDriveDriveId,
+      zohoChecks,
+      storageChecks,
+      configuredPipelines,
+      aiEngine,
+      varianceTolerance,
+      confidenceThreshold,
+      enableSheetsSync,
+      notificationEmail,
+      currentStep: overrideStep ?? currentStep,
+    });
+  };
+
+  const handleResetDraft = () => {
+    if (confirm('Are you sure you want to discard your draft and start fresh?')) {
+      clearWizardDraft();
+      setName('');
+      setSelectedRecipe('wholesale_trading');
+      setIcon('🛍️');
+      setCurrency('GHS');
+      setProjectedVolume('1,200+ Docs / mo');
+      setDescription('');
+      setConfiguredPipelines([...STARTER_RECIPES[0].pipelines]);
+      setZohoOrgId('');
+      setSourceType('google_drive');
+      setFolderId('');
+      setSourceEmail('');
+      setCurrentStep(1);
     }
+  };
+
+  // Handle Recipe Change
+  const handleSelectRecipe = (recipeId: string) => {
+    const recipe = STARTER_RECIPES.find((p) => p.id === recipeId);
+    if (!recipe) return;
+    setSelectedRecipe(recipe.id);
+    setIcon(recipe.icon);
+    setConfiguredPipelines([...recipe.pipelines]);
+    setProjectedVolume(recipe.defaultVolume);
+    setCurrency(recipe.currency);
+    if (!description || description === STARTER_RECIPES.find((p) => p.id === selectedRecipe)?.description) {
+      setDescription(recipe.description);
+    }
+  };
+
+  const handleAddNewPipeline = () => {
+    if (!newPipeName.trim()) return;
+    const newPipe: IngestionPipeline = {
+      id: `pipe_${Date.now()}`,
+      name: newPipeName.trim(),
+      section: newPipeSection,
+      entity_type: newPipeEntity,
+      source_type: newPipeSource,
+      source_identifier: '',
+      default_account_code: newPipeSection === 'AR' ? '4000 - Sales Revenue' : newPipeSection === 'AP' ? '5000 - Operating Expenses' : '1001 - Main Operating Account',
+      auto_post_to_zoho: false,
+      is_active: true,
+    };
+    setConfiguredPipelines((prev) => [...prev, newPipe]);
+    setNewPipeName('');
+    setIsAddingPipeline(false);
+  };
+
+  const handleRemovePipeline = (pipeId: string) => {
+    setConfiguredPipelines((prev) => prev.filter((p) => p.id !== pipeId));
   };
 
   // Auto-generate source email alias when name changes
@@ -259,28 +500,21 @@ export const ClientSetupWizardModal: React.FC = () => {
     }
   };
 
+  const handleStepJump = (stepNum: number) => {
+    syncDraft(stepNum);
+    setCurrentStep(stepNum);
+  };
+
   const handleNextStep = () => {
-    // Auto-save draft
-    saveWizardDraft({
-      name,
-      selectedIndustry,
-      icon,
-      currency,
-      projectedVolume,
-      description,
-      zohoOrgId,
-      sourceType,
-      folderId,
-      sourceEmail,
-      zohoChecks,
-      storageChecks,
-      currentStep: currentStep + 1,
-    });
-    setCurrentStep((prev) => Math.min(prev + 1, 6));
+    const nextStep = Math.min(currentStep + 1, 6);
+    syncDraft(nextStep);
+    setCurrentStep(nextStep);
   };
 
   const handlePrevStep = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
+    const prevStep = Math.max(currentStep - 1, 1);
+    syncDraft(prevStep);
+    setCurrentStep(prevStep);
   };
 
   const handleRunProbe = async () => {
@@ -342,8 +576,8 @@ export const ClientSetupWizardModal: React.FC = () => {
     if (!name.trim()) return;
     setIsSubmitting(true);
     try {
-      const currentPreset = INDUSTRY_PRESETS.find((p) => p.id === selectedIndustry);
-      const blueprints = currentPreset?.defaultBlueprints || [
+      const currentRecipe = STARTER_RECIPES.find((p) => p.id === selectedRecipe);
+      const blueprints = currentRecipe?.blueprints || [
         { title: 'Source Ingestion', desc: `Connected via ${sourceType}`, status: 'active' },
         { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
         { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into Zoho Books', status: 'queued' },
@@ -351,11 +585,11 @@ export const ClientSetupWizardModal: React.FC = () => {
 
       await createClientFromWizard({
         name: name.trim(),
-        industry: currentPreset?.name || 'Financial & Professional Services',
+        industry: currentRecipe?.name || 'Financial & Professional Services',
         icon: icon || '🏢',
         status: 'dev',
         status_text: 'In Development',
-        description: description.trim() || currentPreset?.description,
+        description: description.trim() || currentRecipe?.description,
         source_type: sourceType,
         source_email: sourceEmail,
         folder_id: folderId,
@@ -363,6 +597,10 @@ export const ClientSetupWizardModal: React.FC = () => {
         currency,
         projectedMonthlyVolume: projectedVolume,
         blueprints,
+        pipelines: configuredPipelines.map((p) => ({
+          ...p,
+          source_identifier: p.source_identifier || (p.source_type === 'google_drive' ? folderId : p.source_type === 'email' ? sourceEmail : ''),
+        })),
         active_integrations: [
           sourceType === 'google_drive' ? 'Google Drive' : sourceType === 'onedrive' ? 'OneDrive' : 'Email Forwarding',
           'Gemini Vision',
@@ -393,7 +631,7 @@ export const ClientSetupWizardModal: React.FC = () => {
         },
       });
 
-      addLog('success', `🎉 Client organization "${name}" successfully registered and initialized!`);
+      addLog('success', `🎉 Client organization "${name}" successfully registered with ${configuredPipelines.length} active ingestion pipelines!`);
       clearWizardDraft();
       setIsWizardOpen(false);
       setActiveTab('workspace');
@@ -435,17 +673,32 @@ export const ClientSetupWizardModal: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                End-to-end guidance for outside-of-app configurations (Google Drive, Zoho ERP, Email) and automated pipelines.
+                Configure entity-driven accounting pipelines (AR, AP, Banking) and link external channels to Zoho Books.
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setIsWizardOpen(false)}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {wizardDraft && (
+              <button
+                type="button"
+                onClick={handleResetDraft}
+                className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-300 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                title="Discard draft and start fresh"
+              >
+                Reset Draft
+              </button>
+            )}
+            <button
+              onClick={() => {
+                syncDraft();
+                setIsWizardOpen(false);
+              }}
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Multi-Step Progress Tracker Bar */}
@@ -459,7 +712,7 @@ export const ClientSetupWizardModal: React.FC = () => {
               return (
                 <button
                   key={step.num}
-                  onClick={() => setCurrentStep(step.num)}
+                  onClick={() => handleStepJump(step.num)}
                   className={`flex items-center gap-2 py-2 px-2.5 rounded-xl text-left transition-all cursor-pointer ${
                     isCurrent
                       ? 'bg-sky-500/20 border border-sky-500/50 text-white shadow-md shadow-sky-500/10'
@@ -491,31 +744,31 @@ export const ClientSetupWizardModal: React.FC = () => {
         {/* Wizard Step Body */}
         <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-6">
 
-          {/* STEP 1: Profile & Industry Blueprint */}
+          {/* STEP 1: Profile & Multi-Pipeline Blueprint */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-sky-400" />
-                  <span>Client Organization Profile & Industry Blueprint</span>
+                  <span>Client Organization Profile & Accounting Ingestion Blueprint</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Select an industry template to automatically configure document schemas, reconciliation rules, and accounting workflows.
+                  Select a starter blueprint recipe or configure dedicated ingestion pipelines across Accounts Receivable, Payables, and Bank Reconciliation.
                 </p>
               </div>
 
-              {/* Industry Preset Selector */}
+              {/* Starter Recipe Selector */}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-2">
-                  Select Industry Template
+                  Select Starter Workflow Blueprint
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {INDUSTRY_PRESETS.map((preset) => {
-                    const isSelected = selectedIndustry === preset.id;
+                  {STARTER_RECIPES.map((recipe) => {
+                    const isSelected = selectedRecipe === recipe.id;
                     return (
                       <div
-                        key={preset.id}
-                        onClick={() => handleSelectIndustryPreset(preset.id)}
+                        key={recipe.id}
+                        onClick={() => handleSelectRecipe(recipe.id)}
                         className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                           isSelected
                             ? 'bg-sky-500/15 border-sky-500/60 shadow-lg shadow-sky-500/10'
@@ -524,22 +777,179 @@ export const ClientSetupWizardModal: React.FC = () => {
                       >
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-2xl">{preset.icon}</span>
+                            <span className="text-2xl">{recipe.icon}</span>
                             {isSelected && (
                               <span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded-full">
                                 Selected
                               </span>
                             )}
                           </div>
-                          <h4 className="text-xs font-bold text-white">{preset.name}</h4>
+                          <h4 className="text-xs font-bold text-white">{recipe.name}</h4>
+                          <p className="text-[10px] text-sky-400 font-medium mt-0.5">{recipe.tagline}</p>
                           <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
-                            {preset.description}
+                            {recipe.description}
                           </p>
                         </div>
-                        <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-sky-400 font-mono">
-                          <span>{preset.defaultSource}</span>
-                          <span>{preset.defaultVolume}</span>
+                        <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                          <span className="text-sky-400">{recipe.pipelines.length} Pipelines</span>
+                          <span>{recipe.defaultVolume}</span>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Active Configured Ingestion Pipelines Hub */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-bold text-white">
+                      Active Ingestion Pipelines ({configuredPipelines.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingPipeline(!isAddingPipeline)}
+                    className="text-[11px] bg-sky-600 hover:bg-sky-500 text-white font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Pipeline</span>
+                  </button>
+                </div>
+
+                {/* Inline Add Pipeline Form */}
+                {isAddingPipeline && (
+                  <div className="bg-slate-900 border border-sky-500/30 rounded-xl p-3.5 space-y-3 animate-in fade-in">
+                    <div className="text-xs font-bold text-sky-300">Configure New Ingestion Pipeline</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Pipeline Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Counter Sales Slips"
+                          value={newPipeName}
+                          onChange={(e) => setNewPipeName(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Accounting Section</label>
+                        <select
+                          value={newPipeSection}
+                          onChange={(e) => setNewPipeSection(e.target.value as AccountingSection)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+                        >
+                          <option value="AR">🔵 Accounts Receivable (AR)</option>
+                          <option value="AP">🟠 Accounts Payable (AP)</option>
+                          <option value="BANK">🟢 Banking & Treasury</option>
+                          <option value="GL">🟣 General Ledger (GL)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Target Zoho Entity</label>
+                        <select
+                          value={newPipeEntity}
+                          onChange={(e) => setNewPipeEntity(e.target.value as AccountingEntityType)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+                        >
+                          {newPipeSection === 'AR' && (
+                            <>
+                              <option value="ar_sales_invoice">Sales Invoices / Delivery Slips (/invoices)</option>
+                              <option value="ar_customer_payment">Customer Payments & MoMo (/customerpayments)</option>
+                              <option value="ar_credit_note">Credit Notes (/creditnotes)</option>
+                            </>
+                          )}
+                          {newPipeSection === 'AP' && (
+                            <>
+                              <option value="ap_vendor_bill">Vendor / Supplier Bills (/bills)</option>
+                              <option value="ap_vendor_payment">Vendor Payments (/vendorpayments)</option>
+                              <option value="ap_direct_expense">Direct Expenses & Petty Cash (/expenses)</option>
+                            </>
+                          )}
+                          {newPipeSection === 'BANK' && (
+                            <>
+                              <option value="bank_statement">Bank Statements / Feeds (/banktransactions)</option>
+                              <option value="momo_statement">Mobile Money Merchant Statements (/banktransactions)</option>
+                            </>
+                          )}
+                          {newPipeSection === 'GL' && (
+                            <option value="gl_journal">Manual Double-Entry Journals (/journalentries)</option>
+                          )}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Source Channel</label>
+                        <select
+                          value={newPipeSource}
+                          onChange={(e) => setNewPipeSource(e.target.value as any)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+                        >
+                          <option value="google_drive">Google Drive</option>
+                          <option value="onedrive">OneDrive / SharePoint</option>
+                          <option value="email">Dedicated Email Alias</option>
+                          <option value="webhook">Webhook / API</option>
+                          <option value="manual">Manual Upload</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingPipeline(false)}
+                        className="text-xs text-slate-400 hover:text-white px-3 py-1 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddNewPipeline}
+                        disabled={!newPipeName.trim()}
+                        className="text-xs bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold px-3 py-1 rounded-lg cursor-pointer transition"
+                      >
+                        Confirm Pipeline
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pipelines List */}
+                <div className="space-y-2">
+                  {configuredPipelines.map((pipe) => {
+                    const sectionBadge =
+                      pipe.section === 'AR'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        : pipe.section === 'AP'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : pipe.section === 'BANK'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+
+                    return (
+                      <div
+                        key={pipe.id}
+                        className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs hover:border-slate-700 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${sectionBadge}`}>
+                            {pipe.section}
+                          </span>
+                          <div>
+                            <span className="font-semibold text-white">{pipe.name}</span>
+                            <span className="text-[11px] text-slate-400 ml-2">
+                              Target: <code className="text-sky-300 font-mono text-[10px]">{pipe.entity_type}</code> via {pipe.source_type}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePipeline(pipe.id)}
+                          className="text-slate-500 hover:text-red-400 p-1 cursor-pointer transition"
+                          title="Remove Pipeline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     );
                   })}
@@ -555,7 +965,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Apex Logistics Ghana"
+                    placeholder="e.g. Opera Square Electricals"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
@@ -591,7 +1001,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                         className="w-14 text-center bg-slate-950 border border-slate-800 rounded-xl px-2 py-2.5 text-lg text-white focus:outline-none focus:border-sky-500"
                       />
                       <div className="flex gap-1">
-                        {['🧺', '🏢', '⚡', '🚛', '🛍️', '🏥'].map((emoji) => (
+                        {['🛍️', '🏢', '🧺', '⚡', '🚛', '🏥'].map((emoji) => (
                           <button
                             key={emoji}
                             type="button"
@@ -612,7 +1022,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. 500+ Slips / mo"
+                    placeholder="e.g. 500+ Docs / mo"
                     value={projectedVolume}
                     onChange={(e) => setProjectedVolume(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
@@ -1416,7 +1826,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                   <div>
                     <h3 className="text-base font-bold text-white">{name || 'New Accounting Client'}</h3>
                     <p className="text-xs text-emerald-400 font-medium">
-                      {INDUSTRY_PRESETS.find((p) => p.id === selectedIndustry)?.name} • Ready for Production Ingestion
+                      {STARTER_RECIPES.find((p) => p.id === selectedRecipe)?.name} • Ready for Production Ingestion
                     </p>
                   </div>
                 </div>
@@ -1454,8 +1864,9 @@ export const ClientSetupWizardModal: React.FC = () => {
                       const handoverText = `
 # S4 Automations - Client Ingestion Handover
 Client Name: ${name}
-Industry: ${selectedIndustry}
+Blueprint: ${STARTER_RECIPES.find((p) => p.id === selectedRecipe)?.name || selectedRecipe}
 Operating Currency: ${currency}
+Pipelines: ${configuredPipelines.map((p) => `${p.name} (${p.section}: ${p.entity_type})`).join(', ')}
 
 ## Document Routing Instructions
 - Storage Channel: ${sourceType}
