@@ -51,17 +51,23 @@ async def test_zoho_vendor_creation():
 
 
 @pytest.mark.asyncio
-async def test_ap_bill_schemas():
-    extraction = OCRAPBillExtraction(
-        vendor_name="ABC Suppliers Ltd",
-        bill_date="2026-08-30",
-        bill_number="BILL-9901",
-        currency="GHS",
-        total_amount=450.0,
-        items=[
-            {"item_description": "Cleaning Detergent 50L", "quantity": 2, "unit_rate": 225.0, "amount": 450.0}
-        ],
-    )
-    assert extraction.vendor_name == "ABC Suppliers Ltd"
-    assert extraction.total_amount == 450.0
-    assert len(extraction.items) == 1
+async def test_accountant_bank_endpoints():
+    """Verify accountant endpoints for listing, querying and mapping bank transactions."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. List client bank transactions
+        list_res = await client.get("/api/v1/bank/clients/anr_group/transactions")
+        assert list_res.status_code == 200
+        assert isinstance(list_res.json(), list)
+
+        # 2. Upload a sample statement
+        files = {"file": ("test_stmt.csv", b"Date,Description,Debit,Credit,Balance\n2026-08-01,Service Fee,50.00,,500.00\n", "text/csv")}
+        upload_res = await client.post(
+            "/api/v1/bank/upload",
+            data={"client_id": "anr_group", "month": "August", "year": 2026},
+            files=files,
+        )
+        assert upload_res.status_code == 200
+        upload_data = upload_res.json()
+        assert upload_data["status"] == "success"
+

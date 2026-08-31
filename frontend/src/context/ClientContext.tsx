@@ -11,6 +11,7 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     status: 'live',
     statusText: 'Production Live',
     desc: 'Daily handwritten pickup/delivery slip OCR extraction, reconciliation, Google Sheets review sync, and Zoho Books draft invoicing.',
+    accounting_software: 'zoho_books',
     folderId: '1Uu_Q3p8s1_anr_laundry_slips',
     zohoOrg: '782910482',
     zohoContactId: 'cnt_luxwood_001',
@@ -21,7 +22,7 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     blueprints: [
       { title: 'Vision OCR Extraction', desc: 'Gemini 3.6 Flash structured JSON extraction on daily control sheets', status: 'active' },
       { title: 'Google Sheets Review Sync', desc: 'Populate Tab 1 (Daily Details) and Tab 2 (Monthly Billing Summary)', status: 'active' },
-      { title: 'Zoho Books Draft Invoicing', desc: '1-Click draft invoice creation appending newly approved line items', status: 'active' },
+      { title: 'Draft Invoicing Engine', desc: '1-Click draft invoice creation appending newly approved line items', status: 'active' },
     ],
   },
   {
@@ -31,15 +32,18 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     icon: '⚡',
     status: 'dev',
     statusText: 'In Development',
-    desc: 'Automated bank statement PDF parsing, multi-currency ledger matching, and Zoho Books expense journal posting.',
+    desc: 'Automated bank statement PDF parsing, multi-currency ledger matching, and Xero expense journal posting.',
+    accounting_software: 'xero',
+    folderId: 'xero_tenant_accra_01',
+    zohoOrg: 'xero_tenant_accra_01',
     workflowsCount: 3,
     projectedMonthlyVolume: '1,200+ Transactions / mo',
     currency: 'USD',
-    activeIntegrations: ['PDF Vision Parser', 'Zoho Books Journals', 'Bank Feeds', 'Inngest'],
+    activeIntegrations: ['PDF Vision Parser', 'Xero Accounting', 'Bank Feeds', 'Inngest'],
     blueprints: [
       { title: 'Bank Statement PDF Parser', desc: 'Extract structured transactions from multi-bank PDF statements', status: 'in_progress' },
       { title: 'AI Transaction Categorization', desc: 'Fuzzy-match chart of accounts and assign expense categories', status: 'in_progress' },
-      { title: 'Zoho Journal Batch Poster', desc: 'Post balanced double-entry journals into Zoho Books API', status: 'queued' },
+      { title: 'Journal Batch Poster', desc: 'Post balanced double-entry journals into Xero Accounting API', status: 'queued' },
     ],
   },
   {
@@ -50,14 +54,17 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     status: 'pending',
     statusText: 'Setup Pending',
     desc: 'Automated tenant rent receipt processing, monthly recurring billing, utility cost allocation, and late notice dispatch.',
+    accounting_software: 'quickbooks_online',
+    folderId: '9341452891048201',
+    zohoOrg: '9341452891048201',
     workflowsCount: 2,
     projectedMonthlyVolume: '85+ Units / mo',
     currency: 'GHS',
-    activeIntegrations: ['WhatsApp Receipts', 'Google Sheets', 'Zoho Invoicing', 'Inngest'],
+    activeIntegrations: ['WhatsApp Receipts', 'Google Sheets', 'QuickBooks Online', 'Inngest'],
     blueprints: [
       { title: 'Rent Receipt OCR Ingestion', desc: 'Extract tenant mobile money / bank transfer receipts', status: 'queued' },
       { title: 'Utility Cost Apportionment', desc: 'Apportion shared water/power bills across occupied units', status: 'queued' },
-      { title: 'Tenant Monthly Invoicing', desc: 'Generate tenant invoices with automated email/SMS dispatch', status: 'queued' },
+      { title: 'Tenant Monthly Invoicing', desc: 'Generate tenant invoices with automated dispatch in QuickBooks Online', status: 'queued' },
     ],
   },
 ];
@@ -138,7 +145,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             blueprints: c.blueprints || [
               { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
               { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
-              { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into Zoho Books', status: 'queued' },
+              { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
             ],
           }));
           setClients(mapped);

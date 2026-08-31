@@ -55,7 +55,7 @@ export const SheetsViewer: React.FC = () => {
             <h2 className="text-base font-bold text-white tracking-tight">Google Sheets Review & Reconciliation</h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Audit OCR extracted control slips, verify linen discrepancies, and approve line-items for Zoho Books invoicing.
+            Audit OCR extracted control slips, verify linen discrepancies, and approve line-items for automated accounting invoicing.
           </p>
         </div>
 

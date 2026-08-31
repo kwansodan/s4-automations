@@ -90,7 +90,7 @@ async def get_portal_client(request: Request) -> Dict[str, Any]:
 # Client Portal Authentication Endpoints
 # -------------------------------------------------------------------------
 
-@router.post("/v1/portal/auth/request-otp", summary="Client Portal: Request OTP via Email/Identifier")
+@router.post("/portal/auth/request-otp", summary="Client Portal: Request OTP via Email/Identifier")
 async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]:
     cleaned = payload.identifier.strip().lower()
     
@@ -152,7 +152,7 @@ async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]
     }
 
 
-@router.post("/v1/portal/auth/verify-otp", summary="Client Portal: Verify OTP & Login")
+@router.post("/portal/auth/verify-otp", summary="Client Portal: Verify OTP & Login")
 async def client_portal_verify_otp(payload: PortalOtpVerify) -> Dict[str, Any]:
     cleaned = payload.identifier.strip().lower()
     cleaned_otp = payload.otp.strip()
@@ -223,7 +223,7 @@ async def client_portal_verify_otp(payload: PortalOtpVerify) -> Dict[str, Any]:
 
 
 
-@router.get("/v1/portal/me", summary="Client Portal: Get Current Client Session")
+@router.get("/portal/me", summary="Client Portal: Get Current Client Session")
 async def client_portal_me(client: Dict[str, Any] = Depends(get_portal_client)) -> Dict[str, Any]:
     return {"authenticated": True, "client": client}
 
@@ -232,7 +232,7 @@ async def client_portal_me(client: Dict[str, Any] = Depends(get_portal_client)) 
 # Client Portal Transaction Clarification Endpoints
 # -------------------------------------------------------------------------
 
-@router.get("/v1/portal/transactions", summary="Client Portal: List Unresolved Transactions")
+@router.get("/portal/transactions", summary="Client Portal: List Unresolved Transactions")
 async def client_portal_list_transactions(client: Dict[str, Any] = Depends(get_portal_client)) -> List[Dict[str, Any]]:
     client_id = client["client_id"]
     with Session(get_engine()) as session:
@@ -245,7 +245,7 @@ async def client_portal_list_transactions(client: Dict[str, Any] = Depends(get_p
         return [tx.model_dump() for tx in txs]
 
 
-@router.post("/v1/portal/transactions/{tx_id}/explain", summary="Client Portal: Submit Explanation for Transaction")
+@router.post("/portal/transactions/{tx_id}/explain", summary="Client Portal: Submit Explanation for Transaction")
 async def client_portal_explain_transaction(
     tx_id: int,
     payload: BankTransactionUpdate,
@@ -275,7 +275,7 @@ async def client_portal_explain_transaction(
 # Accountant / Internal Endpoints
 # -------------------------------------------------------------------------
 
-@router.get("/v1/bank/clients/{client_id}/transactions", summary="Accountant: List Client Bank Transactions")
+@router.get("/bank/clients/{client_id}/transactions", summary="Accountant: List Client Bank Transactions")
 async def accountant_list_bank_transactions(client_id: str) -> List[Dict[str, Any]]:
     with Session(get_engine()) as session:
         txs = session.exec(
@@ -286,7 +286,7 @@ async def accountant_list_bank_transactions(client_id: str) -> List[Dict[str, An
         return [tx.model_dump() for tx in txs]
 
 
-@router.post("/v1/bank/transactions/{tx_id}/query", summary="Accountant: Add Clarification Query to Transaction")
+@router.post("/bank/transactions/{tx_id}/query", summary="Accountant: Add Clarification Query to Transaction")
 async def accountant_query_transaction(tx_id: int, payload: AccountantQueryRequest) -> Dict[str, Any]:
     with Session(get_engine()) as session:
         tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
@@ -301,7 +301,7 @@ async def accountant_query_transaction(tx_id: int, payload: AccountantQueryReque
         return {"success": True, "transaction": tx.model_dump()}
 
 
-@router.post("/v1/bank/transactions/{tx_id}/map", summary="Accountant: Map Transaction to Zoho Account")
+@router.post("/bank/transactions/{tx_id}/map", summary="Accountant: Map Transaction to Zoho Account")
 async def accountant_map_transaction(tx_id: int, payload: MapTransactionRequest) -> Dict[str, Any]:
     with Session(get_engine()) as session:
         tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
@@ -316,7 +316,7 @@ async def accountant_map_transaction(tx_id: int, payload: MapTransactionRequest)
         return {"success": True, "transaction": tx.model_dump()}
 
 
-@router.post("/v1/bank/upload", summary="Accountant: Ingest Bank Statement (CSV / PDF)")
+@router.post("/bank/upload", summary="Accountant: Ingest Bank Statement (CSV / PDF)")
 async def accountant_upload_bank_statement(
     client_id: str = Form(...),
     month: str = Form(default=datetime.now().strftime("%B")),

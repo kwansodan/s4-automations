@@ -55,7 +55,7 @@ export const KpiCards: React.FC = () => {
           {formatCurrency(approvedTotal)}
         </div>
         <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-          <span>Ready for 1-click Zoho Books invoicing</span>
+          <span>Ready for 1-click accounting invoice export</span>
         </div>
       </div>
 

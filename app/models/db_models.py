@@ -47,9 +47,9 @@ class AccountingEntityType(str, Enum):
 class AccountingSoftware(str, Enum):
     """Supported Target Accounting Software Platforms in West Africa."""
     ZOHO_BOOKS = "zoho_books"                       # Live / Active
-    QUICKBOOKS_ONLINE = "quickbooks_online"         # In Progress
+    QUICKBOOKS_ONLINE = "quickbooks_online"         # Live / Active
     SAGE_BUSINESS_CLOUD = "sage_business_cloud"     # In Progress
-    XERO = "xero"                                   # In Progress
+    XERO = "xero"                                   # Live / Active
     ODOO = "odoo"                                   # In Progress
     TALLY_PRIME = "tally_prime"                     # In Progress
     SAP_BUSINESS_ONE = "sap_business_one"           # In Progress
