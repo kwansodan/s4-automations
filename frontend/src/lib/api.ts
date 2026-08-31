@@ -545,5 +545,22 @@ export async function simulatePipelineExtraction(formData: FormData): Promise<Pi
   return handleResponse<PipelineSimulationResult>(res, 'Simulate pipeline extraction');
 }
 
+export async function deleteClient(clientId: string): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ success: boolean; message: string }>(res, 'Delete organisation');
+}
+
+export async function deletePipeline(clientId: string, pipelineId: string): Promise<{ success: boolean; message: string; remaining_pipelines_count: number }> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/pipelines/${pipelineId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ success: boolean; message: string; remaining_pipelines_count: number }>(res, 'Delete pipeline stream');
+}
+
+
 
 

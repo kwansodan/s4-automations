@@ -79,6 +79,7 @@ class ClientOrganization(SQLModel, table=True):
     active_integrations: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     pipelines: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured multi-pipeline ingestion streams")
+    team_members: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Organization team members and alert routing")
     stats_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     last_run_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=get_utc_now)

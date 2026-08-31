@@ -718,3 +718,22 @@ class AccountingCatalogFetchResponse(BaseModel):
     synced_at: str
 
 
+class NotificationPreferences(BaseModel):
+    """Notification subscriptions for organization stakeholders."""
+    executive_digest: bool = True
+    critical_anomalies: bool = True
+    staged_approvals: bool = False
+    channel: str = "email"  # email, whatsapp, both
+
+
+class OrganizationTeamMember(BaseModel):
+    """Organization stakeholder team member profile."""
+    id: str
+    name: str
+    email: str
+    phone: Optional[str] = None
+    role: str = "CFO"  # CFO, Financial_Controller, Operations_Lead, External_Auditor, Accounts_Payable_Clerk
+    notifications: NotificationPreferences = Field(default_factory=NotificationPreferences)
+
+
+

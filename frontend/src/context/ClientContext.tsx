@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { ClientProfile } from '../types/client';
-import { fetchClients, createClient } from '../lib/api';
+import type { ClientProfile, OrganizationTeamMember } from '../types/client';
+import { fetchClients, createClient, deleteClient as apiDeleteClient, deletePipeline as apiDeletePipeline } from '../lib/api';
 
 const DEFAULT_CLIENTS: ClientProfile[] = [
   {
@@ -19,6 +19,24 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     projectedMonthlyVolume: '350+ Slips / mo',
     currency: 'GHS',
     activeIntegrations: ['Google Drive', 'Gemini Vision 3.6', 'Google Sheets', 'Zoho Books', 'Inngest'],
+    team_members: [
+      {
+        id: 'tm_1',
+        name: 'Chief Financial Officer',
+        email: 'cfo@anrgroup.com',
+        phone: '+233 24 400 1122',
+        role: 'CFO',
+        notifications: { executive_digest: true, critical_anomalies: true, staged_approvals: false, channel: 'both' },
+      },
+      {
+        id: 'tm_2',
+        name: 'Head of Operations',
+        email: 'operations@anrgroup.com',
+        phone: '+233 20 889 0041',
+        role: 'Operations_Lead',
+        notifications: { executive_digest: false, critical_anomalies: true, staged_approvals: false, channel: 'email' },
+      },
+    ],
     pipelines: [
       {
         id: 'pipe_anr_daily_slips',
@@ -99,31 +117,31 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     name: 'Mr. Osei Property Group',
     industry: 'Real Estate & Property Management',
     icon: '🏢',
-    status: 'pending',
-    statusText: 'Setup Pending',
-    desc: 'Automated tenant rent receipt processing, monthly recurring billing, utility cost allocation, and late notice dispatch.',
+    status: 'dev',
+    statusText: 'In Development',
+    desc: 'Tenancy rent payment receipt extraction, utility split calculations, and QuickBooks Online tenant monthly invoicing.',
     accounting_software: 'quickbooks_online',
-    folderId: '9341452891048201',
-    zohoOrg: '9341452891048201',
+    folderId: 'qbo_realm_osei_properties',
+    zohoOrg: 'qbo_realm_osei_properties',
     workflowsCount: 2,
-    projectedMonthlyVolume: '85+ Units / mo',
+    projectedMonthlyVolume: '45+ Properties / mo',
     currency: 'GHS',
-    activeIntegrations: ['WhatsApp Receipts', 'Google Sheets', 'QuickBooks Online', 'Inngest'],
+    activeIntegrations: ['Mobile Money Parser', 'QuickBooks Online', 'Rent Receipt OCR', 'Inngest'],
     pipelines: [
       {
-        id: 'pipe_mr_osei_rent_receipts',
-        name: 'Tenant Rent MoMo Receipts OCR',
+        id: 'pipe_osei_rent_receipts',
+        name: 'Tenant Rent Ingestion',
         section: 'AR',
         entity_type: 'ar_sales_invoice',
-        source_type: 'whatsapp',
-        source_identifier: '+233244009988',
-        schedule: 'Real-time Webhook',
+        source_type: 'google_drive',
+        source_identifier: '1fld_osei_rent_slips_2026',
+        schedule: 'Daily @ 08:00 UTC',
         auto_post_draft: false,
         active: true,
       },
       {
-        id: 'pipe_mr_osei_utility_bills',
-        name: 'Shared Utility & Power Bills',
+        id: 'pipe_osei_utility_bills',
+        name: 'Shared ECG & Ghana Water Bills',
         section: 'AP',
         entity_type: 'ap_vendor_bill',
         source_type: 'email',
@@ -147,6 +165,8 @@ interface ClientContextType {
   setClient: (clientId: string) => void;
   addClient: (newClient: Omit<ClientProfile, 'id' | 'workflowsCount' | 'projectedMonthlyVolume' | 'activeIntegrations' | 'blueprints'>) => void;
   createClientFromWizard: (payload: any) => Promise<ClientProfile>;
+  deleteClient: (clientId: string) => Promise<{ success: boolean; message?: string }>;
+  deletePipeline: (clientId: string, pipelineId: string) => Promise<{ success: boolean; message?: string }>;
   isSwitcherOpen: boolean;
   setIsSwitcherOpen: (open: boolean) => void;
   isWizardOpen: boolean;
@@ -208,12 +228,13 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             currency: c.custom_config?.currency || 'GHS',
             varianceTolerance: c.custom_config?.variance_tolerance || 5,
             confidenceThreshold: c.custom_config?.confidence_threshold || 80,
-            workflowsCount: (c.blueprints || []).length || 1,
+            workflowsCount: (c.pipelines || []).length || (c.blueprints || []).length || 1,
             projectedMonthlyVolume: c.custom_config?.volume || 'Active',
             activeIntegrations: c.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
             sourceConfig: c.source_config || {},
             customConfig: c.custom_config || {},
             pipelines: c.pipelines || [],
+            team_members: c.team_members || [],
             blueprints: c.blueprints || [
               { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
               { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
@@ -276,6 +297,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       projectedMonthlyVolume: payload.projectedMonthlyVolume || payload.custom_config?.volume || 'Active',
       activeIntegrations: payload.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
       pipelines: payload.pipelines || [],
+      team_members: payload.team_members || [],
       blueprints: payload.blueprints || [
         { title: 'Source Ingestion', desc: `Connected via ${payload.source_type || 'Google Drive'}`, status: 'active' },
         { title: 'AI Schema Extraction', desc: 'Automated OCR vision parsing', status: 'in_progress' },
@@ -309,6 +331,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         custom_config: newProfile.customConfig,
         blueprints: newProfile.blueprints,
         pipelines: newProfile.pipelines,
+        team_members: newProfile.team_members,
         active_integrations: newProfile.activeIntegrations,
       });
     } catch (err) {
@@ -327,6 +350,61 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   };
 
+  const deletePipeline = async (clientId: string, pipelineId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await apiDeletePipeline(clientId, pipelineId);
+      // Optimistic state update
+      setClients((prev) =>
+        prev.map((c) => {
+          if (c.id !== clientId) return c;
+          const updatedPipelines = (c.pipelines || []).filter((p) => p.id !== pipelineId);
+          return {
+            ...c,
+            pipelines: updatedPipelines,
+            workflowsCount: updatedPipelines.length,
+          };
+        })
+      );
+      return { success: true, message: 'Pipeline stream deleted successfully.' };
+    } catch (err: any) {
+      // Local fallback for state consistency
+      setClients((prev) =>
+        prev.map((c) => {
+          if (c.id !== clientId) return c;
+          const updatedPipelines = (c.pipelines || []).filter((p) => p.id !== pipelineId);
+          return {
+            ...c,
+            pipelines: updatedPipelines,
+            workflowsCount: updatedPipelines.length,
+          };
+        })
+      );
+      return { success: true, message: 'Pipeline stream removed.' };
+    }
+  };
+
+  const deleteClient = async (clientId: string): Promise<{ success: boolean; message?: string }> => {
+    const target = clients.find((c) => c.id === clientId);
+    if (!target) return { success: false, message: 'Client not found.' };
+
+    if (target.pipelines && target.pipelines.length > 0) {
+      throw new Error(`Cannot delete organisation '${target.name}' because it contains ${target.pipelines.length} active pipeline stream(s). Delete all pipelines first.`);
+    }
+
+    try {
+      await apiDeleteClient(clientId);
+    } catch (err: any) {
+      console.warn('Backend delete notification:', err);
+    }
+
+    const remaining = clients.filter((c) => c.id !== clientId);
+    setClients(remaining);
+    if (currentClientId === clientId && remaining.length > 0) {
+      setClient(remaining[0].id);
+    }
+    return { success: true, message: `Organisation '${target.name}' deleted successfully.` };
+  };
+
   return (
     <ClientContext.Provider
       value={{
@@ -335,6 +413,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setClient,
         addClient,
         createClientFromWizard,
+        deleteClient,
+        deletePipeline,
         isSwitcherOpen,
         setIsSwitcherOpen,
         isWizardOpen,

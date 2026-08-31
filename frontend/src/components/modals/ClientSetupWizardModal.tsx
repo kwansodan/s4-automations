@@ -6,6 +6,7 @@ import type {
   IngestionPipeline,
   StarterRecipe,
   AccountingSoftware,
+  OrganizationTeamMember,
 } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import {
@@ -300,6 +301,22 @@ export const ClientSetupWizardModal: React.FC = () => {
   const [enableSheetsSync, setEnableSheetsSync] = useState<boolean>(true);
   const [notificationEmail, setNotificationEmail] = useState<string>('cdanso@service4gh.com');
 
+  // Step 3 Stakeholder Team Members State
+  const [teamMembers, setTeamMembers] = useState<OrganizationTeamMember[]>([
+    {
+      id: 'tm_cfo_01',
+      name: 'Chief Financial Officer',
+      email: 'cfo@clientorg.com',
+      phone: '+233 24 000 0000',
+      role: 'CFO',
+      notifications: { executive_digest: true, critical_anomalies: true, staged_approvals: false, channel: 'both' },
+    },
+  ]);
+  const [newMemberName, setNewMemberName] = useState<string>('');
+  const [newMemberEmail, setNewMemberEmail] = useState<string>('');
+  const [newMemberPhone, setNewMemberPhone] = useState<string>('');
+  const [newMemberRole, setNewMemberRole] = useState<OrganizationTeamMember['role']>('Financial_Controller');
+
   // Step 4: Starter Pipelines State
   const [configuredPipelines, setConfiguredPipelines] = useState<IngestionPipeline[]>(STARTER_RECIPES[0].pipelines);
 
@@ -320,6 +337,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       if (wizardDraft.defaultIncomeAccount !== undefined) setDefaultIncomeAccount(wizardDraft.defaultIncomeAccount);
       if (wizardDraft.taxRateVat !== undefined) setTaxRateVat(wizardDraft.taxRateVat);
       if (wizardDraft.configuredPipelines !== undefined) setConfiguredPipelines(wizardDraft.configuredPipelines);
+      if (wizardDraft.teamMembers !== undefined) setTeamMembers(wizardDraft.teamMembers);
       if (wizardDraft.aiEngine !== undefined) setAiEngine(wizardDraft.aiEngine);
       if (wizardDraft.varianceTolerance !== undefined) setVarianceTolerance(wizardDraft.varianceTolerance);
       if (wizardDraft.confidenceThreshold !== undefined) setConfidenceThreshold(wizardDraft.confidenceThreshold);
@@ -343,6 +361,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       defaultIncomeAccount,
       taxRateVat,
       configuredPipelines,
+      teamMembers,
       aiEngine,
       varianceTolerance,
       confidenceThreshold,
@@ -442,6 +461,7 @@ export const ClientSetupWizardModal: React.FC = () => {
         projectedMonthlyVolume: projectedVolume,
         blueprints,
         pipelines: configuredPipelines,
+        team_members: teamMembers,
         active_integrations: [
           'Gemini Vision',
           currentPlatform?.name || 'Accounting Platform',
@@ -924,10 +944,168 @@ export const ClientSetupWizardModal: React.FC = () => {
                 </div>
               </div>
 
+              {/* Stakeholder Team Members & CFO Notification Routing */}
+              <div className="space-y-4 pt-3 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-white flex items-center gap-2">
+                      <Users className="w-4 h-4 text-sky-400" />
+                      <span>CFO &amp; Organisation Stakeholder Routing ({teamMembers.length} Members)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Configure organization contacts to receive executive financial digests, discrepancy alerts, or staged review requests.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Team Members List */}
+                <div className="space-y-2">
+                  {teamMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-white">{member.name}</span>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-500/30">
+                            {member.role.replace('_', ' ')}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">{member.email}</span>
+                          {member.phone && (
+                            <span className="text-[10px] text-slate-500 font-mono">({member.phone})</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, notifications: { ...m.notifications, executive_digest: !m.notifications.executive_digest } } : m));
+                            }}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded border transition cursor-pointer ${
+                              member.notifications.executive_digest
+                                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                                : 'bg-slate-900 text-slate-500 border-slate-800'
+                            }`}
+                          >
+                            📊 Executive Digest {member.notifications.executive_digest ? '✓' : '✗'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, notifications: { ...m.notifications, critical_anomalies: !m.notifications.critical_anomalies } } : m));
+                            }}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded border transition cursor-pointer ${
+                              member.notifications.critical_anomalies
+                                ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                                : 'bg-slate-900 text-slate-500 border-slate-800'
+                            }`}
+                          >
+                            ⚠️ Anomaly Alerts {member.notifications.critical_anomalies ? '✓' : '✗'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, notifications: { ...m.notifications, staged_approvals: !m.notifications.staged_approvals } } : m));
+                            }}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded border transition cursor-pointer ${
+                              member.notifications.staged_approvals
+                                ? 'bg-sky-950 text-sky-300 border-sky-500/40'
+                                : 'bg-slate-900 text-slate-500 border-slate-800'
+                            }`}
+                          >
+                            ✍️ Sign-off Needed {member.notifications.staged_approvals ? '✓' : '✗'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setTeamMembers(teamMembers.filter(m => m.id !== member.id))}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-900 transition self-end sm:self-center cursor-pointer"
+                        title="Remove member"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Member Form */}
+                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-2.5">
+                  <span className="text-[11px] font-bold text-slate-300 block">Add Stakeholder / Team Member</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Name (e.g. Kwame Mensah)"
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email (e.g. cfo@client.com)"
+                      value={newMemberEmail}
+                      onChange={(e) => setNewMemberEmail(e.target.value)}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="WhatsApp (optional)"
+                      value={newMemberPhone}
+                      onChange={(e) => setNewMemberPhone(e.target.value)}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <select
+                      value={newMemberRole}
+                      onChange={(e) => setNewMemberRole(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="CFO">CFO / Finance Director</option>
+                      <option value="Financial_Controller">Financial Controller</option>
+                      <option value="Operations_Lead">Operations Lead</option>
+                      <option value="External_Auditor">External Auditor</option>
+                      <option value="Accounts_Payable_Clerk">AP Clerk</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newMemberName.trim() || !newMemberEmail.trim()) return;
+                        setTeamMembers([
+                          ...teamMembers,
+                          {
+                            id: `tm_${Date.now()}`,
+                            name: newMemberName.trim(),
+                            email: newMemberEmail.trim(),
+                            phone: newMemberPhone.trim() || undefined,
+                            role: newMemberRole,
+                            notifications: {
+                              executive_digest: newMemberRole === 'CFO' || newMemberRole === 'Financial_Controller',
+                              critical_anomalies: true,
+                              staged_approvals: false,
+                              channel: newMemberPhone.trim() ? 'both' : 'email',
+                            },
+                          },
+                        ]);
+                        setNewMemberName('');
+                        setNewMemberEmail('');
+                        setNewMemberPhone('');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 text-xs font-bold transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Stakeholder</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-3 pt-2 border-t border-slate-800">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    CPA Quarantine Alert Email (Mailjet Notifications)
+                    CPA Primary Quarantine Alert Email (Mailjet Notifications)
                   </label>
                   <input
                     type="email"

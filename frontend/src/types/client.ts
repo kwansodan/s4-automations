@@ -217,6 +217,20 @@ export interface ExternalChecklistItem {
   required: boolean;
 }
 
+export interface OrganizationTeamMember {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: 'CFO' | 'Financial_Controller' | 'Operations_Lead' | 'External_Auditor' | 'Accounts_Payable_Clerk';
+  notifications: {
+    executive_digest: boolean;
+    critical_anomalies: boolean;
+    staged_approvals: boolean;
+    channel: 'email' | 'whatsapp' | 'both';
+  };
+}
+
 export interface ClientProfile {
   id: string;
   name: string;
@@ -239,6 +253,7 @@ export interface ClientProfile {
   activeIntegrations: string[];
   blueprints: BlueprintStep[];
   pipelines?: IngestionPipeline[];
+  team_members?: OrganizationTeamMember[];
   sourceConfig?: Record<string, any>;
   customConfig?: Record<string, any>;
   externalChecklist?: ExternalChecklistItem[];

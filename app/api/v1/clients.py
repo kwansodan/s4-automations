@@ -37,6 +37,7 @@ class ClientCreatePayload(BaseModel):
     custom_config: Dict[str, Any] = Field(default_factory=dict)
     blueprints: Optional[List[Dict[str, Any]]] = None
     pipelines: Optional[List[Dict[str, Any]]] = None
+    team_members: Optional[List[Dict[str, Any]]] = None
     active_integrations: Optional[List[str]] = None
 
 
@@ -328,6 +329,7 @@ async def create_client(
         active_integrations=default_integrations,
         blueprints=default_blueprints,
         pipelines=payload.pipelines or [],
+        team_members=payload.team_members or [],
     )
     db.add(new_client)
     db.commit()
@@ -785,3 +787,44 @@ async def trigger_client_strategy(
 
     result = await strategy.execute(month=month, year=year, auto_post=auto_post)
     return result.model_dump()
+
+
+@router.delete("/{client_id}", summary="Delete Client Organisation (Strict Guard)")
+async def delete_client(
+    client_id: str,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Deletes an organisation ONLY IF it has NO configured pipelines.
+    If the organisation has 1 or more pipelines, deletion is blocked to prevent accidental data loss.
+    """
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    active_pipelines = client.pipelines or []
+    if len(active_pipelines) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot delete organisation '{client.name}' because it contains {len(active_pipelines)} "
+                f"active pipeline stream(s). Please delete or reassign all pipelines first."
+            ),
+        )
+
+    # Delete client from DB
+    db.delete(client)
+    db.commit()
+
+    AuditService.log(
+        client_id=client_id,
+        action="CLIENT_ORGANISATION_DELETED",
+        details={"client_name": client.name, "deleted_at": datetime.now().isoformat()},
+    )
+
+    return {
+        "success": True,
+        "message": f"Organisation '{client.name}' deleted successfully.",
+        "client_id": client_id,
+    }
+

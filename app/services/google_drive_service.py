@@ -243,3 +243,259 @@ class GoogleDriveService:
                 "mock_mode": False,
             }
 
+    @staticmethod
+    def get_month_aliases(month_name: str, year: int) -> List[str]:
+        """Generates common month/year naming aliases used across client operational drives."""
+        m_lower = month_name.lower().strip()
+        month_map = {
+            "january": ("jan", "01", "1"), "february": ("feb", "02", "2"),
+            "march": ("mar", "03", "3"), "april": ("apr", "04", "4"),
+            "may": ("may", "05", "5"), "june": ("jun", "06", "6"),
+            "july": ("jul", "07", "7"), "august": ("aug", "08", "8"),
+            "september": ("sep", "09", "9"), "october": ("oct", "10", "10"),
+            "november": ("nov", "11", "11"), "december": ("dec", "12", "12"),
+        }
+        
+        full_name = month_name.capitalize()
+        short_name, num_padded, num_raw = month_map.get(m_lower, (m_lower[:3], "00", "0"))
+        short_cap = short_name.capitalize()
+        yr_short = str(year)[-2:]
+        yr_full = str(year)
+
+        aliases = [
+            f"{full_name} {yr_full}", f"{full_name}_{yr_full}", f"{full_name}-{yr_full}", f"{full_name}{yr_full}",
+            f"{short_cap} {yr_full}", f"{short_cap}_{yr_full}", f"{short_cap}-{yr_full}", f"{short_cap}{yr_full}",
+            f"{short_cap} {yr_short}", f"{short_cap}_{yr_short}", f"{short_cap}-{yr_short}",
+            f"{yr_full}-{num_padded}", f"{yr_full}_{num_padded}", f"{yr_full} {num_padded}",
+            f"{num_padded}-{yr_full}", f"{num_padded}_{yr_full}", f"{num_padded} {yr_full}",
+            f"{num_padded}_{full_name}_{yr_full}", f"{num_padded}_{short_cap}_{yr_full}",
+            full_name, short_cap,
+        ]
+        return list(dict.fromkeys(aliases))
+
+    async def list_control_slips(self, folder_id: str, month: str, year: int) -> List[Any]:
+        """Discovers source documents across Month-First, Customer-First, or Flat Drive layouts."""
+        return await self.discover_documents_multi_convention(folder_id, month, year)
+
+    async def discover_documents_multi_convention(
+        self, folder_id: str, month: str, year: int
+    ) -> List[Any]:
+        """
+        Resilient Multi-Convention Google Drive Discovery Engine:
+        - Pass 1 (Month-First): Looks for matching Month folders in root -> scans customer subfolders / files.
+        - Pass 2 (Customer-First): Looks for Customer folders in root -> scans matching Month subfolders.
+        - Pass 3 (Flat): Scans direct image / PDF files in the target folder.
+        Automatically tags `customer_name_hint` and `customer_slug` in metadata.
+        """
+        from app.strategies.base import SourceDocument, SourceType
+
+        if settings.MOCK_MODE or not self.service or not folder_id or folder_id.startswith("mock_"):
+            logger.info(f"[MOCK] Multi-convention document discovery for folder '{folder_id}' ({month} {year})")
+            return [
+                SourceDocument(
+                    file_name=f"mock_slip_luxwood_{month.lower()}_{year}_01.jpg",
+                    source_type=SourceType.GOOGLE_DRIVE,
+                    source_identifier=f"mock_doc_{folder_id}_01",
+                    mime_type="image/jpeg",
+                    metadata={
+                        "folder_id": folder_id,
+                        "customer_name_hint": "Luxwood Hotel",
+                        "customer_slug": "luxwood",
+                        "month": month,
+                        "year": year,
+                        "hierarchy_pattern": "month_first",
+                    },
+                ),
+                SourceDocument(
+                    file_name=f"mock_slip_lennox_{month.lower()}_{year}_02.png",
+                    source_type=SourceType.GOOGLE_DRIVE,
+                    source_identifier=f"mock_doc_{folder_id}_02",
+                    mime_type="image/png",
+                    metadata={
+                        "folder_id": folder_id,
+                        "customer_name_hint": "The Lennox",
+                        "customer_slug": "the_lennox",
+                        "month": month,
+                        "year": year,
+                        "hierarchy_pattern": "customer_first",
+                    },
+                ),
+            ]
+
+        month_aliases = self.get_month_aliases(month, year)
+        aliases_lower = {a.lower() for a in month_aliases}
+        discovered_docs: List[SourceDocument] = []
+        ignored_names = {"processed", "archive", "trash", "templates", "backup", "archived", "temp"}
+
+        try:
+            # 1. Fetch child folders and loose files in the target root folder
+            query = f"'{folder_id}' in parents and trashed = false"
+            res = self.service.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name, mimeType, webViewLink, size, createdTime)",
+                pageSize=150,
+            ).execute()
+            items = res.get("files", [])
+
+            child_folders = [f for f in items if f.get("mimeType") == "application/vnd.google-apps.folder"]
+            child_files = [f for f in items if f.get("mimeType") != "application/vnd.google-apps.folder"]
+
+            # -------------------------------------------------------------
+            # PASS 1: Check for Month-First Hierarchy (Root -> Month Folder -> Customer Folders / Files)
+            # -------------------------------------------------------------
+            matching_month_folders = [
+                f for f in child_folders if f.get("name", "").strip().lower() in aliases_lower
+            ]
+
+            if matching_month_folders:
+                logger.info(f"📁 [Drive Pass 1: Month-First] Found {len(matching_month_folders)} month folder(s) for '{month} {year}'")
+                for mf in matching_month_folders:
+                    m_id = mf["id"]
+                    m_name = mf["name"]
+
+                    # List items inside Month folder
+                    m_res = self.service.files().list(
+                        q=f"'{m_id}' in parents and trashed = false",
+                        spaces="drive",
+                        fields="files(id, name, mimeType, webViewLink, size, createdTime)",
+                        pageSize=150,
+                    ).execute()
+                    m_items = m_res.get("files", [])
+                    m_subfolders = [f for f in m_items if f.get("mimeType") == "application/vnd.google-apps.folder"]
+                    m_files = [f for f in m_items if f.get("mimeType") != "application/vnd.google-apps.folder"]
+
+                    # If customer subfolders exist inside the month folder (e.g. August 2026 / Luxwood Hotel)
+                    for cust_fld in m_subfolders:
+                        cust_name = cust_fld["name"].strip()
+                        if cust_name.lower() in ignored_names:
+                            continue
+                        cust_id = cust_fld["id"]
+                        cust_slug = cust_name.lower().replace(" ", "_").replace("-", "_")
+
+                        slips = self.list_unprocessed_slips(cust_id)
+                        for s in slips:
+                            discovered_docs.append(
+                                SourceDocument(
+                                    file_name=s.get("name", "slip.jpg"),
+                                    source_type=SourceType.GOOGLE_DRIVE,
+                                    source_identifier=s.get("id"),
+                                    mime_type=s.get("mimeType", "image/jpeg"),
+                                    metadata={
+                                        "folder_id": cust_id,
+                                        "month_folder_id": m_id,
+                                        "month_folder_name": m_name,
+                                        "customer_name_hint": cust_name,
+                                        "customer_slug": cust_slug,
+                                        "month": month,
+                                        "year": year,
+                                        "hierarchy_pattern": "month_first_customer_subfolder",
+                                    },
+                                )
+                            )
+
+                    # Also pick up direct files placed in the Month folder root
+                    for f in m_files:
+                        if self._is_supported_doc(f):
+                            discovered_docs.append(
+                                SourceDocument(
+                                    file_name=f.get("name", "doc.pdf"),
+                                    source_type=SourceType.GOOGLE_DRIVE,
+                                    source_identifier=f.get("id"),
+                                    mime_type=f.get("mimeType", "application/pdf"),
+                                    metadata={
+                                        "folder_id": m_id,
+                                        "month_folder_id": m_id,
+                                        "month_folder_name": m_name,
+                                        "month": month,
+                                        "year": year,
+                                        "hierarchy_pattern": "month_first_direct_files",
+                                    },
+                                )
+                            )
+
+            # -------------------------------------------------------------
+            # PASS 2: Check for Customer-First Hierarchy (Root -> Customer Folders -> Month Subfolders)
+            # -------------------------------------------------------------
+            if not discovered_docs and child_folders:
+                logger.info("📁 [Drive Pass 2: Customer-First] Checking customer folders for nested month subfolders...")
+                for cust_fld in child_folders:
+                    cust_name = cust_fld["name"].strip()
+                    if cust_name.lower() in ignored_names:
+                        continue
+                    cust_id = cust_fld["id"]
+                    cust_slug = cust_name.lower().replace(" ", "_").replace("-", "_")
+
+                    # Query subfolders of this customer folder
+                    cust_res = self.service.files().list(
+                        q=f"'{cust_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                        spaces="drive",
+                        fields="files(id, name)",
+                        pageSize=50,
+                    ).execute()
+                    cust_subflds = cust_res.get("files", [])
+
+                    matching_month_subflds = [
+                        sf for sf in cust_subflds if sf.get("name", "").strip().lower() in aliases_lower
+                    ]
+
+                    for mf in matching_month_subflds:
+                        slips = self.list_unprocessed_slips(mf["id"])
+                        for s in slips:
+                            discovered_docs.append(
+                                SourceDocument(
+                                    file_name=s.get("name", "slip.jpg"),
+                                    source_type=SourceType.GOOGLE_DRIVE,
+                                    source_identifier=s.get("id"),
+                                    mime_type=s.get("mimeType", "image/jpeg"),
+                                    metadata={
+                                        "folder_id": mf["id"],
+                                        "parent_customer_id": cust_id,
+                                        "customer_name_hint": cust_name,
+                                        "customer_slug": cust_slug,
+                                        "month": month,
+                                        "year": year,
+                                        "hierarchy_pattern": "customer_first_month_subfolder",
+                                    },
+                                )
+                            )
+
+            # -------------------------------------------------------------
+            # PASS 3: Flat Folder Discovery (Direct loose files in folder_id)
+            # -------------------------------------------------------------
+            if not discovered_docs and child_files:
+                logger.info(f"📁 [Drive Pass 3: Flat Files] Scanning direct files in folder '{folder_id}'...")
+                for f in child_files:
+                    if self._is_supported_doc(f):
+                        discovered_docs.append(
+                            SourceDocument(
+                                file_name=f.get("name", "doc.pdf"),
+                                source_type=SourceType.GOOGLE_DRIVE,
+                                source_identifier=f.get("id"),
+                                mime_type=f.get("mimeType", "application/pdf"),
+                                metadata={
+                                    "folder_id": folder_id,
+                                    "month": month,
+                                    "year": year,
+                                    "hierarchy_pattern": "flat_folder",
+                                },
+                            )
+                        )
+
+            logger.info(
+                f"✅ Discovered {len(discovered_docs)} documents across Drive hierarchy for '{month} {year}'"
+            )
+            return discovered_docs
+
+        except Exception as e:
+            logger.error(f"Error executing multi-convention Google Drive discovery: {e}")
+            return []
+
+    def _is_supported_doc(self, file_dict: Dict[str, Any]) -> bool:
+        """Helper to determine if a file is an image or PDF document."""
+        mime = file_dict.get("mimeType", "")
+        name = file_dict.get("name", "").lower()
+        supported_exts = (".jpg", ".jpeg", ".png", ".webp", ".pdf", ".heic", ".bmp", ".tiff", ".tif", ".csv")
+        return mime.startswith("image/") or mime == "application/pdf" or name.endswith(supported_exts)
+
+

@@ -51,10 +51,12 @@ import {
   Trash2,
   Edit3,
   SlidersHorizontal,
+  Users,
+  MessageSquare,
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
-  const { currentClient, setIsWizardOpen } = useClient();
+  const { currentClient, setIsWizardOpen, deleteClient, deletePipeline } = useClient();
   const { setActiveTab, addLog, selectedMonth, selectedYear } = useAutomation();
 
   // Active Pipeline Tab: 'AR' | 'AP' | 'BANK'
@@ -329,15 +331,39 @@ export const ClientWorkspace: React.FC = () => {
   };
 
   const handleDeletePipelineSubmit = async (pipelineId: string, pipelineName: string) => {
-    if (!confirm(`Are you sure you want to delete pipeline "${pipelineName}"?`)) return;
+    if (!confirm(`Are you sure you want to delete pipeline stream "${pipelineName}"?`)) return;
     try {
-      const updatedPipelines = await deleteClientPipeline(currentClient.id, pipelineId);
-      if (Array.isArray(updatedPipelines)) {
-        currentClient.pipelines = updatedPipelines;
-      }
-      addLog('info', `🗑️ Deleted pipeline "${pipelineName}" for ${currentClient.name}`);
+      await deletePipeline(currentClient.id, pipelineId);
+      addLog('info', `🗑️ Deleted pipeline stream "${pipelineName}" for ${currentClient.name}`);
     } catch (err: any) {
       addLog('error', `Failed to delete pipeline: ${err.message}`);
+    }
+  };
+
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+
+  const handleDeleteOrganisation = async () => {
+    const pipeCount = (currentClient.pipelines || []).length;
+    if (pipeCount > 0) {
+      alert(`Cannot delete organisation "${currentClient.name}" because it has ${pipeCount} active pipeline stream(s). Please delete all pipeline streams first.`);
+      return;
+    }
+
+    const confirmation = prompt(`⚠️ DANGER: You are about to permanently delete organisation "${currentClient.name}".\n\nTo confirm, please type "${currentClient.name}" below:`);
+    if (confirmation !== currentClient.name) {
+      if (confirmation !== null) alert("Confirmation name did not match. Deletion cancelled.");
+      return;
+    }
+
+    setIsDeletingOrg(true);
+    try {
+      await deleteClient(currentClient.id);
+      addLog('success', `🗑️ Successfully deleted organisation "${currentClient.name}".`);
+    } catch (err: any) {
+      alert(`Deletion blocked: ${err.message}`);
+      addLog('error', `Failed to delete organisation: ${err.message}`);
+    } finally {
+      setIsDeletingOrg(false);
     }
   };
 
@@ -1479,6 +1505,70 @@ export const ClientWorkspace: React.FC = () => {
         </div>
       </div>
 
+      {/* Organization Stakeholders & Team Notification Routing */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-sky-400" />
+            <h2 className="text-base font-bold text-white tracking-tight">Organization Stakeholders &amp; Notification Routing</h2>
+          </div>
+          <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
+            {(currentClient.team_members || []).length} Stakeholder(s)
+          </span>
+        </div>
+
+        {(currentClient.team_members && currentClient.team_members.length > 0) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {currentClient.team_members.map((member) => (
+              <div key={member.id} className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    {member.name}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/30">
+                    {member.role.replace('_', ' ')}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-mono text-slate-300">
+                    <Mail className="w-3 h-3 text-slate-500" />
+                    <span>{member.email}</span>
+                  </div>
+                  {member.phone && (
+                    <div className="flex items-center gap-1.5 font-mono text-slate-400 text-[10px]">
+                      <MessageSquare className="w-3 h-3 text-slate-500" />
+                      <span>{member.phone}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1.5 border-t border-slate-800/80">
+                  {member.notifications.executive_digest && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                      📊 Executive Digest
+                    </span>
+                  )}
+                  {member.notifications.critical_anomalies && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/30">
+                      ⚠️ Anomaly Alerts
+                    </span>
+                  )}
+                  {member.notifications.staged_approvals && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-500/30">
+                      ✍️ Sign-off Needed
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-3.5 text-xs text-slate-400">
+            No specific team members mapped yet. Notifications route to default accounting admin.
+          </div>
+        )}
+      </div>
+
       {/* Connected Integrations */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
         <h2 className="text-base font-bold text-white mb-3">Configured Integrations &amp; Storage</h2>
@@ -1494,6 +1584,67 @@ export const ClientWorkspace: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Danger Zone: Organisation Deletion Guard */}
+      <div className="bg-rose-950/20 border border-rose-500/30 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-rose-400" />
+            <h2 className="text-base font-bold text-white tracking-tight">Organisation Danger Zone</h2>
+          </div>
+          <span className="text-[10px] font-mono font-bold text-rose-300 bg-rose-950 px-2.5 py-1 rounded-lg border border-rose-500/40">
+            Strict Integrity Rule
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          To protect accounting audit integrity and prevent accidental data loss, an organisation <strong>cannot be deleted</strong> as long as it contains active ingestion pipeline streams.
+        </p>
+
+        {((currentClient.pipelines || []).length > 0) ? (
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                Organisation Deletion Locked
+              </span>
+              <p className="text-[11px] text-slate-400">
+                This organisation currently contains <strong>{(currentClient.pipelines || []).length} active pipeline stream(s)</strong>. Delete all streams in the Pipeline section above to unlock organisation deletion.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-600 text-xs font-bold opacity-60 cursor-not-allowed shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Organisation (Locked)</span>
+            </button>
+          </div>
+        ) : (
+          <div className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+                0 Pipeline Streams Active (Deletion Unlocked)
+              </span>
+              <p className="text-[11px] text-slate-300">
+                All streams have been cleared. You can now safely delete this client organisation.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteOrganisation}
+              disabled={isDeletingOrg}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-950/50 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{isDeletingOrg ? 'Deleting...' : 'Delete Organisation'}</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
+
