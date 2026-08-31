@@ -1006,15 +1006,20 @@ export const ClientSetupWizardModal: React.FC = () => {
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
                       />
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">OneDrive Drive ID / Folder Path</label>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">
+                        OneDrive / SharePoint Folder URL or Path
+                      </label>
                       <input
                         type="text"
-                        placeholder="e.g. b!xY9... or /Shared Documents/Ingest"
+                        placeholder="e.g. https://service4limitedcompany.sharepoint.com/sites/s4bookkeeping/Shared%20Documents/General/Opera%20square/Ingestion"
                         value={oneDriveDriveId}
                         onChange={(e) => setOneDriveDriveId(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
                       />
+                      <span className="text-[10px] text-slate-400 mt-1 block">
+                        You can paste full SharePoint web folder URLs directly copied from your web browser.
+                      </span>
                     </div>
                   </div>
                 </div>

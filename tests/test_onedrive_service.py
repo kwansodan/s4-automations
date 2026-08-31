@@ -26,3 +26,15 @@ async def test_onedrive_document_download():
     assert docs[0].source_type == SourceType.ONEDRIVE
     assert docs[0].file_name.endswith(".pdf")
     assert docs[0].get_checksum() is not None
+
+
+def test_sharepoint_url_parsing():
+    """Verify SharePoint web folder URL is parsed into hostname, site_name, and relative path."""
+    url = "https://service4limitedcompany.sharepoint.com/sites/s4bookkeeping/Shared%20Documents/General/Opera%20square/Ingestion"
+    parsed = OneDriveService.parse_folder_path_or_url(url)
+
+    assert parsed["type"] == "sharepoint_site"
+    assert parsed["hostname"] == "service4limitedcompany.sharepoint.com"
+    assert parsed["site_name"] == "s4bookkeeping"
+    assert "General/Opera square/Ingestion" in parsed["clean_path"]
+

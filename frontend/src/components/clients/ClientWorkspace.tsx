@@ -520,20 +520,29 @@ export const ClientWorkspace: React.FC = () => {
                 {clientConfig.source_type === 'onedrive' && (
                   <>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">OneDrive Drive ID</label>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                        OneDrive / SharePoint Folder URL or Path
+                      </label>
                       <input
                         type="text"
-                        placeholder="e.g. b!xY9... or drive ID"
-                        value={clientConfig.folder_id || clientConfig.source_config?.drive_id || ''}
+                        placeholder="e.g. https://service4limitedcompany.sharepoint.com/sites/s4bookkeeping/Shared%20Documents/General/Opera%20square/Ingestion"
+                        value={clientConfig.folder_id || clientConfig.source_config?.folder_path || clientConfig.source_config?.drive_id || ''}
                         onChange={(e) =>
                           setClientConfig({
                             ...clientConfig,
                             folder_id: e.target.value,
-                            source_config: { ...clientConfig.source_config, drive_id: e.target.value },
+                            source_config: {
+                              ...clientConfig.source_config,
+                              folder_path: e.target.value,
+                              drive_id: e.target.value,
+                            },
                           })
                         }
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                       />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Accepts full SharePoint folder web URLs directly copied from your browser.
+                      </span>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-400 mb-1">Azure Tenant ID</label>
