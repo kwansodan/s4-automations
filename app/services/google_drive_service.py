@@ -77,11 +77,29 @@ class GoogleDriveService:
             raise
 
     def get_month_folder(self, month_name: str, year: int) -> str:
-        """Gets or creates the Month folder '<Month> <YYYY>' under root CONTROL_SHEETS_FOLDER_ID."""
-        folder_name = f"{month_name} {year}"
+        """Gets or creates the Month folder under root CONTROL_SHEETS_FOLDER_ID, checking month aliases first."""
         root_id = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
         if not root_id or root_id in ("your_google_drive_folder_id", "your_folder_id", "1aB2cD3eF4gH..."):
             root_id = "root"
+
+        if settings.MOCK_MODE or not self.service or root_id.startswith("mock_"):
+            return f"mock_folder_{month_name.lower()}_{year}"
+
+        # First check if any existing folder matches any month aliases (e.g. Aug 2026, August 2026, 2026-08)
+        aliases = self.get_month_aliases(month_name, year)
+        aliases_lower = {a.lower() for a in aliases}
+        try:
+            query = f"'{root_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            res = self.service.files().list(q=query, spaces="drive", fields="files(id, name)", pageSize=100).execute()
+            for f in res.get("files", []):
+                if f.get("name", "").strip().lower() in aliases_lower:
+                    logger.info(f"Matched existing month folder alias '{f['name']}' (ID: {f['id']})")
+                    return f["id"]
+        except Exception as e:
+            logger.warning(f"Could not scan root folder for month aliases: {e}")
+
+        # Fallback to creating canonical folder 'Month YYYY'
+        folder_name = f"{month_name.capitalize()} {year}"
         return self.find_or_create_folder(folder_name, root_id)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))

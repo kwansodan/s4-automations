@@ -10,11 +10,7 @@ export const ClientsHub: React.FC = () => {
 
   const handleSelect = (client: ClientProfile) => {
     setClient(client.id);
-    if (client.id === 'anr_group') {
-      setActiveTab('dashboard');
-    } else {
-      setActiveTab('workspace');
-    }
+    setActiveTab('workspace');
   };
 
   return (
@@ -127,11 +123,18 @@ export const ClientsHub: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Trigger */}
+              {/* Action Trigger & Counts */}
               <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 font-mono">
-                  {client.projectedMonthlyVolume || `${client.workflowsCount} Workflows`}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                    {client.pipelines?.length || 0} Pipelines
+                  </span>
+                  {(client.team_members?.length || 0) > 0 && (
+                    <span className="text-[11px] font-semibold text-sky-400 font-mono bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30">
+                      {client.team_members?.length} Members
+                    </span>
+                  )}
+                </div>
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">
                   <span>Open Workspace</span>
                   <ArrowRight className="w-3.5 h-3.5" />

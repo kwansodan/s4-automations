@@ -196,6 +196,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     source_file_name=doc.file_name,
                     validation_result=validation_result,
                     staged_batch_id=batch_tmp_id,
+                    client_id=self.client_id,
                 )
 
             # Build extracted line item with validation metadata

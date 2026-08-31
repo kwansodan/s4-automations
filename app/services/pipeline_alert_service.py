@@ -25,9 +25,10 @@ class PipelineAlertService:
         source_file_name: str,
         validation_result: ContractValidationResult,
         staged_batch_id: str,
+        client_id: Optional[str] = None,
         recipient_email: Optional[str] = None,
     ) -> bool:
-        """Dispatches an email alert to the lead admin/accountant regarding contract validation failure."""
+        """Dispatches an email alert to the lead admin/accountant and subscribed CFO/team stakeholders."""
         target_email = recipient_email or settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
         subject = f"🚨 [Action Required] Pipeline Held: {client_name} - {pipeline_name} ({entity_type})"
 
@@ -125,6 +126,32 @@ class PipelineAlertService:
                 logger.info(f"✅ Dispatched pipeline failure alert for '{client_name}' to {target_email}")
             else:
                 logger.warning(f"Could not dispatch pipeline alert email to {target_email}")
+
+            # Also dispatch anomaly alerts to configured organization stakeholders (e.g. CFO, Controller)
+            if client_id:
+                try:
+                    from app.db.session import get_engine
+                    from sqlmodel import Session, select
+                    from app.models.db_models import ClientOrganization
+
+                    with Session(get_engine()) as session:
+                        client_org = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+                        if client_org and client_org.team_members:
+                            for tm in client_org.team_members:
+                                notifs = tm.get("notifications", {})
+                                tm_email = tm.get("email")
+                                if notifs.get("critical_anomalies") and tm_email and tm_email != target_email:
+                                    await MailjetService.send_email(
+                                        to_email=tm_email,
+                                        subject=subject,
+                                        html_content=html_content,
+                                        text_content=plain_text,
+                                        recipient_name=tm.get("name", client_name),
+                                    )
+                                    logger.info(f"✅ Dispatched critical anomaly alert to stakeholder: {tm.get('name')} ({tm_email})")
+                except Exception as ex:
+                    logger.warning(f"Could not dispatch stakeholder alerts for client '{client_id}': {ex}")
+
             return success
         except Exception as e:
             logger.error(f"Error dispatching pipeline alert email: {e}")
