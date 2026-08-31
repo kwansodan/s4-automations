@@ -22,8 +22,6 @@ export const Header: React.FC = () => {
   const { currentClient } = useClient();
   const { activeTab, setActiveTab, health, refreshAll, isLoading, pipelineProgress } = useAutomation();
 
-  const isAnr = currentClient.id === 'anr_group';
-
   return (
     <header className="sticky top-0 z-40 bg-slate-950/80 border-b border-slate-800/80 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,81 +51,29 @@ export const Header: React.FC = () => {
 
           {/* Center: Navigation Tabs */}
           <nav className="hidden lg:flex items-center gap-1 bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-inner">
-            {isAnr ? (
-              <>
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === 'dashboard'
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span>Dashboard</span>
-                </button>
+            <button
+              onClick={() => setActiveTab('workspace')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'workspace' || activeTab === 'dashboard'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Workspace</span>
+            </button>
 
-                <button
-                  onClick={() => setActiveTab('sheets')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === 'sheets'
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <TableProperties className="w-3.5 h-3.5" />
-                  <span>Review Sheets</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('invoicing')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === 'invoicing'
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Zoho Invoicing</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('catalog')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === 'catalog'
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>Catalog</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('config')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === 'config'
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>Settings</span>
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setActiveTab('workspace')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'workspace'
-                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Client Blueprint</span>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('sheets')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'sheets' || activeTab === 'invoicing'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <TableProperties className="w-3.5 h-3.5" />
+              <span>Review Sheets</span>
+            </button>
 
             <button
               onClick={() => setActiveTab('logs')}

@@ -56,7 +56,7 @@ const AutomationContext = createContext<AutomationContextType | undefined>(undef
 export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('workspace');
   const [selectedMonth, setSelectedMonth] = useState<string>('August');
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [sheetsSubTab, setSheetsSubTab] = useState<'monthly' | 'daily'>('monthly');

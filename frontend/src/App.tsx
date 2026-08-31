@@ -31,8 +31,6 @@ const MainLayout: React.FC = () => {
     return <LoginCard />;
   }
 
-  const isAnr = currentClient.id === 'anr_group';
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
       <Header />
@@ -41,14 +39,6 @@ const MainLayout: React.FC = () => {
         {/* Dynamic Route Switching */}
         {activeTab === 'clients' ? (
           <ClientsHub />
-        ) : !isAnr || activeTab === 'workspace' ? (
-          activeTab === 'logs' ? <LiveConsole /> : <ClientWorkspace />
-        ) : activeTab === 'dashboard' ? (
-          <div className="space-y-6 animate-in fade-in">
-            <KpiCards />
-            <ProgressTracker />
-            <SheetsViewer />
-          </div>
         ) : activeTab === 'sheets' || activeTab === 'invoicing' ? (
           <SheetsViewer />
         ) : activeTab === 'catalog' ? (
@@ -57,7 +47,9 @@ const MainLayout: React.FC = () => {
           <ConfigSection />
         ) : activeTab === 'logs' ? (
           <LiveConsole />
-        ) : null}
+        ) : (
+          <ClientWorkspace />
+        )}
       </main>
 
       {/* Global Modals */}
