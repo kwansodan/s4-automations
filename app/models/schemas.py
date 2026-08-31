@@ -398,6 +398,12 @@ class IngestionPipelineConfig(BaseModel):
     default_tax_rate: Optional[str] = None
     auto_post_to_zoho: bool = False
     is_active: bool = True
+    trigger_type: str = "scheduled_cron"  # realtime_webhook, scheduled_cron, manual_only, event_mesh
+    cron_expression: Optional[str] = "0 20 * * *"
+    cron_schedule_human: Optional[str] = "Daily at 8:00 PM"
+    webhook_slug: Optional[str] = None
+    last_triggered_at: Optional[str] = None
+    total_runs_count: int = 0
     notes: Optional[str] = ""
 
 

@@ -518,6 +518,70 @@ async def delete_pipeline(
     return client.pipelines
 
 
+@router.post("/{client_id}/pipelines/{pipeline_id}/trigger", summary="Trigger a Specific Pipeline Stream")
+async def trigger_pipeline_stream(
+    client_id: str,
+    pipeline_id: str,
+    payload: Optional[RunStrategyPayload] = None,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Triggers execution for an individual ingestion stream on-demand."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+
+    pipeline = next((p for p in (client.pipelines or []) if p.get("id") == pipeline_id), None)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found on client '{client_id}'.")
+
+    now = datetime.now()
+    month = payload.month or now.strftime("%B") if payload else now.strftime("%B")
+    year = payload.year or now.year if payload else now.year
+    auto_post = payload.auto_post_to_accounting if payload else pipeline.get("auto_post_to_zoho", False)
+
+    from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
+    strategy = DynamicBlueprintStrategy(client)
+
+    # Discover and extract for this specific pipeline
+    sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
+    extracted = await strategy.extract_and_validate(sources)
+    sync_res = await strategy.sync_review_workspace(month, year, extracted)
+
+    post_res = {"status": "SKIPPED", "invoices_created": 0}
+    if auto_post:
+        post_res = await strategy.post_to_accounting(month, year)
+
+    # Update pipeline run stats in database
+    current_pipes = list(client.pipelines or [])
+    for p in current_pipes:
+        if p.get("id") == pipeline_id:
+            p["last_triggered_at"] = datetime.now(timezone.utc).isoformat()
+            p["total_runs_count"] = int(p.get("total_runs_count", 0)) + 1
+    client.pipelines = current_pipes
+    client.updated_at = datetime.now(timezone.utc)
+    db.add(client)
+    db.commit()
+
+    AuditService.log(
+        client_id=client_id,
+        action="PIPELINE_STREAM_TRIGGERED",
+        details={"pipeline_id": pipeline_id, "name": pipeline.get("name"), "extracted_count": len(extracted)},
+    )
+
+    return {
+        "client_id": client_id,
+        "pipeline_id": pipeline_id,
+        "pipeline_name": pipeline.get("name"),
+        "status": "COMPLETED",
+        "month": month,
+        "year": year,
+        "sources_discovered": len(sources),
+        "items_extracted": len(extracted),
+        "sync_details": sync_res,
+        "post_results": post_res,
+    }
+
+
 @router.put("/{client_id}/ingestion", summary="Configure Client Ingestion Method")
 async def update_client_ingestion(
     client_id: str,

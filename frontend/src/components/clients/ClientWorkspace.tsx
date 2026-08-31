@@ -15,6 +15,7 @@ import {
   triggerApPipeline,
   saveClientPipeline,
   deleteClientPipeline,
+  triggerClientPipeline,
 } from '../../lib/api';
 import type { IngestionPipeline, AccountingSection, AccountingEntityType } from '../../types/client';
 import {
@@ -366,6 +367,25 @@ export const ClientWorkspace: React.FC = () => {
       addLog('info', `🗑️ Deleted pipeline "${pipelineName}" for ${currentClient.name}`);
     } catch (err: any) {
       addLog('error', `Failed to delete pipeline: ${err.message}`);
+    }
+  };
+
+  const [triggeringPipeId, setTriggeringPipeId] = useState<string | null>(null);
+
+  const handleTriggerStream = async (pipelineId: string, pipelineName: string) => {
+    setTriggeringPipeId(pipelineId);
+    addLog('info', `⚡ [STREAM TRIGGER] Initiating execution for stream "${pipelineName}" (${selectedMonth} ${selectedYear})...`);
+    try {
+      const result = await triggerClientPipeline(currentClient.id, pipelineId, {
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      addLog('success', `✅ Stream "${pipelineName}" completed: ${result.items_extracted || 0} items extracted, ${result.sources_discovered || 0} sources.`);
+      await loadTransactions();
+    } catch (err: any) {
+      addLog('error', `❌ Stream "${pipelineName}" execution failed: ${err.message}`);
+    } finally {
+      setTriggeringPipeId(null);
     }
   };
 
@@ -1326,6 +1346,22 @@ export const ClientWorkspace: React.FC = () => {
                       <span className={`w-2 h-2 rounded-full ${pipe.is_active !== false ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-slate-500'}`} />
                       <span>{pipe.name}</span>
                     </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700 flex items-center gap-1">
+                        {pipe.trigger_type === 'realtime_webhook' ? (
+                          <>⚡ Real-Time Webhook</>
+                        ) : pipe.trigger_type === 'manual_only' ? (
+                          <>🖱️ Manual On-Demand</>
+                        ) : (
+                          <>⏰ {pipe.cron_schedule_human || 'Daily @ 8:00 PM'}</>
+                        )}
+                      </span>
+                      {pipe.total_runs_count ? (
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {pipe.total_runs_count} runs
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-[11px] text-slate-400 mt-1">
                       Channel: <code className="text-sky-300 font-mono">{pipe.source_type}</code>
                       {pipe.source_identifier && (
@@ -1340,11 +1376,28 @@ export const ClientWorkspace: React.FC = () => {
                       </p>
                     )}
                   </div>
-                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>Target: Zoho API</span>
-                    <span className={pipe.auto_post_to_zoho ? 'text-emerald-400 font-bold' : 'text-amber-400 font-medium'}>
-                      {pipe.auto_post_to_zoho ? 'Auto-Post Live' : 'Review Ledger Staging'}
-                    </span>
+                  
+                  <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span>Target: Zoho API</span>
+                      <span className={pipe.auto_post_to_zoho ? 'text-emerald-400 font-bold' : 'text-amber-400 font-medium'}>
+                        {pipe.auto_post_to_zoho ? 'Auto-Post Live' : 'Review Ledger'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerStream(pipe.id, pipe.name)}
+                      disabled={triggeringPipeId === pipe.id}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 hover:text-white border border-sky-500/30 text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
+                    >
+                      {triggeringPipeId === pipe.id ? (
+                        <RefreshCw className="w-3 h-3 animate-spin text-sky-400" />
+                      ) : (
+                        <PlayCircle className="w-3 h-3 text-sky-400" />
+                      )}
+                      <span>{triggeringPipeId === pipe.id ? 'Running Stream...' : 'Trigger Stream Now'}</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -1367,7 +1420,7 @@ export const ClientWorkspace: React.FC = () => {
       {/* Pipeline Configuration Modal */}
       {isPipelineModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="w-5 h-5 text-sky-400" />
@@ -1480,6 +1533,102 @@ export const ClientWorkspace: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-sky-500 text-[11px]"
                   />
                 </div>
+              </div>
+
+              {/* Trigger Configuration Section */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-white">Trigger Configuration &amp; Schedule</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'scheduled_cron' }))}
+                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
+                      (pipelineForm.trigger_type || 'scheduled_cron') === 'scheduled_cron'
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
+                    }`}
+                  >
+                    ⏰ Scheduled Cron
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'realtime_webhook' }))}
+                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
+                      pipelineForm.trigger_type === 'realtime_webhook'
+                        ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
+                    }`}
+                  >
+                    ⚡ Real-Time Push
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'manual_only' }))}
+                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
+                      pipelineForm.trigger_type === 'manual_only'
+                        ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
+                    }`}
+                  >
+                    🖱️ Manual Only
+                  </button>
+                </div>
+
+                {(pipelineForm.trigger_type || 'scheduled_cron') === 'scheduled_cron' && (
+                  <div>
+                    <label className="block text-slate-400 text-[11px] mb-1">Batch Frequency Preset</label>
+                    <select
+                      value={pipelineForm.cron_schedule_human || 'Daily at 8:00 PM'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let expr = '0 20 * * *';
+                        if (val === 'Hourly') expr = '0 * * * *';
+                        else if (val === 'Every 6 Hours') expr = '0 */6 * * *';
+                        else if (val === 'Weekdays at 6:00 PM') expr = '0 18 * * 1-5';
+                        else if (val === '1st of Month at 9:00 AM') expr = '0 9 1 * *';
+                        setPipelineForm((prev) => ({ ...prev, cron_schedule_human: val, cron_expression: expr }));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-amber-500 text-[11px]"
+                    >
+                      <option value="Daily at 8:00 PM">Daily at 8:00 PM (Default End-of-Day Sweep)</option>
+                      <option value="Hourly">Hourly Continuous Ingestion</option>
+                      <option value="Every 6 Hours">Every 6 Hours</option>
+                      <option value="Weekdays at 6:00 PM">Weekdays at 6:00 PM (Business Close)</option>
+                      <option value="1st of Month at 9:00 AM">1st of Month at 9:00 AM (Monthly Closing)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                      Cron: <code>{pipelineForm.cron_expression || '0 20 * * *'}</code>
+                    </p>
+                  </div>
+                )}
+
+                {pipelineForm.trigger_type === 'realtime_webhook' && (
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-400 text-[11px]">Dedicated Inbound Webhook URL</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={`https://s4-api.service4gh.com/api/v1/webhooks/pipelines/${pipelineForm.id || 'pipe_id'}`}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-400 font-mono text-[10px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`https://s4-api.service4gh.com/api/v1/webhooks/pipelines/${pipelineForm.id || 'pipe_id'}`);
+                          addLog('info', 'Copied webhook URL to clipboard.');
+                        }}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold cursor-pointer"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

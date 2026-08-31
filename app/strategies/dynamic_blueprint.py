@@ -45,14 +45,15 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         self.custom_config = client.custom_config or {}
         self.pipelines = client.pipelines or []
 
-    async def discover_sources(self, month: str, year: int) -> List[SourceDocument]:
+    async def discover_sources(self, month: str, year: int, pipeline_id: Optional[str] = None) -> List[SourceDocument]:
         """Discovers files based on the client's configured pipelines or fallback root source."""
         logger.info(f"[{self.client_name}] Stage 1: Discovering sources for {month} {year}")
         all_docs: List[SourceDocument] = []
 
         # If client has specific pipelines configured, discover per pipeline
         if self.pipelines:
-            for pipe in self.pipelines:
+            target_pipes = [p for p in self.pipelines if p.get("id") == pipeline_id] if pipeline_id else self.pipelines
+            for pipe in target_pipes:
                 pipe_id = pipe.get("id", "default_pipe")
                 pipe_name = pipe.get("name", "Default Pipeline")
                 entity_type = pipe.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)

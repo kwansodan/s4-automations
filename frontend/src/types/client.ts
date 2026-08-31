@@ -18,6 +18,8 @@ export type AccountingEntityType =
   | 'momo_statement'
   | 'gl_journal';
 
+export type TriggerType = 'realtime_webhook' | 'scheduled_cron' | 'manual_only' | 'event_mesh';
+
 export interface IngestionPipeline {
   id: string;
   name: string;
@@ -30,6 +32,12 @@ export interface IngestionPipeline {
   default_tax_rate?: string;
   auto_post_to_zoho?: boolean;
   is_active?: boolean;
+  trigger_type?: TriggerType;
+  cron_expression?: string;
+  cron_schedule_human?: string;
+  webhook_slug?: string;
+  last_triggered_at?: string;
+  total_runs_count?: number;
   notes?: string;
 }
 

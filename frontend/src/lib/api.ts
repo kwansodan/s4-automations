@@ -324,6 +324,15 @@ export async function deleteClientPipeline(clientId: string, pipelineId: string)
   return handleResponse<any[]>(res, `Delete pipeline ${pipelineId} for ${clientId}`);
 }
 
+export async function triggerClientPipeline(clientId: string, pipelineId: string, payload?: any): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/pipelines/${pipelineId}/trigger`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload || {}),
+  });
+  return handleResponse<any>(res, `Trigger pipeline ${pipelineId} for ${clientId}`);
+}
+
 export async function testClientIngestion(clientId: string): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}/ingestion/test`, {
     method: 'POST',
