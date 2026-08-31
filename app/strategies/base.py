@@ -17,6 +17,7 @@ class SourceType(str, Enum):
     BANK_FEED = "bank_feed"
     MANUAL_UPLOAD = "manual_upload"
     WEBHOOK = "webhook"
+    WHATSAPP = "whatsapp"
 
 
 class SourceDocument(BaseModel):

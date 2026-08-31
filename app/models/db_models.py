@@ -44,6 +44,20 @@ class AccountingEntityType(str, Enum):
     GL_JOURNAL = "gl_journal"                     # Zoho /journalentries
 
 
+class AccountingSoftware(str, Enum):
+    """Supported Target Accounting Software Platforms in West Africa."""
+    ZOHO_BOOKS = "zoho_books"                       # Live / Active
+    QUICKBOOKS_ONLINE = "quickbooks_online"         # In Progress
+    SAGE_BUSINESS_CLOUD = "sage_business_cloud"     # In Progress
+    XERO = "xero"                                   # In Progress
+    ODOO = "odoo"                                   # In Progress
+    TALLY_PRIME = "tally_prime"                     # In Progress
+    SAP_BUSINESS_ONE = "sap_business_one"           # In Progress
+    MS_DYNAMICS_365 = "ms_dynamics_365"             # In Progress
+    WAVE = "wave"                                   # In Progress
+    BUSY_ACCOUNTING = "busy_accounting"             # In Progress
+
+
 class ClientOrganization(SQLModel, table=True):
     __tablename__ = "clients"
 
@@ -54,10 +68,11 @@ class ClientOrganization(SQLModel, table=True):
     status: str = Field(default="dev", description="live, dev, pending")
     status_text: str = Field(default="In Development")
     description: Optional[str] = Field(default=None)
+    accounting_software: str = Field(default="zoho_books", description="Target accounting software platform")
     folder_id: Optional[str] = Field(default=None, description="Google Drive folder ID")
     zoho_org_id: Optional[str] = Field(default=None, description="Zoho Books Organization ID")
     zoho_contact_id: Optional[str] = Field(default=None, description="Zoho Contact/Customer ID")
-    source_type: str = Field(default="google_drive", description="google_drive, onedrive, email, bank_feed, manual, webhook")
+    source_type: str = Field(default="google_drive", description="google_drive, onedrive, email, bank_feed, manual, webhook, whatsapp")
     source_email: Optional[str] = Field(default=None, description="Dedicated inbound email address")
     source_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     custom_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))

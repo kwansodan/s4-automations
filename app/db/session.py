@@ -69,6 +69,7 @@ def init_db():
         from sqlalchemy import text
         migrations = [
             "ALTER TABLE clients ADD COLUMN pipelines JSON DEFAULT '[]'",
+            "ALTER TABLE clients ADD COLUMN accounting_software VARCHAR DEFAULT 'zoho_books'",
             "ALTER TABLE staged_transactions ADD COLUMN pipeline_id VARCHAR",
             "ALTER TABLE staged_transactions ADD COLUMN pipeline_name VARCHAR",
             "ALTER TABLE staged_transactions ADD COLUMN entity_type VARCHAR",

@@ -18,6 +18,121 @@ export type AccountingEntityType =
   | 'momo_statement'
   | 'gl_journal';
 
+export type AccountingSoftware =
+  | 'zoho_books'
+  | 'quickbooks_online'
+  | 'sage_business_cloud'
+  | 'xero'
+  | 'odoo'
+  | 'tally_prime'
+  | 'sap_business_one'
+  | 'ms_dynamics_365'
+  | 'wave'
+  | 'busy_accounting';
+
+export interface AccountingPlatformInfo {
+  id: AccountingSoftware;
+  name: string;
+  regionalPopularity: string;
+  icon: string;
+  status: 'live' | 'in_progress';
+  targetProtocol: string;
+  description: string;
+}
+
+export const ACCOUNTING_PLATFORMS: AccountingPlatformInfo[] = [
+  {
+    id: 'zoho_books',
+    name: 'Zoho Books',
+    regionalPopularity: '#1 Cloud Accounting in West Africa (Ghana, Nigeria)',
+    icon: '🟢',
+    status: 'live',
+    targetProtocol: 'REST API v3 / OAuth2',
+    description: 'Native cloud accounting with live contact sync, catalog pricing, and automated invoice/bill generation.',
+  },
+  {
+    id: 'quickbooks_online',
+    name: 'QuickBooks Online (Intuit)',
+    regionalPopularity: 'Dominant SME & Startup Accounting across West Africa',
+    icon: '📗',
+    status: 'in_progress',
+    targetProtocol: 'Intuit REST API / OAuth2',
+    description: 'Standard cloud accounting for Ghanaian and Nigerian SMEs. Connector currently in development.',
+  },
+  {
+    id: 'sage_business_cloud',
+    name: 'Sage Business Cloud / Evolution',
+    regionalPopularity: 'Standard Mid-Market ERP in Ghana & Nigeria',
+    icon: '🌿',
+    status: 'in_progress',
+    targetProtocol: 'Sage Data Hub REST API',
+    description: 'Widely deployed across mid-tier manufacturing, retail, and commercial enterprises. In progress.',
+  },
+  {
+    id: 'xero',
+    name: 'Xero Accounting',
+    regionalPopularity: 'Rapidly Growing for Tech & Export Companies',
+    icon: '🔵',
+    status: 'in_progress',
+    targetProtocol: 'Xero API v2 / OAuth2',
+    description: 'Cloud accounting for modern agencies and regional tech firms. Connector in progress.',
+  },
+  {
+    id: 'odoo',
+    name: 'Odoo Accounting & ERP',
+    regionalPopularity: 'Major Open-Source ERP for Wholesale & Trading',
+    icon: '🟣',
+    status: 'in_progress',
+    targetProtocol: 'Odoo JSON-RPC / REST API',
+    description: 'Integrated ERP widely adopted across West African distribution and logistics firms. In progress.',
+  },
+  {
+    id: 'tally_prime',
+    name: 'TallyPrime / Tally.ERP 9',
+    regionalPopularity: 'Market Standard in Opera Square & Alaba Market',
+    icon: '⚡',
+    status: 'in_progress',
+    targetProtocol: 'Tally XML / Server Gateway',
+    description: 'Essential trading and inventory software for large commodity and electronics distributors. In progress.',
+  },
+  {
+    id: 'sap_business_one',
+    name: 'SAP Business One',
+    regionalPopularity: 'Corporate & FMCG Standard across West Africa',
+    icon: '🔷',
+    status: 'in_progress',
+    targetProtocol: 'SAP Service Layer OData',
+    description: 'Mid-tier and enterprise ERP for large distribution and FMCG conglomerates. In progress.',
+  },
+  {
+    id: 'ms_dynamics_365',
+    name: 'Microsoft Dynamics 365 Business Central',
+    regionalPopularity: 'Corporate & Financial Institutions',
+    icon: '🟦',
+    status: 'in_progress',
+    targetProtocol: 'Microsoft Graph / OData API',
+    description: 'Enterprise cloud ERP for institutional supply chains and corporate finance. In progress.',
+  },
+  {
+    id: 'wave',
+    name: 'Wave Accounting',
+    regionalPopularity: 'Popular for Micro-Merchants & Small Consultancies',
+    icon: '🌊',
+    status: 'in_progress',
+    targetProtocol: 'Wave GraphQL API',
+    description: 'Free cloud accounting used by micro-enterprises and boutique service providers. In progress.',
+  },
+  {
+    id: 'busy_accounting',
+    name: 'Busy Accounting / Busy ERP',
+    regionalPopularity: 'Retail, Hardware & Fast-Moving Consumer Goods',
+    icon: '💼',
+    status: 'in_progress',
+    targetProtocol: 'Busy Sync API / Webhook',
+    description: 'Inventory and accounting software popular in West African commercial trading centres. In progress.',
+  },
+];
+
 export type TriggerType = 'realtime_webhook' | 'scheduled_cron' | 'manual_only' | 'event_mesh';
 
 export interface IngestionPipeline {
@@ -25,7 +140,7 @@ export interface IngestionPipeline {
   name: string;
   section: AccountingSection;
   entity_type: AccountingEntityType;
-  source_type: 'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual';
+  source_type: 'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual' | 'whatsapp';
   source_identifier: string;
   default_account_code?: string;
   default_account_id?: string;
@@ -87,6 +202,7 @@ export interface ClientProfile {
   status: ClientStatus;
   statusText: string;
   desc: string;
+  accounting_software?: AccountingSoftware;
   folderId?: string;
   zohoOrg?: string;
   zohoContactId?: string;

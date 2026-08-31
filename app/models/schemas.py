@@ -589,3 +589,112 @@ class OCRBankStatementExtraction(BaseModel):
     transactions: List[OCRBankTransaction] = Field(default_factory=list)
     overall_confidence: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH)
 
+
+# -------------------------------------------------------------------------
+# Multi-Accounting Software Platform Schemas & Catalog
+# -------------------------------------------------------------------------
+
+class AccountingSoftwareMetadata(BaseModel):
+    """Platform metadata for supported West African accounting software packages."""
+    id: str
+    name: str
+    regional_popularity: str
+    icon: str
+    status: str  # 'live' or 'in_progress'
+    target_protocol: str
+    description: str
+
+
+ACCOUNTING_SOFTWARES_CATALOG: List[Dict[str, Any]] = [
+    {
+        "id": "zoho_books",
+        "name": "Zoho Books",
+        "regional_popularity": "#1 Cloud Accounting in West Africa (Ghana, Nigeria)",
+        "icon": "🟢",
+        "status": "live",
+        "target_protocol": "REST API v3 / OAuth2",
+        "description": "Native cloud accounting with live contact sync, catalog pricing, and automated invoice/bill generation.",
+    },
+    {
+        "id": "quickbooks_online",
+        "name": "QuickBooks Online (Intuit)",
+        "regional_popularity": "Dominant SME & Startup Accounting across West Africa",
+        "icon": "📗",
+        "status": "in_progress",
+        "target_protocol": "Intuit REST API / OAuth2",
+        "description": "Standard cloud accounting for Ghanaian and Nigerian SMEs. Connector currently in development.",
+    },
+    {
+        "id": "sage_business_cloud",
+        "name": "Sage Business Cloud / Evolution",
+        "regional_popularity": "Standard Mid-Market ERP in Ghana & Nigeria",
+        "icon": "🌿",
+        "status": "in_progress",
+        "target_protocol": "Sage Data Hub REST API",
+        "description": "Widely deployed across mid-tier manufacturing, retail, and commercial enterprises. In progress.",
+    },
+    {
+        "id": "xero",
+        "name": "Xero Accounting",
+        "regional_popularity": "Rapidly Growing for Tech & Export Companies",
+        "icon": "🔵",
+        "status": "in_progress",
+        "target_protocol": "Xero API v2 / OAuth2",
+        "description": "Cloud accounting for modern agencies and regional tech firms. Connector in progress.",
+    },
+    {
+        "id": "odoo",
+        "name": "Odoo Accounting & ERP",
+        "regional_popularity": "Major Open-Source ERP for Wholesale & Trading",
+        "icon": "🟣",
+        "status": "in_progress",
+        "target_protocol": "Odoo JSON-RPC / REST API",
+        "description": "Integrated ERP widely adopted across West African distribution and logistics firms. In progress.",
+    },
+    {
+        "id": "tally_prime",
+        "name": "TallyPrime / Tally.ERP 9",
+        "regional_popularity": "Market Standard in Opera Square & Alaba Market",
+        "icon": "⚡",
+        "status": "in_progress",
+        "target_protocol": "Tally XML / Server Gateway",
+        "description": "Essential trading and inventory software for large commodity and electronics distributors. In progress.",
+    },
+    {
+        "id": "sap_business_one",
+        "name": "SAP Business One",
+        "regional_popularity": "Corporate & FMCG Standard across West Africa",
+        "icon": "🔷",
+        "status": "in_progress",
+        "target_protocol": "SAP Service Layer OData",
+        "description": "Mid-tier and enterprise ERP for large distribution and FMCG conglomerates. In progress.",
+    },
+    {
+        "id": "ms_dynamics_365",
+        "name": "Microsoft Dynamics 365 Business Central",
+        "regional_popularity": "Corporate & Financial Institutions",
+        "icon": "🟦",
+        "status": "in_progress",
+        "target_protocol": "Microsoft Graph / OData API",
+        "description": "Enterprise cloud ERP for institutional supply chains and corporate finance. In progress.",
+    },
+    {
+        "id": "wave",
+        "name": "Wave Accounting",
+        "regional_popularity": "Popular for Micro-Merchants & Small Consultancies",
+        "icon": "🌊",
+        "status": "in_progress",
+        "target_protocol": "Wave GraphQL API",
+        "description": "Free cloud accounting used by micro-enterprises and boutique service providers. In progress.",
+    },
+    {
+        "id": "busy_accounting",
+        "name": "Busy Accounting / Busy ERP",
+        "regional_popularity": "Retail, Hardware & Fast-Moving Consumer Goods",
+        "icon": "💼",
+        "status": "in_progress",
+        "target_protocol": "Busy Sync API / Webhook",
+        "description": "Inventory and accounting software popular in West African commercial trading centres. In progress.",
+    },
+]
+

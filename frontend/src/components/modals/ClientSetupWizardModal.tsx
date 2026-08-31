@@ -11,7 +11,9 @@ import type {
   StarterRecipe,
   AccountingSection,
   AccountingEntityType,
+  AccountingSoftware,
 } from '../../types/client';
+import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import {
   X,
   Check,
@@ -42,6 +44,7 @@ import {
   DollarSign,
   Plus,
   Trash2,
+  MessageSquare,
 } from 'lucide-react';
 
 const STARTER_RECIPES: StarterRecipe[] = [
@@ -288,9 +291,10 @@ export const ClientSetupWizardModal: React.FC = () => {
   const [newPipeName, setNewPipeName] = useState<string>('');
   const [newPipeSection, setNewPipeSection] = useState<AccountingSection>('AR');
   const [newPipeEntity, setNewPipeEntity] = useState<AccountingEntityType>('ar_sales_invoice');
-  const [newPipeSource, setNewPipeSource] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual'>('google_drive');
+  const [newPipeSource, setNewPipeSource] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual' | 'whatsapp'>('google_drive');
 
-  // Step 2: Zoho Books External State
+  // Step 2: Target Accounting Platform State
+  const [accountingSoftware, setAccountingSoftware] = useState<AccountingSoftware>('zoho_books');
   const [zohoOrgId, setZohoOrgId] = useState<string>('');
   const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Sales Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
@@ -309,7 +313,7 @@ export const ClientSetupWizardModal: React.FC = () => {
   });
 
   // Step 3: Ingestion Channel State
-  const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook'>('google_drive');
+  const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp'>('google_drive');
   const [folderId, setFolderId] = useState<string>('');
   const [sourceEmail, setSourceEmail] = useState<string>('');
   const [allowedSenders, setAllowedSenders] = useState<string>('');
@@ -352,6 +356,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       if (wizardDraft.currency !== undefined) setCurrency(wizardDraft.currency);
       if (wizardDraft.projectedVolume !== undefined) setProjectedVolume(wizardDraft.projectedVolume);
       if (wizardDraft.description !== undefined) setDescription(wizardDraft.description);
+      if (wizardDraft.accountingSoftware !== undefined) setAccountingSoftware(wizardDraft.accountingSoftware);
       if (wizardDraft.zohoOrgId !== undefined) setZohoOrgId(wizardDraft.zohoOrgId);
       if (wizardDraft.defaultIncomeAccount !== undefined) setDefaultIncomeAccount(wizardDraft.defaultIncomeAccount);
       if (wizardDraft.taxRateVat !== undefined) setTaxRateVat(wizardDraft.taxRateVat);
@@ -384,6 +389,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       currency,
       projectedVolume,
       description,
+      accountingSoftware,
       zohoOrgId,
       defaultIncomeAccount,
       taxRateVat,
@@ -416,6 +422,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       setCurrency('GHS');
       setProjectedVolume('1,200+ Docs / mo');
       setDescription('');
+      setAccountingSoftware('zoho_books');
       setConfiguredPipelines([...STARTER_RECIPES[0].pipelines]);
       setZohoOrgId('');
       setSourceType('google_drive');
@@ -590,6 +597,7 @@ export const ClientSetupWizardModal: React.FC = () => {
         status: 'dev',
         status_text: 'In Development',
         description: description.trim() || currentRecipe?.description,
+        accounting_software: accountingSoftware,
         source_type: sourceType,
         source_email: sourceEmail,
         folder_id: folderId,
@@ -602,9 +610,9 @@ export const ClientSetupWizardModal: React.FC = () => {
           source_identifier: p.source_identifier || (p.source_type === 'google_drive' ? folderId : p.source_type === 'email' ? sourceEmail : ''),
         })),
         active_integrations: [
-          sourceType === 'google_drive' ? 'Google Drive' : sourceType === 'onedrive' ? 'OneDrive' : 'Email Forwarding',
+          sourceType === 'google_drive' ? 'Google Drive' : sourceType === 'onedrive' ? 'OneDrive' : sourceType === 'whatsapp' ? 'WhatsApp Business' : 'Email Forwarding',
           'Gemini Vision',
-          'Zoho Books',
+          accountingSoftware === 'zoho_books' ? 'Zoho Books' : ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware)?.name || 'Accounting Engine',
           'Inngest',
         ],
         source_config: {
@@ -646,7 +654,7 @@ export const ClientSetupWizardModal: React.FC = () => {
 
   const stepsList = [
     { num: 1, title: 'Profile & Blueprint', icon: Building2 },
-    { num: 2, title: 'External Zoho Setup', icon: Sliders },
+    { num: 2, title: 'Accounting Platform', icon: Sliders },
     { num: 3, title: 'External Ingestion', icon: Cloud },
     { num: 4, title: 'AI & Review Sheets', icon: Sparkles },
     { num: 5, title: 'Live Probe & Test', icon: Zap },
@@ -1045,200 +1053,285 @@ export const ClientSetupWizardModal: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 2: External Zoho Books ERP Setup */}
+          {/* STEP 2: Target Accounting Platform Integration Hub (10 West African Platforms) */}
           {currentStep === 2 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-sky-400" />
-                  <span>Outside-of-App Setup: Client's Dedicated Zoho Books Organization</span>
+                  <span>Target Accounting Platform Integration (West Africa)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Your clients sign up for and own their own Zoho Books accounts. Follow these steps to link this client's organization to your firm's automation pipeline.
+                  Select your client's core accounting engine. <strong>Zoho Books</strong> is currently production-ready with live API synchronization. Connectors for other top West African ERP and accounting platforms are in active development.
                 </p>
               </div>
 
-              {/* Alert Callout */}
-              <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-4 flex items-start gap-3">
-                <Info className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
-                <div className="text-xs text-slate-300 space-y-1">
-                  <span className="font-bold text-white">Multi-Tenant Accounting Architecture</span>
-                  <p className="text-slate-400">
-                    Each client has their own independent Zoho Books organization (with their own Organization ID). S4 Automations connects directly to that client's Zoho environment to draft invoices and post journals for <em>their</em> downstream customers.
-                  </p>
-                </div>
-              </div>
-
-              {/* Interactive External Checklist */}
-              <div className="space-y-3">
+              {/* 10 West African Accounting Platforms Grid */}
+              <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-300 block">
-                  Outside-of-App Setup Checklist for this Client
+                  Select Target Accounting Software ({ACCOUNTING_PLATFORMS.length} Supported Platforms)
                 </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto custom-scrollbar p-1">
+                  {ACCOUNTING_PLATFORMS.map((platform) => {
+                    const isSelected = accountingSoftware === platform.id;
+                    const isLive = platform.status === 'live';
 
-                {/* Item 1 */}
-                <div
-                  onClick={() => setZohoChecks((prev) => ({ ...prev, org_id_retrieved: !prev.org_id_retrieved }))}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    zohoChecks.org_id_retrieved
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                      zohoChecks.org_id_retrieved ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                    }`}>
-                      {zohoChecks.org_id_retrieved && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">1. Client's Zoho Books Organization &amp; Org ID</span>
-                      <p className="text-slate-400 mt-1">
-                        The client signs up or logs into their company's Zoho Books portal (<strong>books.zoho.com</strong>). Obtain the client's numeric <strong>Organization ID</strong> (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">782910482</code>) from their top-right profile or <strong>Settings &gt; Organization Profile</strong>.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                    return (
+                      <button
+                        key={platform.id}
+                        type="button"
+                        onClick={() => setAccountingSoftware(platform.id)}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between space-y-2 relative ${
+                          isSelected
+                            ? 'bg-sky-950/60 border-sky-500 shadow-lg shadow-sky-500/10'
+                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{platform.icon}</span>
+                            <span className="text-xs font-bold text-white leading-tight">{platform.name}</span>
+                          </div>
+                          <span
+                            className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                              isLive
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_8px_#34d39944]'
+                                : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                            }`}
+                          >
+                            {isLive ? 'Live' : 'In Progress'}
+                          </span>
+                        </div>
 
-                {/* Item 2 */}
-                <div
-                  onClick={() => setZohoChecks((prev) => ({ ...prev, customer_created: !prev.customer_created }))}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    zohoChecks.customer_created
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                      zohoChecks.customer_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                    }`}>
-                      {zohoChecks.customer_created && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">2. Invite Your Accounting Firm as Accountant / Admin</span>
-                      <p className="text-slate-400 mt-1">
-                        Inside the client's Zoho Books, they navigate to <strong>Settings &gt; Users &amp; Roles &gt; Invite User</strong> and invite your firm's email (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">{notificationEmail || 'accounting@service4gh.com'}</code>) with the <strong>Accountant</strong> or <strong>Admin</strong> role.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
+                          {platform.description}
+                        </p>
 
-                {/* Item 3 */}
-                <div
-                  onClick={() => setZohoChecks((prev) => ({ ...prev, chart_accounts_verified: !prev.chart_accounts_verified }))}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    zohoChecks.chart_accounts_verified
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                      zohoChecks.chart_accounts_verified ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                    }`}>
-                      {zohoChecks.chart_accounts_verified && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">3. Register Client's Downstream Customers (Their Buyers/Hotels/Tenants)</span>
-                      <p className="text-slate-400 mt-1">
-                        In the client's Zoho Books (<strong>Sales &gt; Customers &gt; + New Customer</strong>), add the customers they bill (e.g. for ANR Laundry: <em>Luxwood Hotel</em>, <em>The Bantree</em>, <em>The Lennox</em>). Copy their Customer Contact IDs for downstream invoice drafting.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 4 */}
-                <div
-                  onClick={() => setZohoChecks((prev) => ({ ...prev, catalog_skus_registered: !prev.catalog_skus_registered }))}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    zohoChecks.catalog_skus_registered
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                      zohoChecks.catalog_skus_registered ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                    }`}>
-                      {zohoChecks.catalog_skus_registered && <Check className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="flex-1 text-xs">
-                      <span className="font-bold text-white block">4. Configure Client's Item Catalog &amp; Chart of Accounts</span>
-                      <p className="text-slate-400 mt-1">
-                        In the client's Zoho Books (<strong>Items &gt; Items</strong>), register their service items (e.g. <em>Bed Sheet Double</em>, <em>Face Towel</em>, <em>Bath Mat</em>) and link them to their primary revenue accounts and local tax rules (e.g. Ghana GRA 15% VAT + 2.5% NHIL + 2.5% GETFund).
-                      </p>
-                    </div>
-                  </div>
+                        <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[9px] text-slate-500 font-mono">
+                          <span className="truncate">{platform.regionalPopularity}</span>
+                          <span className="shrink-0 ml-1 text-slate-400">{platform.targetProtocol}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Zoho Organization ID & Dynamic API Sync */}
-              <div className="space-y-4 pt-4 border-t border-slate-800">
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
-                    <label className="text-xs font-semibold text-slate-300">
-                      Client's Zoho Books Organization ID <span className="text-slate-500 text-[10px]">(From client's Zoho account)</span>
+              {/* ZOHO BOOKS ACTIVE CONFIGURATION */}
+              {accountingSoftware === 'zoho_books' ? (
+                <div className="space-y-6 pt-3 border-t border-slate-800 animate-in fade-in">
+                  {/* Alert Callout */}
+                  <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-slate-300 space-y-1">
+                      <span className="font-bold text-white">Live Zoho Books Multi-Tenant Architecture</span>
+                      <p className="text-slate-400">
+                        S4 Automations connects directly to this client's Zoho environment to draft sales invoices, record vendor bills, register customer payments, and post manual journals.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Interactive External Checklist */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold text-slate-300 block">
+                      Outside-of-App Zoho Books Setup Checklist for this Client
                     </label>
-                    <button
-                      type="button"
-                      onClick={handleFetchZohoData}
-                      disabled={isFetchingZoho}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+
+                    {/* Item 1 */}
+                    <div
+                      onClick={() => setZohoChecks((prev) => ({ ...prev, org_id_retrieved: !prev.org_id_retrieved }))}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        zohoChecks.org_id_retrieved
+                          ? 'bg-emerald-950/30 border-emerald-500/40'
+                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                      }`}
                     >
-                      <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
-                      <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="e.g. 782910482 (or leave default for mock sandbox)"
-                    value={zohoOrgId}
-                    onChange={(e) => setZohoOrgId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    S4 Automations connects directly to this Organization ID and automatically pulls all client customer profiles and catalog SKUs via API.
-                  </span>
-                </div>
-
-                {/* Discovered Customers & SKUs Live Card */}
-                {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
-                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs font-bold text-white">
-                          Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
-                        </span>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
+                          zohoChecks.org_id_retrieved ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
+                        }`}>
+                          {zohoChecks.org_id_retrieved && <Check className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 text-xs">
+                          <span className="font-bold text-white block">1. Client's Zoho Books Organization &amp; Org ID</span>
+                          <p className="text-slate-400 mt-1">
+                            Obtain the client's numeric <strong>Organization ID</strong> (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">782910482</code>) from their top-right profile or <strong>Settings &gt; Organization Profile</strong>.
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                        {zohoSyncedItemsCount || 11} SKUs Synced
-                      </span>
                     </div>
 
-                    {/* Customer Badges Grid */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {zohoSyncedContacts.map((contact, idx) => (
-                        <span
-                          key={contact.contact_id || idx}
-                          className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
-                        </span>
-                      ))}
+                    {/* Item 2 */}
+                    <div
+                      onClick={() => setZohoChecks((prev) => ({ ...prev, customer_created: !prev.customer_created }))}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        zohoChecks.customer_created
+                          ? 'bg-emerald-950/30 border-emerald-500/40'
+                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
+                          zohoChecks.customer_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
+                        }`}>
+                          {zohoChecks.customer_created && <Check className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 text-xs">
+                          <span className="font-bold text-white block">2. Invite Your Accounting Firm as Accountant / Admin</span>
+                          <p className="text-slate-400 mt-1">
+                            Inside the client's Zoho Books, they invite your firm's email (<code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">{notificationEmail || 'accounting@service4gh.com'}</code>) with the <strong>Accountant</strong> or <strong>Admin</strong> role.
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="text-[11px] text-slate-400 flex items-start gap-1.5 pt-1 border-t border-slate-800/80">
-                      <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
-                      <span>
-                        S4 Automations uses semantic OCR matching to automatically map each physical slip (e.g. <em>"Luxwood"</em>, <em>"Bantree"</em>) to the right customer contact when drafting invoices in Zoho Books.
-                      </span>
+                    {/* Item 3 */}
+                    <div
+                      onClick={() => setZohoChecks((prev) => ({ ...prev, chart_accounts_verified: !prev.chart_accounts_verified }))}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        zohoChecks.chart_accounts_verified
+                          ? 'bg-emerald-950/30 border-emerald-500/40'
+                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
+                          zohoChecks.chart_accounts_verified ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
+                        }`}>
+                          {zohoChecks.chart_accounts_verified && <Check className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 text-xs">
+                          <span className="font-bold text-white block">3. Register Client's Downstream Customers &amp; Vendors</span>
+                          <p className="text-slate-400 mt-1">
+                            In the client's Zoho Books (<strong>Sales &gt; Customers</strong> or <strong>Purchases &gt; Vendors</strong>), register their primary counter-parties. S4 Automations automatically pulls these profiles for OCR matching.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Zoho Organization ID & Dynamic API Sync */}
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
+                        <label className="text-xs font-semibold text-slate-300">
+                          Client's Zoho Books Organization ID <span className="text-slate-500 text-[10px]">(From client's Zoho account)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleFetchZohoData}
+                          disabled={isFetchingZoho}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+                        >
+                          <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
+                          <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="e.g. 782910482 (or leave blank for sandbox demo)"
+                        value={zohoOrgId}
+                        onChange={(e) => setZohoOrgId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-1 block">
+                        S4 Automations connects directly to this Organization ID and automatically pulls all client customer profiles and catalog SKUs via API.
+                      </span>
+                    </div>
+
+                    {/* Discovered Customers & SKUs Live Card */}
+                    {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
+                      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-emerald-400" />
+                            <span className="text-xs font-bold text-white">
+                              Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                            {zohoSyncedItemsCount || 11} SKUs Synced
+                          </span>
+                        </div>
+
+                        {/* Customer Badges Grid */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {zohoSyncedContacts.map((contact, idx) => (
+                            <span
+                              key={contact.contact_id || idx}
+                              className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* NON-ZOHO IN PROGRESS CONNECTOR NOTICE */
+                <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in">
+                  {(() => {
+                    const sel = ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware);
+                    if (!sel) return null;
+                    return (
+                      <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-5 space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{sel.icon}</span>
+                            <div>
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                <span>{sel.name} Integration Connector</span>
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  In Progress
+                                </span>
+                              </h4>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                Protocol: <code className="text-sky-300 font-mono">{sel.targetProtocol}</code> • Regional Target: {sel.regionalPopularity}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                          ℹ️ S4 Automations is actively developing direct posting connectors for <strong>{sel.name}</strong>. During this phase, all document extractions and Zoho-strict contract validations will run normally, and approved transactions will be staged in the <strong>Review Ledger</strong> ready for automatic dispatch when the connector goes live.
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-1">
+                              {sel.name} Sandbox / Organization / Tenant ID
+                            </label>
+                            <input
+                              type="text"
+                              placeholder={`e.g. ${sel.id}_sandbox_001`}
+                              value={zohoOrgId}
+                              onChange={(e) => setZohoOrgId(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-1">
+                              Default Chart of Accounts Code
+                            </label>
+                            <input
+                              type="text"
+                              value={defaultIncomeAccount}
+                              onChange={(e) => setDefaultIncomeAccount(e.target.value)}
+                              placeholder="e.g. 4000 - General Sales Revenue"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           )}
 
@@ -1258,24 +1351,31 @@ export const ClientSetupWizardModal: React.FC = () => {
               {/* Source Type Selector */}
               <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-xl">
                 {[
-                  { id: 'google_drive', label: 'Google Drive (Recommended)', icon: Folder },
-                  { id: 'onedrive', label: 'Microsoft OneDrive / SharePoint', icon: Cloud },
-                  { id: 'email', label: 'Automated Email Forwarding', icon: Mail },
-                  { id: 'webhook', label: 'Direct Webhook / WhatsApp API', icon: Zap },
+                  { id: 'google_drive', label: 'Google Drive (Recommended)', icon: Folder, status: 'live' },
+                  { id: 'onedrive', label: 'Microsoft OneDrive / SharePoint', icon: Cloud, status: 'live' },
+                  { id: 'email', label: 'Automated Email Forwarding', icon: Mail, status: 'live' },
+                  { id: 'webhook', label: 'Inbound Webhook / API', icon: Zap, status: 'live' },
+                  { id: 'whatsapp', label: 'WhatsApp Business Bot', icon: MessageSquare, status: 'in_progress' },
                 ].map((type) => {
                   const IconComp = type.icon;
                   const isSel = sourceType === type.id;
+                  const isLive = type.status === 'live';
                   return (
                     <button
                       key={type.id}
                       type="button"
                       onClick={() => setSourceType(type.id as any)}
-                      className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
                         isSel ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-850'
                       }`}
                     >
                       <IconComp className="w-3.5 h-3.5" />
                       <span>{type.label}</span>
+                      {!isLive && (
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          In Progress
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1346,7 +1446,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                       }`}
                     >
                       <div className={`w-4 h-4 rounded border flex items-center justify-center ${storageChecks.subfolders_initialized ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
-                        {storageChecks.subfolders_initialized && <Check className="w-3 h-3" />}
+                        {storageChecks.subfolders_initialized && <Check className="w-3.5 h-3.5" />}
                       </div>
                       <span className="text-xs text-slate-300">
                         3. Initialized subfolder hierarchy (<code className="text-sky-300">Daily_Slips/</code>, <code className="text-sky-300">Processed/</code>, <code className="text-sky-300">Review_Sheets/</code>)
@@ -1479,8 +1579,64 @@ export const ClientSetupWizardModal: React.FC = () => {
                       https://autapi.service4gh.com/api/v1/webhooks/{name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '_') : 'client'}
                     </div>
                     <p className="text-slate-400">
-                      Configure WhatsApp Business API or POS webhook subscriptions to POST raw payloads or image URLs to this endpoint.
+                      Configure external POS systems or document feeds to POST raw payloads and base64 documents directly to this endpoint.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* WHATSAPP BUSINESS BOT SETUP (IN PROGRESS) */}
+              {sourceType === 'whatsapp' && (
+                <div className="space-y-4 animate-in fade-in">
+                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-teal-950/40 border border-emerald-500/40 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-2xl">📱</span>
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            <span>WhatsApp Business Ingestion Bot</span>
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              In Progress
+                            </span>
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            Automated receipt photo capture &amp; mobile money confirmation OCR via WhatsApp Cloud API.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 border border-slate-800 p-3 rounded-xl">
+                      🚀 <strong>How it works:</strong> Drivers, warehouse managers, or front-desk staff take a photo of physical delivery slips, supplier paper receipts, or MoMo SMS confirmations and send them directly to a dedicated S4 WhatsApp number. Gemini Vision OCR extracts the lines and pushes them directly into this client's ingestion pipelines.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">
+                          Dedicated Client WhatsApp Number
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+233 (55) 000-0000"
+                          value={sourceEmail || '+233 55 123 4567'}
+                          onChange={(e) => setSourceEmail(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">
+                          Authorized WhatsApp Senders / Group Names
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. +233240000000, ANR Logistics Group"
+                          value={allowedSenders}
+                          onChange={(e) => setAllowedSenders(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

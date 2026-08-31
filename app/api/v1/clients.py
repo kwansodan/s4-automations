@@ -27,7 +27,8 @@ class ClientCreatePayload(BaseModel):
     status: str = Field(default="dev", description="live, dev, pending")
     status_text: Optional[str] = None
     description: Optional[str] = None
-    source_type: str = Field(default="google_drive", description="google_drive, onedrive, email, bank_feed, manual, webhook")
+    accounting_software: Optional[str] = Field(default="zoho_books", description="Target accounting software platform")
+    source_type: str = Field(default="google_drive", description="google_drive, onedrive, email, bank_feed, manual, webhook, whatsapp")
     source_email: Optional[str] = None
     folder_id: Optional[str] = None
     zoho_org_id: Optional[str] = None
@@ -316,6 +317,7 @@ async def create_client(
         status=payload.status,
         status_text=payload.status_text or ("Production Live" if payload.status == "live" else "In Development"),
         description=payload.description,
+        accounting_software=payload.accounting_software or "zoho_books",
         source_type=payload.source_type,
         source_email=payload.source_email or f"{slug}@inbound.service4gh.com",
         folder_id=payload.folder_id,
@@ -334,11 +336,18 @@ async def create_client(
     AuditService.log(
         client_id=slug,
         action="CLIENT_CREATED",
-        details={"name": new_client.name, "source_type": new_client.source_type, "pipelines_count": len(new_client.pipelines or [])},
+        details={"name": new_client.name, "accounting_software": new_client.accounting_software, "source_type": new_client.source_type, "pipelines_count": len(new_client.pipelines or [])},
     )
 
     logger.info(f"Registered new client organization: {new_client.name} (id: {new_client.id})")
     return new_client.model_dump()
+
+
+@router.get("/accounting-softwares", summary="List Supported West African Accounting Software Platforms")
+async def list_accounting_softwares() -> List[Dict[str, Any]]:
+    """Returns catalog of 10 popular West African accounting platforms and connector readiness."""
+    from app.models.schemas import ACCOUNTING_SOFTWARES_CATALOG
+    return ACCOUNTING_SOFTWARES_CATALOG
 
 
 @router.get("/{client_id}", summary="Get Specific Client Details")
@@ -356,6 +365,7 @@ class ClientConfigUpdatePayload(BaseModel):
     icon: Optional[str] = None
     status: Optional[str] = None
     description: Optional[str] = None
+    accounting_software: Optional[str] = None
     source_type: Optional[str] = None
     folder_id: Optional[str] = None
     source_email: Optional[str] = None
@@ -381,6 +391,7 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
         "status": client.status,
         "status_text": client.status_text,
         "description": client.description,
+        "accounting_software": client.accounting_software or "zoho_books",
         "source_type": client.source_type,
         "folder_id": client.folder_id,
         "source_email": client.source_email,
@@ -416,6 +427,8 @@ async def update_client_config(
         client.status_text = "Production Live" if payload.status == "live" else "In Development"
     if payload.description is not None:
         client.description = payload.description
+    if payload.accounting_software is not None:
+        client.accounting_software = payload.accounting_software
     if payload.source_type is not None:
         client.source_type = payload.source_type
     if payload.folder_id is not None:
@@ -436,6 +449,7 @@ async def update_client_config(
     client.updated_at = datetime.now(timezone.utc)
     db.add(client)
     db.commit()
+    db.refresh(client)
     db.refresh(client)
 
     AuditService.log(

@@ -17,7 +17,8 @@ import {
   deleteClientPipeline,
   triggerClientPipeline,
 } from '../../lib/api';
-import type { IngestionPipeline, AccountingSection, AccountingEntityType } from '../../types/client';
+import type { IngestionPipeline, AccountingSection, AccountingEntityType, AccountingSoftware } from '../../types/client';
+import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import {
   Layers,
   PlayCircle,
@@ -399,7 +400,7 @@ export const ClientWorkspace: React.FC = () => {
               {clientConfig.icon || currentClient.icon}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-extrabold text-white tracking-tight">{clientConfig.name || currentClient.name}</h1>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -412,6 +413,23 @@ export const ClientWorkspace: React.FC = () => {
                 >
                   {clientConfig.status === 'live' ? 'Production Live' : 'In Development'}
                 </span>
+                {(() => {
+                  const currentSoftId = (clientConfig as any).accounting_software || currentClient.accounting_software || 'zoho_books';
+                  const currentPlatform = ACCOUNTING_PLATFORMS.find((p) => p.id === currentSoftId) || ACCOUNTING_PLATFORMS[0];
+                  return (
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold flex items-center gap-1 ${
+                        currentPlatform.status === 'live'
+                          ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-950/60 border border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      <span>{currentPlatform.icon}</span>
+                      <span>{currentPlatform.name}</span>
+                      <span className="text-[9px] opacity-75">({currentPlatform.status === 'live' ? 'Live' : 'In Progress'})</span>
+                    </span>
+                  );
+                })()}
               </div>
               <p className="text-xs text-sky-400 font-medium mt-0.5">{clientConfig.industry || currentClient.industry}</p>
               <p className="text-xs text-slate-400 mt-2 max-w-3xl">{clientConfig.description || currentClient.desc}</p>
