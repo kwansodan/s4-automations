@@ -15,11 +15,17 @@ import { ClientWorkspace } from './components/clients/ClientWorkspace';
 import { PipelineModal } from './components/modals/PipelineModal';
 import { InvoiceModal } from './components/modals/InvoiceModal';
 import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardModal';
+import { ClientPortal } from './components/portal/ClientPortal';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { currentClient } = useClient();
-  const { activeTab } = useAutomation();
+  const { activeTab, setActiveTab } = useAutomation();
+
+  // If user navigated directly to the Client Portal
+  if (activeTab === 'portal') {
+    return <ClientPortal onBackToAdmin={() => setActiveTab('clients')} />;
+  }
 
   if (!isAuthenticated) {
     return <LoginCard />;
@@ -61,6 +67,7 @@ const MainLayout: React.FC = () => {
     </div>
   );
 };
+
 
 export const App: React.FC = () => {
   return (

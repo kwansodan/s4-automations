@@ -10,6 +10,7 @@ from app.api.v1.catalog import router as catalog_router
 from app.api.v1.config import router as config_router
 from app.api.v1.clients import router as clients_router
 from app.api.v1.audit import router as audit_router
+from app.api.v1.bank_portal import router as bank_portal_router
 
 api_v1_router = APIRouter(prefix="/api")
 
@@ -21,3 +22,4 @@ api_v1_router.include_router(catalog_router)
 api_v1_router.include_router(config_router)
 api_v1_router.include_router(clients_router)
 api_v1_router.include_router(audit_router)
+api_v1_router.include_router(bank_portal_router)

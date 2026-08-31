@@ -14,6 +14,8 @@ from app.models.schemas import (
     OCRSlipItem,
     MonthlySKUSummary,
     ZohoItem,
+    OCRAPBillExtraction,
+    OCRBankStatementExtraction,
 )
 from app.utils.logging import get_logger
 
@@ -132,6 +134,106 @@ Return strictly valid JSON conforming to the schema.
             except Exception as legacy_err:
                 logger.error(f"Gemini extraction failed: {legacy_err}")
                 raise RuntimeError(f"OCR extraction failed for {file_name}: {legacy_err}")
+
+    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def extract_vendor_bill(
+        self,
+        file_bytes: bytes,
+        mime_type: str,
+        file_name: str,
+    ) -> OCRAPBillExtraction:
+        """
+        Invokes Gemini Vision to extract AP vendor bill data.
+        """
+        if settings.MOCK_MODE or not self.api_key:
+            return OCRAPBillExtraction(
+                vendor_name="Mock Vendor",
+                bill_date="01/01/2026",
+                total_amount=100.0,
+            )
+
+        prompt = f"""
+You are an expert accounts payable clerk. Analyze this vendor bill/invoice.
+Extract the vendor name, bill date, bill number, currency (default GHS if not found), total amount, and line items.
+For line items, extract description, quantity, unit_rate, and amount.
+Return strictly valid JSON conforming to the schema.
+"""
+        
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=self.api_key)
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=[types.Part.from_bytes(data=file_bytes, mime_type=mime_type), prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=OCRAPBillExtraction,
+                    temperature=0.1,
+                ),
+            )
+            raw_text = response.text
+            import json
+            cleaned = re.sub(r"^```json\s*", "", raw_text.strip(), flags=re.MULTILINE)
+            cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
+            return OCRAPBillExtraction.model_validate_json(cleaned)
+        except Exception as e:
+            logger.error(f"Failed to extract vendor bill {file_name}: {e}")
+            raise RuntimeError(f"Failed to extract vendor bill {file_name}: {e}")
+
+    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def extract_bank_statement(
+        self,
+        file_bytes: bytes,
+        mime_type: str,
+        file_name: str,
+    ) -> OCRBankStatementExtraction:
+        """
+        Invokes Gemini Vision to extract transactions from PDF bank statements.
+        """
+        if settings.MOCK_MODE or not self.api_key:
+            return OCRBankStatementExtraction(
+                bank_name="GCB Bank Ghana",
+                account_number="1234567890",
+                statement_period="August 2026",
+                transactions=[],
+            )
+
+        prompt = f"""
+You are an expert banking and financial auditor. Analyze this Bank Statement.
+Extract bank name, account number, statement period, and every transaction row.
+For each transaction:
+- transaction_date in YYYY-MM-DD or DD/MM/YYYY
+- description (narration/details)
+- amount (positive float)
+- transaction_type ("DEBIT" for withdrawal/charge/outflow, "CREDIT" for deposit/inflow)
+- balance (optional)
+- reference (optional reference code or cheque number)
+Return strictly valid JSON conforming to the schema.
+"""
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=self.api_key)
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=[types.Part.from_bytes(data=file_bytes, mime_type=mime_type), prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=OCRBankStatementExtraction,
+                    temperature=0.1,
+                ),
+            )
+            raw_text = response.text
+            import json
+            cleaned = re.sub(r"^```json\s*", "", raw_text.strip(), flags=re.MULTILINE)
+            cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
+            return OCRBankStatementExtraction.model_validate_json(cleaned)
+        except Exception as e:
+            logger.error(f"Failed to extract bank statement {file_name}: {e}")
+            raise RuntimeError(f"Failed to extract bank statement {file_name}: {e}")
+
+
 
     def _safe_parse_extraction(self, text: str, file_name: str, client_name: str) -> OCRSlipExtraction:
         """Cleans markdown code fences, injects metadata, and validates schema."""

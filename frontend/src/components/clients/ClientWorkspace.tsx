@@ -8,6 +8,11 @@ import {
   testClientIngestion,
   fetchClientConfig,
   saveClientConfig,
+  fetchBankTransactions,
+  queryBankTransaction,
+  mapBankTransaction,
+  uploadBankStatement,
+  triggerApPipeline,
 } from '../../lib/api';
 import {
   Layers,
@@ -31,11 +36,19 @@ import {
   Cloud,
   Database,
   X,
+  Receipt,
+  Landmark,
+  UploadCloud,
+  HelpCircle,
+  Send,
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
   const { currentClient, setIsWizardOpen } = useClient();
-  const { setActiveTab, addLog } = useAutomation();
+  const { setActiveTab, addLog, selectedMonth, selectedYear } = useAutomation();
+
+  // Active Pipeline Tab: 'AR' | 'AP' | 'BANK'
+  const [pipelineView, setPipelineView] = useState<'AR' | 'AP' | 'BANK'>('AR');
 
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<any | null>(null);
@@ -45,6 +58,18 @@ export const ClientWorkspace: React.FC = () => {
   const [probeResult, setProbeResult] = useState<any | null>(null);
   const [selectedTxIds, setSelectedTxIds] = useState<number[]>([]);
   const [isApproving, setIsApproving] = useState(false);
+
+  // Bank Reconciliation Specific States
+  const [bankTransactions, setBankTransactions] = useState<any[]>([]);
+  const [isLoadingBankTx, setIsLoadingBankTx] = useState(false);
+  const [isUploadingStatement, setIsUploadingStatement] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [queryInputs, setQueryInputs] = useState<{ [id: number]: string }>({});
+  const [mappingInputs, setMappingInputs] = useState<{ [id: number]: string }>({});
+
+  // AP Pipeline Specific States
+  const [isAutoPostDraft, setIsAutoPostDraft] = useState(false);
+
 
   // Client-Specific Configuration State
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -101,14 +126,105 @@ export const ClientWorkspace: React.FC = () => {
     }
   };
 
+  // Load bank transactions for this client
+  const loadBankTransactions = async () => {
+    setIsLoadingBankTx(true);
+    try {
+      const data = await fetchBankTransactions(currentClient.id);
+      setBankTransactions(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.warn('Failed loading bank transactions:', err);
+    } finally {
+      setIsLoadingBankTx(false);
+    }
+  };
+
   useEffect(() => {
     setExecutionResult(null);
     setProbeResult(null);
     setSelectedTxIds([]);
     setIsConfigOpen(false);
     loadTransactions();
+    loadBankTransactions();
     loadClientConfiguration();
   }, [currentClient.id]);
+
+  const handleRunApPipeline = async () => {
+    setIsRunning(true);
+    setExecutionResult(null);
+    addLog('info', `[AP PIPELINE] Ingesting vendor bills for ${currentClient.name}...`);
+    try {
+      const res = await triggerApPipeline({
+        client_id: currentClient.id,
+        month: selectedMonth,
+        year: selectedYear,
+        auto_post_draft: isAutoPostDraft,
+      });
+      setExecutionResult({
+        status: 'COMPLETED',
+        message: 'Accounts Payable (AP) pipeline triggered successfully via Inngest.',
+        month: selectedMonth,
+        year: selectedYear,
+        sources_discovered: 1,
+        items_extracted: 1,
+        total_amount: 0,
+      });
+      addLog('success', `[AP PIPELINE] AP pipeline triggered for ${currentClient.name}`);
+      await loadTransactions();
+    } catch (err: any) {
+      addLog('error', `AP Pipeline error: ${err.message}`);
+      setExecutionResult({ status: 'FAILED', message: err.message });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingStatement(true);
+    setUploadMessage(null);
+    addLog('info', `[BANK RECON] Uploading bank statement (${file.name}) for ${currentClient.name}...`);
+
+    try {
+      const res = await uploadBankStatement(currentClient.id, file, selectedMonth, selectedYear);
+      setUploadMessage(`Successfully staged ${res.newly_staged || 0} bank statement lines!`);
+      addLog('success', `Bank statement ingested: ${res.newly_staged || 0} unmapped transactions requiring attention.`);
+      await loadBankTransactions();
+    } catch (err: any) {
+      setUploadMessage(`Upload failed: ${err.message}`);
+      addLog('error', `Bank statement upload failed: ${err.message}`);
+    } finally {
+      setIsUploadingStatement(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSendQuery = async (txId: number) => {
+    const queryText = queryInputs[txId]?.trim();
+    if (!queryText) return;
+    try {
+      await queryBankTransaction(txId, queryText);
+      addLog('success', `Sent question to client for bank line #${txId}.`);
+      await loadBankTransactions();
+      setQueryInputs((prev) => ({ ...prev, [txId]: '' }));
+    } catch (err: any) {
+      addLog('error', `Failed sending query: ${err.message}`);
+    }
+  };
+
+  const handleMapAccount = async (txId: number) => {
+    const accountId = mappingInputs[txId]?.trim();
+    if (!accountId) return;
+    try {
+      await mapBankTransaction(txId, accountId);
+      addLog('success', `Transaction #${txId} mapped to Zoho account '${accountId}'.`);
+      await loadBankTransactions();
+      setMappingInputs((prev) => ({ ...prev, [txId]: '' }));
+    } catch (err: any) {
+      addLog('error', `Failed mapping transaction: ${err.message}`);
+    }
+  };
 
   const handleSimulateRun = async () => {
     setIsRunning(true);
@@ -587,98 +703,441 @@ export const ClientWorkspace: React.FC = () => {
         </div>
       )}
 
-      {/* Staged Review Ledger (Live Data) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-base font-bold text-white tracking-tight">
-              PostgreSQL Review Ledger & Staged Transactions
-            </h2>
-            <span className="bg-slate-800 text-slate-300 text-[11px] font-mono font-bold px-2 py-0.5 rounded-full">
-              {transactions.length} staged
-            </span>
-          </div>
+      {/* Pipeline Navigation Selector */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPipelineView('AR')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              pipelineView === 'AR'
+                ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Receipt className="w-4 h-4" />
+            <span>Accounts Receivable (AR)</span>
+          </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={loadTransactions}
-              disabled={isLoadingTx}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-              title="Refresh ledger"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTx ? 'animate-spin' : ''}`} />
-            </button>
+          <button
+            onClick={() => setPipelineView('AP')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              pipelineView === 'AP'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>Accounts Payable (AP)</span>
+          </button>
 
-            <button
-              onClick={handleBatchApprove}
-              disabled={isApproving || transactions.length === 0}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50"
-            >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>{isApproving ? 'Approving...' : '1-Click Approve All'}</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setPipelineView('BANK')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              pipelineView === 'BANK'
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Landmark className="w-4 h-4" />
+            <span>Bank Reconciliation &amp; Client Portal</span>
+          </button>
         </div>
 
-        {transactions.length === 0 ? (
-          <div className="text-center py-10 bg-slate-950/50 rounded-xl border border-dashed border-slate-800">
-            <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-slate-300">No staged transactions yet.</p>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Click <strong className="text-sky-400">"Run Pipeline Ingestion"</strong> above to extract and stage transactions for {currentClient.name}.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
-                <tr>
-                  <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3">Description / Narrative</th>
-                  <th className="py-3 px-3">Category / Zoho Account</th>
-                  <th className="py-3 px-3 text-right">Debit</th>
-                  <th className="py-3 px-3 text-right">Credit / Total</th>
-                  <th className="py-3 px-3 text-center">Confidence</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-3 text-slate-400 font-mono">{tx.transaction_date}</td>
-                    <td className="py-3 px-3 text-white font-semibold">{tx.item_or_description}</td>
-                    <td className="py-3 px-3 text-sky-400">{tx.category_or_account || 'General Expense'}</td>
-                    <td className="py-3 px-3 text-right text-rose-400 font-mono">
-                      {tx.quantity_or_debit > 0 ? `GHS ${tx.quantity_or_debit.toFixed(2)}` : '—'}
-                    </td>
-                    <td className="py-3 px-3 text-right text-emerald-400 font-mono font-bold">
-                      {tx.credit_amount > 0 ? `GHS ${tx.credit_amount.toFixed(2)}` : `GHS ${tx.total_amount.toFixed(2)}`}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                        {((tx.confidence_score || 0.98) * 100).toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                          tx.approved
-                            ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
-                        }`}
-                      >
-                        {tx.approved ? <Check className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
-                        {tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {pipelineView === 'BANK' && (
+          <button
+            onClick={() => setActiveTab('portal')}
+            className="flex items-center gap-1.5 bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-500/40 text-indigo-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Preview Client Portal</span>
+          </button>
         )}
       </div>
+
+      {/* VIEW 1: Accounts Receivable (AR) */}
+      {pipelineView === 'AR' && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Accounts Receivable Ledger &amp; Staged Slips
+              </h2>
+              <span className="bg-slate-800 text-slate-300 text-[11px] font-mono font-bold px-2 py-0.5 rounded-full">
+                {transactions.filter((t) => t.pipeline_type !== 'AP').length} staged
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadTransactions}
+                disabled={isLoadingTx}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                title="Refresh ledger"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTx ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                onClick={handleBatchApprove}
+                disabled={isApproving || transactions.length === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>{isApproving ? 'Approving...' : '1-Click Approve All'}</span>
+              </button>
+            </div>
+          </div>
+
+          {transactions.filter((t) => t.pipeline_type !== 'AP').length === 0 ? (
+            <div className="text-center py-10 bg-slate-950/50 rounded-xl border border-dashed border-slate-800">
+              <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-300">No staged AR transactions yet.</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Click <strong className="text-sky-400">"Run Pipeline Ingestion"</strong> above to extract and stage laundry/sales slips for {currentClient.name}.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Customer / Slip Description</th>
+                    <th className="py-3 px-3">Category / Zoho Account</th>
+                    <th className="py-3 px-3 text-right">Debit</th>
+                    <th className="py-3 px-3 text-right">Credit / Total</th>
+                    <th className="py-3 px-3 text-center">Confidence</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-medium">
+                  {transactions
+                    .filter((t) => t.pipeline_type !== 'AP')
+                    .map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-800/40 transition">
+                        <td className="py-3 px-3 text-slate-400 font-mono">{tx.transaction_date}</td>
+                        <td className="py-3 px-3 text-white font-semibold">{tx.item_or_description}</td>
+                        <td className="py-3 px-3 text-sky-400">{tx.category_or_account || 'Laundry Revenue'}</td>
+                        <td className="py-3 px-3 text-right text-rose-400 font-mono">
+                          {tx.quantity_or_debit > 0 ? `GHS ${tx.quantity_or_debit.toFixed(2)}` : '—'}
+                        </td>
+                        <td className="py-3 px-3 text-right text-emerald-400 font-mono font-bold">
+                          {tx.credit_amount > 0 ? `GHS ${tx.credit_amount.toFixed(2)}` : `GHS ${tx.total_amount.toFixed(2)}`}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                            {((tx.confidence_score || 0.98) * 100).toFixed(0)}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                              tx.approved
+                                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {tx.approved ? <Check className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+                            {tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW 2: Accounts Payable (AP) */}
+      {pipelineView === 'AP' && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-base font-bold text-white tracking-tight">Accounts Payable (Vendor Bills)</h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Ingest vendor invoices via Gemini OCR, automatically create new vendors in Zoho Books, and post draft bills.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-300 bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAutoPostDraft}
+                  onChange={(e) => setIsAutoPostDraft(e.target.checked)}
+                  className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                />
+                <span>Auto-Post Draft Bills to Zoho</span>
+              </label>
+
+              <button
+                onClick={handleRunApPipeline}
+                disabled={isRunning}
+                className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer disabled:opacity-50"
+              >
+                {isRunning ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <PlayCircle className="w-4 h-4" />
+                )}
+                <span>Run AP Bill Pipeline</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Staged AP Transactions */}
+          {transactions.filter((t) => t.pipeline_type === 'AP').length === 0 ? (
+            <div className="text-center py-10 bg-slate-950/50 rounded-xl border border-dashed border-slate-800">
+              <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-300">No AP vendor bills staged yet.</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Click <strong className="text-indigo-400">"Run AP Bill Pipeline"</strong> to scan client Google Drive for incoming supplier bills and invoices.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-3">Bill Date</th>
+                    <th className="py-3 px-3">Vendor / Invoice</th>
+                    <th className="py-3 px-3">File Source</th>
+                    <th className="py-3 px-3 text-right">Bill Total</th>
+                    <th className="py-3 px-3 text-center">Zoho Bill Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-medium">
+                  {transactions
+                    .filter((t) => t.pipeline_type === 'AP')
+                    .map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-800/40 transition">
+                        <td className="py-3 px-3 text-slate-400 font-mono">{tx.transaction_date}</td>
+                        <td className="py-3 px-3 text-white font-semibold">{tx.item_or_description}</td>
+                        <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{tx.source_file_name}</td>
+                        <td className="py-3 px-3 text-right text-indigo-400 font-mono font-bold">
+                          GHS {tx.total_amount.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              tx.status === 'INVOICED'
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {tx.status === 'INVOICED' ? 'Draft Bill Posted' : 'Pending Review'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW 3: Bank Reconciliation & Client Portal */}
+      {pipelineView === 'BANK' && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div>
+              <div className="flex items-center gap-2">
+                <Landmark className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-white tracking-tight">Bank Statements &amp; Clarification Queries</h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Upload bank statements (PDF, CSV, Excel). For unmapped transactions, post queries to the client clarification portal.
+              </p>
+            </div>
+
+            {/* Statement Upload Box */}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer">
+                <UploadCloud className="w-4 h-4" />
+                <span>{isUploadingStatement ? 'Ingesting Statement...' : 'Upload Bank Statement'}</span>
+                <input
+                  type="file"
+                  accept=".csv,.pdf,.xlsx,.xls"
+                  onChange={handleFileUpload}
+                  disabled={isUploadingStatement}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                onClick={loadBankTransactions}
+                disabled={isLoadingBankTx}
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                title="Refresh bank transactions"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingBankTx ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {uploadMessage && (
+            <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>{uploadMessage}</span>
+            </div>
+          )}
+
+          {/* Bank Transactions Table */}
+          {isLoadingBankTx ? (
+            <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+              <p className="text-xs">Loading bank statement ledger...</p>
+            </div>
+          ) : bankTransactions.length === 0 ? (
+            <div className="text-center py-10 bg-slate-950/50 rounded-xl border border-dashed border-slate-800">
+              <Landmark className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-300">No bank statement lines uploaded yet.</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Upload a monthly bank statement (PDF or CSV) to extract and reconcile transactions.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {bankTransactions.map((tx) => {
+                const isAnswered = tx.status === 'CLIENT_ANSWERED';
+                const isMapped = tx.status === 'MAPPED';
+                const isClarificationRequested = tx.status === 'CLARIFICATION_REQUESTED';
+
+                return (
+                  <div
+                    key={tx.id}
+                    className={`bg-slate-950/70 border rounded-xl p-4 transition ${
+                      isMapped
+                        ? 'border-emerald-500/30'
+                        : isAnswered
+                        ? 'border-teal-500/40 bg-teal-950/10'
+                        : isClarificationRequested
+                        ? 'border-amber-500/40'
+                        : 'border-slate-800'
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold text-slate-400">{tx.transaction_date}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              tx.transaction_type === 'CREDIT'
+                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                            }`}
+                          >
+                            {tx.transaction_type === 'CREDIT' ? 'Inflow (+)' : 'Outflow (-)'}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isMapped
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                                : isAnswered
+                                ? 'bg-teal-950 text-teal-300 border border-teal-500/30'
+                                : isClarificationRequested
+                                ? 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {isMapped
+                              ? 'MAPPED'
+                              : isAnswered
+                              ? 'CLIENT ANSWERED'
+                              : isClarificationRequested
+                              ? 'AWAITING CLIENT'
+                              : 'UNMAPPED'}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-white mt-1">{tx.description}</h4>
+
+                        {/* Client Written Explanation */}
+                        {tx.client_explanation && (
+                          <div className="mt-2 p-2.5 bg-teal-950/40 border border-teal-500/30 rounded-lg text-xs text-teal-200">
+                            <span className="font-bold text-teal-300">Client's Explanation: </span>
+                            {tx.client_explanation}
+                          </div>
+                        )}
+
+                        {/* Accountant Question */}
+                        {tx.accountant_query && (
+                          <div className="mt-1 p-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-400">
+                            <span className="font-bold text-slate-300">Your Query: </span>
+                            {tx.accountant_query}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Amount */}
+                      <div className="text-right shrink-0">
+                        <p
+                          className={`text-base font-mono font-extrabold ${
+                            tx.transaction_type === 'CREDIT' ? 'text-emerald-400' : 'text-slate-200'
+                          }`}
+                        >
+                          {tx.transaction_type === 'CREDIT' ? '+' : '-'}GHS {tx.amount.toFixed(2)}
+                        </p>
+                        {tx.mapped_account_id && (
+                          <p className="text-[11px] text-sky-400 font-mono">Account: {tx.mapped_account_id}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Accountant Action Form */}
+                    {!isMapped && (
+                      <div className="mt-3 pt-3 border-t border-slate-900 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Ask Client Query */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={queryInputs[tx.id] || ''}
+                            onChange={(e) => setQueryInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))}
+                            placeholder="Ask client for details / receipt..."
+                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          />
+                          <button
+                            onClick={() => handleSendQuery(tx.id)}
+                            disabled={!queryInputs[tx.id]?.trim()}
+                            className="bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
+                          >
+                            Ask Client
+                          </button>
+                        </div>
+
+                        {/* Map to Zoho Account */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={mappingInputs[tx.id] || ''}
+                            onChange={(e) => setMappingInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))}
+                            placeholder="Zoho Expense Account (e.g. 5001 - Supplies)..."
+                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                          />
+                          <button
+                            onClick={() => handleMapAccount(tx.id)}
+                            disabled={!mappingInputs[tx.id]?.trim()}
+                            className="bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
+                          >
+                            Map &amp; Reconcile
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Blueprint Architecture Steps */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
@@ -737,7 +1196,7 @@ export const ClientWorkspace: React.FC = () => {
 
       {/* Connected Integrations */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
-        <h2 className="text-base font-bold text-white mb-3">Configured Integrations & Storage</h2>
+        <h2 className="text-base font-bold text-white mb-3">Configured Integrations &amp; Storage</h2>
         <div className="flex flex-wrap gap-2">
           {currentClient.activeIntegrations?.map((intg, i) => (
             <div
@@ -753,3 +1212,4 @@ export const ClientWorkspace: React.FC = () => {
     </div>
   );
 };
+

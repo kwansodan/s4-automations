@@ -64,6 +64,15 @@ def init_db():
     logger.info("Initializing SQLModel database schemas...")
     SQLModel.metadata.create_all(active_engine)
 
+    # SQLite migration: ensure pipeline_type column exists
+    try:
+        with active_engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("ALTER TABLE staged_transactions ADD COLUMN pipeline_type VARCHAR DEFAULT 'AR'"))
+            conn.commit()
+    except Exception:
+        pass
+
     # Seed Default Clients if empty
     with Session(active_engine) as session:
         existing = session.exec(select(ClientOrganization)).first()

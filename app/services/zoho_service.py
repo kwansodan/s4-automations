@@ -11,6 +11,8 @@ from app.models.schemas import (
     ZohoItem,
     ZohoDraftInvoiceRequest,
     ZohoDraftInvoiceResponse,
+    ZohoDraftBillRequest,
+    ZohoDraftBillResponse,
     MonthlySKUSummary,
 )
 from app.utils.logging import get_logger
@@ -165,6 +167,51 @@ class ZohoBooksService:
             self._cached_contacts = contacts
             logger.info(f"Fetched {len(contacts)} active contacts from Zoho Books.")
             return contacts
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_vendor_contact(self, vendor_name: str) -> ZohoContact:
+        """Creates a new Vendor contact in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            logger.info(f"Mock: Created vendor {vendor_name}")
+            new_vendor = ZohoContact(contact_id=f"cnt_mock_{int(time.time())}", contact_name=vendor_name, company_name=vendor_name)
+            self._cached_contacts.append(new_vendor)
+            return new_vendor
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/contacts"
+        params = {"organization_id": self.org_id}
+        payload = {
+            "contact_name": vendor_name,
+            "company_name": vendor_name,
+            "contact_type": "vendor",
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+            
+            response.raise_for_status()
+            data = response.json()
+            c = data.get("contact", {})
+            new_vendor = ZohoContact(
+                contact_id=str(c.get("contact_id", "")),
+                contact_name=c.get("contact_name", ""),
+                company_name=c.get("company_name", ""),
+                email=c.get("email", ""),
+                status=c.get("status", "active"),
+            )
+            self._cached_contacts.append(new_vendor)
+            logger.info(f"Created new Vendor in Zoho Books: {vendor_name}")
+            return new_vendor
 
     @retry(
         reraise=True,
@@ -504,4 +551,72 @@ class ZohoBooksService:
                 status="draft",
                 invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
             )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_draft_bill(self, request: ZohoDraftBillRequest) -> ZohoDraftBillResponse:
+        """Creates a new Draft Vendor Bill in Zoho Books."""
+        if settings.MOCK_MODE or not self.org_id:
+            mock_id = f"bill_mock_{int(time.time())}"
+            mock_num = request.bill_number or f"BILL-MOCK-{int(time.time()) % 10000:04d}"
+            total = sum(float(item.get("rate", 0)) * float(item.get("quantity", 1)) for item in request.line_items)
+            logger.info(f"[MOCK] Created Draft Bill {mock_num} for vendor {request.vendor_id} (Total: GHS {total:.2f})")
+            return ZohoDraftBillResponse(
+                code=0,
+                message="Bill created successfully (Mock)",
+                bill_id=mock_id,
+                bill_number=mock_num,
+                vendor_id=request.vendor_id,
+                vendor_name="Vendor",
+                total=total,
+                status="draft",
+                bill_url=f"https://books.zoho.com/app#/bills/{mock_id}",
+            )
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/bills"
+        params = {"organization_id": self.org_id}
+
+        payload = {
+            "vendor_id": request.vendor_id,
+            "bill_number": request.bill_number,
+            "date": request.date,
+            "due_date": request.due_date,
+            "line_items": request.line_items,
+            "notes": request.notes,
+            "status": "draft",
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            bill = data.get("bill", {})
+            bill_id = str(bill.get("bill_id", ""))
+            bill_num = bill.get("bill_number", "")
+            total_amt = float(bill.get("total", 0.0))
+
+            logger.info(f"Successfully created Zoho Draft Bill {bill_num} (ID: {bill_id})")
+            return ZohoDraftBillResponse(
+                code=data.get("code", 0),
+                message=data.get("message", "Success"),
+                bill_id=bill_id,
+                bill_number=bill_num,
+                vendor_id=request.vendor_id,
+                vendor_name=bill.get("vendor_name", ""),
+                total=total_amt,
+                status="draft",
+                bill_url=f"https://books.zoho.com/app#/bills/{bill_id}",
+            )
+
 

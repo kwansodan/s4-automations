@@ -67,6 +67,7 @@ class StagedTransaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: str = Field(index=True)
     batch_id: str = Field(index=True)
+    pipeline_type: str = Field(default="AR", description="AR (Receivable), AP (Payable)")
     transaction_date: str
     source_type: str = Field(default="google_drive")
     source_file_name: str
@@ -87,3 +88,27 @@ class StagedTransaction(SQLModel, table=True):
     status: str = Field(default="PENDING", index=True)  # PENDING, INVOICED, JOURNAL_POSTED, REJECTED
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now)
+
+
+class BankTransaction(SQLModel, table=True):
+    __tablename__ = "bank_transactions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: str = Field(index=True)
+    transaction_date: str = Field(index=True)
+    description: str
+    amount: float = Field(default=0.0)
+    transaction_type: str = Field(default="DEBIT", description="DEBIT or CREDIT")
+    source_file_name: str
+    
+    # Matching / Reconciling
+    status: str = Field(default="UNMAPPED", index=True) # UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED
+    mapped_account_id: Optional[str] = Field(default=None)
+    
+    # Client Portal Communication
+    client_explanation: Optional[str] = Field(default=None)
+    accountant_query: Optional[str] = Field(default=None)
+    
+    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)

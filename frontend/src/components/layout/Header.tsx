@@ -14,6 +14,7 @@ import {
   LogOut,
   RefreshCw,
   Zap,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -151,7 +152,20 @@ export const Header: React.FC = () => {
               <Building className="w-3.5 h-3.5" />
               <span>All Clients</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('portal')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'portal'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-indigo-400 hover:text-indigo-200 hover:bg-indigo-950/40 border border-indigo-500/20'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Client Portal</span>
+            </button>
           </nav>
+
 
           {/* Right: Sync & User Profile */}
           <div className="flex items-center gap-3">

@@ -206,6 +206,30 @@ class ZohoDraftInvoiceResponse(BaseModel):
     invoice_url: Optional[str] = ""
 
 
+class ZohoDraftBillRequest(BaseModel):
+    """Request payload to create a Draft Vendor Bill in Zoho Books."""
+    vendor_id: str
+    bill_number: Optional[str] = None
+    date: str
+    due_date: Optional[str] = None
+    line_items: List[Dict[str, Any]] = Field(default_factory=list)
+    notes: Optional[str] = ""
+    status: str = "draft"
+
+
+class ZohoDraftBillResponse(BaseModel):
+    """Response returned from Zoho Books after bill creation."""
+    code: int = 0
+    message: str = ""
+    bill_id: str
+    bill_number: str
+    vendor_id: str
+    vendor_name: str
+    total: float
+    status: str
+    bill_url: Optional[str] = ""
+
+
 # -------------------------------------------------------------------------
 # Pipeline Workflow State Schemas
 # -------------------------------------------------------------------------
@@ -324,4 +348,50 @@ class StatsSummary(BaseModel):
     pending_approval_count: int = 0
     active_clients_count: int = 0
     mock_mode: bool = False
+
+
+# -------------------------------------------------------------------------
+# Accounts Payable & Bank Portal Schemas
+# -------------------------------------------------------------------------
+
+class OCRAPBillItem(BaseModel):
+    """Extracted single line item from a vendor bill."""
+    item_description: str
+    quantity: float = 1.0
+    unit_rate: float = 0.0
+    amount: float = 0.0
+
+class OCRAPBillExtraction(BaseModel):
+    """Full extraction response for a vendor bill."""
+    vendor_name: str
+    bill_date: str
+    bill_number: str = ""
+    currency: str = "GHS"
+    total_amount: float
+    items: List[OCRAPBillItem] = Field(default_factory=list)
+    overall_confidence: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH)
+
+class BankTransactionUpdate(BaseModel):
+    """Request from client portal to update a bank transaction explanation."""
+    client_explanation: str
+
+
+class OCRBankTransaction(BaseModel):
+    """Single transaction row from a bank statement."""
+    transaction_date: str
+    description: str
+    amount: float
+    transaction_type: str = "DEBIT" # DEBIT or CREDIT
+    balance: Optional[float] = None
+    reference: Optional[str] = ""
+
+
+class OCRBankStatementExtraction(BaseModel):
+    """Full extraction response for a bank statement (PDF)."""
+    bank_name: str = ""
+    account_number: str = ""
+    currency: str = "GHS"
+    statement_period: str = ""
+    transactions: List[OCRBankTransaction] = Field(default_factory=list)
+    overall_confidence: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH)
 

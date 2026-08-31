@@ -437,4 +437,60 @@ export async function updateConfig(newConfig: Record<string, any>): Promise<{ su
   return handleResponse<{ success: boolean; message: string; config: any }>(res, 'Update config');
 }
 
+// -------------------------------------------------------------------------
+// Accounts Payable (AP) & Bank Reconciliation APIs
+// -------------------------------------------------------------------------
+
+export async function fetchBankTransactions(clientId: string): Promise<any[]> {
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any[]>(res, 'Fetch bank transactions');
+}
+
+export async function queryBankTransaction(txId: number, queryText: string): Promise<any> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/query`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ query_text: queryText }),
+  });
+  return handleResponse<any>(res, 'Query bank transaction');
+}
+
+export async function mapBankTransaction(txId: number, mappedAccountId: string): Promise<any> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/map`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ mapped_account_id: mappedAccountId }),
+  });
+  return handleResponse<any>(res, 'Map bank transaction');
+}
+
+export async function uploadBankStatement(clientId: string, file: File, month?: string, year?: number): Promise<any> {
+  const formData = new FormData();
+  formData.append('client_id', clientId);
+  if (month) formData.append('month', month);
+  if (year) formData.append('year', year.toString());
+  formData.append('file', file);
+
+  const res = await resilientFetch('/api/v1/bank/upload', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  return handleResponse<any>(res, 'Upload bank statement');
+}
+
+export async function triggerApPipeline(payload: { month: string; year: number; client_id: string; auto_post_draft?: boolean }): Promise<any> {
+  const res = await resilientFetch('/api/pipeline/trigger', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      ...payload,
+      event_name: 'app/ap.pipeline.trigger',
+    }),
+  });
+  return handleResponse<any>(res, 'Trigger AP pipeline');
+}
+
 
