@@ -8,6 +8,7 @@ import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, DiagnosticsResult } from '../types/config';
+import type { PipelineSimulationResult } from '../types/client';
 
 const DIRECT_BACKEND_URL = 'https://autapi.service4gh.com';
 
@@ -533,6 +534,15 @@ export async function triggerApPipeline(payload: { month: string; year: number; 
     }),
   });
   return handleResponse<any>(res, 'Trigger AP pipeline');
+}
+
+export async function simulatePipelineExtraction(formData: FormData): Promise<PipelineSimulationResult> {
+  const res = await resilientFetch('/api/v1/pipeline/simulate', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  return handleResponse<PipelineSimulationResult>(res, 'Simulate pipeline extraction');
 }
 
 

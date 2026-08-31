@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType } from '../../types/client';
+import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
-import { probeExternalConnection } from '../../lib/api';
+import { probeExternalConnection, simulatePipelineExtraction } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
 import {
   X,
@@ -26,6 +26,11 @@ import {
   FileText,
   DollarSign,
   ArrowRight,
+  Upload,
+  Bot,
+  Code,
+  Wand2,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface PipelineSetupWizardModalProps {
@@ -39,6 +44,25 @@ interface PipelineSetupWizardModalProps {
 }
 
 const SERVICE_ACCOUNT_EMAIL = 's4-vision-ingest@s4-automations.iam.gserviceaccount.com';
+
+const PROMPT_PRESETS = [
+  {
+    title: '🧺 Laundry Control Slips',
+    text: 'Column P is pickup count and Column D is delivery count. Calculate discrepancy = Pickup - Delivery. Map hotel name to client customer ID. Default item prices to catalog rate.',
+  },
+  {
+    title: '🧾 Vendor Bills & Invoices',
+    text: 'Extract Vendor Name, Bill Number, and Date. Itemize all line items with quantity, unit rate, and tax if stated. Assign 50000 - Operating Expenses by default.',
+  },
+  {
+    title: '💳 Bank & MoMo Statements',
+    text: 'Extract date, debit amounts, and transaction descriptions. For mobile money transfers, parse the transaction ID from the description. Suggest appropriate GL chart of accounts.',
+  },
+  {
+    title: '🏢 Tenant Rent Receipts',
+    text: 'Extract tenant name, unit number, amount paid, and payment reference code. Tag utility apportionment items separately.',
+  },
+];
 
 export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> = ({
   isOpen,
@@ -65,6 +89,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [defaultAccountCode, setDefaultAccountCode] = useState<string>('4000 - Commercial Sales Revenue');
   const [autoPostToZoho, setAutoPostToZoho] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
+
+  // Simulation & Human Instructions State
+  const [humanInstructions, setHumanInstructions] = useState<string>('');
+  const [sampleFile, setSampleFile] = useState<File | null>(null);
+  const [sampleText, setSampleText] = useState<string>('');
+  const [sampleMode, setSampleMode] = useState<'file' | 'text'>('file');
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [simulationResult, setSimulationResult] = useState<PipelineSimulationResult | null>(null);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
 
   // Trigger State
   const [triggerType, setTriggerType] = useState<TriggerType>('scheduled_cron');
@@ -97,6 +130,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setTriggerType(initialPipeline.trigger_type || 'scheduled_cron');
         setCronExpression(initialPipeline.cron_expression || '0 20 * * *');
         setCronScheduleHuman(initialPipeline.cron_schedule_human || 'Daily at 8:00 PM');
+        setHumanInstructions(initialPipeline.human_instructions || '');
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -115,9 +149,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setOneDriveTenantId('');
         setOneDriveClientId('');
         setOneDriveSecret('');
+        setHumanInstructions('');
       }
       setStep(1);
       setProbeResult(null);
+      setSampleFile(null);
+      setSampleText('');
+      setSimulationResult(null);
+      setSimulationError(null);
     }
   }, [isOpen, initialPipeline]);
 
@@ -160,6 +199,36 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
     }
   };
 
+  const handleSimulate = async () => {
+    setIsSimulating(true);
+    setSimulationError(null);
+    try {
+      const formData = new FormData();
+      if (sampleFile) {
+        formData.append('file', sampleFile);
+      }
+      if (sampleText.trim()) {
+        formData.append('sample_text', sampleText.trim());
+      }
+      formData.append('entity_type', entityType);
+      formData.append('client_id', clientId);
+      formData.append('client_name', clientName);
+      formData.append('accounting_software', targetAccountingSoftware);
+      if (humanInstructions.trim()) {
+        formData.append('human_instructions', humanInstructions.trim());
+      }
+
+      const res = await simulatePipelineExtraction(formData);
+      setSimulationResult(res);
+      addLog('success', `🧪 [AI SIMULATION] Simulated transposition for "${name || 'stream'}" (${res.validation_status}).`);
+    } catch (err: any) {
+      setSimulationError(err.message || 'Simulation failed');
+      addLog('error', `❌ [AI SIMULATION FAIL] ${err.message}`);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -174,11 +243,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         source_identifier: sourceIdentifier.trim(),
         default_account_code: defaultAccountCode.trim(),
         auto_post_to_zoho: autoPostToZoho,
+        auto_post_draft: autoPostToZoho,
         is_active: isActive,
+        active: isActive,
         trigger_type: triggerType,
         cron_expression: triggerType === 'scheduled_cron' ? cronExpression : undefined,
         cron_schedule_human: triggerType === 'scheduled_cron' ? cronScheduleHuman : undefined,
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
+        human_instructions: humanInstructions.trim() || undefined,
       };
 
       await onSave(pipelineData);
@@ -193,7 +265,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const stepsList = [
     { num: 1, title: 'Accounting & Entity', icon: SlidersHorizontal },
     { num: 2, title: 'Channel & Storage', icon: Cloud },
-    { num: 3, title: 'Trigger & Schedule', icon: Clock },
+    { num: 3, title: 'AI Simulation & Rules', icon: Sparkles },
+    { num: 4, title: 'Trigger & Schedule', icon: Clock },
   ];
 
   return (
@@ -415,34 +488,34 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
               {/* Channel Identifier Inputs */}
               {sourceType === 'google_drive' && (
                 <div className="space-y-3 pt-2 border-t border-slate-800">
-                  <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 text-xs space-y-2">
-                    <span className="text-sky-300 font-bold block">1. Share Google Drive Folder with S4 Service Account:</span>
-                    <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[11px] text-sky-200">
-                      <span className="truncate mr-2">{SERVICE_ACCOUNT_EMAIL}</span>
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2 text-xs text-slate-300">
+                    <span className="font-bold text-white block">Google Service Account Instructions:</span>
+                    <p className="text-slate-400">
+                      Share your client's target Google Drive folder with the Service Account email below as <strong>Viewer</strong> or <strong>Editor</strong>:
+                    </p>
+                    <div className="p-2 bg-slate-900 border border-slate-700 rounded font-mono text-[11px] text-sky-300 flex items-center justify-between">
+                      <span className="truncate">{SERVICE_ACCOUNT_EMAIL}</span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(SERVICE_ACCOUNT_EMAIL, 'sa_email')}
-                        className="bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer"
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] px-2 py-0.5 rounded cursor-pointer ml-2"
                       >
-                        {copiedKey === 'sa_email' ? 'Copied!' : 'Copy Email'}
+                        {copiedKey === 'sa_email' ? 'Copied' : 'Copy'}
                       </button>
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Google Drive Folder ID for this Stream <span className="text-red-400">*</span>
+                      Google Drive Folder ID *
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. 1Uu_Q3p8s1_anr_laundry_slips"
+                      placeholder="e.g. 1A2b3C4d5E6f7G8h9I0jK (from drive URL)"
                       value={sourceIdentifier}
                       onChange={(e) => setSourceIdentifier(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-sky-500"
                     />
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Extracted from the URL when viewing this stream's folder in Google Drive.
-                    </span>
                   </div>
                 </div>
               )}
@@ -491,12 +564,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                 <div className="space-y-3 pt-2 border-t border-slate-800">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Dedicated Inbound Email Alias for this Stream
+                      Monitored Inbox Folder Name
                     </label>
                     <input
                       type="text"
-                      placeholder={`e.g. ${clientId}_${section.toLowerCase()}@inbound.service4gh.com`}
-                      value={sourceIdentifier || `${clientId}_${section.toLowerCase()}@inbound.service4gh.com`}
+                      placeholder="INBOX or INBOX/VendorBills"
+                      value={sourceIdentifier}
                       onChange={(e) => setSourceIdentifier(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-sky-500"
                     />
@@ -582,8 +655,216 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
             </div>
           )}
 
-          {/* STEP 3: Trigger Schedule & Automation Rules */}
+          {/* STEP 3: Interactive AI Simulation Lab & Rules Studio */}
           {step === 3 && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="bg-sky-950/30 border border-sky-500/30 rounded-xl p-3.5 flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <span className="font-bold text-white block">Interactive AI Simulation & Transposition Studio</span>
+                  <p className="text-slate-300">
+                    Feed a test sample document (image, PDF, or text) and write plain-English rules to guide how the AI extracts and transposes raw data into the {ACCOUNTING_PLATFORMS.find((p) => p.id === targetAccountingSoftware)?.name || 'Accounting Platform'} <code className="text-sky-300 font-mono">{entityType}</code> API schema.
+                  </p>
+                </div>
+              </div>
+
+              {/* Natural Language Prompt Rules Box */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Human Transposition Instructions (Plain-English Prompt)</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">Guides AI field transposition & calculations</span>
+                </div>
+                <textarea
+                  rows={3}
+                  value={humanInstructions}
+                  onChange={(e) => setHumanInstructions(e.target.value)}
+                  placeholder="e.g. Column P is pickup count and Column D is delivery count. Calculate discrepancy = Pickup - Delivery. Map hotel name to client customer ID. Default item prices to catalog rate."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-sans"
+                />
+
+                {/* Preset Prompt Buttons */}
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">Quick Domain Instruction Presets:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PROMPT_PRESETS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setHumanInstructions(preset.text)}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60 hover:border-sky-500/50 transition cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{preset.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sample Document Ingestion Box */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSampleMode('file')}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        sampleMode === 'file' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      📁 Upload Sample File (Image / PDF)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSampleMode('text')}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        sampleMode === 'text' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      📝 Paste Sample Document Text
+                    </button>
+                  </div>
+                </div>
+
+                {sampleMode === 'file' ? (
+                  <div className="border-2 border-dashed border-slate-800 hover:border-sky-500/50 rounded-xl p-4 text-center transition bg-slate-900/40">
+                    <input
+                      type="file"
+                      id="sample-upload"
+                      accept="image/*,.pdf,.csv,.txt"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setSampleFile(e.target.files[0]);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <label htmlFor="sample-upload" className="cursor-pointer block space-y-1.5">
+                      <Upload className="w-6 h-6 text-sky-400 mx-auto" />
+                      <div className="text-xs text-slate-300">
+                        {sampleFile ? (
+                          <span className="text-sky-300 font-bold font-mono">Selected: {sampleFile.name} ({(sampleFile.size / 1024).toFixed(1)} KB)</span>
+                        ) : (
+                          <span>Click to browse or drop sample slip, invoice photo, or PDF statement</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 block">PNG, JPG, WebP, PDF, CSV up to 10MB</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div>
+                    <textarea
+                      rows={4}
+                      value={sampleText}
+                      onChange={(e) => setSampleText(e.target.value)}
+                      placeholder="Paste raw text extracted from invoice, delivery note, bank SMS, or WhatsApp message here..."
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                )}
+
+                {/* Simulate Button */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSimulate}
+                    disabled={isSimulating}
+                    className="flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
+                    <span>{isSimulating ? 'Studying Sample & Simulating...' : '🧪 Run AI Extraction & Transposition'}</span>
+                  </button>
+                  <span className="text-[11px] text-slate-400">
+                    {simulationResult ? 'Simulation ready below' : 'Click to preview live API draft'}
+                  </span>
+                </div>
+
+                {simulationError && (
+                  <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{simulationError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Simulation Result Split View */}
+              {simulationResult && (
+                <div className="space-y-3 bg-slate-950 border border-slate-800 rounded-xl p-4 animate-in fade-in">
+                  {/* Status Bar */}
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                        simulationResult.validation_status === 'VALID'
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-500/50'
+                      }`}>
+                        {simulationResult.validation_status === 'VALID' ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                        <span>{simulationResult.validation_status === 'VALID' ? 'PASSED CONTRACT VALIDATION' : 'VALIDATION WARNINGS'}</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Confidence: <strong className="text-white">{Math.round(simulationResult.confidence_score * 100)}%</strong>
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30">
+                      Target: {simulationResult.accounting_software.toUpperCase()} ({simulationResult.entity_type})
+                    </span>
+                  </div>
+
+                  {/* AI Reasoning Narrative */}
+                  {simulationResult.ai_reasoning && (
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 space-y-1">
+                      <span className="font-semibold text-sky-300 flex items-center gap-1 text-[11px]">
+                        <Bot className="w-3.5 h-3.5" />
+                        <span>AI Transposition Reasoning:</span>
+                      </span>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">{simulationResult.ai_reasoning}</p>
+                    </div>
+                  )}
+
+                  {/* Extracted Datapoints & Transposed JSON Split */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    {/* Left: Raw Detected Datapoints */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-bold text-slate-300 block">Extracted Data Points:</span>
+                      <div className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 max-h-48 overflow-y-auto space-y-1.5 text-xs">
+                        {simulationResult.raw_datapoints.map((dp, i) => (
+                          <div key={i} className="p-1.5 rounded bg-slate-950 border border-slate-800/80 text-[11px]">
+                            <div className="flex items-center justify-between text-slate-400">
+                              <span className="font-semibold text-sky-300">{dp.key}</span>
+                              <span className="text-[9px] text-slate-500">{Math.round(dp.confidence * 100)}%</span>
+                            </div>
+                            <div className="text-white font-mono text-[10px] mt-0.5">{String(dp.value)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Right: Target API JSON Draft */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                        <span>Transposed Entity Payload:</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(JSON.stringify(simulationResult.transposed_payload, null, 2), 'sim_json')}
+                          className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                        >
+                          {copiedKey === 'sim_json' ? 'Copied!' : 'Copy JSON'}
+                        </button>
+                      </span>
+                      <pre className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-[10px] text-emerald-300 font-mono max-h-48 overflow-y-auto overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify(simulationResult.transposed_payload, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 4: Trigger Schedule & Automation Rules */}
+          {step === 4 && (
             <div className="space-y-4 animate-in fade-in">
               <div className="space-y-2">
                 <label className="block text-xs font-semibold text-slate-300">
@@ -726,7 +1007,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
               Cancel
             </button>
 
-            {step < 3 ? (
+            {step < 4 ? (
               <button
                 type="button"
                 onClick={() => setStep((prev) => prev + 1)}

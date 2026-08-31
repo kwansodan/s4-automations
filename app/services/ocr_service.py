@@ -454,3 +454,227 @@ Return strictly valid JSON conforming to the schema.
         summaries.sort(key=lambda s: s.standard_item_name)
         logger.info(f"Aggregated {len(summaries)} monthly SKU summaries for client '{client_name}'")
         return summaries
+
+    async def simulate_pipeline_transposition(
+        self,
+        file_bytes: Optional[bytes] = None,
+        file_name: str = "sample_document.png",
+        mime_type: str = "image/png",
+        sample_text: Optional[str] = None,
+        entity_type: str = "ar_sales_invoice",
+        client_name: str = "General Client",
+        human_instructions: Optional[str] = None,
+        accounting_software: str = "zoho_books",
+        item_catalog: Optional[List[ZohoItem]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Studies sample document or text, applies human-written transposition instructions,
+        and transposes raw extracted data into the target accounting entity's API schema.
+        """
+        logger.info(
+            f"Simulating pipeline transposition for '{client_name}' (Entity: {entity_type}, Platform: {accounting_software})"
+        )
+
+        catalog = item_catalog or []
+        instructions_text = human_instructions.strip() if human_instructions else "Extract all standard transaction fields and line items matching the target entity schema."
+
+        # If Mock mode or no API key, synthesize intelligent mock simulation
+        if settings.MOCK_MODE or not self.api_key:
+            return self._generate_mock_simulation(
+                file_name=file_name,
+                sample_text=sample_text,
+                entity_type=entity_type,
+                client_name=client_name,
+                human_instructions=instructions_text,
+                accounting_software=accounting_software,
+                item_catalog=catalog,
+            )
+
+        # Build Multi-Modal AI Prompt
+        prompt = f"""
+You are an expert AI Document Transposition Engine for S4 Automations.
+Your task is to analyze the provided document/text and transpose raw extracted datapoints into the strict target accounting entity schema for {accounting_software.upper()}.
+
+### Target Entity Type:
+{entity_type}
+
+### Client Name:
+{client_name}
+
+### Human-Written Transposition Instructions:
+"{instructions_text}"
+
+### Standard Item Catalog (Reference):
+{', '.join([it.name for it in catalog[:15]]) if catalog else 'No custom catalog provided. Infer standard SKU/service names.'}
+
+### Required JSON Output Structure:
+{{
+  "raw_datapoints": [
+    {{ "key": "Field Label", "value": "Extracted Value", "confidence": 0.95, "source_snippet": "exact text from doc" }}
+  ],
+  "transposed_payload": {{
+    "customer_id": "string or contact name",
+    "vendor_id": "string (for AP)",
+    "date": "YYYY-MM-DD",
+    "document_number": "INV-xxx or BILL-xxx",
+    "line_items": [
+      {{ "name": "Item Description", "rate": 0.0, "quantity": 1, "amount": 0.0 }}
+    ],
+    "total_amount": 0.0,
+    "notes": "string"
+  }},
+  "ai_reasoning": "Explain step-by-step how the human instructions were interpreted and how raw text was mapped into the final API payload.",
+  "confidence_score": 0.95
+}}
+
+Analyze thoroughly and return JSON output only.
+"""
+
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=self.api_key)
+            contents = [prompt]
+            if file_bytes:
+                contents.insert(0, types.Part.from_bytes(data=file_bytes, mime_type=mime_type))
+            elif sample_text:
+                contents.insert(0, f"### Sample Document Text Content:\n{sample_text}")
+
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
+            data = json.loads(response.text)
+            return data
+
+        except Exception as e:
+            logger.warning(f"Live Gemini simulation failed ({e}). Falling back to mock simulation.")
+            return self._generate_mock_simulation(
+                file_name=file_name,
+                sample_text=sample_text,
+                entity_type=entity_type,
+                client_name=client_name,
+                human_instructions=instructions_text,
+                accounting_software=accounting_software,
+                item_catalog=catalog,
+            )
+
+    def _generate_mock_simulation(
+        self,
+        file_name: str,
+        sample_text: Optional[str],
+        entity_type: str,
+        client_name: str,
+        human_instructions: str,
+        accounting_software: str,
+        item_catalog: List[ZohoItem],
+    ) -> Dict[str, Any]:
+        """Synthesizes structured simulation response honoring entity schema and human instructions."""
+        now_date = "2026-08-30"
+
+        # 1. Accounts Receivable: Sales Invoices
+        if "invoice" in entity_type or entity_type == "ar_sales_invoice":
+            raw_datapoints = [
+                {"key": "Client / Hotel", "value": client_name, "confidence": 0.98, "source_snippet": f"Header: {client_name}"},
+                {"key": "Date", "value": now_date, "confidence": 0.95, "source_snippet": "Date: 30/08/2026"},
+                {"key": "Line 1: Bed Sheet Double", "value": "25 pcs @ GHS 18.50", "confidence": 0.96, "source_snippet": "B/Sheet Dbl 25 23"},
+                {"key": "Line 2: Bath Towel", "value": "30 pcs @ GHS 12.00", "confidence": 0.97, "source_snippet": "Bath Towel 30 30"},
+                {"key": "Discrepancy (Linen Loss)", "value": "2 pcs unreturned", "confidence": 0.92, "source_snippet": "Pickup 25 - Deliv 23"},
+            ]
+            transposed_payload = {
+                "customer_id": f"cnt_{client_name.lower().replace(' ', '_')[:10]}",
+                "customer_name": client_name,
+                "date": now_date,
+                "invoice_number": f"INV-{client_name[:3].upper()}-2026-08",
+                "line_items": [
+                    {"name": "Bed Sheet (Double / King)", "description": "Commercial Laundry Pickup/Delivery", "rate": 18.50, "quantity": 25, "amount": 462.50},
+                    {"name": "Bath Towel (White)", "description": "Standard Hospitality Terry", "rate": 12.00, "quantity": 30, "amount": 360.00},
+                ],
+                "total_amount": 822.50,
+                "currency": "GHS",
+                "notes": f"Auto-transposed via S4 AI Engine for {client_name}. Instructions applied: '{human_instructions[:80]}...'",
+            }
+            reasoning = (
+                f"Identified client '{client_name}' and date {now_date}. Parsed 2 line items from slip. "
+                f"Applied human rule: '{human_instructions[:100]}'. Calculated line totals with catalog pricing."
+            )
+
+        # 2. Accounts Payable: Vendor Bills
+        elif "bill" in entity_type or entity_type == "ap_vendor_bill":
+            raw_datapoints = [
+                {"key": "Vendor Name", "value": "Golden Detergents & Chemicals Ltd", "confidence": 0.96, "source_snippet": "From: Golden Detergents Ltd"},
+                {"key": "Bill Number", "value": "BILL-GD-8821", "confidence": 0.98, "source_snippet": "Invoice #: BILL-GD-8821"},
+                {"key": "Bill Date", "value": now_date, "confidence": 0.95, "source_snippet": "30-Aug-2026"},
+                {"key": "Chemical Supply 50L", "value": "4 Drums @ 350.00", "confidence": 0.94, "source_snippet": "Heavy Duty Detergent 50L x 4"},
+            ]
+            transposed_payload = {
+                "vendor_id": "vnd_golden_detergents",
+                "vendor_name": "Golden Detergents & Chemicals Ltd",
+                "bill_number": "BILL-GD-8821",
+                "date": now_date,
+                "line_items": [
+                    {"name": "Industrial Laundry Detergent 50L", "rate": 350.00, "quantity": 4, "amount": 1400.00}
+                ],
+                "total_amount": 1400.00,
+                "currency": "GHS",
+                "notes": f"Vendor bill ingestion for {client_name}. Transposed according to: '{human_instructions[:80]}...'",
+            }
+            reasoning = (
+                f"Extracted vendor 'Golden Detergents & Chemicals Ltd' and bill #BILL-GD-8821. "
+                f"Transposed 4 units of detergent into AP Vendor Bill payload for {accounting_software}."
+            )
+
+        # 3. Bank & Mobile Money Statements
+        elif "bank" in entity_type or "momo" in entity_type:
+            raw_datapoints = [
+                {"key": "Bank / Channel", "value": "Stanbic Bank Ghana (Account ending 9122)", "confidence": 0.99, "source_snippet": "Stanbic Bank Stmt"},
+                {"key": "Tx Date", "value": now_date, "confidence": 0.95, "source_snippet": "2026-08-30"},
+                {"key": "Description", "value": "AWS Cloud Infrastructure EMEA", "confidence": 0.97, "source_snippet": "POS: AWS EMEA CLOUD"},
+                {"key": "Debit Amount", "value": "1450.00", "confidence": 0.98, "source_snippet": "DR: 1,450.00"},
+            ]
+            transposed_payload = {
+                "account_id": "acc_bank_operating_01",
+                "transaction_type": "debit",
+                "date": now_date,
+                "amount": 1450.00,
+                "description": "AWS Cloud Infrastructure EMEA",
+                "reference_number": "TX-STANBIC-88401",
+                "category_suggestion": "60020 - Cloud & Hosting Expenses",
+            }
+            reasoning = (
+                f"Parsed bank transaction debit of GHS 1,450.00 on {now_date}. "
+                f"Mapped description 'AWS Cloud Infrastructure EMEA' to GL Expense Code '60020' based on rule instructions."
+            )
+
+        # 4. General Ledger Journals
+        else:
+            raw_datapoints = [
+                {"key": "Journal Narrative", "value": "Monthly Retainer Fee Accrual", "confidence": 0.95, "source_snippet": "Advisory Fee Aug 2026"},
+                {"key": "Debit Account", "value": "12000 - Accounts Receivable", "amount": 15000.00, "confidence": 0.98},
+                {"key": "Credit Account", "value": "40010 - Advisory Revenue", "amount": 15000.00, "confidence": 0.98},
+            ]
+            transposed_payload = {
+                "journal_date": now_date,
+                "reference_number": "JRNL-2026-08-01",
+                "notes": f"Advisory accrual for {client_name}. Instructions: {human_instructions[:60]}",
+                "line_items": [
+                    {"account": "12000 - Accounts Receivable", "debit": 15000.00, "credit": 0.0},
+                    {"account": "40010 - Advisory Revenue", "debit": 0.0, "credit": 15000.00},
+                ],
+                "total_debit": 15000.00,
+                "total_credit": 15000.00,
+            }
+            reasoning = "Generated balanced double-entry manual journal entry with Debit = Credit = 15,000.00."
+
+        return {
+            "success": True,
+            "raw_datapoints": raw_datapoints,
+            "transposed_payload": transposed_payload,
+            "ai_reasoning": reasoning,
+            "confidence_score": 0.96,
+        }

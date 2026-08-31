@@ -156,7 +156,27 @@ export interface IngestionPipeline {
   webhook_slug?: string;
   last_triggered_at?: string;
   total_runs_count?: number;
+  human_instructions?: string;
+  sample_preview?: any;
   notes?: string;
+}
+
+export interface PipelineSimulationResult {
+  success: boolean;
+  entity_type: string;
+  accounting_software: string;
+  raw_datapoints: Array<{
+    key: string;
+    value: any;
+    confidence: number;
+    source_snippet?: string;
+  }>;
+  transposed_payload: Record<string, any>;
+  validation_status: 'VALID' | 'VALIDATION_WARNINGS';
+  validation_errors: string[];
+  ai_reasoning: string;
+  confidence_score: number;
+  source_file_name?: string;
 }
 
 export interface StarterRecipe {

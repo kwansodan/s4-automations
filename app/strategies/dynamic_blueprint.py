@@ -66,6 +66,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     doc.metadata["pipeline_id"] = pipe_id
                     doc.metadata["pipeline_name"] = pipe_name
                     doc.metadata["entity_type"] = entity_type
+                    doc.metadata["human_instructions"] = pipe.get("human_instructions")
                 all_docs.extend(pipe_docs)
             return all_docs
 
