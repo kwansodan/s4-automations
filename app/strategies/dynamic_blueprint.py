@@ -35,14 +35,15 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         logger.info(f"[{self.client_name}] Stage 1: Discovering sources via '{source_type}' for {month} {year}")
 
         if source_type in ["onedrive", "sharepoint"]:
-            cfg = self.custom_config.get("onedrive_config", {})
+            cfg = self.client.source_config or self.custom_config.get("onedrive_config", {})
+            drive_id = self.client.folder_id or cfg.get("drive_id") or ""
             onedrive = OneDriveService(
                 tenant_id=cfg.get("tenant_id"),
                 client_id=cfg.get("client_id"),
                 client_secret=cfg.get("client_secret"),
-                drive_id=cfg.get("drive_id"),
+                drive_id=drive_id,
             )
-            return await onedrive.list_and_download_documents(cfg.get("folder_path", ""), month, year)
+            return await onedrive.list_and_download_documents(drive_id, month, year)
 
         elif source_type in ["email", "email_attachment", "email_body"]:
             cfg = self.custom_config.get("email_config", {})

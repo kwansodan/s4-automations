@@ -520,22 +520,23 @@ export const ClientWorkspace: React.FC = () => {
                 {clientConfig.source_type === 'onedrive' && (
                   <>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">OneDrive Folder Path</label>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">OneDrive Drive ID</label>
                       <input
                         type="text"
-                        placeholder="e.g. /Accounting/2026/Invoices"
-                        value={clientConfig.source_config?.folder_path || ''}
+                        placeholder="e.g. b!xY9... or drive ID"
+                        value={clientConfig.folder_id || clientConfig.source_config?.drive_id || ''}
                         onChange={(e) =>
                           setClientConfig({
                             ...clientConfig,
-                            source_config: { ...clientConfig.source_config, folder_path: e.target.value },
+                            folder_id: e.target.value,
+                            source_config: { ...clientConfig.source_config, drive_id: e.target.value },
                           })
                         }
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Azure Tenant ID (Optional)</label>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Azure Tenant ID</label>
                       <input
                         type="text"
                         placeholder="e.g. 883a48e7-..."
@@ -544,6 +545,36 @@ export const ClientWorkspace: React.FC = () => {
                           setClientConfig({
                             ...clientConfig,
                             source_config: { ...clientConfig.source_config, tenant_id: e.target.value },
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Azure Client ID</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 9f8e7d6c-..."
+                        value={clientConfig.source_config?.client_id || ''}
+                        onChange={(e) =>
+                          setClientConfig({
+                            ...clientConfig,
+                            source_config: { ...clientConfig.source_config, client_id: e.target.value },
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Client Secret</label>
+                      <input
+                        type="password"
+                        placeholder="••••••••••••••••"
+                        value={clientConfig.source_config?.client_secret || ''}
+                        onChange={(e) =>
+                          setClientConfig({
+                            ...clientConfig,
+                            source_config: { ...clientConfig.source_config, client_secret: e.target.value },
                           })
                         }
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
