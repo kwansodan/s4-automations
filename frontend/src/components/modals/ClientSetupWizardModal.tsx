@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { fetchZohoCatalog } from '../../lib/api';
+import { fetchAccountingCatalog } from '../../lib/api';
 import type {
   IngestionPipeline,
   StarterRecipe,
@@ -288,10 +288,10 @@ export const ClientSetupWizardModal: React.FC = () => {
   const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Sales Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
 
-  // Step 2 Zoho API Dynamic Discovery State
-  const [isFetchingZoho, setIsFetchingZoho] = useState<boolean>(false);
-  const [zohoSyncedContacts, setZohoSyncedContacts] = useState<any[] | null>(null);
-  const [zohoSyncedItemsCount, setZohoSyncedItemsCount] = useState<number | null>(null);
+  // Step 2 API Dynamic Discovery State
+  const [isFetchingData, setIsFetchingData] = useState<boolean>(false);
+  const [syncedContacts, setSyncedContacts] = useState<any[] | null>(null);
+  const [syncedItemsCount, setSyncedItemsCount] = useState<number | null>(null);
 
   // Step 3: Global AI Guardrails State
   const [aiEngine, setAiEngine] = useState<string>('gemini_flash_vision');
@@ -382,19 +382,19 @@ export const ClientSetupWizardModal: React.FC = () => {
     }
   };
 
-  const handleFetchZohoData = async () => {
-    setIsFetchingZoho(true);
+  const handleFetchAccountingData = async () => {
+    setIsFetchingData(true);
     try {
-      const data = await fetchZohoCatalog(zohoOrgId || undefined);
+      const data = await fetchAccountingCatalog(accountingSoftware, zohoOrgId || undefined);
       if (data && data.contacts) {
-        setZohoSyncedContacts(data.contacts);
-        setZohoSyncedItemsCount(data.items_count || data.items?.length || 0);
-        addLog('success', `[ZOHO API] Synced ${data.contacts_count || (data.contacts && data.contacts.length) || 0} customer contacts & ${data.items_count || 0} catalog items from Zoho Books.`);
+        setSyncedContacts(data.contacts);
+        setSyncedItemsCount(data.items_count || data.items?.length || 0);
+        addLog('success', `[${data.platform_name || 'ACCOUNTING API'}] Synced ${data.contacts_count || (data.contacts && data.contacts.length) || 0} customer contacts & ${data.items_count || 0} catalog items.`);
       }
     } catch (err: any) {
-      addLog('warning', `Could not fetch live Zoho contacts: ${err.message}`);
+      addLog('warning', `Could not fetch live accounting contacts: ${err.message}`);
     } finally {
-      setIsFetchingZoho(false);
+      setIsFetchingData(false);
     }
   };
 
@@ -420,6 +420,7 @@ export const ClientSetupWizardModal: React.FC = () => {
     setIsSubmitting(true);
     try {
       const currentRecipe = STARTER_RECIPES.find((p) => p.id === selectedRecipe);
+      const currentPlatform = ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware);
       const blueprints = currentRecipe?.blueprints || [
         { title: 'Source Ingestion', desc: 'Modular multi-pipeline streams', status: 'active' },
         { title: 'AI Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
@@ -443,7 +444,7 @@ export const ClientSetupWizardModal: React.FC = () => {
         pipelines: configuredPipelines,
         active_integrations: [
           'Gemini Vision',
-          accountingSoftware === 'zoho_books' ? 'Zoho Books' : ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware)?.name || 'Accounting Engine',
+          currentPlatform?.name || 'Accounting Platform',
           'Inngest',
         ],
         custom_config: {
@@ -680,7 +681,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                   <span>Target Accounting Platform Integration (West Africa)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Select the core accounting platform your client operates. <strong>Zoho Books</strong> is production-ready with live API synchronization. Connectors for other top West African ERP and accounting suites are in active development.
+                  Select the core accounting platform your client operates. <strong>Zoho Books</strong>, <strong>QuickBooks Online</strong>, and <strong>Xero</strong> are production-ready with live API synchronization. Connectors for other top West African ERP and accounting suites are in active development.
                 </p>
               </div>
 
@@ -735,77 +736,105 @@ export const ClientSetupWizardModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* ZOHO BOOKS ACTIVE CREDENTIALS */}
-              {accountingSoftware === 'zoho_books' ? (
+              {/* LIVE PLATFORMS: ZOHO BOOKS, QUICKBOOKS ONLINE, XERO */}
+              {['zoho_books', 'quickbooks_online', 'xero'].includes(accountingSoftware) ? (
                 <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in">
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
-                      <label className="text-xs font-semibold text-slate-300">
-                        Client's Zoho Books Organization ID
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleFetchZohoData}
-                        disabled={isFetchingZoho}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
-                      >
-                        <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
-                        <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. 782910482 (or leave blank for sandbox demo)"
-                      value={zohoOrgId}
-                      onChange={(e) => setZohoOrgId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Obtain from the client's Zoho Books profile under <strong>Settings &gt; Organization Profile</strong>.
-                    </span>
-                  </div>
+                  {(() => {
+                    const sel = ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware);
+                    const orgLabel =
+                      accountingSoftware === 'zoho_books'
+                        ? "Client's Zoho Books Organization ID"
+                        : accountingSoftware === 'quickbooks_online'
+                        ? "QuickBooks Company ID / Realm ID"
+                        : "Xero Tenant ID / Organization Shortcode";
 
-                  {/* Discovered Customers & SKUs Live Card */}
-                  {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
-                    <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-emerald-400" />
-                          <span className="text-xs font-bold text-white">
-                            Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
+                    const orgPlaceholder =
+                      accountingSoftware === 'zoho_books'
+                        ? "e.g. 782910482 (from Settings > Organization Profile)"
+                        : accountingSoftware === 'quickbooks_online'
+                        ? "e.g. 9341452891048201 (from Company Info)"
+                        : "e.g. xero_tenant_accra_01 (from Connected Apps)";
+
+                    const orgHelp =
+                      accountingSoftware === 'zoho_books'
+                        ? "Obtain from the client's Zoho Books profile under Settings > Organization Profile."
+                        : accountingSoftware === 'quickbooks_online'
+                        ? "Obtain from QuickBooks Settings > Account and Settings > Company > Company ID."
+                        : "Obtain from Xero Settings > Connected Apps / Tenant ID.";
+
+                    return (
+                      <>
+                        <div>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
+                            <label className="text-xs font-semibold text-slate-300">
+                              {orgLabel}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleFetchAccountingData}
+                              disabled={isFetchingData}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+                            >
+                              <Users className={`w-3.5 h-3.5 ${isFetchingData ? 'animate-spin' : ''}`} />
+                              <span>{isFetchingData ? 'Connecting API...' : `Fetch Contacts & Items via ${sel?.name || 'Accounting API'}`}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder={orgPlaceholder}
+                            value={zohoOrgId}
+                            onChange={(e) => setZohoOrgId(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                          />
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {orgHelp}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                          {zohoSyncedItemsCount || 11} SKUs Synced
-                        </span>
-                      </div>
 
-                      <div className="flex flex-wrap gap-1.5">
-                        {zohoSyncedContacts.map((contact, idx) => (
-                          <span
-                            key={contact.contact_id || idx}
-                            className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        {/* Discovered Customers & SKUs Live Card */}
+                        {syncedContacts && syncedContacts.length > 0 && (
+                          <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-emerald-400" />
+                                <span className="text-xs font-bold text-white">
+                                  Discovered Contacts in this {sel?.name} Account ({syncedContacts.length} Contacts)
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                                {syncedItemsCount || 10} SKUs Synced
+                              </span>
+                            </div>
 
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">
-                      Standard Ghana GRA VAT &amp; Levy Rule
-                    </label>
-                    <input
-                      type="text"
-                      value={taxRateVat}
-                      onChange={(e) => setTaxRateVat(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
-                    />
-                  </div>
+                            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                              {syncedContacts.map((contact, idx) => (
+                                <span
+                                  key={contact.contact_id || idx}
+                                  className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            Standard Ghana GRA VAT &amp; Levy Rule
+                          </label>
+                          <input
+                            type="text"
+                            value={taxRateVat}
+                            onChange={(e) => setTaxRateVat(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : (
                 /* IN-PROGRESS CONNECTOR PREVIEW */

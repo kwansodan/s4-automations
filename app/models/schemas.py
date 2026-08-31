@@ -620,9 +620,9 @@ ACCOUNTING_SOFTWARES_CATALOG: List[Dict[str, Any]] = [
         "name": "QuickBooks Online (Intuit)",
         "regional_popularity": "Dominant SME & Startup Accounting across West Africa",
         "icon": "📗",
-        "status": "in_progress",
+        "status": "live",
         "target_protocol": "Intuit REST API / OAuth2",
-        "description": "Standard cloud accounting for Ghanaian and Nigerian SMEs. Connector currently in development.",
+        "description": "Standard cloud accounting for Ghanaian and Nigerian SMEs. Native API adapter with live customer & invoice sync.",
     },
     {
         "id": "sage_business_cloud",
@@ -638,9 +638,9 @@ ACCOUNTING_SOFTWARES_CATALOG: List[Dict[str, Any]] = [
         "name": "Xero Accounting",
         "regional_popularity": "Rapidly Growing for Tech & Export Companies",
         "icon": "🔵",
-        "status": "in_progress",
+        "status": "live",
         "target_protocol": "Xero API v2 / OAuth2",
-        "description": "Cloud accounting for modern agencies and regional tech firms. Connector in progress.",
+        "description": "Cloud accounting for modern agencies and regional tech firms. Native API adapter with live contact & invoice sync.",
     },
     {
         "id": "odoo",
@@ -697,4 +697,24 @@ ACCOUNTING_SOFTWARES_CATALOG: List[Dict[str, Any]] = [
         "description": "Inventory and accounting software popular in West African commercial trading centres. In progress.",
     },
 ]
+
+
+class AccountingCatalogFetchRequest(BaseModel):
+    """Payload to dynamically discover contacts and item catalogs from any supported platform."""
+    software: str = Field(default="zoho_books", description="Accounting software platform identifier")
+    org_id: Optional[str] = Field(default=None, description="Organization, Realm, or Tenant ID")
+    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Optional connection credentials")
+
+
+class AccountingCatalogFetchResponse(BaseModel):
+    """Universal response returning contacts and items from accounting platform."""
+    software: str
+    platform_name: str
+    is_live: bool = True
+    contacts_count: int
+    items_count: int
+    contacts: List[Dict[str, Any]] = Field(default_factory=list)
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+    synced_at: str
+
 

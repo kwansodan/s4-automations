@@ -547,7 +547,7 @@ export const ClientWorkspace: React.FC = () => {
                   Isolated Client Configuration: {clientConfig.name}
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Dedicated ingestion parameters, Zoho Books credentials, and Chart of Accounts for {currentClient.id}.
+                  Dedicated ingestion parameters, target accounting credentials, and Chart of Accounts for {currentClient.id}.
                 </p>
               </div>
             </div>
@@ -685,18 +685,18 @@ export const ClientWorkspace: React.FC = () => {
                 </div>
               </div>
 
-              {/* Section 2: Zoho Books Accounting Target */}
+              {/* Section 2: Target Accounting Software Target */}
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                   <Database className="w-4 h-4" />
-                  <span>2. Zoho Books Target</span>
+                  <span>2. Target Accounting Platform</span>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Zoho Organization ID</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Organization / Tenant / Realm ID</label>
                   <input
                     type="text"
-                    placeholder="e.g. 782910482"
+                    placeholder="e.g. 782910482 / 9341452891048201 / tenant_01"
                     value={clientConfig.zoho_org_id}
                     onChange={(e) => setClientConfig({ ...clientConfig, zoho_org_id: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
@@ -705,7 +705,7 @@ export const ClientWorkspace: React.FC = () => {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                    Fallback Customer ID <span className="text-[10px] text-slate-500 font-normal">(Optional - S4 automatically matches customer names via Zoho Books API)</span>
+                    Fallback Customer ID <span className="text-[10px] text-slate-500 font-normal">(Optional - S4 automatically matches customer names via Accounting API)</span>
                   </label>
                   <input
                     type="text"
@@ -982,7 +982,7 @@ export const ClientWorkspace: React.FC = () => {
                 <h2 className="text-base font-bold text-white tracking-tight">Accounts Payable (Vendor Bills)</h2>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Ingest vendor invoices via Gemini OCR, automatically create new vendors in Zoho Books, and post draft bills.
+                Ingest vendor invoices via Gemini OCR, automatically map vendors in your accounting platform, and post draft bills.
               </p>
             </div>
 
@@ -994,7 +994,7 @@ export const ClientWorkspace: React.FC = () => {
                   onChange={(e) => setIsAutoPostDraft(e.target.checked)}
                   className="rounded border-slate-700 text-indigo-600 focus:ring-0"
                 />
-                <span>Auto-Post Draft Bills to Zoho</span>
+                <span>Auto-Post Draft Bills to Accounting Platform</span>
               </label>
 
               <button
@@ -1030,7 +1030,7 @@ export const ClientWorkspace: React.FC = () => {
                     <th className="py-3 px-3">Vendor / Invoice</th>
                     <th className="py-3 px-3">File Source</th>
                     <th className="py-3 px-3 text-right">Bill Total</th>
-                    <th className="py-3 px-3 text-center">Zoho Bill Status</th>
+                    <th className="py-3 px-3 text-center">Accounting Bill Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1233,13 +1233,13 @@ export const ClientWorkspace: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* Map to Zoho Account */}
+                        {/* Map to General Ledger Account */}
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
                             value={mappingInputs[tx.id] || ''}
                             onChange={(e) => setMappingInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))}
-                            placeholder="Zoho Expense Account (e.g. 5001 - Supplies)..."
+                            placeholder="General Ledger Expense Account (e.g. 5001 - Supplies)..."
                             className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                           />
                           <button

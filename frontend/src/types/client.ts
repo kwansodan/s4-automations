@@ -55,9 +55,9 @@ export const ACCOUNTING_PLATFORMS: AccountingPlatformInfo[] = [
     name: 'QuickBooks Online (Intuit)',
     regionalPopularity: 'Dominant SME & Startup Accounting across West Africa',
     icon: '📗',
-    status: 'in_progress',
+    status: 'live',
     targetProtocol: 'Intuit REST API / OAuth2',
-    description: 'Standard cloud accounting for Ghanaian and Nigerian SMEs. Connector currently in development.',
+    description: 'Standard cloud accounting for West African SMEs with live customer, item catalog, and invoice sync.',
   },
   {
     id: 'sage_business_cloud',
@@ -73,9 +73,9 @@ export const ACCOUNTING_PLATFORMS: AccountingPlatformInfo[] = [
     name: 'Xero Accounting',
     regionalPopularity: 'Rapidly Growing for Tech & Export Companies',
     icon: '🔵',
-    status: 'in_progress',
+    status: 'live',
     targetProtocol: 'Xero API v2 / OAuth2',
-    description: 'Cloud accounting for modern agencies and regional tech firms. Connector in progress.',
+    description: 'Cloud accounting for modern agencies and regional tech firms with native contact & invoice sync.',
   },
   {
     id: 'odoo',

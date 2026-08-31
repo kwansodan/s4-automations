@@ -209,15 +209,24 @@ export async function updateTransactionStatus(
 }
 
 // -------------------------------------------------------------------------
-// Zoho Catalog Endpoints
+// Multi-Platform Accounting Catalog Endpoints
 // -------------------------------------------------------------------------
 
-export async function fetchZohoCatalog(organizationId?: string): Promise<ZohoCatalogData> {
-  const query = organizationId ? `?organization_id=${encodeURIComponent(organizationId)}` : '';
-  const res = await resilientFetch(`/api/zoho/catalog${query}`, {
-    headers: getAuthHeaders(),
+export async function fetchAccountingCatalog(software = 'zoho_books', orgId?: string, config?: any): Promise<any> {
+  const res = await resilientFetch('/api/clients/accounting/fetch-catalog', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      software,
+      org_id: orgId || undefined,
+      config: config || {},
+    }),
   });
-  return handleResponse<ZohoCatalogData>(res, 'Fetch Zoho catalog');
+  return handleResponse<any>(res, `Fetch catalog for ${software}`);
+}
+
+export async function fetchZohoCatalog(organizationId?: string): Promise<any> {
+  return fetchAccountingCatalog('zoho_books', organizationId);
 }
 
 // -------------------------------------------------------------------------
@@ -525,5 +534,6 @@ export async function triggerApPipeline(payload: { month: string; year: number; 
   });
   return handleResponse<any>(res, 'Trigger AP pipeline');
 }
+
 
 

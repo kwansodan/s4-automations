@@ -350,6 +350,42 @@ async def list_accounting_softwares() -> List[Dict[str, Any]]:
     return ACCOUNTING_SOFTWARES_CATALOG
 
 
+@router.post("/accounting/fetch-catalog", summary="Fetch Customer Contacts & Items from Any Accounting Platform")
+async def fetch_accounting_catalog(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Dynamically connects to the requested accounting platform (Zoho Books, QuickBooks Online, Xero, etc.)
+    and returns discovered customer contacts and SKU catalog items.
+    """
+    from app.services.accounting.factory import AccountingAdapterFactory
+    software_id = payload.get("software", "zoho_books")
+    org_id = payload.get("org_id")
+    config = payload.get("config") or {}
+    if org_id:
+        config["accounting_org_id"] = org_id
+        config["zoho_org_id"] = org_id
+        config["realm_id"] = org_id
+        config["tenant_id"] = org_id
+
+    adapter = AccountingAdapterFactory.get_adapter(
+        software_id=software_id,
+        client_id="catalog_probe",
+        config=config,
+    )
+    contacts = await adapter.fetch_contacts("customer")
+    items = await adapter.fetch_item_catalog()
+
+    return {
+        "software": software_id,
+        "platform_name": adapter.platform_name,
+        "is_live": adapter.is_live,
+        "contacts_count": len(contacts),
+        "items_count": len(items),
+        "contacts": [c.model_dump() for c in contacts],
+        "items": [i.model_dump() for i in items],
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/{client_id}", summary="Get Specific Client Details")
 async def get_client(client_id: str, db: Session = Depends(get_db_session)) -> Dict[str, Any]:
     """Returns details and blueprints for a specific client."""

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType } from '../../types/client';
+import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import { probeExternalConnection } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
 import {
@@ -675,7 +676,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
                   />
                   <div className="text-xs">
-                    <span className="font-bold text-white block">Auto-Post Live to {targetAccountingSoftware === 'zoho_books' ? 'Zoho Books' : 'Accounting Engine'}</span>
+                    <span className="font-bold text-white block">
+                      Auto-Post Live to {ACCOUNTING_PLATFORMS.find((p) => p.id === targetAccountingSoftware)?.name || 'Accounting Platform'}
+                    </span>
                     <span className="text-slate-400">
                       When enabled, extracted documents that pass 100% strict contract validation will be created immediately in your accounting platform. If disabled, transactions are staged in the Review Ledger for CPA approval.
                     </span>

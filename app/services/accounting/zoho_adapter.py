@@ -18,7 +18,8 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
 
     def __init__(self, client_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(client_id, config)
-        self.zoho = ZohoBooksService()
+        org_id = self.config.get("accounting_org_id") or self.config.get("zoho_org_id")
+        self.zoho = ZohoBooksService(org_id=org_id)
 
     @property
     def platform_name(self) -> str:
@@ -29,7 +30,7 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         return True
 
     async def fetch_contacts(self, contact_type: str = "customer") -> List[AccountingContact]:
-        raw_contacts = await self.zoho.get_customers(organization_id=self.config.get("zoho_org_id"))
+        raw_contacts = await self.zoho.fetch_active_contacts()
         return [
             AccountingContact(
                 contact_id=c.contact_id,
@@ -42,7 +43,7 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         ]
 
     async def fetch_item_catalog(self) -> List[AccountingItem]:
-        raw_items = await self.zoho.get_items(organization_id=self.config.get("zoho_org_id"))
+        raw_items = await self.zoho.fetch_item_catalog()
         return [
             AccountingItem(
                 item_id=i.item_id,
