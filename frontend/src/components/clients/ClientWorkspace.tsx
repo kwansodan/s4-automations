@@ -19,6 +19,7 @@ import {
 } from '../../lib/api';
 import type { IngestionPipeline, AccountingSection, AccountingEntityType, AccountingSoftware } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
+import { PipelineSetupWizardModal } from '../modals/PipelineSetupWizardModal';
 import {
   Layers,
   PlayCircle,
@@ -307,55 +308,24 @@ export const ClientWorkspace: React.FC = () => {
 
   // Pipeline Configuration Editor States
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
-  const [isSavingPipeline, setIsSavingPipeline] = useState(false);
-  const [pipelineForm, setPipelineForm] = useState<IngestionPipeline>({
-    id: '',
-    name: '',
-    section: 'AR',
-    entity_type: 'ar_sales_invoice',
-    source_type: 'google_drive',
-    source_identifier: '',
-    default_account_code: '4000 - Sales Revenue',
-    auto_post_to_zoho: false,
-    is_active: true,
-  });
+  const [editingPipeline, setEditingPipeline] = useState<IngestionPipeline | null>(null);
 
   const handleOpenNewPipeline = () => {
-    setPipelineForm({
-      id: `pipe_${Date.now()}`,
-      name: '',
-      section: 'AR',
-      entity_type: 'ar_sales_invoice',
-      source_type: 'google_drive',
-      source_identifier: '',
-      default_account_code: '4000 - Sales Revenue',
-      auto_post_to_zoho: false,
-      is_active: true,
-    });
+    setEditingPipeline(null);
     setIsPipelineModalOpen(true);
   };
 
   const handleOpenEditPipeline = (pipe: IngestionPipeline) => {
-    setPipelineForm({ ...pipe });
+    setEditingPipeline(pipe);
     setIsPipelineModalOpen(true);
   };
 
-  const handleSavePipelineSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pipelineForm.name.trim()) return;
-    setIsSavingPipeline(true);
-    try {
-      const updatedPipelines = await saveClientPipeline(currentClient.id, pipelineForm);
-      if (Array.isArray(updatedPipelines)) {
-        currentClient.pipelines = updatedPipelines;
-      }
-      addLog('success', `✅ Successfully saved pipeline configuration for: "${pipelineForm.name}"`);
-      setIsPipelineModalOpen(false);
-    } catch (err: any) {
-      addLog('error', `Failed to save pipeline configuration: ${err.message}`);
-    } finally {
-      setIsSavingPipeline(false);
+  const handleSavePipelineSubmit = async (pipelineData: IngestionPipeline) => {
+    const updatedPipelines = await saveClientPipeline(currentClient.id, pipelineData);
+    if (Array.isArray(updatedPipelines)) {
+      currentClient.pipelines = updatedPipelines;
     }
+    addLog('success', `✅ Successfully saved pipeline stream: "${pipelineData.name}"`);
   };
 
   const handleDeletePipelineSubmit = async (pipelineId: string, pipelineName: string) => {
@@ -1435,274 +1405,16 @@ export const ClientWorkspace: React.FC = () => {
         )}
       </div>
 
-      {/* Pipeline Configuration Modal */}
-      {isPipelineModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5 text-sky-400" />
-                <h3 className="text-sm font-bold text-white">
-                  {currentClient.pipelines?.some((p) => p.id === pipelineForm.id) ? 'Edit Ingestion Pipeline' : 'Add New Ingestion Pipeline'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPipelineModalOpen(false)}
-                className="text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePipelineSubmit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Pipeline Name</label>
-                <input
-                  type="text"
-                  value={pipelineForm.name}
-                  onChange={(e) => setPipelineForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g. Counter Sales Slips, Chinese Supplier Bills"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Accounting Section</label>
-                  <select
-                    value={pipelineForm.section}
-                    onChange={(e) => {
-                      const sec = e.target.value as AccountingSection;
-                      const defaultEntity =
-                        sec === 'AR' ? 'ar_sales_invoice' : sec === 'AP' ? 'ap_vendor_bill' : sec === 'BANK' ? 'bank_statement' : 'gl_journal';
-                      setPipelineForm((prev) => ({ ...prev, section: sec, entity_type: defaultEntity }));
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="AR">Accounts Receivable (AR)</option>
-                    <option value="AP">Accounts Payable (AP)</option>
-                    <option value="BANK">Banking &amp; Treasury (BANK)</option>
-                    <option value="GL">General Ledger (GL)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Target Zoho Entity</label>
-                  <select
-                    value={pipelineForm.entity_type}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, entity_type: e.target.value as AccountingEntityType }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                  >
-                    {pipelineForm.section === 'AR' && (
-                      <>
-                        <option value="ar_sales_invoice">Sales Invoice (/invoices)</option>
-                        <option value="ar_customer_payment">Customer Payment (/customerpayments)</option>
-                        <option value="ar_credit_note">Credit Note (/creditnotes)</option>
-                        <option value="ar_retainer_invoice">Retainer Invoice (/retainerinvoices)</option>
-                        <option value="ar_estimate">Estimate / Quote (/estimates)</option>
-                      </>
-                    )}
-                    {pipelineForm.section === 'AP' && (
-                      <>
-                        <option value="ap_vendor_bill">Vendor Bill (/bills)</option>
-                        <option value="ap_vendor_payment">Vendor Payment (/vendorpayments)</option>
-                        <option value="ap_direct_expense">Direct Expense (/expenses)</option>
-                        <option value="ap_purchase_order">Purchase Order (/purchaseorders)</option>
-                        <option value="ap_vendor_credit">Vendor Credit (/vendorcredits)</option>
-                      </>
-                    )}
-                    {pipelineForm.section === 'BANK' && (
-                      <>
-                        <option value="bank_statement">Bank Statement (/banktransactions)</option>
-                        <option value="momo_statement">Mobile Money (MoMo) Statement</option>
-                      </>
-                    )}
-                    {pipelineForm.section === 'GL' && (
-                      <option value="gl_journal">Manual Journal Entry (/journalentries)</option>
-                    )}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Ingestion Channel</label>
-                  <select
-                    value={pipelineForm.source_type}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, source_type: e.target.value as any }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="google_drive">Google Drive Folder</option>
-                    <option value="onedrive">OneDrive / SharePoint</option>
-                    <option value="email">Email Inbound Mailbox</option>
-                    <option value="manual">Manual Batch Upload</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Channel Identifier / Target</label>
-                  <input
-                    type="text"
-                    value={pipelineForm.source_identifier || ''}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, source_identifier: e.target.value }))}
-                    placeholder="Folder ID, SharePoint drive ID, or email alias"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-sky-500 text-[11px]"
-                  />
-                </div>
-              </div>
-
-              {/* Trigger Configuration Section */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold text-white">Trigger Configuration &amp; Schedule</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'scheduled_cron' }))}
-                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
-                      (pipelineForm.trigger_type || 'scheduled_cron') === 'scheduled_cron'
-                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
-                    }`}
-                  >
-                    ⏰ Scheduled Cron
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'realtime_webhook' }))}
-                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
-                      pipelineForm.trigger_type === 'realtime_webhook'
-                        ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
-                    }`}
-                  >
-                    ⚡ Real-Time Push
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPipelineForm((prev) => ({ ...prev, trigger_type: 'manual_only' }))}
-                    className={`py-2 px-2.5 rounded-lg text-center border text-[11px] font-bold cursor-pointer transition ${
-                      pipelineForm.trigger_type === 'manual_only'
-                        ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850'
-                    }`}
-                  >
-                    🖱️ Manual Only
-                  </button>
-                </div>
-
-                {(pipelineForm.trigger_type || 'scheduled_cron') === 'scheduled_cron' && (
-                  <div>
-                    <label className="block text-slate-400 text-[11px] mb-1">Batch Frequency Preset</label>
-                    <select
-                      value={pipelineForm.cron_schedule_human || 'Daily at 8:00 PM'}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        let expr = '0 20 * * *';
-                        if (val === 'Hourly') expr = '0 * * * *';
-                        else if (val === 'Every 6 Hours') expr = '0 */6 * * *';
-                        else if (val === 'Weekdays at 6:00 PM') expr = '0 18 * * 1-5';
-                        else if (val === '1st of Month at 9:00 AM') expr = '0 9 1 * *';
-                        setPipelineForm((prev) => ({ ...prev, cron_schedule_human: val, cron_expression: expr }));
-                      }}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-amber-500 text-[11px]"
-                    >
-                      <option value="Daily at 8:00 PM">Daily at 8:00 PM (Default End-of-Day Sweep)</option>
-                      <option value="Hourly">Hourly Continuous Ingestion</option>
-                      <option value="Every 6 Hours">Every 6 Hours</option>
-                      <option value="Weekdays at 6:00 PM">Weekdays at 6:00 PM (Business Close)</option>
-                      <option value="1st of Month at 9:00 AM">1st of Month at 9:00 AM (Monthly Closing)</option>
-                    </select>
-                    <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                      Cron: <code>{pipelineForm.cron_expression || '0 20 * * *'}</code>
-                    </p>
-                  </div>
-                )}
-
-                {pipelineForm.trigger_type === 'realtime_webhook' && (
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-400 text-[11px]">Dedicated Inbound Webhook URL</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={`https://s4-api.service4gh.com/api/v1/webhooks/pipelines/${pipelineForm.id || 'pipe_id'}`}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-400 font-mono text-[10px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(`https://s4-api.service4gh.com/api/v1/webhooks/pipelines/${pipelineForm.id || 'pipe_id'}`);
-                          addLog('info', 'Copied webhook URL to clipboard.');
-                        }}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold cursor-pointer"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Default Account Code</label>
-                <input
-                  type="text"
-                  value={pipelineForm.default_account_code || ''}
-                  onChange={(e) => setPipelineForm((prev) => ({ ...prev, default_account_code: e.target.value }))}
-                  placeholder="e.g. 4000 - Sales Revenue or 5000 - Operating Expenses"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-sky-500 text-[11px]"
-                />
-              </div>
-
-              <div className="flex items-center gap-6 pt-2">
-                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={pipelineForm.auto_post_to_zoho}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, auto_post_to_zoho: e.target.checked }))}
-                    className="rounded border-slate-800 text-sky-600 focus:ring-sky-500"
-                  />
-                  <span>Auto-post to Zoho Books</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={pipelineForm.is_active !== false}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, is_active: e.target.checked }))}
-                    className="rounded border-slate-800 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Stream Active</span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsPipelineModalOpen(false)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingPipeline || !pipelineForm.name.trim()}
-                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-1.5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
-                >
-                  {isSavingPipeline ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  <span>Save Pipeline Settings</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Pipeline Setup Wizard Modal */}
+      <PipelineSetupWizardModal
+        isOpen={isPipelineModalOpen}
+        onClose={() => setIsPipelineModalOpen(false)}
+        onSave={handleSavePipelineSubmit}
+        clientId={currentClient.id}
+        clientName={currentClient.name}
+        initialPipeline={editingPipeline}
+        targetAccountingSoftware={(clientConfig as any).accounting_software || currentClient.accounting_software}
+      />
 
       {/* Blueprint Architecture Steps */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">

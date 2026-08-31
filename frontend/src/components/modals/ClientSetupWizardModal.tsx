@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { probeExternalConnection, dryRunSampleOcr, fetchZohoCatalog } from '../../lib/api';
+import { fetchZohoCatalog } from '../../lib/api';
 import type {
-  ExternalChecklistItem,
-  IndustryPreset,
-  ProbeResult,
-  DryRunResult,
   IngestionPipeline,
   StarterRecipe,
-  AccountingSection,
-  AccountingEntityType,
   AccountingSoftware,
 } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
@@ -21,8 +15,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Building2,
-  ExternalLink,
-  Copy,
   Sparkles,
   Cloud,
   Folder,
@@ -30,20 +22,17 @@ import {
   Zap,
   ShieldCheck,
   AlertTriangle,
-  FileText,
   Sliders,
   Layers,
   ArrowRight,
   RefreshCw,
   Info,
-  CheckCheck,
-  Send,
-  Eye,
-  Terminal,
   Users,
   DollarSign,
   Plus,
   Trash2,
+  PlayCircle,
+  Clock,
   MessageSquare,
 } from 'lucide-react';
 
@@ -66,6 +55,9 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '4000 - Commercial Sales Revenue',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
       {
         id: 'p_ar_payments',
@@ -76,6 +68,7 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '1001 - Main Bank / Clearing Account',
         auto_post_to_zoho: false,
+        trigger_type: 'realtime_webhook',
       },
       {
         id: 'p_ap_bills',
@@ -86,6 +79,9 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '5000 - Cost of Goods Sold (Inventory)',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
       {
         id: 'p_bank_rec',
@@ -96,12 +92,15 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '1001 - Main Operating Bank Account',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: '1st of Month at 9:00 AM',
+        cron_expression: '0 9 1 * *',
       },
     ],
     blueprints: [
       { title: 'Multi-Channel Ingestion', desc: 'Active ingestion across Drive, Email, and OneDrive', status: 'active' },
-      { title: 'Zoho API Contract Validator', desc: 'Strict entity-driven schema checks & anomaly engine', status: 'active' },
-      { title: 'PostgreSQL Review & Zoho Posting', desc: 'Staging ledger with 1-click draft creation to Zoho Books', status: 'active' },
+      { title: 'Accounting Contract Validator', desc: 'Strict entity-driven schema checks & anomaly engine', status: 'active' },
+      { title: 'Review Ledger & Posting', desc: 'Staging ledger with 1-click draft creation to accounting', status: 'active' },
     ],
   },
   {
@@ -114,94 +113,97 @@ const STARTER_RECIPES: StarterRecipe[] = [
     currency: 'GHS',
     pipelines: [
       {
-        id: 'p_hosp_ar',
-        name: 'Linen Control Delivery Slips',
+        id: 'p_laundry_slips',
+        name: 'Daily Pickup & Delivery Slips',
         section: 'AR',
         entity_type: 'ar_sales_invoice',
         source_type: 'google_drive',
         source_identifier: '',
-        default_account_code: '4000 - Commercial Laundry Revenue',
+        default_account_code: '4001 - Commercial Laundry Revenue',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
       {
-        id: 'p_hosp_ap',
-        name: 'Detergent & Utility Vendor Bills',
+        id: 'p_laundry_detergent_bills',
+        name: 'Chemical & Detergent Supplier Bills',
         section: 'AP',
         entity_type: 'ap_vendor_bill',
         source_type: 'google_drive',
         source_identifier: '',
-        default_account_code: '5001 - Chemicals & Operating Supplies',
+        default_account_code: '5002 - Cleaning Supplies & Detergents',
         auto_post_to_zoho: false,
-      },
-      {
-        id: 'p_hosp_bank',
-        name: 'Bank & MoMo Statement Feed',
-        section: 'BANK',
-        entity_type: 'bank_statement',
-        source_type: 'onedrive',
-        source_identifier: '',
-        default_account_code: '1001 - Operating Account',
-        auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
     ],
     blueprints: [
-      { title: 'Vision OCR Extraction', desc: 'Gemini 3.6 Flash structured JSON extraction on daily control sheets', status: 'active' },
-      { title: 'Google Sheets Review Sync', desc: 'Populate Tab 1 (Daily Details) and Tab 2 (Monthly Billing Summary)', status: 'active' },
-      { title: 'Zoho Books Draft Invoicing', desc: '1-Click draft invoice creation appending newly approved line items', status: 'active' },
+      { title: 'Handwritten Slip Vision OCR', desc: 'Gemini 3.6 Flash structured JSON extraction on daily slips', status: 'active' },
+      { title: 'Loss Reconciler', desc: 'Calculates pickup vs delivery discrepancies and billing summaries', status: 'active' },
+      { title: 'Draft Invoicing', desc: '1-Click draft invoice appending newly approved line items', status: 'active' },
     ],
   },
   {
-    id: 'property_leasing',
+    id: 'real_estate_management',
     name: 'Real Estate & Property Management',
     icon: '🏢',
-    tagline: 'Tenant Rent Receipts, Utility Apportionment & AP Bills',
-    description: 'Tenant rent payment slip & mobile money receipt parsing, monthly recurring billing, utility apportionment, and late notice dispatch.',
-    defaultVolume: '100+ Units / mo',
+    tagline: 'Tenant Rent Invoices, MoMo Receipts & Utility Bills',
+    description: 'Automated tenant rent receipt processing, recurring billing, shared utility cost allocation, and late notice dispatch.',
+    defaultVolume: '85+ Units / mo',
     currency: 'GHS',
     pipelines: [
       {
         id: 'p_prop_rent',
-        name: 'Tenant Rent MoMo & Bank Receipts',
+        name: 'Tenant Rent Receipts & Invoices',
+        section: 'AR',
+        entity_type: 'ar_sales_invoice',
+        source_type: 'google_drive',
+        source_identifier: '',
+        default_account_code: '4002 - Rental Income',
+        auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: '1st of Month at 9:00 AM',
+        cron_expression: '0 9 1 * *',
+      },
+      {
+        id: 'p_prop_momo',
+        name: 'Tenant MoMo Payment Proofs',
         section: 'AR',
         entity_type: 'ar_customer_payment',
         source_type: 'email',
         source_identifier: '',
-        default_account_code: '4002 - Rental Income',
+        default_account_code: '1002 - Mobile Money Merchant Account',
         auto_post_to_zoho: false,
+        trigger_type: 'realtime_webhook',
       },
       {
-        id: 'p_prop_bills',
-        name: 'Maintenance & Utility Bills',
+        id: 'p_prop_utilities',
+        name: 'Shared Utility & Electricity Bills',
         section: 'AP',
         entity_type: 'ap_vendor_bill',
         source_type: 'google_drive',
         source_identifier: '',
-        default_account_code: '5002 - Property Maintenance Expenses',
+        default_account_code: '5004 - Utilities Expense (Electricity & Water)',
         auto_post_to_zoho: false,
-      },
-      {
-        id: 'p_prop_bank',
-        name: 'Client Escrow / Bank Statements',
-        section: 'BANK',
-        entity_type: 'bank_statement',
-        source_type: 'onedrive',
-        source_identifier: '',
-        default_account_code: '1002 - Escrow Bank Account',
-        auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
     ],
     blueprints: [
-      { title: 'Rent Receipt OCR Ingestion', desc: 'Extract tenant mobile money and bank transfer receipts', status: 'active' },
-      { title: 'Utility Cost Apportionment', desc: 'Apportion shared power/water bills across occupied units', status: 'in_progress' },
+      { title: 'Rent Receipt OCR Ingestion', desc: 'Extract tenant mobile money / bank transfer receipts', status: 'active' },
+      { title: 'Utility Apportionment', desc: 'Apportion shared water/power bills across occupied units', status: 'in_progress' },
       { title: 'Tenant Monthly Invoicing', desc: 'Generate tenant invoices with automated email/SMS dispatch', status: 'queued' },
     ],
   },
   {
     id: 'financial_advisory',
-    name: 'Financial Advisory & Asset Management',
+    name: 'Asset Management & Advisory',
     icon: '⚡',
     tagline: 'Advisory Billing, Multi-Currency Bank Rec & Journals',
-    description: 'Multi-currency PDF bank statement parsing, automated chart of accounts matching, and Zoho Books journal batch posting.',
+    description: 'Multi-currency PDF bank statement parsing, automated chart of accounts matching, and journal batch posting.',
     defaultVolume: '1,500+ Tx / mo',
     currency: 'USD',
     pipelines: [
@@ -214,6 +216,9 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '4005 - Retainer Advisory Fees',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: '1st of Month at 9:00 AM',
+        cron_expression: '0 9 1 * *',
       },
       {
         id: 'p_fin_bank',
@@ -224,6 +229,9 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '1005 - USD Corporate Checking',
         auto_post_to_zoho: false,
+        trigger_type: 'scheduled_cron',
+        cron_schedule_human: 'Daily at 8:00 PM',
+        cron_expression: '0 20 * * *',
       },
       {
         id: 'p_fin_journal',
@@ -234,64 +242,45 @@ const STARTER_RECIPES: StarterRecipe[] = [
         source_identifier: '',
         default_account_code: '9000 - General Ledger Accruals',
         auto_post_to_zoho: false,
+        trigger_type: 'manual_only',
       },
     ],
     blueprints: [
-      { title: 'Bank Statement PDF Parser', desc: 'Extract structured transactions from multi-bank PDF statements', status: 'active' },
-      { title: 'AI Transaction Categorization', desc: 'Fuzzy-match chart of accounts and assign expense categories', status: 'in_progress' },
-      { title: 'Zoho Journal Batch Poster', desc: 'Post balanced double-entry journals into Zoho Books API', status: 'queued' },
+      { title: 'Bank Statement PDF Parser', desc: 'Extract structured transactions from multi-bank statements', status: 'active' },
+      { title: 'AI Categorization', desc: 'Fuzzy-match chart of accounts and assign expense categories', status: 'in_progress' },
+      { title: 'Journal Batch Poster', desc: 'Post balanced double-entry journals into accounting API', status: 'queued' },
     ],
   },
   {
     id: 'custom_modular',
-    name: 'Custom Multi-Pipeline Architecture',
-    icon: '🧩',
-    tagline: 'Tailored Multi-Stream Setup Built From Scratch',
-    description: 'Select your own combination of AR, AP, and Banking pipelines with custom extraction schemas and routing rules.',
+    name: 'Custom Clean Organization',
+    icon: '🏢',
+    tagline: 'Start with Blank Setup (Add Streams Manually in Workspace)',
+    description: 'Register client organization details first, and build customized ingestion streams post-onboarding using the Pipeline Setup Wizard.',
     defaultVolume: 'Flexible',
     currency: 'GHS',
-    pipelines: [
-      {
-        id: 'p_custom_1',
-        name: 'Primary Ingestion Stream',
-        section: 'AR',
-        entity_type: 'ar_sales_invoice',
-        source_type: 'google_drive',
-        source_identifier: '',
-        default_account_code: '4000 - General Revenue',
-        auto_post_to_zoho: false,
-      },
-    ],
+    pipelines: [],
     blueprints: [
-      { title: 'Custom Stream Ingestion', desc: 'Configured pipeline streams', status: 'active' },
-      { title: 'Zoho Contract Validation', desc: 'Strict field checks', status: 'in_progress' },
-      { title: 'Zoho Books Posting', desc: 'Automated entry synchronization', status: 'queued' },
+      { title: 'Source Ingestion', desc: 'Configured pipeline streams', status: 'active' },
+      { title: 'Contract Validation', desc: 'Strict field checks', status: 'in_progress' },
+      { title: 'Accounting Posting', desc: 'Automated entry synchronization', status: 'queued' },
     ],
   },
 ];
-
-const SERVICE_ACCOUNT_EMAIL = 's4-vision-ingest@s4-automations.iam.gserviceaccount.com';
 
 export const ClientSetupWizardModal: React.FC = () => {
   const { isWizardOpen, setIsWizardOpen, createClientFromWizard, wizardDraft, saveWizardDraft, clearWizardDraft } = useClient();
   const { setActiveTab, addLog } = useAutomation();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Form State
+  // Step 1: Organization Profile State
   const [name, setName] = useState<string>('');
   const [selectedRecipe, setSelectedRecipe] = useState<string>('wholesale_trading');
   const [icon, setIcon] = useState<string>('🛍️');
   const [currency, setCurrency] = useState<string>('GHS');
   const [projectedVolume, setProjectedVolume] = useState<string>('1,200+ Docs / mo');
   const [description, setDescription] = useState<string>('');
-  const [configuredPipelines, setConfiguredPipelines] = useState<IngestionPipeline[]>(STARTER_RECIPES[0].pipelines);
-  const [isAddingPipeline, setIsAddingPipeline] = useState<boolean>(false);
-  const [newPipeName, setNewPipeName] = useState<string>('');
-  const [newPipeSection, setNewPipeSection] = useState<AccountingSection>('AR');
-  const [newPipeEntity, setNewPipeEntity] = useState<AccountingEntityType>('ar_sales_invoice');
-  const [newPipeSource, setNewPipeSource] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual' | 'whatsapp'>('google_drive');
 
   // Step 2: Target Accounting Platform State
   const [accountingSoftware, setAccountingSoftware] = useState<AccountingSoftware>('zoho_books');
@@ -299,50 +288,20 @@ export const ClientSetupWizardModal: React.FC = () => {
   const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Sales Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
 
-  // Step 2 Zoho API Dynamic Customer & SKU Discovery State
+  // Step 2 Zoho API Dynamic Discovery State
   const [isFetchingZoho, setIsFetchingZoho] = useState<boolean>(false);
   const [zohoSyncedContacts, setZohoSyncedContacts] = useState<any[] | null>(null);
   const [zohoSyncedItemsCount, setZohoSyncedItemsCount] = useState<number | null>(null);
 
-  // Step 2 External Checklist
-  const [zohoChecks, setZohoChecks] = useState<Record<string, boolean>>({
-    customer_created: false,
-    org_id_retrieved: false,
-    chart_accounts_verified: false,
-    catalog_skus_registered: false,
-  });
-
-  // Step 3: Ingestion Channel State
-  const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp'>('google_drive');
-  const [folderId, setFolderId] = useState<string>('');
-  const [sourceEmail, setSourceEmail] = useState<string>('');
-  const [allowedSenders, setAllowedSenders] = useState<string>('');
-  const [oneDriveTenantId, setOneDriveTenantId] = useState<string>('');
-  const [oneDriveClientId, setOneDriveClientId] = useState<string>('');
-  const [oneDriveSecret, setOneDriveSecret] = useState<string>('');
-  const [oneDriveDriveId, setOneDriveDriveId] = useState<string>('');
-
-  // Step 3 External Checklist
-  const [storageChecks, setStorageChecks] = useState<Record<string, boolean>>({
-    folder_created: false,
-    service_account_shared: false,
-    subfolders_initialized: false,
-    url_id_extracted: false,
-  });
-
-  // Step 4: AI Engine & Guardrails State
+  // Step 3: Global AI Guardrails State
   const [aiEngine, setAiEngine] = useState<string>('gemini_flash_vision');
   const [varianceTolerance, setVarianceTolerance] = useState<number>(5.0);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(80);
   const [enableSheetsSync, setEnableSheetsSync] = useState<boolean>(true);
   const [notificationEmail, setNotificationEmail] = useState<string>('cdanso@service4gh.com');
 
-  // Step 5: Probe & Dry Run Results
-  const [isProbing, setIsProbing] = useState<boolean>(false);
-  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
-  const [isDryRunning, setIsDryRunning] = useState<boolean>(false);
-  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
-  const [selectedSamplePreset, setSelectedSamplePreset] = useState<string>('laundry_slip');
+  // Step 4: Starter Pipelines State
+  const [configuredPipelines, setConfiguredPipelines] = useState<IngestionPipeline[]>(STARTER_RECIPES[0].pipelines);
 
   // Loading & Submission State
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -351,7 +310,7 @@ export const ClientSetupWizardModal: React.FC = () => {
   useEffect(() => {
     if (wizardDraft) {
       if (wizardDraft.name !== undefined) setName(wizardDraft.name);
-      if (wizardDraft.selectedRecipe || wizardDraft.selectedIndustry) setSelectedRecipe(wizardDraft.selectedRecipe || wizardDraft.selectedIndustry);
+      if (wizardDraft.selectedRecipe) setSelectedRecipe(wizardDraft.selectedRecipe);
       if (wizardDraft.icon !== undefined) setIcon(wizardDraft.icon);
       if (wizardDraft.currency !== undefined) setCurrency(wizardDraft.currency);
       if (wizardDraft.projectedVolume !== undefined) setProjectedVolume(wizardDraft.projectedVolume);
@@ -360,23 +319,13 @@ export const ClientSetupWizardModal: React.FC = () => {
       if (wizardDraft.zohoOrgId !== undefined) setZohoOrgId(wizardDraft.zohoOrgId);
       if (wizardDraft.defaultIncomeAccount !== undefined) setDefaultIncomeAccount(wizardDraft.defaultIncomeAccount);
       if (wizardDraft.taxRateVat !== undefined) setTaxRateVat(wizardDraft.taxRateVat);
-      if (wizardDraft.sourceType !== undefined) setSourceType(wizardDraft.sourceType);
-      if (wizardDraft.folderId !== undefined) setFolderId(wizardDraft.folderId);
-      if (wizardDraft.sourceEmail !== undefined) setSourceEmail(wizardDraft.sourceEmail);
-      if (wizardDraft.allowedSenders !== undefined) setAllowedSenders(wizardDraft.allowedSenders);
-      if (wizardDraft.oneDriveTenantId !== undefined) setOneDriveTenantId(wizardDraft.oneDriveTenantId);
-      if (wizardDraft.oneDriveClientId !== undefined) setOneDriveClientId(wizardDraft.oneDriveClientId);
-      if (wizardDraft.oneDriveSecret !== undefined) setOneDriveSecret(wizardDraft.oneDriveSecret);
-      if (wizardDraft.oneDriveDriveId !== undefined) setOneDriveDriveId(wizardDraft.oneDriveDriveId);
-      if (wizardDraft.zohoChecks !== undefined) setZohoChecks(wizardDraft.zohoChecks);
-      if (wizardDraft.storageChecks !== undefined) setStorageChecks(wizardDraft.storageChecks);
       if (wizardDraft.configuredPipelines !== undefined) setConfiguredPipelines(wizardDraft.configuredPipelines);
       if (wizardDraft.aiEngine !== undefined) setAiEngine(wizardDraft.aiEngine);
       if (wizardDraft.varianceTolerance !== undefined) setVarianceTolerance(wizardDraft.varianceTolerance);
       if (wizardDraft.confidenceThreshold !== undefined) setConfidenceThreshold(wizardDraft.confidenceThreshold);
       if (wizardDraft.enableSheetsSync !== undefined) setEnableSheetsSync(wizardDraft.enableSheetsSync);
       if (wizardDraft.notificationEmail !== undefined) setNotificationEmail(wizardDraft.notificationEmail);
-      if (wizardDraft.currentStep !== undefined) setCurrentStep(wizardDraft.currentStep);
+      if (wizardDraft.currentStep !== undefined) setCurrentStep(Math.min(wizardDraft.currentStep, 4));
     }
   }, [wizardDraft]);
 
@@ -393,16 +342,6 @@ export const ClientSetupWizardModal: React.FC = () => {
       zohoOrgId,
       defaultIncomeAccount,
       taxRateVat,
-      sourceType,
-      folderId,
-      sourceEmail,
-      allowedSenders,
-      oneDriveTenantId,
-      oneDriveClientId,
-      oneDriveSecret,
-      oneDriveDriveId,
-      zohoChecks,
-      storageChecks,
       configuredPipelines,
       aiEngine,
       varianceTolerance,
@@ -423,11 +362,8 @@ export const ClientSetupWizardModal: React.FC = () => {
       setProjectedVolume('1,200+ Docs / mo');
       setDescription('');
       setAccountingSoftware('zoho_books');
-      setConfiguredPipelines([...STARTER_RECIPES[0].pipelines]);
       setZohoOrgId('');
-      setSourceType('google_drive');
-      setFolderId('');
-      setSourceEmail('');
+      setConfiguredPipelines([...STARTER_RECIPES[0].pipelines]);
       setCurrentStep(1);
     }
   };
@@ -446,44 +382,6 @@ export const ClientSetupWizardModal: React.FC = () => {
     }
   };
 
-  const handleAddNewPipeline = () => {
-    if (!newPipeName.trim()) return;
-    const newPipe: IngestionPipeline = {
-      id: `pipe_${Date.now()}`,
-      name: newPipeName.trim(),
-      section: newPipeSection,
-      entity_type: newPipeEntity,
-      source_type: newPipeSource,
-      source_identifier: '',
-      default_account_code: newPipeSection === 'AR' ? '4000 - Sales Revenue' : newPipeSection === 'AP' ? '5000 - Operating Expenses' : '1001 - Main Operating Account',
-      auto_post_to_zoho: false,
-      is_active: true,
-    };
-    setConfiguredPipelines((prev) => [...prev, newPipe]);
-    setNewPipeName('');
-    setIsAddingPipeline(false);
-  };
-
-  const handleRemovePipeline = (pipeId: string) => {
-    setConfiguredPipelines((prev) => prev.filter((p) => p.id !== pipeId));
-  };
-
-  // Auto-generate source email alias when name changes
-  useEffect(() => {
-    if (name) {
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      if (!sourceEmail || sourceEmail.includes('@inbound.service4gh.com')) {
-        setSourceEmail(`${slug}@inbound.service4gh.com`);
-      }
-    }
-  }, [name]);
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
-
   const handleFetchZohoData = async () => {
     setIsFetchingZoho(true);
     try {
@@ -491,14 +389,7 @@ export const ClientSetupWizardModal: React.FC = () => {
       if (data && data.contacts) {
         setZohoSyncedContacts(data.contacts);
         setZohoSyncedItemsCount(data.items_count || data.items?.length || 0);
-        setZohoChecks((prev) => ({
-          ...prev,
-          org_id_retrieved: true,
-          customer_created: true,
-          catalog_skus_registered: true,
-          chart_accounts_verified: true,
-        }));
-        addLog('success', `[ZOHO API] Synced ${data.contacts_count} customer contacts & ${data.items_count} catalog items from Zoho Books.`);
+        addLog('success', `[ZOHO API] Synced ${data.contacts_count || (data.contacts && data.contacts.length) || 0} customer contacts & ${data.items_count || 0} catalog items from Zoho Books.`);
       }
     } catch (err: any) {
       addLog('warning', `Could not fetch live Zoho contacts: ${err.message}`);
@@ -513,7 +404,7 @@ export const ClientSetupWizardModal: React.FC = () => {
   };
 
   const handleNextStep = () => {
-    const nextStep = Math.min(currentStep + 1, 6);
+    const nextStep = Math.min(currentStep + 1, 4);
     syncDraft(nextStep);
     setCurrentStep(nextStep);
   };
@@ -524,70 +415,15 @@ export const ClientSetupWizardModal: React.FC = () => {
     setCurrentStep(prevStep);
   };
 
-  const handleRunProbe = async () => {
-    setIsProbing(true);
-    setProbeResult(null);
-    try {
-      const res = await probeExternalConnection({
-        source_type: sourceType,
-        folder_id: folderId,
-        source_email: sourceEmail,
-        zoho_org_id: zohoOrgId,
-        source_config: {
-          tenant_id: oneDriveTenantId,
-          client_id: oneDriveClientId,
-          drive_id: oneDriveDriveId,
-        },
-      });
-      setProbeResult(res);
-      addLog('info', `[WIZARD PROBE] Successfully probed ${sourceType} connection.`);
-    } catch (err: any) {
-      setProbeResult({
-        success: false,
-        status: 'FAILED',
-        source_type: sourceType,
-        checks: [
-          {
-            target: 'Connection Probe',
-            identifier: 'Probe Failed',
-            status: 'FAIL',
-            message: err.message || 'Could not verify external connectivity.',
-          },
-        ],
-        timestamp: new Date().toISOString(),
-        summary: 'Probe failed. Please check network and credentials.',
-      });
-    } finally {
-      setIsProbing(false);
-    }
-  };
-
-  const handleRunDryRun = async () => {
-    setIsDryRunning(true);
-    setDryRunResult(null);
-    try {
-      const res = await dryRunSampleOcr({
-        engine_type: aiEngine,
-        sample_preset: selectedSamplePreset,
-      });
-      setDryRunResult(res);
-      addLog('info', `[WIZARD OCR] Dry run parsed ${res.items?.length || 0} line items.`);
-    } catch (err: any) {
-      console.warn('Dry run failed:', err);
-    } finally {
-      setIsDryRunning(false);
-    }
-  };
-
   const handleLaunchClient = async () => {
     if (!name.trim()) return;
     setIsSubmitting(true);
     try {
       const currentRecipe = STARTER_RECIPES.find((p) => p.id === selectedRecipe);
       const blueprints = currentRecipe?.blueprints || [
-        { title: 'Source Ingestion', desc: `Connected via ${sourceType}`, status: 'active' },
-        { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
-        { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into Zoho Books', status: 'queued' },
+        { title: 'Source Ingestion', desc: 'Modular multi-pipeline streams', status: 'active' },
+        { title: 'AI Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
+        { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
       ];
 
       await createClientFromWizard({
@@ -598,31 +434,18 @@ export const ClientSetupWizardModal: React.FC = () => {
         status_text: 'In Development',
         description: description.trim() || currentRecipe?.description,
         accounting_software: accountingSoftware,
-        source_type: sourceType,
-        source_email: sourceEmail,
-        folder_id: folderId,
+        source_type: configuredPipelines[0]?.source_type || 'google_drive',
+        source_email: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}@inbound.service4gh.com`,
         zoho_org_id: zohoOrgId,
         currency,
         projectedMonthlyVolume: projectedVolume,
         blueprints,
-        pipelines: configuredPipelines.map((p) => ({
-          ...p,
-          source_identifier: p.source_identifier || (p.source_type === 'google_drive' ? folderId : p.source_type === 'email' ? sourceEmail : ''),
-        })),
+        pipelines: configuredPipelines,
         active_integrations: [
-          sourceType === 'google_drive' ? 'Google Drive' : sourceType === 'onedrive' ? 'OneDrive' : sourceType === 'whatsapp' ? 'WhatsApp Business' : 'Email Forwarding',
           'Gemini Vision',
           accountingSoftware === 'zoho_books' ? 'Zoho Books' : ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware)?.name || 'Accounting Engine',
           'Inngest',
         ],
-        source_config: {
-          tenant_id: oneDriveTenantId,
-          client_id: oneDriveClientId,
-          drive_id: oneDriveDriveId,
-          allowed_senders: allowedSenders,
-          auto_archive: true,
-          scan_subfolders: true,
-        },
         custom_config: {
           currency,
           volume: projectedVolume,
@@ -632,14 +455,10 @@ export const ClientSetupWizardModal: React.FC = () => {
           notification_email: notificationEmail,
           default_income_account: defaultIncomeAccount,
           tax_rate_vat: taxRateVat,
-          external_checks: {
-            ...zohoChecks,
-            ...storageChecks,
-          },
         },
       });
 
-      addLog('success', `🎉 Client organization "${name}" successfully registered with ${configuredPipelines.length} active ingestion pipelines!`);
+      addLog('success', `🎉 Client organization "${name}" registered successfully with ${configuredPipelines.length} initial ingestion pipelines!`);
       clearWizardDraft();
       setIsWizardOpen(false);
       setActiveTab('workspace');
@@ -653,12 +472,10 @@ export const ClientSetupWizardModal: React.FC = () => {
   if (!isWizardOpen) return null;
 
   const stepsList = [
-    { num: 1, title: 'Profile & Blueprint', icon: Building2 },
-    { num: 2, title: 'Accounting Platform', icon: Sliders },
-    { num: 3, title: 'External Ingestion', icon: Cloud },
-    { num: 4, title: 'AI & Review Sheets', icon: Sparkles },
-    { num: 5, title: 'Live Probe & Test', icon: Zap },
-    { num: 6, title: 'Handover & Launch', icon: ShieldCheck },
+    { num: 1, title: 'Organization Profile', icon: Building2 },
+    { num: 2, title: 'Target Accounting System', icon: Sliders },
+    { num: 3, title: 'AI & Review Guardrails', icon: Sparkles },
+    { num: 4, title: 'Starter Streams & Launch', icon: ShieldCheck },
   ];
 
   return (
@@ -669,19 +486,19 @@ export const ClientSetupWizardModal: React.FC = () => {
         <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
-              <Zap className="w-5 h-5" />
+              <Building2 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-white tracking-tight">
-                  New Client Onboarding & Setup Wizard
+                  New Client Organization Onboarding
                 </h2>
                 <span className="text-[10px] bg-sky-500/15 border border-sky-500/30 text-sky-300 font-mono px-2 py-0.5 rounded-full font-bold">
-                  Step {currentStep} of 6
+                  Step {currentStep} of 4
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Configure entity-driven accounting pipelines (AR, AP, Banking) and link external channels to Zoho Books.
+                Register a new client entity, target accounting software credentials, and firm-wide AI quality guardrails.
               </p>
             </div>
           </div>
@@ -711,17 +528,18 @@ export const ClientSetupWizardModal: React.FC = () => {
 
         {/* Multi-Step Progress Tracker Bar */}
         <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800/80">
-          <div className="grid grid-cols-6 gap-2">
-            {stepsList.map((step) => {
-              const StepIcon = step.icon;
-              const isPast = currentStep > step.num;
-              const isCurrent = currentStep === step.num;
+          <div className="grid grid-cols-4 gap-2">
+            {stepsList.map((s) => {
+              const StepIcon = s.icon;
+              const isPast = currentStep > s.num;
+              const isCurrent = currentStep === s.num;
 
               return (
                 <button
-                  key={step.num}
-                  onClick={() => handleStepJump(step.num)}
-                  className={`flex items-center gap-2 py-2 px-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                  key={s.num}
+                  type="button"
+                  onClick={() => handleStepJump(s.num)}
+                  className={`flex items-center gap-2 py-2 px-3 rounded-xl text-left transition-all cursor-pointer ${
                     isCurrent
                       ? 'bg-sky-500/20 border border-sky-500/50 text-white shadow-md shadow-sky-500/10'
                       : isPast
@@ -738,10 +556,10 @@ export const ClientSetupWizardModal: React.FC = () => {
                         : 'bg-slate-800 text-slate-500'
                     }`}
                   >
-                    {isPast ? <Check className="w-3.5 h-3.5" /> : step.num}
+                    {isPast ? '✓' : s.num}
                   </div>
-                  <span className="text-[11px] font-semibold truncate hidden md:inline">
-                    {step.title}
+                  <span className="text-[11px] font-semibold truncate hidden sm:inline">
+                    {s.title}
                   </span>
                 </button>
               );
@@ -752,238 +570,38 @@ export const ClientSetupWizardModal: React.FC = () => {
         {/* Wizard Step Body */}
         <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-6">
 
-          {/* STEP 1: Profile & Multi-Pipeline Blueprint */}
+          {/* STEP 1: Organization Profile & Core Settings */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-sky-400" />
-                  <span>Client Organization Profile & Accounting Ingestion Blueprint</span>
+                  <span>Client Organization Profile &amp; Reporting Currency</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Select a starter blueprint recipe or configure dedicated ingestion pipelines across Accounts Receivable, Payables, and Bank Reconciliation.
+                  Enter the primary organization identity and operational currency. Individual ingestion streams will be organized under this client entity.
                 </p>
               </div>
 
-              {/* Starter Recipe Selector */}
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-2">
-                  Select Starter Workflow Blueprint
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {STARTER_RECIPES.map((recipe) => {
-                    const isSelected = selectedRecipe === recipe.id;
-                    return (
-                      <div
-                        key={recipe.id}
-                        onClick={() => handleSelectRecipe(recipe.id)}
-                        className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-sky-500/15 border-sky-500/60 shadow-lg shadow-sky-500/10'
-                            : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-2xl">{recipe.icon}</span>
-                            {isSelected && (
-                              <span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded-full">
-                                Selected
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="text-xs font-bold text-white">{recipe.name}</h4>
-                          <p className="text-[10px] text-sky-400 font-medium mt-0.5">{recipe.tagline}</p>
-                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
-                            {recipe.description}
-                          </p>
-                        </div>
-                        <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                          <span className="text-sky-400">{recipe.pipelines.length} Pipelines</span>
-                          <span>{recipe.defaultVolume}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Active Configured Ingestion Pipelines Hub */}
-              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-sky-400" />
-                    <span className="text-xs font-bold text-white">
-                      Active Ingestion Pipelines ({configuredPipelines.length})
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingPipeline(!isAddingPipeline)}
-                    className="text-[11px] bg-sky-600 hover:bg-sky-500 text-white font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Pipeline</span>
-                  </button>
-                </div>
-
-                {/* Inline Add Pipeline Form */}
-                {isAddingPipeline && (
-                  <div className="bg-slate-900 border border-sky-500/30 rounded-xl p-3.5 space-y-3 animate-in fade-in">
-                    <div className="text-xs font-bold text-sky-300">Configure New Ingestion Pipeline</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Pipeline Name</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Counter Sales Slips"
-                          value={newPipeName}
-                          onChange={(e) => setNewPipeName(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Accounting Section</label>
-                        <select
-                          value={newPipeSection}
-                          onChange={(e) => setNewPipeSection(e.target.value as AccountingSection)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
-                        >
-                          <option value="AR">🔵 Accounts Receivable (AR)</option>
-                          <option value="AP">🟠 Accounts Payable (AP)</option>
-                          <option value="BANK">🟢 Banking & Treasury</option>
-                          <option value="GL">🟣 General Ledger (GL)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Target Zoho Entity</label>
-                        <select
-                          value={newPipeEntity}
-                          onChange={(e) => setNewPipeEntity(e.target.value as AccountingEntityType)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
-                        >
-                          {newPipeSection === 'AR' && (
-                            <>
-                              <option value="ar_sales_invoice">Sales Invoices / Delivery Slips (/invoices)</option>
-                              <option value="ar_customer_payment">Customer Payments & MoMo (/customerpayments)</option>
-                              <option value="ar_credit_note">Credit Notes (/creditnotes)</option>
-                            </>
-                          )}
-                          {newPipeSection === 'AP' && (
-                            <>
-                              <option value="ap_vendor_bill">Vendor / Supplier Bills (/bills)</option>
-                              <option value="ap_vendor_payment">Vendor Payments (/vendorpayments)</option>
-                              <option value="ap_direct_expense">Direct Expenses & Petty Cash (/expenses)</option>
-                            </>
-                          )}
-                          {newPipeSection === 'BANK' && (
-                            <>
-                              <option value="bank_statement">Bank Statements / Feeds (/banktransactions)</option>
-                              <option value="momo_statement">Mobile Money Merchant Statements (/banktransactions)</option>
-                            </>
-                          )}
-                          {newPipeSection === 'GL' && (
-                            <option value="gl_journal">Manual Double-Entry Journals (/journalentries)</option>
-                          )}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-1">Source Channel</label>
-                        <select
-                          value={newPipeSource}
-                          onChange={(e) => setNewPipeSource(e.target.value as any)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
-                        >
-                          <option value="google_drive">Google Drive</option>
-                          <option value="onedrive">OneDrive / SharePoint</option>
-                          <option value="email">Dedicated Email Alias</option>
-                          <option value="webhook">Webhook / API</option>
-                          <option value="manual">Manual Upload</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingPipeline(false)}
-                        className="text-xs text-slate-400 hover:text-white px-3 py-1 cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddNewPipeline}
-                        disabled={!newPipeName.trim()}
-                        className="text-xs bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold px-3 py-1 rounded-lg cursor-pointer transition"
-                      >
-                        Confirm Pipeline
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Pipelines List */}
-                <div className="space-y-2">
-                  {configuredPipelines.map((pipe) => {
-                    const sectionBadge =
-                      pipe.section === 'AR'
-                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                        : pipe.section === 'AP'
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        : pipe.section === 'BANK'
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-purple-500/20 text-purple-300 border-purple-500/40';
-
-                    return (
-                      <div
-                        key={pipe.id}
-                        className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs hover:border-slate-700 transition"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${sectionBadge}`}>
-                            {pipe.section}
-                          </span>
-                          <div>
-                            <span className="font-semibold text-white">{pipe.name}</span>
-                            <span className="text-[11px] text-slate-400 ml-2">
-                              Target: <code className="text-sky-300 font-mono text-[10px]">{pipe.entity_type}</code> via {pipe.source_type}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePipeline(pipe.id)}
-                          className="text-slate-500 hover:text-red-400 p-1 cursor-pointer transition"
-                          title="Remove Pipeline"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Form Inputs Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1.5">
                     Client Organization Name <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. Opera Square Electricals"
+                    placeholder="e.g. Apex Logistics Ltd, ANR Commercial Laundry, Polaris Advisory"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    required
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                      Accounting Currency
+                      Base Accounting Currency
                     </label>
                     <select
                       value={currency}
@@ -1009,7 +627,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                         className="w-14 text-center bg-slate-950 border border-slate-800 rounded-xl px-2 py-2.5 text-lg text-white focus:outline-none focus:border-sky-500"
                       />
                       <div className="flex gap-1">
-                        {['🛍️', '🏢', '🧺', '⚡', '🚛', '🏥'].map((emoji) => (
+                        {['🛍️', '🏢', '🧺', '⚡', '🚛', '🏥', '📦', '🏗️'].map((emoji) => (
                           <button
                             key={emoji}
                             type="button"
@@ -1026,11 +644,11 @@ export const ClientSetupWizardModal: React.FC = () => {
 
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Target Monthly Volume
+                    Estimated Monthly Document Volume
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. 500+ Docs / mo"
+                    placeholder="e.g. 1,000+ Invoices & Slips / mo"
                     value={projectedVolume}
                     onChange={(e) => setProjectedVolume(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
@@ -1039,21 +657,21 @@ export const ClientSetupWizardModal: React.FC = () => {
 
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Workflow Description
+                    Client Summary &amp; Scope Description
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Brief description of data flow..."
+                  <textarea
+                    rows={2}
+                    placeholder="Brief description of client business operations and automation scope..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* STEP 2: Target Accounting Platform Integration Hub (10 West African Platforms) */}
+          {/* STEP 2: Target Accounting Platform */}
           {currentStep === 2 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
@@ -1062,11 +680,11 @@ export const ClientSetupWizardModal: React.FC = () => {
                   <span>Target Accounting Platform Integration (West Africa)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Select your client's core accounting engine. <strong>Zoho Books</strong> is currently production-ready with live API synchronization. Connectors for other top West African ERP and accounting platforms are in active development.
+                  Select the core accounting platform your client operates. <strong>Zoho Books</strong> is production-ready with live API synchronization. Connectors for other top West African ERP and accounting suites are in active development.
                 </p>
               </div>
 
-              {/* 10 West African Accounting Platforms Grid */}
+              {/* 10 Platforms Grid */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-300 block">
                   Select Target Accounting Software ({ACCOUNTING_PLATFORMS.length} Supported Platforms)
@@ -1117,215 +735,107 @@ export const ClientSetupWizardModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* ZOHO BOOKS ACTIVE CONFIGURATION */}
+              {/* ZOHO BOOKS ACTIVE CREDENTIALS */}
               {accountingSoftware === 'zoho_books' ? (
-                <div className="space-y-6 pt-3 border-t border-slate-800 animate-in fade-in">
-                  {/* Alert Callout */}
-                  <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                    <div className="text-xs text-slate-300 space-y-1">
-                      <span className="font-bold text-white">Live Zoho Books Multi-Tenant Architecture</span>
-                      <p className="text-slate-400">
-                        S4 Automations connects directly to this client's Zoho environment to draft sales invoices, record vendor bills, register customer payments, and post manual journals.
-                      </p>
+                <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in">
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Client's Zoho Books Organization ID
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleFetchZohoData}
+                        disabled={isFetchingZoho}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+                      >
+                        <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
+                        <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
+                      </button>
                     </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. 782910482 (or leave blank for sandbox demo)"
+                      value={zohoOrgId}
+                      onChange={(e) => setZohoOrgId(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Obtain from the client's Zoho Books profile under <strong>Settings &gt; Organization Profile</strong>.
+                    </span>
                   </div>
 
-                  {/* Interactive External Checklist */}
-                  <div className="space-y-3">
-                    <label className="text-xs font-semibold text-slate-300 block">
-                      Outside-of-App Zoho Books Setup Checklist for this Client
-                    </label>
-
-                    {/* Item 1 */}
-                    <div
-                      onClick={() => setZohoChecks((prev) => ({ ...prev, org_id_retrieved: !prev.org_id_retrieved }))}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        zohoChecks.org_id_retrieved
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                          zohoChecks.org_id_retrieved ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                        }`}>
-                          {zohoChecks.org_id_retrieved && <Check className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 text-xs">
-                          <span className="font-bold text-white block">1. Client's Zoho Books Organization &amp; Org ID</span>
-                          <p className="text-slate-400 mt-1">
-                            Obtain the client's numeric <strong>Organization ID</strong> (e.g. <code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">782910482</code>) from their top-right profile or <strong>Settings &gt; Organization Profile</strong>.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Item 2 */}
-                    <div
-                      onClick={() => setZohoChecks((prev) => ({ ...prev, customer_created: !prev.customer_created }))}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        zohoChecks.customer_created
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                          zohoChecks.customer_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                        }`}>
-                          {zohoChecks.customer_created && <Check className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 text-xs">
-                          <span className="font-bold text-white block">2. Invite Your Accounting Firm as Accountant / Admin</span>
-                          <p className="text-slate-400 mt-1">
-                            Inside the client's Zoho Books, they invite your firm's email (<code className="text-sky-300 bg-slate-950 px-1 py-0.5 rounded">{notificationEmail || 'accounting@service4gh.com'}</code>) with the <strong>Accountant</strong> or <strong>Admin</strong> role.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Item 3 */}
-                    <div
-                      onClick={() => setZohoChecks((prev) => ({ ...prev, chart_accounts_verified: !prev.chart_accounts_verified }))}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        zohoChecks.chart_accounts_verified
-                          ? 'bg-emerald-950/30 border-emerald-500/40'
-                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center ${
-                          zohoChecks.chart_accounts_verified ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'
-                        }`}>
-                          {zohoChecks.chart_accounts_verified && <Check className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 text-xs">
-                          <span className="font-bold text-white block">3. Register Client's Downstream Customers &amp; Vendors</span>
-                          <p className="text-slate-400 mt-1">
-                            In the client's Zoho Books (<strong>Sales &gt; Customers</strong> or <strong>Purchases &gt; Vendors</strong>), register their primary counter-parties. S4 Automations automatically pulls these profiles for OCR matching.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Zoho Organization ID & Dynamic API Sync */}
-                  <div className="space-y-4 pt-2">
-                    <div>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
-                        <label className="text-xs font-semibold text-slate-300">
-                          Client's Zoho Books Organization ID <span className="text-slate-500 text-[10px]">(From client's Zoho account)</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleFetchZohoData}
-                          disabled={isFetchingZoho}
-                          className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
-                        >
-                          <Users className={`w-3.5 h-3.5 ${isFetchingZoho ? 'animate-spin' : ''}`} />
-                          <span>{isFetchingZoho ? 'Connecting API...' : 'Fetch Customers & Items via Zoho API'}</span>
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="e.g. 782910482 (or leave blank for sandbox demo)"
-                        value={zohoOrgId}
-                        onChange={(e) => setZohoOrgId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                      />
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        S4 Automations connects directly to this Organization ID and automatically pulls all client customer profiles and catalog SKUs via API.
-                      </span>
-                    </div>
-
-                    {/* Discovered Customers & SKUs Live Card */}
-                    {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
-                      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-emerald-400" />
-                            <span className="text-xs font-bold text-white">
-                              Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                            {zohoSyncedItemsCount || 11} SKUs Synced
+                  {/* Discovered Customers & SKUs Live Card */}
+                  {zohoSyncedContacts && zohoSyncedContacts.length > 0 && (
+                    <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/40 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-bold text-white">
+                            Discovered Customers in this Zoho Books Account ({zohoSyncedContacts.length} Contacts)
                           </span>
                         </div>
-
-                        {/* Customer Badges Grid */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {zohoSyncedContacts.map((contact, idx) => (
-                            <span
-                              key={contact.contact_id || idx}
-                              className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
-                            </span>
-                          ))}
-                        </div>
+                        <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                          {zohoSyncedItemsCount || 11} SKUs Synced
+                        </span>
                       </div>
-                    )}
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {zohoSyncedContacts.map((contact, idx) => (
+                          <span
+                            key={contact.contact_id || idx}
+                            className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-lg"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            <span className="font-semibold">{contact.contact_name || contact.company_name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">({contact.contact_id})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Standard Ghana GRA VAT &amp; Levy Rule
+                    </label>
+                    <input
+                      type="text"
+                      value={taxRateVat}
+                      onChange={(e) => setTaxRateVat(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
+                    />
                   </div>
                 </div>
               ) : (
-                /* NON-ZOHO IN PROGRESS CONNECTOR NOTICE */
+                /* IN-PROGRESS CONNECTOR PREVIEW */
                 <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in">
                   {(() => {
                     const sel = ACCOUNTING_PLATFORMS.find((p) => p.id === accountingSoftware);
                     if (!sel) return null;
                     return (
-                      <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-5 space-y-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl">{sel.icon}</span>
-                            <div>
-                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                <span>{sel.name} Integration Connector</span>
-                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                  In Progress
-                                </span>
-                              </h4>
-                              <p className="text-xs text-slate-400 mt-0.5">
-                                Protocol: <code className="text-sky-300 font-mono">{sel.targetProtocol}</code> • Regional Target: {sel.regionalPopularity}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
+                      <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-5 space-y-3">
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span>{sel.icon}</span>
+                          <span>{sel.name} Integration Connector</span>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            In Progress
+                          </span>
+                        </h4>
                         <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
-                          ℹ️ S4 Automations is actively developing direct posting connectors for <strong>{sel.name}</strong>. During this phase, all document extractions and Zoho-strict contract validations will run normally, and approved transactions will be staged in the <strong>Review Ledger</strong> ready for automatic dispatch when the connector goes live.
+                          ℹ️ Direct posting connectors for <strong>{sel.name}</strong> ({sel.targetProtocol}) are currently in active development. During this phase, all document extractions and contract validations will run normally, and approved transactions will be safely staged in the <strong>Review Ledger</strong> ready for automated dispatch.
                         </p>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs font-semibold text-slate-300 block mb-1">
-                              {sel.name} Sandbox / Organization / Tenant ID
-                            </label>
-                            <input
-                              type="text"
-                              placeholder={`e.g. ${sel.id}_sandbox_001`}
-                              value={zohoOrgId}
-                              onChange={(e) => setZohoOrgId(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-xs font-semibold text-slate-300 block mb-1">
-                              Default Chart of Accounts Code
-                            </label>
-                            <input
-                              type="text"
-                              value={defaultIncomeAccount}
-                              onChange={(e) => setDefaultIncomeAccount(e.target.value)}
-                              placeholder="e.g. 4000 - General Sales Revenue"
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500"
-                            />
-                          </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-300 block mb-1">
+                            {sel.name} Sandbox / Organization / Tenant ID
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={`e.g. ${sel.id}_sandbox_001`}
+                            value={zohoOrgId}
+                            onChange={(e) => setZohoOrgId(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                          />
                         </div>
                       </div>
                     );
@@ -1335,784 +845,234 @@ export const ClientSetupWizardModal: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 3: External Data Ingestion Channel Setup */}
+          {/* STEP 3: Global AI Guardrails & Review Settings */}
           {currentStep === 3 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-sky-400" />
-                  <span>Outside-of-App Setup: Data Ingestion Storage Channel</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Configure how physical handwritten slips or digital PDFs will be routed from the client's operations into S4 Automations.
-                </p>
-              </div>
-
-              {/* Source Type Selector */}
-              <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-xl">
-                {[
-                  { id: 'google_drive', label: 'Google Drive (Recommended)', icon: Folder, status: 'live' },
-                  { id: 'onedrive', label: 'Microsoft OneDrive / SharePoint', icon: Cloud, status: 'live' },
-                  { id: 'email', label: 'Automated Email Forwarding', icon: Mail, status: 'live' },
-                  { id: 'webhook', label: 'Inbound Webhook / API', icon: Zap, status: 'live' },
-                  { id: 'whatsapp', label: 'WhatsApp Business Bot', icon: MessageSquare, status: 'in_progress' },
-                ].map((type) => {
-                  const IconComp = type.icon;
-                  const isSel = sourceType === type.id;
-                  const isLive = type.status === 'live';
-                  return (
-                    <button
-                      key={type.id}
-                      type="button"
-                      onClick={() => setSourceType(type.id as any)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                        isSel ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-850'
-                      }`}
-                    >
-                      <IconComp className="w-3.5 h-3.5" />
-                      <span>{type.label}</span>
-                      {!isLive && (
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          In Progress
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* GOOGLE DRIVE SETUP */}
-              {sourceType === 'google_drive' && (
-                <div className="space-y-4">
-                  {/* Service Account Copy Box */}
-                  <div className="bg-gradient-to-r from-sky-950/60 to-indigo-950/60 border border-sky-500/30 rounded-xl p-4">
-                    <span className="text-[11px] font-bold text-sky-300 block mb-1">
-                      Step 1: S4 Automations Service Account Email
-                    </span>
-                    <p className="text-xs text-slate-300 mb-2">
-                      Share the client's Google Drive folder with this service account email with <strong>Editor</strong> access:
-                    </p>
-                    <div className="flex items-center justify-between bg-slate-950 border border-sky-500/40 rounded-lg p-2 font-mono text-xs text-sky-200">
-                      <span className="truncate mr-2">{SERVICE_ACCOUNT_EMAIL}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(SERVICE_ACCOUNT_EMAIL, 'sa_email')}
-                        className="flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold px-2.5 py-1 rounded cursor-pointer shrink-0"
-                      >
-                        {copiedKey === 'sa_email' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedKey === 'sa_email' ? 'Copied!' : 'Copy Email'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Checklist */}
-                  <div className="space-y-2.5">
-                    <label className="text-xs font-semibold text-slate-300 block">
-                      Google Drive Folder External Setup Checklist
-                    </label>
-
-                    <div
-                      onClick={() => setStorageChecks((prev) => ({ ...prev, folder_created: !prev.folder_created }))}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
-                        storageChecks.folder_created ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900/80 border-slate-800'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${storageChecks.folder_created ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
-                        {storageChecks.folder_created && <Check className="w-3 h-3" />}
-                      </div>
-                      <span className="text-xs text-slate-300">
-                        1. Created folder in Google Drive (e.g. <code className="text-sky-300">Client Name / Ingest / 2026</code>)
-                      </span>
-                    </div>
-
-                    <div
-                      onClick={() => setStorageChecks((prev) => ({ ...prev, service_account_shared: !prev.service_account_shared }))}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
-                        storageChecks.service_account_shared ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900/80 border-slate-800'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${storageChecks.service_account_shared ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
-                        {storageChecks.service_account_shared && <Check className="w-3 h-3" />}
-                      </div>
-                      <span className="text-xs text-slate-300">
-                        2. Shared folder with S4 Service Account (<code className="text-sky-300">s4-vision-ingest@...</code>) as <strong>Editor</strong>
-                      </span>
-                    </div>
-
-                    <div
-                      onClick={() => setStorageChecks((prev) => ({ ...prev, subfolders_initialized: !prev.subfolders_initialized }))}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
-                        storageChecks.subfolders_initialized ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900/80 border-slate-800'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${storageChecks.subfolders_initialized ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
-                        {storageChecks.subfolders_initialized && <Check className="w-3.5 h-3.5" />}
-                      </div>
-                      <span className="text-xs text-slate-300">
-                        3. Initialized subfolder hierarchy (<code className="text-sky-300">Daily_Slips/</code>, <code className="text-sky-300">Processed/</code>, <code className="text-sky-300">Review_Sheets/</code>)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Input Folder ID */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                      Google Drive Folder ID <span className="text-red-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1Uu_Q3p8s1_anr_laundry_slips (from drive.google.com/drive/folders/...)"
-                      value={folderId}
-                      onChange={(e) => setFolderId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Extracted from the URL when viewing the folder in your web browser.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* ONEDRIVE SETUP */}
-              {sourceType === 'onedrive' && (
-                <div className="space-y-4">
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2 text-xs text-slate-300">
-                    <span className="font-bold text-white block">Microsoft Entra ID (Azure AD) Steps:</span>
-                    <ol className="list-decimal pl-4 space-y-1 text-slate-400">
-                      <li>Register an App Registration in Azure Portal for S4 Automations.</li>
-                      <li>Grant API Permissions: <code className="text-sky-300 bg-slate-900 px-1 rounded">Files.ReadWrite.All</code> and <code className="text-sky-300 bg-slate-900 px-1 rounded">Sites.Read.All</code> with Admin Consent.</li>
-                      <li>Create a Client Secret under Certificates &amp; Secrets.</li>
-                    </ol>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Azure Tenant ID</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 3a5b8c9d-..."
-                        value={oneDriveTenantId}
-                        onChange={(e) => setOneDriveTenantId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Azure Client ID</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 9f8e7d6c-..."
-                        value={oneDriveClientId}
-                        onChange={(e) => setOneDriveClientId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">Client Secret</label>
-                      <input
-                        type="password"
-                        placeholder="••••••••••••••••"
-                        value={oneDriveSecret}
-                        onChange={(e) => setOneDriveSecret(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-semibold text-slate-300 block mb-1">
-                        OneDrive / SharePoint Folder URL or Path
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. https://service4limitedcompany.sharepoint.com/sites/s4bookkeeping/Shared%20Documents/General/Opera%20square/Ingestion"
-                        value={oneDriveDriveId}
-                        onChange={(e) => setOneDriveDriveId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
-                      />
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        You can paste full SharePoint web folder URLs directly copied from your web browser.
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* EMAIL SETUP */}
-              {sourceType === 'email' && (
-                <div className="space-y-4">
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2 text-xs text-slate-300">
-                    <span className="font-bold text-white block">Email Server Forwarding Rule:</span>
-                    <p className="text-slate-400">
-                      In the client's mail server (Exchange, Microsoft 365, or Google Workspace), create a rule to automatically forward incoming invoice/receipt PDFs from designated vendors to this dedicated inbound alias:
-                    </p>
-                    <div className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-xs text-sky-300">
-                      <span>{sourceEmail || 'client@inbound.service4gh.com'}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(sourceEmail, 'inbound_email')}
-                        className="bg-sky-600 text-white text-[11px] px-2 py-1 rounded cursor-pointer"
-                      >
-                        {copiedKey === 'inbound_email' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">
-                      Allowed Sender Whitelist <span className="text-slate-500 text-[10px]">(Comma-separated emails)</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. billing@clientdomain.com, frontdesk@hotel.com"
-                      value={allowedSenders}
-                      onChange={(e) => setAllowedSenders(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* WEBHOOK SETUP */}
-              {sourceType === 'webhook' && (
-                <div className="space-y-4">
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 space-y-2">
-                    <span className="font-bold text-white block">Real-time Webhook URL:</span>
-                    <div className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg font-mono text-xs text-sky-300 break-all">
-                      https://autapi.service4gh.com/api/v1/webhooks/{name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '_') : 'client'}
-                    </div>
-                    <p className="text-slate-400">
-                      Configure external POS systems or document feeds to POST raw payloads and base64 documents directly to this endpoint.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* WHATSAPP BUSINESS BOT SETUP (IN PROGRESS) */}
-              {sourceType === 'whatsapp' && (
-                <div className="space-y-4 animate-in fade-in">
-                  <div className="bg-gradient-to-r from-emerald-950/40 via-slate-950 to-teal-950/40 border border-emerald-500/40 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-2xl">📱</span>
-                        <div>
-                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                            <span>WhatsApp Business Ingestion Bot</span>
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                              In Progress
-                            </span>
-                          </h4>
-                          <p className="text-xs text-slate-400">
-                            Automated receipt photo capture &amp; mobile money confirmation OCR via WhatsApp Cloud API.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 border border-slate-800 p-3 rounded-xl">
-                      🚀 <strong>How it works:</strong> Drivers, warehouse managers, or front-desk staff take a photo of physical delivery slips, supplier paper receipts, or MoMo SMS confirmations and send them directly to a dedicated S4 WhatsApp number. Gemini Vision OCR extracts the lines and pushes them directly into this client's ingestion pipelines.
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <label className="text-xs font-semibold text-slate-300 block mb-1">
-                          Dedicated Client WhatsApp Number
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="+233 (55) 000-0000"
-                          value={sourceEmail || '+233 55 123 4567'}
-                          onChange={(e) => setSourceEmail(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-semibold text-slate-300 block mb-1">
-                          Authorized WhatsApp Senders / Group Names
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. +233240000000, ANR Logistics Group"
-                          value={allowedSenders}
-                          onChange={(e) => setAllowedSenders(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* STEP 4: AI Extraction Strategy & Guardrails */}
-          {currentStep === 4 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-sky-400" />
-                  <span>AI Extraction Strategy & Quality Guardrails</span>
+                  <span>Global AI Guardrails &amp; Quality Thresholds</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Configure vision OCR models, discrepancy thresholds, and review workbook sync settings.
+                  Set firm-wide discrepancy thresholds and automated email alert destinations for quarantine anomalies.
                 </p>
               </div>
 
-              {/* Model Blueprint Options */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    id: 'gemini_flash_vision',
-                    name: 'Gemini 3.6 Flash Vision OCR',
-                    tag: 'Physical Slips & Handwritten Forms',
-                    desc: 'Extracts dates, handwritten item names, pickup/delivery quantities, and computes loss discrepancy (pickup - delivery).',
-                  },
-                  {
-                    id: 'pdf_bank_parser',
-                    name: 'Structured PDF & Bank Feed Parser',
-                    tag: 'Bank Statements & Wire Feeds',
-                    desc: 'Parses multi-currency statement transactions, balance lines, and auto-categorizes against general ledger chart of accounts.',
-                  },
-                  {
-                    id: 'rent_receipt_matcher',
-                    name: 'Tenant Rent & Utility Apportionment',
-                    tag: 'Receipts & Sub-metering',
-                    desc: 'Parses tenant mobile money / bank receipts and apportions master utility invoices across occupied rental units.',
-                  },
-                  {
-                    id: 'invoice_ocr',
-                    name: 'Commercial Invoice & POS Tally OCR',
-                    tag: 'Vendor Bills & Register Reports',
-                    desc: 'Extracts line items, sub-totals, GRA VAT/NHIL/GETFund breakdowns, and PO numbers for ERP matching.',
-                  },
-                ].map((eng) => (
-                  <div
-                    key={eng.id}
-                    onClick={() => setAiEngine(eng.id)}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      aiEngine === eng.id
-                        ? 'bg-sky-500/15 border-sky-500/60 shadow-lg shadow-sky-500/10'
-                        : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-white">{eng.name}</span>
-                        {aiEngine === eng.id && <Check className="w-4 h-4 text-sky-400" />}
-                      </div>
-                      <span className="inline-block text-[10px] bg-slate-950 border border-slate-800 text-sky-400 px-2 py-0.5 rounded-full mb-2">
-                        {eng.tag}
-                      </span>
-                      <p className="text-xs text-slate-400">{eng.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Guardrails Sliders */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-800">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">Discrepancy Variance Tolerance Cap</span>
-                    <span className="font-mono text-sky-400 font-bold">{varianceTolerance}%</span>
-                  </div>
+                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <label className="text-xs font-semibold text-slate-300 block">
+                    Math Variance Discrepancy Tolerance (%)
+                  </label>
                   <input
-                    type="range"
+                    type="number"
                     min="0"
                     max="20"
                     step="0.5"
                     value={varianceTolerance}
-                    onChange={(e) => setVarianceTolerance(parseFloat(e.target.value))}
-                    className="w-full accent-sky-500 cursor-pointer"
+                    onChange={(e) => setVarianceTolerance(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                   />
-                  <p className="text-[11px] text-slate-500">
-                    Flag transactions with unit count or amount variance greater than {varianceTolerance}% for CPA manual review.
+                  <p className="text-[10px] text-slate-500">
+                    If subtotal line-item math differs from header total by more than this percentage, the transaction is automatically quarantined to <code>PENDING_VALIDATION_ERROR</code>.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">Minimum AI Confidence Score</span>
-                    <span className="font-mono text-sky-400 font-bold">{confidenceThreshold}%</span>
-                  </div>
+                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <label className="text-xs font-semibold text-slate-300 block">
+                    AI OCR Confidence Threshold (%)
+                  </label>
                   <input
-                    type="range"
+                    type="number"
                     min="50"
                     max="100"
-                    step="5"
                     value={confidenceThreshold}
-                    onChange={(e) => setConfidenceThreshold(parseInt(e.target.value))}
-                    className="w-full accent-sky-500 cursor-pointer"
+                    onChange={(e) => setConfidenceThreshold(parseInt(e.target.value) || 80)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                   />
-                  <p className="text-[11px] text-slate-500">
-                    Extractions below {confidenceThreshold}% confidence are marked as LOW confidence for human audit.
+                  <p className="text-[10px] text-slate-500">
+                    Extractions scoring below this confidence require mandatory accountant visual confirmation.
                   </p>
                 </div>
               </div>
 
-              {/* Review Workbook & Notification Toggles */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <div
-                  onClick={() => setEnableSheetsSync(!enableSheetsSync)}
-                  className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                    enableSheetsSync ? 'bg-sky-500/10 border-sky-500/40' : 'bg-slate-900/80 border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-sky-400" />
-                    <div>
-                      <span className="text-xs font-bold text-white block">Google Sheets 2-Tier Review Sync</span>
-                      <span className="text-[10px] text-slate-400">Generate Tab 1 (Daily Slips) &amp; Tab 2 (Monthly Rollup)</span>
-                    </div>
-                  </div>
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center ${enableSheetsSync ? 'bg-sky-600 border-sky-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
-                    {enableSheetsSync && <Check className="w-3.5 h-3.5" />}
-                  </div>
-                </div>
-
+              <div className="space-y-3 pt-2 border-t border-slate-800">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    CPA Alert &amp; Summary Digest Email
+                    CPA Quarantine Alert Email (Mailjet Notifications)
                   </label>
                   <input
                     type="email"
                     value={notificationEmail}
                     onChange={(e) => setNotificationEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    placeholder="accounting@yourfirm.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Immediate HTML diagnostic alerts with root-cause violation details are dispatched here when documents fail contract checks.
+                  </span>
                 </div>
+
+                <label className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-3.5 cursor-pointer hover:border-slate-700 transition">
+                  <input
+                    type="checkbox"
+                    checked={enableSheetsSync}
+                    onChange={(e) => setEnableSheetsSync(e.target.checked)}
+                    className="rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-white">Enable Real-Time Google Sheets Review Mirroring</span>
+                    <span className="text-slate-400 block text-[11px]">Syncs approved extractions into client workbook tabs for CPA spreadsheet verification.</span>
+                  </div>
+                </label>
               </div>
             </div>
           )}
 
-          {/* STEP 5: Live Probe & Dry-Run Test */}
-          {currentStep === 5 && (
+          {/* STEP 4: Starter Pipeline Streams Preset & Launch */}
+          {currentStep === 4 && (
             <div className="space-y-6 animate-in fade-in">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-sky-400" />
-                  <span>Live Connectivity Probe &amp; Sample OCR Dry-Run</span>
+                  <Layers className="w-4 h-4 text-sky-400" />
+                  <span>Choose Starter Pipeline Stream Preset</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Verify end-to-end connectivity with external channels and preview structured AI extraction results.
+                  Choose a starter recipe to pre-initialize standard ingestion streams, or start blank and add pipelines individually.
                 </p>
               </div>
 
-              {/* Live Probe Section */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                      <Terminal className="w-4 h-4 text-sky-400" />
-                      <span>Channel Connectivity Probe</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Pings Google Drive folder permissions, Inbound email routing, and Zoho Books configuration.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleRunProbe}
-                    disabled={isProbing}
-                    className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-md shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isProbing ? 'animate-spin' : ''}`} />
-                    <span>{isProbing ? 'Probing...' : 'Run Live Probe'}</span>
-                  </button>
-                </div>
-
-                {/* Probe Output */}
-                {probeResult && (
-                  <div className={`p-4 rounded-xl border space-y-3 ${
-                    probeResult.success ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-amber-950/30 border-amber-500/40'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${
-                        probeResult.success ? 'text-emerald-300' : 'text-amber-300'
-                      }`}>
-                        {probeResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-amber-400" />}
-                        <span>{probeResult.status}: {probeResult.summary}</span>
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(probeResult.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {probeResult.checks?.map((chk, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-xs bg-slate-900/80 p-2.5 rounded-lg">
-                          <div>
-                            <span className="font-semibold text-white block">{chk.target}</span>
-                            <span className="text-slate-400 text-[11px]">{chk.message}</span>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                            chk.status === 'PASS' ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30' : 'bg-amber-950 text-amber-300 border border-amber-500/30'
-                          }`}>
-                            {chk.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Sample Document Dry Run Section */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                      <Eye className="w-4 h-4 text-indigo-400" />
-                      <span>Sample Document OCR Extraction Preview</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Simulate vision extraction and SKU reconciliation on sample documents for {name || 'this client'}.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={selectedSamplePreset}
-                      onChange={(e) => setSelectedSamplePreset(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none"
-                    >
-                      <option value="laundry_slip">Handwritten Laundry Slip</option>
-                      <option value="bank_statement">Corporate Bank Statement</option>
-                      <option value="commercial_invoice">Commercial Invoice PDF</option>
-                    </select>
-
+              {/* Starter Recipe Picker */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {STARTER_RECIPES.map((recipe) => {
+                  const isSelected = selectedRecipe === recipe.id;
+                  return (
                     <button
+                      key={recipe.id}
                       type="button"
-                      onClick={handleRunDryRun}
-                      disabled={isDryRunning}
-                      className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-md transition cursor-pointer disabled:opacity-50"
+                      onClick={() => handleSelectRecipe(recipe.id)}
+                      className={`p-4 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                        isSelected
+                          ? 'bg-sky-950/60 border-sky-500 shadow-lg shadow-sky-500/10'
+                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                      }`}
                     >
-                      <Sparkles className={`w-3.5 h-3.5 ${isDryRunning ? 'animate-spin' : ''}`} />
-                      <span>{isDryRunning ? 'Extracting...' : 'Test OCR Extraction'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Dry Run Output Table */}
-                {dryRunResult && (
-                  <div className="border border-slate-800 rounded-xl overflow-hidden animate-in fade-in">
-                    <div className="bg-slate-900/90 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{dryRunResult.preset}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">({dryRunResult.document_name})</span>
+                        <span className="text-2xl">{recipe.icon}</span>
+                        <div>
+                          <span className="text-xs font-bold text-white block">{recipe.name}</span>
+                          <span className="text-[10px] text-sky-400 font-medium">{recipe.tagline}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[11px] text-emerald-400 font-mono font-bold">
-                          Confidence: {(dryRunResult.overall_confidence * 100).toFixed(0)}%
-                        </span>
-                        <span className="text-[11px] text-sky-400 font-mono font-bold">
-                          Total: {currency} {dryRunResult.total_value?.toFixed(2)}
-                        </span>
+                      <p className="text-[11px] text-slate-400 line-clamp-2">
+                        {recipe.description}
+                      </p>
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                        <span>{recipe.pipelines.length} Ingestion Streams</span>
+                        <span className="text-slate-300 font-bold">{recipe.defaultVolume}</span>
                       </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
-                          <tr>
-                            <th className="py-2 px-3">Extracted Slip Text</th>
-                            <th className="py-2 px-3">Matched Zoho SKU</th>
-                            <th className="py-2 px-3 text-right">Pickup / Delivery</th>
-                            <th className="py-2 px-3 text-right">Loss / Discrepancy</th>
-                            <th className="py-2 px-3 text-right">Amount ({currency})</th>
-                            <th className="py-2 px-3 text-center">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                          {dryRunResult.items?.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-slate-850/50">
-                              <td className="py-2 px-3 font-mono font-bold text-white">
-                                {item.raw_handwritten_text}
-                              </td>
-                              <td className="py-2 px-3 text-sky-300">{item.matched_sku}</td>
-                              <td className="py-2 px-3 text-right font-mono">
-                                {item.pickup_qty !== undefined ? `${item.pickup_qty} / ${item.delivery_qty}` : item.debit ? `Debit ${item.debit}` : '-'}
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono">
-                                {item.discrepancy ? (
-                                  <span className="text-amber-400 font-bold">+{item.discrepancy} Lost</span>
-                                ) : (
-                                  <span className="text-emerald-400">0</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono font-bold text-white">
-                                {(item.total_amount || item.credit || item.debit || 0).toFixed(2)}
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  item.status === 'MATCHED' ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'
-                                }`}>
-                                  {item.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 6: Handover & Launch */}
-          {currentStep === 6 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Client Onboarding Handover Card &amp; Launch</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Review the operational handover package and finalize the client workspace.
-                </p>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Ready Summary Card */}
-              <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-sky-950/40 border border-emerald-500/30 rounded-2xl p-5 shadow-xl">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-2xl">
-                    {icon || '🏢'}
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">{name || 'New Accounting Client'}</h3>
-                    <p className="text-xs text-emerald-400 font-medium">
-                      {STARTER_RECIPES.find((p) => p.id === selectedRecipe)?.name} • Ready for Production Ingestion
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Ingestion Source</span>
-                    <span className="font-bold text-white font-mono">{sourceType}</span>
-                  </div>
-                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Currency</span>
-                    <span className="font-bold text-white font-mono">{currency}</span>
-                  </div>
-                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Target Volume</span>
-                    <span className="font-bold text-white font-mono">{projectedVolume}</span>
-                  </div>
-                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Zoho Org ID</span>
-                    <span className="font-bold text-white font-mono">{zohoOrgId || 'Mock / Unlinked'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Copyable Operational Handover Sheet */}
+              {/* Summary of Starter Streams */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-sky-400" />
-                    <span className="text-xs font-bold text-white">Client Operations Handover Instructions</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const handoverText = `
-# S4 Automations - Client Ingestion Handover
-Client Name: ${name}
-Blueprint: ${STARTER_RECIPES.find((p) => p.id === selectedRecipe)?.name || selectedRecipe}
-Operating Currency: ${currency}
-Pipelines: ${configuredPipelines.map((p) => `${p.name} (${p.section}: ${p.entity_type})`).join(', ')}
-
-## Document Routing Instructions
-- Storage Channel: ${sourceType}
-${sourceType === 'google_drive' ? `- Google Drive Folder ID: ${folderId}\n- Service Account Email: ${SERVICE_ACCOUNT_EMAIL}` : ''}
-${sourceType === 'email' ? `- Inbound Email Alias: ${sourceEmail}` : ''}
-
-## Slip Photography & Upload Guidelines
-1. Ensure full handwritten control slip is clearly lit without heavy shadows.
-2. Verify Pickup and Delivery count columns are legibly marked.
-3. Upload slips daily to the designated Google Drive folder or forward PDF to ${sourceEmail}.
-
-## Accounting & Billing Contact
-- CPA Reviewer: ${notificationEmail}
-- Invoicing Engine: Zoho Books (Automated 1-Click Draft Generation)
-                      `.trim();
-                      copyToClipboard(handoverText, 'handover_sheet');
-                    }}
-                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition"
-                  >
-                    {copiedKey === 'handover_sheet' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>{copiedKey === 'handover_sheet' ? 'Copied Handover Text!' : 'Copy Handover Card'}</span>
-                  </button>
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-sky-400" />
+                    <span>Initial Ingestion Streams to be Initialized ({configuredPipelines.length})</span>
+                  </span>
                 </div>
 
-                <div className="p-3 bg-slate-900 rounded-lg text-xs font-mono text-slate-300 space-y-1 max-h-40 overflow-y-auto custom-scrollbar border border-slate-800">
-                  <p className="text-sky-300 font-bold"># Operations Handover for {name || 'Client'}</p>
-                  <p className="text-slate-400">• Dedicated Ingestion: {sourceType === 'google_drive' ? `Google Drive Folder ID ${folderId || '1Uu_...'}` : sourceEmail}</p>
-                  <p className="text-slate-400">• AI Vision Engine: {aiEngine}</p>
-                  <p className="text-slate-400">• Zoho Books Org ID: {zohoOrgId || 'Default / Sandbox'}</p>
-                  <p className="text-slate-400">• Customer Directory: Multi-Customer Live API Sync ({zohoSyncedContacts?.length || 'Dynamic'} Customers Synced)</p>
-                  <p className="text-slate-400">• Review Workflow: Google Sheets 2-Tier Review &amp; Zoho Draft Billing</p>
+                {configuredPipelines.length > 0 ? (
+                  <div className="space-y-2">
+                    {configuredPipelines.map((p, idx) => (
+                      <div
+                        key={p.id || idx}
+                        className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-950 border border-sky-500/30 text-sky-300 uppercase">
+                            {p.section}
+                          </span>
+                          <span className="font-semibold text-white">{p.name}</span>
+                          <span className="text-[11px] text-slate-400">
+                            → Target: <code className="text-sky-300 font-mono text-[10px]">{p.entity_type}</code>
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {p.trigger_type === 'realtime_webhook' ? '⚡ Real-time' : '⏰ ' + (p.cron_schedule_human || 'Daily')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">
+                    Blank client initialized. You will be able to add streams immediately in the Workspace with the Pipeline Setup Wizard.
+                  </p>
+                )}
+
+                <div className="p-3 bg-sky-950/30 border border-sky-500/30 rounded-lg text-xs text-slate-300 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                  <span>
+                    💡 <strong>Note on Channel Ingestion:</strong> After creating this client, you can open any stream card in the Client Workspace to link its dedicated Google Drive folder ID, email alias, or webhook and test connectivity with 1 click.
+                  </span>
                 </div>
               </div>
             </div>
           )}
-
         </div>
 
-        {/* Wizard Footer Navigation */}
+        {/* Footer Navigation Actions */}
         <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
           <div>
             {currentStep > 1 && (
               <button
                 type="button"
                 onClick={handlePrevStep}
-                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
+                className="flex items-center gap-1 text-xs font-semibold text-slate-300 hover:text-white px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsWizardOpen(false)}
-              className="text-xs text-slate-400 hover:text-slate-200 py-2 px-3 font-semibold transition cursor-pointer"
+              onClick={() => {
+                syncDraft();
+                setIsWizardOpen(false);
+              }}
+              className="text-xs font-semibold text-slate-400 hover:text-white px-3.5 py-2 rounded-xl transition cursor-pointer"
             >
-              Cancel
+              Save Draft &amp; Exit
             </button>
 
-            {currentStep < 6 ? (
+            {currentStep < 4 ? (
               <button
                 type="button"
                 onClick={handleNextStep}
                 disabled={currentStep === 1 && !name.trim()}
-                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-sky-600/20 transition cursor-pointer"
               >
-                <span>Continue to Step {currentStep + 1}</span>
-                <ChevronRight className="w-4 h-4" />
+                <span>Continue</span>
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleLaunchClient}
                 disabled={isSubmitting || !name.trim()}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold py-2.5 px-6 rounded-xl shadow-xl shadow-emerald-600/30 transition cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/30 transition cursor-pointer"
               >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCheck className="w-4 h-4" />
-                )}
-                <span>{isSubmitting ? 'Initializing Workspace...' : 'Launch Client Workspace'}</span>
+                {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                <span>Create Client Organization</span>
               </button>
             )}
           </div>
         </div>
-
       </div>
     </div>
   );
