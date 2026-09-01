@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Zap,
   ShieldCheck,
+  Landmark,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -73,6 +74,18 @@ export const Header: React.FC = () => {
             >
               <TableProperties className="w-3.5 h-3.5" />
               <span>Review Sheets</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('queries')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'queries'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Landmark className="w-3.5 h-3.5 text-sky-400" />
+              <span>Information Requests</span>
             </button>
 
             <button

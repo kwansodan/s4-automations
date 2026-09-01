@@ -736,4 +736,57 @@ class OrganizationTeamMember(BaseModel):
     notifications: NotificationPreferences = Field(default_factory=NotificationPreferences)
 
 
+class WatchedAccountsUpdate(BaseModel):
+    """Update list of watched Chart of Account codes."""
+    watched_accounts: List[str] = Field(description="List of account IDs or codes to monitor")
+
+
+class ChartOfAccountItem(BaseModel):
+    """Single Chart of Account record from accounting platform."""
+    account_id: str
+    account_name: str
+    account_code: Optional[str] = ""
+    account_type: str = "Expense"  # Expense, Income, Bank, Asset, Liability, Equity
+    is_watched: bool = False
+    is_suspense: bool = False
+
+
+class BankTransactionCategorizeRequest(BaseModel):
+    """Accountant categorization payload."""
+    mapped_account_id: str = Field(description="Target Chart of Accounts ID")
+    mapped_account_name: Optional[str] = Field(default=None, description="Human readable account name")
+    payee_name: Optional[str] = Field(default=None, description="Customer or vendor payee")
+    tax_rate: Optional[str] = Field(default=None, description="Applied VAT/tax rate")
+    post_to_accounting: bool = Field(default=True, description="Whether to sync directly to accounting platform")
+
+
+class BankTransactionQueryRequest(BaseModel):
+    """Accountant request to draw client attention."""
+    query_text: str = Field(description="Specific question or note for client")
+    recipient_email: Optional[str] = Field(default=None, description="Optional target stakeholder email")
+    send_immediately: bool = Field(default=True, description="Send email immediately or queue in outbox")
+
+
+class BankTransactionBulkCategorizeRequest(BaseModel):
+    """Bulk categorization payload."""
+    transaction_ids: List[int]
+    mapped_account_id: str
+    mapped_account_name: Optional[str] = None
+    payee_name: Optional[str] = None
+    tax_rate: Optional[str] = None
+
+
+class BankTransactionBulkQueryRequest(BaseModel):
+    """Bulk query digest payload."""
+    transaction_ids: List[int]
+    query_text: str
+    recipient_email: Optional[str] = None
+
+
+class ClientExplanationSubmit(BaseModel):
+    """Client portal explanation response."""
+    client_explanation: str
+    client_attachments: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+
+
 

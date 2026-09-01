@@ -48,3 +48,6 @@ class AccountingAdapterFactory:
             client_id=client_id,
             config=config,
         )
+
+    # Alias for get_adapter
+    get = get_adapter

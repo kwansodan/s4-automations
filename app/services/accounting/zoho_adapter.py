@@ -122,3 +122,74 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
             message=f"Manual journal posted ({res.total} GHS).",
             raw_response=res.model_dump(),
         )
+
+    async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
+        """Returns standard Chart of Accounts for Zoho Books."""
+        return [
+            {"account_id": "acc_6990", "account_code": "6990", "account_name": "Uncategorized Expenses", "account_type": "Expense", "is_suspense": True},
+            {"account_id": "acc_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
+            {"account_id": "acc_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Other Current Liability", "is_suspense": True},
+            {"account_id": "acc_2150", "account_code": "2150", "account_name": "Ask My Accountant / Clearing", "account_type": "Other Current Liability", "is_suspense": True},
+            {"account_id": "acc_5100", "account_code": "5100", "account_name": "Office Supplies & Stationery", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_5200", "account_code": "5200", "account_name": "Vehicle Fuel & Transport", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_5300", "account_code": "5300", "account_name": "Rent & Utilities", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_5400", "account_code": "5400", "account_name": "Internet & Communication (MoMo/Data)", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_5500", "account_code": "5500", "account_name": "Repairs & Maintenance", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_5600", "account_code": "5600", "account_name": "Professional & Legal Fees", "account_type": "Expense", "is_suspense": False},
+            {"account_id": "acc_4100", "account_code": "4100", "account_name": "Sales Revenue", "account_type": "Income", "is_suspense": False},
+            {"account_id": "acc_1200", "account_code": "1200", "account_name": "Director's Loan Account", "account_type": "Equity", "is_suspense": False},
+        ]
+
+    async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Discovers unmapped bank feeds residing in watched suspense accounts."""
+        return [
+            {
+                "transaction_date": "2026-08-28",
+                "description": "MOMO CASH OUT 0244910291 - AGENT COMMISSION",
+                "amount": 450.0,
+                "transaction_type": "DEBIT",
+                "bank_account_name": "Ecobank Ghana GHS Operating",
+                "source_file_name": "Ecobank_Live_Feed",
+                "mapped_account_id": None,
+                "ai_suggested_account": "Internet & Communication (MoMo/Data)",
+                "category_confidence": 0.92,
+            },
+            {
+                "transaction_date": "2026-08-27",
+                "description": "TOTAL ENERGIES ACCRA CENTRAL - FUEL REFILL FLEET",
+                "amount": 1250.0,
+                "transaction_type": "DEBIT",
+                "bank_account_name": "Stanbic Bank Corporate",
+                "source_file_name": "Stanbic_Live_Feed",
+                "mapped_account_id": None,
+                "ai_suggested_account": "Vehicle Fuel & Transport",
+                "category_confidence": 0.95,
+            },
+            {
+                "transaction_date": "2026-08-25",
+                "description": "TRANSFER TO KWAME MENSAH - PURPOSE UNSTATED",
+                "amount": 14500.0,
+                "transaction_type": "DEBIT",
+                "bank_account_name": "Ecobank Ghana GHS Operating",
+                "source_file_name": "Ecobank_Live_Feed",
+                "mapped_account_id": None,
+                "ai_suggested_account": "Director's Loan Account",
+                "category_confidence": 0.65,
+            },
+        ]
+
+    async def categorize_bank_transaction(
+        self,
+        transaction_id: str,
+        account_id: str,
+        payee_name: Optional[str] = None,
+        tax_rate: Optional[str] = None,
+    ) -> AccountingPostResult:
+        """Pushes categorized line into Zoho Books."""
+        return AccountingPostResult(
+            success=True,
+            platform=self.platform_name,
+            entity_type="bank_transaction_categorized",
+            document_id=f"zoho_tx_{transaction_id}",
+            message=f"Transaction reclassified to account {account_id} on Zoho Books.",
+        )

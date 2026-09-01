@@ -88,3 +88,24 @@ class BaseAccountingAdapter(ABC):
     async def post_journal_entry(self, payload: Dict[str, Any]) -> AccountingPostResult:
         """Posts a multi-leg manual journal entry."""
         pass
+
+    @abstractmethod
+    async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
+        """Fetches Chart of Accounts directory from the target accounting platform."""
+        pass
+
+    @abstractmethod
+    async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Fetches uncategorized/unreconciled bank transactions from accounting software or bank feed."""
+        pass
+
+    @abstractmethod
+    async def categorize_bank_transaction(
+        self,
+        transaction_id: str,
+        account_id: str,
+        payee_name: Optional[str] = None,
+        tax_rate: Optional[str] = None,
+    ) -> AccountingPostResult:
+        """Categorizes an unmapped bank transaction in the accounting platform."""
+        pass

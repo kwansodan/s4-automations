@@ -80,6 +80,7 @@ class ClientOrganization(SQLModel, table=True):
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     pipelines: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured multi-pipeline ingestion streams")
     team_members: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Organization team members and alert routing")
+    watched_accounts: List[str] = Field(default_factory=lambda: ["6990", "850", "suspense", "uncategorized"], sa_column=Column(JSON), description="Watched Chart of Account IDs/codes for uncategorized transactions")
     stats_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     last_run_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=get_utc_now)
@@ -155,15 +156,26 @@ class BankTransaction(SQLModel, table=True):
     description: str
     amount: float = Field(default=0.0)
     transaction_type: str = Field(default="DEBIT", description="DEBIT or CREDIT")
-    source_file_name: str
+    source_file_name: str = Field(default="Bank Feed")
+    bank_account_name: Optional[str] = Field(default="Main Operating Bank Account")
+    checksum: Optional[str] = Field(default=None, index=True)
     
-    # Matching / Reconciling
-    status: str = Field(default="UNMAPPED", index=True) # UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED
+    # Classification & Reconciling
+    status: str = Field(default="UNMAPPED", index=True)  # UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED, POSTED
     mapped_account_id: Optional[str] = Field(default=None)
+    mapped_account_name: Optional[str] = Field(default=None)
+    payee_name: Optional[str] = Field(default=None)
+    tax_rate: Optional[str] = Field(default=None)
+    ai_suggested_account: Optional[str] = Field(default=None)
+    category_confidence: float = Field(default=0.0)
     
-    # Client Portal Communication
+    # Client Portal & Query Communication
     client_explanation: Optional[str] = Field(default=None)
     accountant_query: Optional[str] = Field(default=None)
+    client_attachments: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    query_date: Optional[datetime] = Field(default=None)
+    response_date: Optional[datetime] = Field(default=None)
+    source_platform: str = Field(default="bank_feed")
     
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now)

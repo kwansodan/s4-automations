@@ -254,11 +254,59 @@ export interface ClientProfile {
   blueprints: BlueprintStep[];
   pipelines?: IngestionPipeline[];
   team_members?: OrganizationTeamMember[];
+  watched_accounts?: string[];
   sourceConfig?: Record<string, any>;
   customConfig?: Record<string, any>;
   externalChecklist?: ExternalChecklistItem[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ChartOfAccountItem {
+  account_id: string;
+  account_name: string;
+  account_code?: string;
+  account_type: string;
+  is_watched?: boolean;
+  is_suspense?: boolean;
+}
+
+export interface BankTransactionRecord {
+  id: number;
+  client_id: string;
+  transaction_date: string;
+  description: string;
+  amount: number;
+  transaction_type: 'DEBIT' | 'CREDIT';
+  bank_account_name?: string;
+  source_file_name?: string;
+  status: 'UNMAPPED' | 'CLARIFICATION_REQUESTED' | 'CLIENT_ANSWERED' | 'MAPPED' | 'POSTED';
+  mapped_account_id?: string;
+  mapped_account_name?: string;
+  payee_name?: string;
+  tax_rate?: string;
+  ai_suggested_account?: string;
+  category_confidence?: number;
+  client_explanation?: string;
+  accountant_query?: string;
+  client_attachments?: Array<{ name: string; url?: string; size?: number; type?: string }>;
+  query_date?: string;
+  response_date?: string;
+  source_platform?: string;
+}
+
+export interface TransactionCategorizePayload {
+  mapped_account_id: string;
+  mapped_account_name?: string;
+  payee_name?: string;
+  tax_rate?: string;
+  post_to_accounting?: boolean;
+}
+
+export interface TransactionQueryPayload {
+  query_text: string;
+  recipient_email?: string;
+  send_immediately?: boolean;
 }
 
 export interface IndustryPreset {

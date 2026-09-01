@@ -85,6 +85,27 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magicToken = params.get('portal_magic') || params.get('magic_token');
+    if (magicToken) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/v1/portal/magic-access?token=${encodeURIComponent(magicToken)}`);
+          if (res.ok) {
+            const data = await res.json();
+            setSessionToken(data.token);
+            setClientInfo(data.client);
+            localStorage.setItem('s4_portal_token', data.token);
+            localStorage.setItem('s4_portal_client', JSON.stringify(data.client));
+          }
+        } catch (e) {
+          console.error('Magic link login error:', e);
+        }
+      })();
+    }
+  }, []);
+
+  useEffect(() => {
     if (sessionToken) {
       fetchPortalTransactions();
     }

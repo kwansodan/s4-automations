@@ -16,6 +16,7 @@ import { PipelineModal } from './components/modals/PipelineModal';
 import { InvoiceModal } from './components/modals/InvoiceModal';
 import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardModal';
 import { ClientPortal } from './components/portal/ClientPortal';
+import { InformationRequestsSection } from './components/banking/InformationRequestsSection';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -41,6 +42,8 @@ const MainLayout: React.FC = () => {
           <ClientsHub />
         ) : activeTab === 'sheets' || activeTab === 'invoicing' ? (
           <SheetsViewer />
+        ) : activeTab === 'queries' ? (
+          <InformationRequestsSection />
         ) : activeTab === 'catalog' ? (
           <CatalogDrawer />
         ) : activeTab === 'config' ? (

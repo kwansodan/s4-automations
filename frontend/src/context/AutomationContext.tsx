@@ -17,7 +17,7 @@ import {
 } from '../lib/api';
 import { useAuth } from './AuthContext';
 
-export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'portal';
+export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal';
 
 interface AutomationContextType {
   activeTab: ActiveTab;

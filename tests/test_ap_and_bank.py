@@ -58,7 +58,9 @@ async def test_accountant_bank_endpoints():
         # 1. List client bank transactions
         list_res = await client.get("/api/v1/bank/clients/anr_group/transactions")
         assert list_res.status_code == 200
-        assert isinstance(list_res.json(), list)
+        data = list_res.json()
+        assert "transactions" in data
+        assert isinstance(data["transactions"], list)
 
         # 2. Upload a sample statement
         files = {"file": ("test_stmt.csv", b"Date,Description,Debit,Credit,Balance\n2026-08-01,Service Fee,50.00,,500.00\n", "text/csv")}

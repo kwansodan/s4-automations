@@ -481,24 +481,8 @@ export async function updateConfig(newConfig: Record<string, any>): Promise<{ su
 }
 
 // -------------------------------------------------------------------------
-// Accounts Payable (AP) & Bank Reconciliation APIs
+// Accounts Payable (AP) & Bank Statement Upload
 // -------------------------------------------------------------------------
-
-export async function fetchBankTransactions(clientId: string): Promise<any[]> {
-  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions`, {
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<any[]>(res, 'Fetch bank transactions');
-}
-
-export async function queryBankTransaction(txId: number, queryText: string): Promise<any> {
-  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/query`, {
-    method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query_text: queryText }),
-  });
-  return handleResponse<any>(res, 'Query bank transaction');
-}
 
 export async function mapBankTransaction(txId: number, mappedAccountId: string): Promise<any> {
   const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/map`, {
@@ -560,6 +544,157 @@ export async function deletePipeline(clientId: string, pipelineId: string): Prom
   });
   return handleResponse<{ success: boolean; message: string; remaining_pipelines_count: number }>(res, 'Delete pipeline stream');
 }
+
+// ---------------------------------------------------------------------------
+// Bank Transactions & Information Requests API
+// ---------------------------------------------------------------------------
+
+export async function fetchBankTransactions(
+  clientId: string,
+  status: string = 'ALL',
+  search?: string
+): Promise<{
+  client_id: string;
+  metrics: {
+    total_count: number;
+    total_uncategorized: number;
+    total_pending_client: number;
+    total_client_answered: number;
+    total_mapped: number;
+  };
+  transactions: any[];
+}> {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (search) params.append('search', search);
+
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch bank transactions');
+}
+
+export async function fetchChartOfAccounts(clientId: string): Promise<{
+  client_id: string;
+  accounting_software: string;
+  watched_accounts: string[];
+  accounts: any[];
+  accounts_count: number;
+}> {
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/accounts`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Chart of Accounts');
+}
+
+export async function updateWatchedAccounts(clientId: string, watchedAccounts: string[]): Promise<{ success: boolean; watched_accounts: string[]; message: string }> {
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/watched-accounts`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ watched_accounts: watchedAccounts }),
+  });
+  return handleResponse(res, 'Update watched accounts');
+}
+
+export async function categorizeBankTransaction(
+  txId: number,
+  payload: {
+    mapped_account_id: string;
+    mapped_account_name?: string;
+    payee_name?: string;
+    tax_rate?: string;
+    post_to_accounting?: boolean;
+  }
+): Promise<{ success: boolean; transaction: any; message: string }> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/categorize`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Categorize bank transaction');
+}
+
+export async function queryBankTransaction(
+  txId: number,
+  payload: {
+    query_text: string;
+    recipient_email?: string;
+    send_immediately?: boolean;
+  }
+): Promise<{ success: boolean; transaction: any; magic_url: string; recipient_email?: string; message: string }> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/query`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Query bank transaction');
+}
+
+export async function bulkCategorizeBankTransactions(payload: {
+  transaction_ids: number[];
+  mapped_account_id: string;
+  mapped_account_name?: string;
+  payee_name?: string;
+  tax_rate?: string;
+}): Promise<{ success: boolean; categorized_count: number; message: string }> {
+  const res = await resilientFetch('/api/v1/bank/transactions/bulk-categorize', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Bulk categorize transactions');
+}
+
+export async function bulkQueryBankTransactions(payload: {
+  transaction_ids: number[];
+  query_text: string;
+  recipient_email?: string;
+}): Promise<{ success: boolean; queried_count: number; magic_url: string; message: string }> {
+  const res = await resilientFetch('/api/v1/bank/transactions/bulk-query', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Bulk query transactions');
+}
+
+export async function syncBankFeedsFromAccounting(clientId: string): Promise<{ success: boolean; synced_new_count: number; message: string }> {
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/sync-accounting`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Sync bank feeds from accounting platform');
+}
+
+export async function verifyPortalMagicToken(token: string): Promise<{
+  success: boolean;
+  token: string;
+  client: { id: string; name: string };
+  target_tx_id?: number;
+}> {
+  const res = await resilientFetch(`/api/v1/portal/magic-access?token=${encodeURIComponent(token)}`);
+  return handleResponse(res, 'Verify portal magic token');
+}
+
+export async function submitPortalExplanation(
+  txId: number,
+  sessionToken: string,
+  payload: {
+    client_explanation: string;
+    client_attachments?: any[];
+  }
+): Promise<{ success: boolean; transaction: any }> {
+  const res = await resilientFetch(`/api/v1/portal/transactions/${txId}/explain`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Submit portal explanation');
+}
+
 
 
 

@@ -70,6 +70,7 @@ def init_db():
         migrations = [
             "ALTER TABLE clients ADD COLUMN pipelines JSON DEFAULT '[]'",
             "ALTER TABLE clients ADD COLUMN team_members JSON DEFAULT '[]'",
+            "ALTER TABLE clients ADD COLUMN watched_accounts JSON DEFAULT '[\"6990\", \"850\", \"suspense\", \"uncategorized\"]'",
             "ALTER TABLE clients ADD COLUMN accounting_software VARCHAR DEFAULT 'zoho_books'",
             "ALTER TABLE staged_transactions ADD COLUMN pipeline_id VARCHAR",
             "ALTER TABLE staged_transactions ADD COLUMN pipeline_name VARCHAR",
@@ -77,6 +78,17 @@ def init_db():
             "ALTER TABLE staged_transactions ADD COLUMN pipeline_type VARCHAR DEFAULT 'AR'",
             "ALTER TABLE staged_transactions ADD COLUMN validation_status VARCHAR DEFAULT 'VALID'",
             "ALTER TABLE staged_transactions ADD COLUMN validation_errors JSON DEFAULT '[]'",
+            "ALTER TABLE bank_transactions ADD COLUMN bank_account_name VARCHAR DEFAULT 'Main Operating Bank Account'",
+            "ALTER TABLE bank_transactions ADD COLUMN checksum VARCHAR",
+            "ALTER TABLE bank_transactions ADD COLUMN mapped_account_name VARCHAR",
+            "ALTER TABLE bank_transactions ADD COLUMN payee_name VARCHAR",
+            "ALTER TABLE bank_transactions ADD COLUMN tax_rate VARCHAR",
+            "ALTER TABLE bank_transactions ADD COLUMN ai_suggested_account VARCHAR",
+            "ALTER TABLE bank_transactions ADD COLUMN category_confidence FLOAT DEFAULT 0.0",
+            "ALTER TABLE bank_transactions ADD COLUMN client_attachments JSON DEFAULT '[]'",
+            "ALTER TABLE bank_transactions ADD COLUMN query_date DATETIME",
+            "ALTER TABLE bank_transactions ADD COLUMN response_date DATETIME",
+            "ALTER TABLE bank_transactions ADD COLUMN source_platform VARCHAR DEFAULT 'bank_feed'",
         ]
         for m in migrations:
             try:

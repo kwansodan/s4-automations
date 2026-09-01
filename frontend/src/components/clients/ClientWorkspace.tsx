@@ -216,7 +216,7 @@ export const ClientWorkspace: React.FC = () => {
     const queryText = queryInputs[txId]?.trim();
     if (!queryText) return;
     try {
-      await queryBankTransaction(txId, queryText);
+      await queryBankTransaction(txId, { query_text: queryText, send_immediately: true });
       addLog('success', `Sent question to client for bank line #${txId}.`);
       await loadBankTransactions();
       setQueryInputs((prev) => ({ ...prev, [txId]: '' }));
@@ -440,6 +440,14 @@ export const ClientWorkspace: React.FC = () => {
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>All Clients</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('queries')}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-sky-600/30 to-indigo-600/30 hover:from-sky-600/40 hover:to-indigo-600/40 border border-sky-500/40 text-sky-200 text-xs font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer shadow-sm"
+            >
+              <Landmark className="w-3.5 h-3.5 text-sky-400" />
+              <span>Information Requests</span>
             </button>
 
             <button
