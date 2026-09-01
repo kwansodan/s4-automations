@@ -14,6 +14,9 @@ import {
   FileText,
   DollarSign,
   Search,
+  Paperclip,
+  UploadCloud,
+  Trash2,
 } from 'lucide-react';
 
 interface BankTransaction {
@@ -26,6 +29,7 @@ interface BankTransaction {
   status: string;
   client_explanation?: string;
   accountant_query?: string;
+  client_attachments?: Array<{ name: string; size?: number; type?: string }>;
 }
 
 export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackToAdmin }) => {
@@ -48,6 +52,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [isLoadingTx, setIsLoadingTx] = useState(false);
   const [explanationInputs, setExplanationInputs] = useState<{ [id: number]: string }>({});
+  const [attachmentsMap, setAttachmentsMap] = useState<{ [id: number]: Array<{ name: string; size?: number; type?: string }> }>({});
   const [submittingIds, setSubmittingIds] = useState<{ [id: number]: boolean }>({});
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -67,16 +72,21 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
       }
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
-      // Initialize inputs with existing explanations
+      // Initialize inputs with existing explanations and attachments
       const initialInputs: { [id: number]: string } = {};
+      const initialAttachments: { [id: number]: Array<{ name: string; size?: number; type?: string }> } = {};
       if (Array.isArray(data)) {
         data.forEach((tx) => {
           if (tx.client_explanation) {
             initialInputs[tx.id] = tx.client_explanation;
           }
+          if (tx.client_attachments && tx.client_attachments.length > 0) {
+            initialAttachments[tx.id] = tx.client_attachments;
+          }
         });
       }
       setExplanationInputs(initialInputs);
+      setAttachmentsMap(initialAttachments);
     } catch (err: any) {
       console.error('Error fetching portal transactions:', err);
     } finally {
@@ -181,12 +191,24 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
           'Content-Type': 'application/json',
           Authorization: `Bearer ${sessionToken}`,
         },
-        body: JSON.stringify({ client_explanation: text }),
+        body: JSON.stringify({
+          client_explanation: text,
+          client_attachments: attachmentsMap[txId] || [],
+        }),
       });
       if (res.ok) {
         const result = await res.json();
         setTransactions((prev) =>
-          prev.map((t) => (t.id === txId ? { ...t, client_explanation: text, status: 'CLIENT_ANSWERED' } : t))
+          prev.map((t) =>
+            t.id === txId
+              ? {
+                  ...t,
+                  client_explanation: text,
+                  client_attachments: attachmentsMap[txId] || [],
+                  status: 'CLIENT_ANSWERED',
+                }
+              : t
+          )
         );
       }
     } catch (err) {
@@ -533,37 +555,87 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                       </div>
 
                       {/* Client Explanation Input Form */}
-                      <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            value={explanationInputs[tx.id] || ''}
-                            onChange={(e) =>
-                              setExplanationInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))
-                            }
-                            placeholder="Type explanation (e.g. Paid XYZ Supplier for detergents / Laundry supplies)..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                          />
+                      <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              value={explanationInputs[tx.id] || ''}
+                              onChange={(e) =>
+                                setExplanationInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))
+                              }
+                              placeholder="Type explanation (e.g. Paid XYZ Supplier for detergents / Laundry supplies)..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                            />
+                          </div>
+
+                          {/* Attach Receipt Trigger */}
+                          <label className="flex items-center justify-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0">
+                            <Paperclip className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Attach Receipt</span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.png,.jpg,.jpeg,.csv"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const newAtt = { name: file.name, size: file.size, type: file.type };
+                                  setAttachmentsMap((prev) => ({
+                                    ...prev,
+                                    [tx.id]: [...(prev[tx.id] || []), newAtt],
+                                  }));
+                                }
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            onClick={() => handleSubmitExplanation(tx.id)}
+                            disabled={isSubmitting || !explanationInputs[tx.id]?.trim()}
+                            className={`flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-40 ${
+                              isAnswered
+                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                                : 'bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-md shadow-sky-600/20'
+                            }`}
+                          >
+                            {isSubmitting ? (
+                              <Clock className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>{isAnswered ? 'Update Response' : 'Submit Explanation'}</span>
+                              </>
+                            )}
+                          </button>
                         </div>
 
-                        <button
-                          onClick={() => handleSubmitExplanation(tx.id)}
-                          disabled={isSubmitting || !explanationInputs[tx.id]?.trim()}
-                          className={`flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-40 ${
-                            isAnswered
-                              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                              : 'bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-md shadow-sky-600/20'
-                          }`}
-                        >
-                          {isSubmitting ? (
-                            <Clock className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <>
-                              <Send className="w-3.5 h-3.5" />
-                              <span>{isAnswered ? 'Update Response' : 'Submit Explanation'}</span>
-                            </>
-                          )}
-                        </button>
+                        {/* Uploaded Attachments Chips */}
+                        {attachmentsMap[tx.id] && attachmentsMap[tx.id].length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {attachmentsMap[tx.id].map((att, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-1.5 bg-slate-950 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg text-[11px] font-mono"
+                              >
+                                <Paperclip className="w-3 h-3 text-sky-400" />
+                                <span className="truncate max-w-[200px]">{att.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAttachmentsMap((prev) => ({
+                                      ...prev,
+                                      [tx.id]: prev[tx.id].filter((_, i) => i !== idx),
+                                    }));
+                                  }}
+                                  className="text-slate-500 hover:text-rose-400 transition p-0.5 cursor-pointer ml-1"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

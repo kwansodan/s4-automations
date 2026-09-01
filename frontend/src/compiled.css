@@ -594,6 +594,9 @@
   .max-w-\[150px\] {
     max-width: 150px;
   }
+  .max-w-\[200px\] {
+    max-width: 200px;
+  }
   .max-w-\[240px\] {
     max-width: 240px;
   }
@@ -2560,6 +2563,9 @@
     }
     .hover\:text-rose-300:hover {
       color: var(--color-rose-300);
+    }
+    .hover\:text-rose-400:hover {
+      color: var(--color-rose-400);
     }
     .hover\:text-sky-300:hover {
       color: var(--color-sky-300);
