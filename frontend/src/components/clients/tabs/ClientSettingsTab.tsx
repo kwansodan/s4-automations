@@ -234,7 +234,7 @@ export const ClientSettingsTab: React.FC = () => {
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
               <Database className="w-4 h-4" />
-              <span>2. Accounting Platform</span>
+              <span>2. Dedicated Accounting Platform</span>
             </div>
 
             <div>
@@ -264,15 +264,18 @@ export const ClientSettingsTab: React.FC = () => {
               />
             </div>
 
-            {/* Custom OAuth Keys */}
+            {/* Dedicated Client OAuth Credentials */}
             <div className="pt-2 border-t border-slate-800 space-y-2">
               <div className="flex items-center gap-1 text-[11px] font-bold text-sky-400">
                 <Key className="w-3.5 h-3.5" />
-                <span>Custom Client OAuth (Optional)</span>
+                <span>Client Dedicated OAuth Credentials</span>
               </div>
+              <p className="text-[10px] text-slate-500">
+                Isolated API credentials unique to this client organization.
+              </p>
               <input
                 type="text"
-                placeholder="Custom OAuth Client ID"
+                placeholder="OAuth Client ID (e.g. 1000.XXXX)"
                 value={clientConfig.custom_config?.zoho_client_id || ''}
                 onChange={(e) =>
                   setClientConfig({
@@ -280,11 +283,11 @@ export const ClientSettingsTab: React.FC = () => {
                     custom_config: { ...clientConfig.custom_config, zoho_client_id: e.target.value },
                   })
                 }
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
               />
               <input
                 type="password"
-                placeholder="Custom OAuth Client Secret"
+                placeholder="OAuth Client Secret"
                 value={clientConfig.custom_config?.zoho_client_secret || ''}
                 onChange={(e) =>
                   setClientConfig({
@@ -292,7 +295,19 @@ export const ClientSettingsTab: React.FC = () => {
                     custom_config: { ...clientConfig.custom_config, zoho_client_secret: e.target.value },
                   })
                 }
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+              />
+              <input
+                type="password"
+                placeholder="OAuth Refresh Token (Offline Access)"
+                value={clientConfig.custom_config?.zoho_refresh_token || ''}
+                onChange={(e) =>
+                  setClientConfig({
+                    ...clientConfig,
+                    custom_config: { ...clientConfig.custom_config, zoho_refresh_token: e.target.value },
+                  })
+                }
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
               />
             </div>
           </div>

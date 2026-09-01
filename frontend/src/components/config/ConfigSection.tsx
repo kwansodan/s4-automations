@@ -146,7 +146,7 @@ export const ConfigSection: React.FC = () => {
       <form onSubmit={handleSave} className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 space-y-5">
         <h3 className="text-sm font-bold text-white mb-2">Environment Variables &amp; System Defaults</h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Gemini Vision Model</label>
             <input
@@ -168,16 +168,6 @@ export const ConfigSection: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Zoho Organization ID</label>
-            <input
-              type="text"
-              value={formData.ZOHO_ORG_ID || '782910482'}
-              onChange={(e) => handleChange('ZOHO_ORG_ID', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
-            />
-          </div>
-
-          <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Default Google Drive Folder ID</label>
             <input
               type="text"
@@ -186,6 +176,17 @@ export const ConfigSection: React.FC = () => {
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
             />
           </div>
+        </div>
+
+        {/* Multi-Tenant Accounting Security Callout */}
+        <div className="bg-sky-950/40 border border-sky-500/25 rounded-xl p-4 text-xs text-sky-300 space-y-1">
+          <div className="font-bold flex items-center gap-2 text-white">
+            <Key className="w-4 h-4 text-sky-400" />
+            <span>Multi-Tenant Accounting Credentials Isolation</span>
+          </div>
+          <p className="text-slate-300 text-[11px]">
+            To guarantee absolute tenant privacy and data segregation, accounting platform credentials (Zoho Books / QuickBooks / Xero <code className="text-sky-300 font-mono">Client ID</code>, <code className="text-sky-300 font-mono">Client Secret</code>, <code className="text-sky-300 font-mono">Refresh Token</code>, and <code className="text-sky-300 font-mono">Organization ID</code>) are <strong>never shared globally</strong>. Each client organization manages its own isolated credentials directly within its workspace under <strong>Client Settings &gt; Dedicated Accounting Platform</strong>.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 pt-3">

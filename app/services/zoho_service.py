@@ -40,10 +40,10 @@ class ZohoBooksService:
     - Draft Invoice Creation & Downstream Status Tracking
     """
 
-    _global_access_token: Optional[str] = None
-    _global_token_expiry_timestamp: float = 0.0
-    _global_cached_contacts: List[ZohoContact] = []
-    _global_cached_items: List[ZohoItem] = []
+    # Tenant-isolated caches keyed by f"{client_id}:{org_id}" to guarantee strict client isolation
+    _tenant_tokens: Dict[str, Dict[str, Any]] = {}
+    _tenant_contacts: Dict[str, List[ZohoContact]] = {}
+    _tenant_items: Dict[str, List[ZohoItem]] = {}
 
     def __init__(
         self,
@@ -61,22 +61,59 @@ class ZohoBooksService:
         self.accounts_url = (accounts_url or settings.ZOHO_ACCOUNTS_URL).rstrip("/")
         self.books_api_url = (books_api_url or settings.ZOHO_BOOKS_API_URL).rstrip("/")
 
-        # Local pointers to shared caches
-        self._access_token = ZohoBooksService._global_access_token
-        self._token_expiry_timestamp = ZohoBooksService._global_token_expiry_timestamp
-        self._cached_contacts = ZohoBooksService._global_cached_contacts
-        self._cached_items = ZohoBooksService._global_cached_items
+        # Unique tenant cache key
+        self._tenant_key = f"{self.client_id}:{self.org_id}"
+
+        # Initialize instance caches from tenant store if available
+        cached_tok = ZohoBooksService._tenant_tokens.get(self._tenant_key, {})
+        self._access_token: Optional[str] = cached_tok.get("token")
+        self._token_expiry_timestamp: float = cached_tok.get("expiry", 0.0)
+        self._cached_contacts: List[ZohoContact] = ZohoBooksService._tenant_contacts.get(self._tenant_key, [])
+        self._cached_items: List[ZohoItem] = ZohoBooksService._tenant_items.get(self._tenant_key, [])
+
+    @classmethod
+    def from_client_id(cls, client_id: str) -> "ZohoBooksService":
+        """Factory initializing ZohoBooksService with dedicated credentials for the client organization."""
+        from app.models.db_models import ClientOrganization
+        from app.db.session import get_engine
+        from sqlmodel import Session, select
+
+        with Session(get_engine()) as session:
+            client_obj = session.exec(
+                select(ClientOrganization).where(
+                    (ClientOrganization.id == client_id) | (ClientOrganization.name == client_id)
+                )
+            ).first()
+
+            if client_obj:
+                cfg = client_obj.custom_config or {}
+                return cls(
+                    client_id=cfg.get("zoho_client_id") or cfg.get("client_id") or settings.ZOHO_CLIENT_ID,
+                    client_secret=cfg.get("zoho_client_secret") or cfg.get("client_secret") or settings.ZOHO_CLIENT_SECRET,
+                    refresh_token=cfg.get("zoho_refresh_token") or cfg.get("refresh_token") or settings.ZOHO_REFRESH_TOKEN,
+                    org_id=client_obj.zoho_org_id or cfg.get("accounting_org_id") or cfg.get("zoho_org_id") or settings.ZOHO_ORG_ID,
+                    accounts_url=cfg.get("zoho_accounts_url") or settings.ZOHO_ACCOUNTS_URL,
+                    books_api_url=cfg.get("zoho_books_api_url") or settings.ZOHO_BOOKS_API_URL,
+                )
+
+        return cls()
 
     async def get_access_token(self, force_refresh: bool = False) -> str:
         """Retrieves a valid OAuth2 access token, refreshing if expired."""
         if settings.MOCK_MODE or not self.refresh_token:
-            logger.info("Operating in Mock Mode for Zoho authentication.")
+            logger.info(f"Operating in Mock Mode for Zoho authentication (client org: {self.org_id or 'default'}).")
             return "mock-zoho-access-token"
 
         current_time = time.time()
-        # Keep a 60-second buffer and reuse global token if still valid
-        if not force_refresh and ZohoBooksService._global_access_token and current_time < (ZohoBooksService._global_token_expiry_timestamp - 60):
-            return ZohoBooksService._global_access_token
+        tenant_cache = ZohoBooksService._tenant_tokens.get(self._tenant_key, {})
+        cached_tok = tenant_cache.get("token")
+        cached_exp = tenant_cache.get("expiry", 0.0)
+
+        # Keep a 60-second buffer and reuse isolated tenant token if still valid
+        if not force_refresh and cached_tok and current_time < (cached_exp - 60):
+            self._access_token = cached_tok
+            self._token_expiry_timestamp = cached_exp
+            return cached_tok
 
         token_url = f"{self.accounts_url}/oauth/v2/token"
         params = {
@@ -87,34 +124,37 @@ class ZohoBooksService:
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            logger.info(f"Refreshing Zoho OAuth2 token from {token_url}...")
+            logger.info(f"Refreshing Zoho OAuth2 token for org {self.org_id} from {token_url}...")
             response = await client.post(token_url, params=params)
             
             if response.status_code != 200:
-                logger.error(f"Zoho token refresh failed ({response.status_code}): {response.text}")
-                # If we already have a previous token, reuse it during rate limit/backoff
-                if ZohoBooksService._global_access_token:
-                    logger.warning("Reusing previous Zoho access token due to rate limiting.")
-                    return ZohoBooksService._global_access_token
-                raise RuntimeError(f"Zoho OAuth token refresh failed: {response.text}")
+                logger.error(f"Zoho token refresh failed for org {self.org_id} ({response.status_code}): {response.text}")
+                # If we already have a previous token for this tenant, reuse it during rate limit/backoff
+                if cached_tok:
+                    logger.warning(f"Reusing previous Zoho access token for org {self.org_id} due to rate limiting.")
+                    return cached_tok
+                raise RuntimeError(f"Zoho OAuth token refresh failed for org {self.org_id}: {response.text}")
 
             data = response.json()
             if "access_token" not in data:
                 error_msg = data.get("error", "Unknown OAuth error")
-                logger.error(f"Zoho OAuth returned error: {error_msg}")
-                if ZohoBooksService._global_access_token:
-                    return ZohoBooksService._global_access_token
-                raise RuntimeError(f"Zoho OAuth error: {error_msg}")
+                logger.error(f"Zoho OAuth returned error for org {self.org_id}: {error_msg}")
+                if cached_tok:
+                    return cached_tok
+                raise RuntimeError(f"Zoho OAuth error for org {self.org_id}: {error_msg}")
 
             access_tok = data["access_token"]
             expires_in = data.get("expires_in", 3600)
             
-            ZohoBooksService._global_access_token = access_tok
-            ZohoBooksService._global_token_expiry_timestamp = current_time + expires_in
+            # Store isolated token in tenant store
+            ZohoBooksService._tenant_tokens[self._tenant_key] = {
+                "token": access_tok,
+                "expiry": current_time + expires_in,
+            }
             self._access_token = access_tok
-            self._token_expiry_timestamp = ZohoBooksService._global_token_expiry_timestamp
+            self._token_expiry_timestamp = current_time + expires_in
             
-            logger.info(f"Zoho access token refreshed successfully. Valid for {expires_in}s.")
+            logger.info(f"Zoho access token refreshed successfully for org {self.org_id}. Valid for {expires_in}s.")
             return access_tok
 
     def _get_headers(self, access_token: str) -> Dict[str, str]:
@@ -177,7 +217,8 @@ class ZohoBooksService:
                 )
 
             self._cached_contacts = contacts
-            logger.info(f"Fetched {len(contacts)} active contacts from Zoho Books.")
+            ZohoBooksService._tenant_contacts[self._tenant_key] = contacts
+            logger.info(f"Fetched {len(contacts)} active contacts from Zoho Books for tenant {self._tenant_key}.")
             return contacts
 
     @retry(
@@ -282,7 +323,8 @@ class ZohoBooksService:
                 )
 
             self._cached_items = items
-            logger.info(f"Fetched {len(items)} active items from Zoho Books catalog.")
+            ZohoBooksService._tenant_items[self._tenant_key] = items
+            logger.info(f"Fetched {len(items)} active items from Zoho Books catalog for tenant {self._tenant_key}.")
             return items
 
     def find_contact_by_name(self, client_name: str) -> Optional[ZohoContact]:
