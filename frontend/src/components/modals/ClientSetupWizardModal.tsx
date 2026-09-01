@@ -7,6 +7,8 @@ import type {
   StarterRecipe,
   AccountingSoftware,
   OrganizationTeamMember,
+  AccountingSection,
+  AccountingEntityType,
 } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import {
@@ -35,6 +37,8 @@ import {
   PlayCircle,
   Clock,
   MessageSquare,
+  RotateCcw,
+  Key,
 } from 'lucide-react';
 
 const STARTER_RECIPES: StarterRecipe[] = [
@@ -320,8 +324,36 @@ export const ClientSetupWizardModal: React.FC = () => {
   // Step 4: Starter Pipelines State
   const [configuredPipelines, setConfiguredPipelines] = useState<IngestionPipeline[]>(STARTER_RECIPES[0].pipelines);
 
+  // Step 4: Custom Stream Creator State
+  const [isAddingCustomStream, setIsAddingCustomStream] = useState<boolean>(false);
+  const [customStreamName, setCustomStreamName] = useState<string>('');
+  const [customStreamSection, setCustomStreamSection] = useState<AccountingSection>('AR');
+  const [customStreamEntity, setCustomStreamEntity] = useState<AccountingEntityType>('ar_sales_invoice');
+  const [customStreamSource, setCustomStreamSource] = useState<'google_drive' | 'onedrive' | 'email' | 'bank_feed' | 'manual' | 'webhook' | 'whatsapp'>('google_drive');
+  const [customStreamSchedule, setCustomStreamSchedule] = useState<string>('Daily at 8:00 PM');
+
   // Loading & Submission State
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const handleAddCustomStream = () => {
+    if (!customStreamName.trim()) return;
+    const newPipeline: IngestionPipeline = {
+      id: `p_custom_${Date.now()}`,
+      name: customStreamName.trim(),
+      section: customStreamSection,
+      entity_type: customStreamEntity,
+      source_type: customStreamSource,
+      source_identifier: '',
+      default_account_code: '',
+      auto_post_to_zoho: false,
+      trigger_type: customStreamSchedule.includes('Real-time') ? 'realtime_webhook' : 'scheduled_cron',
+      cron_schedule_human: customStreamSchedule,
+      cron_expression: customStreamSchedule.includes('1st of Month') ? '0 9 1 * *' : '0 20 * * *',
+    };
+    setConfiguredPipelines([...configuredPipelines, newPipeline]);
+    setCustomStreamName('');
+    setIsAddingCustomStream(false);
+  };
 
   // Initialize or resume draft
   useEffect(() => {
@@ -1182,23 +1214,199 @@ export const ClientSetupWizardModal: React.FC = () => {
                 })}
               </div>
 
-              {/* Summary of Starter Streams */}
+              {/* Summary of Starter Streams & Custom Stream Studio */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-sky-400" />
                     <span>Initial Ingestion Streams to be Initialized ({configuredPipelines.length})</span>
                   </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingCustomStream(!isAddingCustomStream)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-400 hover:text-white bg-sky-950/60 hover:bg-sky-900/80 border border-sky-500/40 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAddingCustomStream ? 'Close Form' : '+ Add Custom Stream'}</span>
+                    </button>
+                    {configuredPipelines.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfiguredPipelines([])}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-rose-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg transition cursor-pointer"
+                        title="Remove all suggested streams to start from scratch"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Clear All</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const recipe = STARTER_RECIPES.find((p) => p.id === selectedRecipe);
+                        if (recipe) setConfiguredPipelines([...recipe.pipelines]);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg transition cursor-pointer"
+                      title="Restore suggested streams from selected template"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset Recipe</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Inline Custom Stream Creator Form */}
+                {isAddingCustomStream && (
+                  <div className="bg-slate-900/90 border border-sky-500/30 rounded-xl p-3.5 space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Create Custom Ingestion Stream</span>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Stream Name */}
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Stream Name *</label>
+                        <input
+                          type="text"
+                          value={customStreamName}
+                          onChange={(e) => setCustomStreamName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customStreamName.trim()) {
+                              e.preventDefault();
+                              handleAddCustomStream();
+                            }
+                          }}
+                          placeholder="e.g. Counter Cash Delivery Slips, Branch 2 AP Bills..."
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      {/* Accounting Section */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Accounting Section</label>
+                        <select
+                          value={customStreamSection}
+                          onChange={(e) => {
+                            const sec = e.target.value as AccountingSection;
+                            setCustomStreamSection(sec);
+                            if (sec === 'AR') setCustomStreamEntity('ar_sales_invoice');
+                            else if (sec === 'AP') setCustomStreamEntity('ap_vendor_bill');
+                            else if (sec === 'BANK') setCustomStreamEntity('bank_statement');
+                            else if (sec === 'GL') setCustomStreamEntity('gl_journal');
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                        >
+                          <option value="AR">AR — Accounts Receivable (Sales / Income)</option>
+                          <option value="AP">AP — Accounts Payable (Bills / Expenses)</option>
+                          <option value="BANK">BANK — Bank Feeds &amp; Statements</option>
+                          <option value="GL">GL — General Ledger Journals</option>
+                        </select>
+                      </div>
+
+                      {/* Target Entity */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Target Accounting Entity</label>
+                        <select
+                          value={customStreamEntity}
+                          onChange={(e) => setCustomStreamEntity(e.target.value as AccountingEntityType)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                        >
+                          {customStreamSection === 'AR' && (
+                            <>
+                              <option value="ar_sales_invoice">Sales Invoice (Customer Invoice)</option>
+                              <option value="ar_customer_payment">Customer Payment Receipt</option>
+                              <option value="ar_credit_note">Credit Note / Return</option>
+                              <option value="ar_estimate">Sales Estimate / Quote</option>
+                            </>
+                          )}
+                          {customStreamSection === 'AP' && (
+                            <>
+                              <option value="ap_vendor_bill">Vendor / Supplier Bill</option>
+                              <option value="ap_vendor_payment">Vendor Payment Voucher</option>
+                              <option value="ap_direct_expense">Direct Expense / Petty Cash</option>
+                              <option value="ap_purchase_order">Purchase Order</option>
+                            </>
+                          )}
+                          {customStreamSection === 'BANK' && (
+                            <>
+                              <option value="bank_statement">Bank Statement / Feed</option>
+                              <option value="momo_statement">Mobile Money (MoMo) Statement</option>
+                            </>
+                          )}
+                          {customStreamSection === 'GL' && (
+                            <>
+                              <option value="gl_journal">General Ledger Manual Journal</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Ingestion Source Channel */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Ingestion Channel</label>
+                        <select
+                          value={customStreamSource}
+                          onChange={(e) => setCustomStreamSource(e.target.value as any)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                        >
+                          <option value="google_drive">Google Drive Folder</option>
+                          <option value="email">Dedicated Inbound Email</option>
+                          <option value="onedrive">OneDrive / SharePoint</option>
+                          <option value="webhook">Real-Time Ingest Webhook</option>
+                          <option value="manual">Manual Batch Upload</option>
+                        </select>
+                      </div>
+
+                      {/* Schedule */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Trigger Frequency</label>
+                        <select
+                          value={customStreamSchedule}
+                          onChange={(e) => setCustomStreamSchedule(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                        >
+                          <option value="Daily at 8:00 PM">Daily at 8:00 PM</option>
+                          <option value="Daily at 6:00 AM">Daily at 6:00 AM</option>
+                          <option value="1st of Month at 9:00 AM">1st of Month at 9:00 AM</option>
+                          <option value="Real-time Webhook">Real-time Webhook</option>
+                          <option value="Manual On-Demand">Manual On-Demand</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCustomStream(false)}
+                        className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomStream}
+                        disabled={!customStreamName.trim()}
+                        className="inline-flex items-center gap-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition cursor-pointer shadow"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Stream</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {configuredPipelines.length > 0 ? (
                   <div className="space-y-2">
                     {configuredPipelines.map((p, idx) => (
                       <div
                         key={p.id || idx}
-                        className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs"
+                        className="flex items-center justify-between bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-lg p-2.5 text-xs transition"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-950 border border-sky-500/30 text-sky-300 uppercase">
                             {p.section}
                           </span>
@@ -1207,16 +1415,29 @@ export const ClientSetupWizardModal: React.FC = () => {
                             → Target: <code className="text-sky-300 font-mono text-[10px]">{p.entity_type}</code>
                           </span>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {p.trigger_type === 'realtime_webhook' ? '⚡ Real-time' : '⏰ ' + (p.cron_schedule_human || 'Daily')}
-                        </span>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {p.trigger_type === 'realtime_webhook' ? '⚡ Real-time' : '⏰ ' + (p.cron_schedule_human || 'Daily')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setConfiguredPipelines(configuredPipelines.filter((_, i) => i !== idx))}
+                            className="text-slate-500 hover:text-rose-400 hover:bg-rose-950/50 p-1 rounded-lg transition cursor-pointer"
+                            title="Delete this stream"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 italic">
-                    Blank client initialized. You will be able to add streams immediately in the Workspace with the Pipeline Setup Wizard.
-                  </p>
+                  <div className="p-4 bg-slate-900/40 rounded-xl border border-dashed border-slate-800 text-center space-y-1.5">
+                    <p className="text-xs text-slate-300 font-semibold">No Ingestion Streams Configured (0)</p>
+                    <p className="text-[11px] text-slate-500">
+                      You can add custom streams with "+ Add Custom Stream" above, or launch a blank client and build streams anytime in the Client Workspace.
+                    </p>
+                  </div>
                 )}
 
                 <div className="p-3 bg-sky-950/30 border border-sky-500/30 rounded-lg text-xs text-slate-300 flex items-start gap-2">

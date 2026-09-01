@@ -19,7 +19,20 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
     def __init__(self, client_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(client_id, config)
         org_id = self.config.get("accounting_org_id") or self.config.get("zoho_org_id")
-        self.zoho = ZohoBooksService(org_id=org_id)
+        client_id_val = self.config.get("zoho_client_id") or self.config.get("client_id")
+        client_secret_val = self.config.get("zoho_client_secret") or self.config.get("client_secret")
+        refresh_token_val = self.config.get("zoho_refresh_token") or self.config.get("refresh_token")
+        accounts_url = self.config.get("zoho_accounts_url") or self.config.get("accounts_url")
+        books_api_url = self.config.get("zoho_books_api_url") or self.config.get("books_api_url")
+
+        self.zoho = ZohoBooksService(
+            client_id=client_id_val,
+            client_secret=client_secret_val,
+            refresh_token=refresh_token_val,
+            org_id=org_id,
+            accounts_url=accounts_url,
+            books_api_url=books_api_url,
+        )
 
     @property
     def platform_name(self) -> str:

@@ -40,11 +40,8 @@ export const ClientSwitcher: React.FC = () => {
 
   const handleSelectClient = (client: ClientProfile) => {
     setClient(client.id);
-    if (client.id === 'anr_group') {
-      setActiveTab('dashboard');
-    } else {
-      setActiveTab('workspace');
-    }
+    setActiveTab('workspace');
+    setIsSwitcherOpen(false);
   };
 
   const handleCreateClient = (e: React.FormEvent) => {

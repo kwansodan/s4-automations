@@ -19,9 +19,15 @@ import { useAuth } from './AuthContext';
 
 export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal';
 
+export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'settings';
+
 interface AutomationContextType {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  workspaceSubTab: WorkspaceSubTab;
+  setWorkspaceSubTab: (sub: WorkspaceSubTab) => void;
+  navigateToClientSubTab: (sub: WorkspaceSubTab) => void;
+
   selectedMonth: string;
   setSelectedMonth: (m: string) => void;
   selectedYear: number;
@@ -57,6 +63,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const { isAuthenticated } = useAuth();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('workspace');
+  const [workspaceSubTab, setWorkspaceSubTab] = useState<WorkspaceSubTab>('overview');
   const [selectedMonth, setSelectedMonth] = useState<string>('August');
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [sheetsSubTab, setSheetsSubTab] = useState<'monthly' | 'daily'>('monthly');
@@ -74,6 +81,11 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
+
+  const navigateToClientSubTab = useCallback((sub: WorkspaceSubTab) => {
+    setWorkspaceSubTab(sub);
+    setActiveTab('workspace');
+  }, []);
 
   const addLog = useCallback((type: 'info' | 'success' | 'warning' | 'error', message: string) => {
     setLogs((prev) => [
@@ -213,6 +225,9 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       value={{
         activeTab,
         setActiveTab,
+        workspaceSubTab,
+        setWorkspaceSubTab,
+        navigateToClientSubTab,
         selectedMonth,
         setSelectedMonth,
         selectedYear,

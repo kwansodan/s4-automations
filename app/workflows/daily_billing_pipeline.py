@@ -16,6 +16,9 @@ from app.models.schemas import (
     ConfidenceLevel,
     SlipStatus,
 )
+from app.models.db_models import ClientOrganization
+from app.db.session import get_engine
+from sqlmodel import select, Session
 from app.services.zoho_service import ZohoBooksService
 from app.services.google_drive_service import GoogleDriveService
 from app.services.google_sheets_service import GoogleSheetsService
@@ -121,7 +124,18 @@ async def run_daily_pipeline_core(
                 drive = GoogleDriveService()
                 sheets = GoogleSheetsService()
                 ocr = GeminiOCRService()
-                zoho = ZohoBooksService()
+
+                zoho_org_id = None
+                with Session(get_engine()) as session:
+                    client_obj = session.exec(
+                        select(ClientOrganization).where(
+                            (ClientOrganization.id == client_slug) | (ClientOrganization.name == client_name)
+                        )
+                    ).first()
+                    if client_obj:
+                        zoho_org_id = client_obj.zoho_org_id
+
+                zoho = ZohoBooksService(org_id=zoho_org_id)
 
                 # Ensure contacts & items catalog are ready
                 contacts = await zoho.fetch_active_contacts()

@@ -9,6 +9,9 @@ from app.models.schemas import (
     ZohoInvoiceLineItem,
     ZohoDraftInvoiceResponse,
 )
+from app.models.db_models import ClientOrganization
+from app.db.session import get_engine
+from sqlmodel import select, Session
 from app.services.zoho_service import ZohoBooksService
 from app.services.google_drive_service import GoogleDriveService
 from app.services.google_sheets_service import GoogleSheetsService
@@ -109,7 +112,6 @@ async def run_zoho_invoices_core(
 
         # Step 2: Group by Client & Generate Draft Invoices
         async def generate_invoices() -> Dict[str, Any]:
-            zoho = ZohoBooksService()
             sheets = GoogleSheetsService()
 
             client_groups: Dict[str, List[Dict[str, Any]]] = {}
@@ -120,6 +122,18 @@ async def run_zoho_invoices_core(
             created_invoices: List[Dict[str, Any]] = []
 
             for client_name, items in client_groups.items():
+                zoho_org_id = None
+                with Session(get_engine()) as session:
+                    client_slug = client_name.lower().replace(" ", "_")
+                    client_obj = session.exec(
+                        select(ClientOrganization).where(
+                            (ClientOrganization.id == client_slug) | (ClientOrganization.name == client_name)
+                        )
+                    ).first()
+                    if client_obj:
+                        zoho_org_id = client_obj.zoho_org_id
+
+                zoho = ZohoBooksService(org_id=zoho_org_id)
                 contact_id = items[0].get("zoho_contact_id")
                 if not contact_id:
                     contact = zoho.find_contact_by_name(client_name)
