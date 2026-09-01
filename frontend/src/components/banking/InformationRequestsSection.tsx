@@ -38,7 +38,25 @@ import {
   Tag,
   Paperclip,
   CheckCheck,
+  Plus,
+  Trash2,
 } from 'lucide-react';
+
+const DEFAULT_FALLBACK_ACCOUNTS: ChartOfAccountItem[] = [
+  { account_id: 'acc_6990', account_code: '6990', account_name: 'Uncategorized Expenses', account_type: 'Expense', is_suspense: true },
+  { account_id: 'acc_4990', account_code: '4990', account_name: 'Uncategorized Income', account_type: 'Income', is_suspense: true },
+  { account_id: 'acc_850', account_code: '850', account_name: 'Suspense Account', account_type: 'Other Current Liability', is_suspense: true },
+  { account_id: 'acc_2150', account_code: '2150', account_name: 'Ask My Accountant / Clearing', account_type: 'Other Current Liability', is_suspense: true },
+  { account_id: 'acc_1095', account_code: '1095', account_name: 'MTN MoMo Holding / Clearing', account_type: 'Current Asset', is_suspense: true },
+  { account_id: 'acc_5100', account_code: '5100', account_name: 'Office Supplies & Stationery', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_5200', account_code: '5200', account_name: 'Vehicle Fuel & Fleet Transport', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_5300', account_code: '5300', account_name: 'Rent & Leasehold Utilities', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_5400', account_code: '5400', account_name: 'Internet & Communication (MoMo/Data)', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_5500', account_code: '5500', account_name: 'Repairs & Maintenance', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_5600', account_code: '5600', account_name: 'Professional & Legal Retainer Fees', account_type: 'Expense', is_suspense: false },
+  { account_id: 'acc_4100', account_code: '4100', account_name: 'Direct Sales Revenue', account_type: 'Income', is_suspense: false },
+  { account_id: 'acc_1200', account_code: '1200', account_name: "Director's Loan & Drawings", account_type: 'Equity', is_suspense: false },
+];
 
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient } = useClient();
@@ -60,9 +78,11 @@ export const InformationRequestsSection: React.FC = () => {
 
   // Chart of Accounts & Watched Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
-  const [watchedAccounts, setWatchedAccounts] = useState<string[]>([]);
+  const [watchedAccounts, setWatchedAccounts] = useState<string[]>(['6990', '850', 'suspense', 'uncategorized']);
   const [isWatchedDrawerOpen, setIsWatchedDrawerOpen] = useState(false);
   const [isSavingWatched, setIsSavingWatched] = useState(false);
+  const [selectedDropdownCode, setSelectedDropdownCode] = useState<string>('');
+  const [customCodeInput, setCustomCodeInput] = useState<string>('');
 
   // Row Selection & Bulk Actions
   const [selectedTxIds, setSelectedTxIds] = useState<number[]>([]);
@@ -77,6 +97,9 @@ export const InformationRequestsSection: React.FC = () => {
   // Query Composer Modal State
   const [selectedTxForQuery, setSelectedTxForQuery] = useState<BankTransactionRecord | null>(null);
   const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
+
+  // Fallback merged accounts list
+  const displayAccounts = accounts && accounts.length > 0 ? accounts : DEFAULT_FALLBACK_ACCOUNTS;
 
   // Load Transactions & Accounts
   const loadData = useCallback(async () => {
@@ -97,8 +120,13 @@ export const InformationRequestsSection: React.FC = () => {
         total_mapped: 0,
       });
 
-      setAccounts(coaRes.accounts || []);
-      setWatchedAccounts(coaRes.watched_accounts || []);
+      const loadedAccounts = coaRes.accounts && coaRes.accounts.length > 0 ? coaRes.accounts : DEFAULT_FALLBACK_ACCOUNTS;
+      setAccounts(loadedAccounts);
+
+      const loadedWatched = coaRes.watched_accounts && coaRes.watched_accounts.length > 0
+        ? coaRes.watched_accounts
+        : ['6990', '850', 'suspense', 'uncategorized'];
+      setWatchedAccounts(loadedWatched);
 
       // Initialize inline account selectors
       const initialRowAccounts: { [id: number]: string } = {};
@@ -106,8 +134,8 @@ export const InformationRequestsSection: React.FC = () => {
       (txRes.transactions || []).forEach((t: BankTransactionRecord) => {
         if (t.mapped_account_id) {
           initialRowAccounts[t.id] = t.mapped_account_id;
-        } else if (t.ai_suggested_account && coaRes.accounts) {
-          const match = coaRes.accounts.find(
+        } else if (t.ai_suggested_account && loadedAccounts) {
+          const match = loadedAccounts.find(
             (a: any) => a.account_name.toLowerCase() === t.ai_suggested_account?.toLowerCase()
           );
           if (match) initialRowAccounts[t.id] = match.account_id;
@@ -312,56 +340,202 @@ export const InformationRequestsSection: React.FC = () => {
 
         {/* Collapsible Watched Chart of Accounts Drawer */}
         {isWatchedDrawerOpen && (
-          <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
+          <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-4 animate-in fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5 text-sky-400" />
                   <span>Monitored Suspense &amp; Uncategorized Accounts</span>
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 mt-0.5">
                   Select which Chart of Account codes this pipeline should automatically monitor for unmapped transactions:
                 </p>
               </div>
 
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized'])}
+                  className="text-[11px] text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 transition cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+                <button
+                  onClick={handleSaveWatchedAccounts}
+                  disabled={isSavingWatched}
+                  className="inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-md shadow-sky-600/20"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{isSavingWatched ? 'Saving...' : 'Save Watched Accounts'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Dropdown Selector & Custom Code Input Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+              {/* Dropdown Account Picker */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                  <span>Select from Chart of Accounts:</span>
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedDropdownCode}
+                    onChange={(e) => setSelectedDropdownCode(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                  >
+                    <option value="">Choose an account to watch...</option>
+                    {displayAccounts.map((acc) => {
+                      const code = acc.account_code || acc.account_id;
+                      const isAlreadyWatched = watchedAccounts.includes(code) || watchedAccounts.includes(acc.account_id);
+                      return (
+                        <option key={acc.account_id} value={code} disabled={isAlreadyWatched}>
+                          {code ? `[${code}] ` : ''}{acc.account_name} ({acc.account_type}){isAlreadyWatched ? ' - (Already Watched)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedDropdownCode && !watchedAccounts.includes(selectedDropdownCode)) {
+                        setWatchedAccounts([...watchedAccounts, selectedDropdownCode]);
+                        setSelectedDropdownCode('');
+                      }
+                    }}
+                    disabled={!selectedDropdownCode}
+                    className="inline-flex items-center gap-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Code Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                  <span>Add Custom Account Code / Alias:</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customCodeInput}
+                    onChange={(e) => setCustomCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customCodeInput.trim()) {
+                        e.preventDefault();
+                        const val = customCodeInput.trim();
+                        if (!watchedAccounts.includes(val)) {
+                          setWatchedAccounts([...watchedAccounts, val]);
+                          setCustomCodeInput('');
+                        }
+                      }
+                    }}
+                    placeholder="e.g. 1099, MOMO_CLEARING, 2150..."
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = customCodeInput.trim();
+                      if (val && !watchedAccounts.includes(val)) {
+                        setWatchedAccounts([...watchedAccounts, val]);
+                        setCustomCodeInput('');
+                      }
+                    }}
+                    disabled={!customCodeInput.trim()}
+                    className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Code</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Presets Row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                Quick Presets:
+              </span>
               <button
-                onClick={handleSaveWatchedAccounts}
-                disabled={isSavingWatched}
-                className="inline-flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer shadow"
+                type="button"
+                onClick={() => {
+                  const toAdd = ['6990', '850', 'suspense', 'uncategorized'];
+                  const merged = Array.from(new Set([...watchedAccounts, ...toAdd]));
+                  setWatchedAccounts(merged);
+                }}
+                className="text-[11px] bg-slate-950 hover:bg-slate-900 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
               >
-                <Check className="w-3.5 h-3.5" />
-                <span>{isSavingWatched ? 'Saving...' : 'Save Watched Accounts'}</span>
+                + Default Suspense (6990 &amp; 850)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const toAdd = ['1095', '2150', 'momo_clearing'];
+                  const merged = Array.from(new Set([...watchedAccounts, ...toAdd]));
+                  setWatchedAccounts(merged);
+                }}
+                className="text-[11px] bg-slate-950 hover:bg-slate-900 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
+              >
+                + MoMo &amp; Clearing Holding
               </button>
             </div>
 
-            {/* Account Badges Grid */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {accounts.map((acc) => {
-                const code = acc.account_code || acc.account_id;
-                const isSelected = watchedAccounts.includes(code) || watchedAccounts.includes(acc.account_id);
-                return (
+            {/* Active Watched Accounts Badges */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-300 font-bold">
+                  Currently Monitored Accounts ({watchedAccounts.length}):
+                </span>
+                {watchedAccounts.length > 0 && (
                   <button
-                    key={acc.account_id}
                     type="button"
-                    onClick={() => toggleWatchedCode(code)}
-                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-sky-950/80 text-sky-200 border-sky-500/50 shadow-sm shadow-sky-500/20'
-                        : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
-                    }`}
+                    onClick={() => setWatchedAccounts([])}
+                    className="text-slate-500 hover:text-rose-400 transition underline cursor-pointer"
                   >
-                    <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-sky-400' : 'bg-slate-700'}`} />
-                    <span className="font-mono font-bold">{code}</span>
-                    <span>{acc.account_name}</span>
-                    {acc.is_suspense && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/30">
-                        Default
-                      </span>
-                    )}
+                    Clear all
                   </button>
-                );
-              })}
+                )}
+              </div>
+
+              {watchedAccounts.length === 0 ? (
+                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-center text-xs text-amber-300">
+                  ⚠️ No accounts are currently watched. Select from the dropdown or pick a preset above.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {watchedAccounts.map((code) => {
+                    const matchedAcc = displayAccounts.find(
+                      (a) => (a.account_code && a.account_code === code) || a.account_id === code
+                    );
+                    const label = matchedAcc ? matchedAcc.account_name : code;
+
+                    return (
+                      <div
+                        key={code}
+                        className="inline-flex items-center gap-1.5 bg-sky-950/80 text-sky-200 border border-sky-500/50 px-3 py-1.5 rounded-xl text-xs font-medium shadow-sm"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-sky-400" />
+                        <span className="font-mono font-bold">{code}</span>
+                        {label !== code && <span>— {label}</span>}
+                        <button
+                          type="button"
+                          onClick={() => setWatchedAccounts(watchedAccounts.filter((c) => c !== code))}
+                          className="text-sky-400 hover:text-rose-400 hover:bg-rose-950/40 p-0.5 rounded transition cursor-pointer ml-1"
+                          title={`Remove ${code} from watched accounts`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
           </div>
         )}
       </div>
