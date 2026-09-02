@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { fetchAccountingCatalog } from '../../lib/api';
+import { fetchAccountingCatalog, getZohoAuthorizeUrl } from '../../lib/api';
 import type {
   IngestionPipeline,
   StarterRecipe,
@@ -449,6 +449,32 @@ export const ClientSetupWizardModal: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'ZOHO_OAUTH_SUCCESS' && event.data.orgId) {
+        setZohoOrgId(event.data.orgId);
+        addLog('success', `🎉 1-Click Connected to Zoho Books Org: ${event.data.orgName} (${event.data.orgId})`);
+        handleFetchAccountingData();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [accountingSoftware]);
+
+  const handleWizardLaunchOAuth = async () => {
+    try {
+      const clientSlug = (name.trim() || 'new_client').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const { authorize_url } = await getZohoAuthorizeUrl(clientSlug);
+      const width = 640;
+      const height = 750;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      window.open(authorize_url, 'zoho_oauth_window', `width=${width},height=${height},top=${top},left=${left}`);
+    } catch (err: any) {
+      alert(`Could not launch OAuth: ${err.message}`);
+    }
+  };
+
   const handleStepJump = (stepNum: number) => {
     syncDraft(stepNum);
     setCurrentStep(stepNum);
@@ -816,6 +842,35 @@ export const ClientSetupWizardModal: React.FC = () => {
 
                     return (
                       <>
+                        {accountingSoftware === 'zoho_books' && (
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>1-Click Multi-Tenant Authorization</span>
+                              </span>
+                              {zohoOrgId ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
+                                  <span>🟢 Authorized (Org: {zohoOrgId})</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-500 font-mono">Recommended</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                              Authorize S4 Automations directly with Zoho Books. No developer app setup or API Console configuration required.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleWizardLaunchOAuth}
+                              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2 px-3.5 rounded-lg shadow transition cursor-pointer"
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                              <span>{zohoOrgId ? 'Re-authorize with Zoho Books' : 'Connect with Zoho Books (1-Click OAuth)'}</span>
+                            </button>
+                          </div>
+                        )}
+
                         <div>
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
                             <label className="text-xs font-semibold text-slate-300">

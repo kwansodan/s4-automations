@@ -4,6 +4,10 @@ import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchClientConfig,
   saveClientConfig,
+  getZohoAuthorizeUrl,
+  getZohoOAuthStatus,
+  disconnectZohoOAuth,
+  type ZohoOAuthStatusResponse,
 } from '../../../lib/api';
 import { ACCOUNTING_PLATFORMS } from '../../../types/client';
 import {
@@ -20,6 +24,11 @@ import {
   AlertTriangle,
   Trash2,
   ShieldCheck,
+  Zap,
+  ExternalLink,
+  RefreshCw,
+  Sliders,
+  ChevronDown,
 } from 'lucide-react';
 
 export const ClientSettingsTab: React.FC = () => {
@@ -29,6 +38,12 @@ export const ClientSettingsTab: React.FC = () => {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSaveSuccess, setConfigSaveSuccess] = useState(false);
   const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+
+  // 1-Click OAuth State
+  const [oauthStatus, setOauthStatus] = useState<ZohoOAuthStatusResponse | null>(null);
+  const [isLoadingOAuth, setIsLoadingOAuth] = useState(false);
+  const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
+  const [isAdvancedOAuthOpen, setIsAdvancedOAuthOpen] = useState(false);
 
   const [clientConfig, setClientConfig] = useState({
     name: '',
@@ -44,6 +59,18 @@ export const ClientSettingsTab: React.FC = () => {
     source_config: {} as any,
     custom_config: {} as any,
   });
+
+  const loadOAuthStatus = async () => {
+    setIsLoadingOAuth(true);
+    try {
+      const res = await getZohoOAuthStatus(currentClient.id);
+      setOauthStatus(res);
+    } catch (err) {
+      console.warn('Could not load OAuth status:', err);
+    } finally {
+      setIsLoadingOAuth(false);
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -69,7 +96,59 @@ export const ClientSettingsTab: React.FC = () => {
 
   useEffect(() => {
     loadConfig();
+    loadOAuthStatus();
   }, [currentClient.id]);
+
+  // Listen for popup success message
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'ZOHO_OAUTH_SUCCESS') {
+        addLog('success', `🎉 1-Click OAuth Connected: ${event.data.orgName} (${event.data.orgId})`);
+        loadOAuthStatus();
+        loadConfig();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [currentClient.id]);
+
+  const handleLaunchOAuth = async () => {
+    setIsConnectingOAuth(true);
+    try {
+      addLog('info', `[OAUTH] Requesting 1-Click Zoho Books authorization URL for ${currentClient.name}...`);
+      const { authorize_url } = await getZohoAuthorizeUrl(currentClient.id);
+      
+      const width = 640;
+      const height = 750;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+
+      window.open(
+        authorize_url,
+        'zoho_oauth_window',
+        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,toolbar=no`
+      );
+    } catch (err: any) {
+      addLog('error', `Failed to initiate Zoho OAuth: ${err.message}`);
+      alert(`Could not launch OAuth: ${err.message}`);
+    } finally {
+      setIsConnectingOAuth(false);
+    }
+  };
+
+  const handleDisconnectOAuth = async () => {
+    if (!confirm(`Are you sure you want to disconnect Zoho Books for ${currentClient.name}?`)) {
+      return;
+    }
+    try {
+      await disconnectZohoOAuth(currentClient.id);
+      addLog('info', `Disconnected Zoho Books integration for ${currentClient.name}.`);
+      await loadOAuthStatus();
+      await loadConfig();
+    } catch (err: any) {
+      addLog('error', `Disconnect failed: ${err.message}`);
+    }
+  };
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,22 +309,85 @@ export const ClientSettingsTab: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Target Accounting Software */}
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-              <Database className="w-4 h-4" />
-              <span>2. Dedicated Accounting Platform</span>
+          {/* Section 2: Target Accounting Software & 1-Click OAuth */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                <Database className="w-4 h-4" />
+                <span>2. Accounting Platform (Zoho Books)</span>
+              </div>
+              {oauthStatus?.is_connected ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Connected</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 border border-slate-700 text-slate-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  <span>Not Connected</span>
+                </span>
+              )}
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">Organization / Tenant ID</label>
-              <input
-                type="text"
-                placeholder="e.g. 782910482"
-                value={clientConfig.zoho_org_id}
-                onChange={(e) => setClientConfig({ ...clientConfig, zoho_org_id: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              />
+            {/* 1-Click OAuth Connection Card */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-3">
+              {oauthStatus?.is_connected ? (
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>🟢</span>
+                        <span>{oauthStatus.org_name || currentClient.name}</span>
+                      </p>
+                      <p className="text-[10px] font-mono text-sky-400 mt-0.5">
+                        Org ID: {oauthStatus.org_id || clientConfig.zoho_org_id || 'Auto-Detected'}
+                      </p>
+                      {oauthStatus.connected_at && (
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Authorized: {new Date(oauthStatus.connected_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleLaunchOAuth}
+                        disabled={isConnectingOAuth}
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-lg border border-slate-700 transition cursor-pointer flex items-center gap-1"
+                        title="Re-authenticate with Zoho Books"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isConnectingOAuth ? 'animate-spin' : ''}`} />
+                        <span>Re-auth</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectOAuth}
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 rounded-lg border border-rose-500/30 transition cursor-pointer"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <p className="text-xs text-slate-300">
+                    Connect this client to their Zoho Books organization in 1-Click. No developer app setup or grant code copying required.
+                  </p>
+                  
+                  <button
+                    type="button"
+                    onClick={handleLaunchOAuth}
+                    disabled={isConnectingOAuth}
+                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Zap className={`w-4 h-4 text-emerald-200 ${isConnectingOAuth ? 'animate-bounce' : ''}`} />
+                    <span>{isConnectingOAuth ? 'Launching Zoho Consent...' : 'Connect with Zoho Books (1-Click)'}</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
@@ -264,51 +406,70 @@ export const ClientSettingsTab: React.FC = () => {
               />
             </div>
 
-            {/* Dedicated Client OAuth Credentials */}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
-              <div className="flex items-center gap-1 text-[11px] font-bold text-sky-400">
-                <Key className="w-3.5 h-3.5" />
-                <span>Client Dedicated OAuth Credentials</span>
-              </div>
-              <p className="text-[10px] text-slate-500">
-                Isolated API credentials unique to this client organization.
-              </p>
-              <input
-                type="text"
-                placeholder="OAuth Client ID (e.g. 1000.XXXX)"
-                value={clientConfig.custom_config?.zoho_client_id || ''}
-                onChange={(e) =>
-                  setClientConfig({
-                    ...clientConfig,
-                    custom_config: { ...clientConfig.custom_config, zoho_client_id: e.target.value },
-                  })
-                }
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
-              />
-              <input
-                type="password"
-                placeholder="OAuth Client Secret"
-                value={clientConfig.custom_config?.zoho_client_secret || ''}
-                onChange={(e) =>
-                  setClientConfig({
-                    ...clientConfig,
-                    custom_config: { ...clientConfig.custom_config, zoho_client_secret: e.target.value },
-                  })
-                }
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
-              />
-              <input
-                type="password"
-                placeholder="OAuth Refresh Token (Offline Access)"
-                value={clientConfig.custom_config?.zoho_refresh_token || ''}
-                onChange={(e) =>
-                  setClientConfig({
-                    ...clientConfig,
-                    custom_config: { ...clientConfig.custom_config, zoho_refresh_token: e.target.value },
-                  })
-                }
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
-              />
+            {/* Collapsible Advanced Manual App Keys */}
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsAdvancedOAuthOpen(!isAdvancedOAuthOpen)}
+                className="flex items-center justify-between w-full text-[11px] font-bold text-slate-400 hover:text-slate-200 py-1 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Advanced Manual Keys (Optional Override)</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isAdvancedOAuthOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isAdvancedOAuthOpen && (
+                <div className="space-y-2 mt-2 pt-2 border-t border-slate-850 animate-in fade-in duration-150">
+                  <p className="text-[10px] text-slate-500">
+                    Use only if you wish to override the S4 master app with a custom Self-Client developer app.
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Custom OAuth Client ID"
+                    value={clientConfig.custom_config?.zoho_client_id || ''}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: { ...clientConfig.custom_config, zoho_client_id: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Custom OAuth Client Secret"
+                    value={clientConfig.custom_config?.zoho_client_secret || ''}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: { ...clientConfig.custom_config, zoho_client_secret: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Custom OAuth Refresh Token"
+                    value={clientConfig.custom_config?.zoho_refresh_token || ''}
+                    onChange={(e) =>
+                      setClientConfig({
+                        ...clientConfig,
+                        custom_config: { ...clientConfig.custom_config, zoho_refresh_token: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Custom Organization ID"
+                    value={clientConfig.zoho_org_id || ''}
+                    onChange={(e) => setClientConfig({ ...clientConfig, zoho_org_id: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

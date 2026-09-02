@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     ZOHO_ORG_ID: str = Field(default="", description="Zoho Organization ID")
     ZOHO_ACCOUNTS_URL: str = Field(default="https://accounts.zoho.com", description="Zoho Accounts Auth Base URL")
     ZOHO_BOOKS_API_URL: str = Field(default="https://www.zohoapis.com/books/v3", description="Zoho Books API Base URL")
+    ZOHO_REDIRECT_URI: Optional[str] = Field(default=None, description="Zoho OAuth2 Callback Redirect URI")
 
     # Google Workspace (Drive & Sheets)
     CONTROL_SHEETS_FOLDER_ID: str = Field(default="", description="Google Drive root folder ID for control sheets")

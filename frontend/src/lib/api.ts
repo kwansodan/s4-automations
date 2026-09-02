@@ -695,7 +695,46 @@ export async function submitPortalExplanation(
   return handleResponse(res, 'Submit portal explanation');
 }
 
+// ---------------------------------------------------------------------------
+// 1-Click Multi-Tenant OAuth2 Connection Engine
+// ---------------------------------------------------------------------------
 
+export interface ZohoOAuthAuthorizeUrlResponse {
+  authorize_url: string;
+  client_id: string;
+  redirect_uri: string;
+  accounts_url: string;
+}
 
+export interface ZohoOAuthStatusResponse {
+  client_id: string;
+  platform: string;
+  is_connected: boolean;
+  org_id?: string;
+  org_name?: string;
+  connected_at?: string;
+  auth_type?: string;
+}
 
+export async function getZohoAuthorizeUrl(clientId: string): Promise<ZohoOAuthAuthorizeUrlResponse> {
+  const res = await resilientFetch(`/api/v1/oauth/zoho/authorize-url?client_id=${encodeURIComponent(clientId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ZohoOAuthAuthorizeUrlResponse>(res, 'Get Zoho OAuth Authorize URL');
+}
+
+export async function getZohoOAuthStatus(clientId: string): Promise<ZohoOAuthStatusResponse> {
+  const res = await resilientFetch(`/api/v1/oauth/zoho/status?client_id=${encodeURIComponent(clientId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ZohoOAuthStatusResponse>(res, 'Get Zoho OAuth Status');
+}
+
+export async function disconnectZohoOAuth(clientId: string): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/oauth/zoho/disconnect?client_id=${encodeURIComponent(clientId)}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ success: boolean; message: string }>(res, 'Disconnect Zoho OAuth');
+}
 
