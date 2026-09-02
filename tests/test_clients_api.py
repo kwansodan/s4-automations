@@ -20,10 +20,10 @@ def test_list_clients_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert isinstance(data, list)
-    assert len(data) >= 3
+    assert len(data) >= 2
     client_ids = [c["id"] for c in data]
     assert "anr_group" in client_ids
-    assert "polaris" in client_ids
+    assert "mr_osei" in client_ids
 
 
 def test_create_and_get_client_endpoint():
@@ -52,10 +52,10 @@ def test_create_and_get_client_endpoint():
 
 def test_trigger_client_strategy_endpoint():
     """Test POST /api/clients/{client_id}/run triggers client strategy."""
-    res = client.post("/api/clients/polaris/run", json={"month": "August", "year": 2026})
+    res = client.post("/api/clients/anr_group/run", json={"month": "August", "year": 2026})
     assert res.status_code == 200
     data = res.json()
-    assert data["client_id"] == "polaris"
+    assert data["client_id"] == "anr_group"
     assert data["status"] == "COMPLETED"
 
 

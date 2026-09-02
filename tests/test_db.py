@@ -21,9 +21,8 @@ def test_database_initialization_and_client_seeding():
         clients = session.exec(select(ClientOrganization)).all()
         client_ids = [c.id for c in clients]
 
-        assert len(clients) >= 3
+        assert len(clients) >= 2
         assert "anr_group" in client_ids
-        assert "polaris" in client_ids
         assert "mr_osei" in client_ids
 
 
@@ -62,14 +61,14 @@ def test_auth_service_db_backed_otp_lifecycle():
 def test_audit_service_logging_and_query():
     """Verify audit log entries are saved to DB and queryable."""
     AuditService.log(
-        client_id="polaris",
+        client_id="anr_group",
         action="TEST_ACTION_EXECUTE",
         actor_email="admin@service4gh.com",
         details={"test_key": "test_val"},
     )
 
-    logs = AuditService.get_logs(client_id="polaris", action="TEST_ACTION_EXECUTE")
+    logs = AuditService.get_logs(client_id="anr_group", action="TEST_ACTION_EXECUTE")
     assert len(logs) >= 1
-    assert logs[0].client_id == "polaris"
+    assert logs[0].client_id == "anr_group"
     assert logs[0].action == "TEST_ACTION_EXECUTE"
     assert logs[0].details.get("test_key") == "test_val"

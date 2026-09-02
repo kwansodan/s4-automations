@@ -55,11 +55,15 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
 
         for src in sources:
             file_bytes = src.file_bytes or self.drive.download_file_bytes(src.source_identifier)
+            if isinstance(file_bytes, tuple):
+                file_bytes = file_bytes[0]
+
             extracted_slip: OCRSlipExtraction = await self.ocr.extract_slip_data(
-                image_bytes=file_bytes,
-                file_name=src.file_name,
-                item_catalog=catalog,
+                file_bytes=file_bytes,
                 mime_type=src.mime_type,
+                file_name=src.file_name,
+                client_name=self.client_name,
+                item_catalog=catalog,
             )
 
             for line in extracted_slip.items:
@@ -93,29 +97,53 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
         month_folder_id = self.drive.get_month_folder(month, year)
         sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
 
-        daily_rows = []
-        for i in items:
-            raw = i.raw_extracted_data
-            daily_rows.append({
-                "date": raw.get("date", datetime.now().strftime("%Y-%m-%d")),
-                "client_name": raw.get("hotel_name", "ANR Client"),
-                "file_name": raw.get("file_name", "slip.jpg"),
-                "item_name": i.item_or_description,
-                "category": i.category_or_account or "General",
-                "pickup_quantity": int(i.credit_amount),
-                "delivery_quantity": int(i.quantity_or_debit),
-                "discrepancy": int(i.discrepancy),
-                "unit_price": i.unit_price,
-                "total_amount": i.total_amount,
-            })
+        from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
 
-        self.sheets.append_daily_details(sheet_id, daily_rows)
-        self.sheets.update_monthly_summary(sheet_id)
+        detail_rows = []
+        for i in items:
+            raw = i.raw_extracted_data or {}
+            detail_rows.append(
+                DailySlipDetailRow(
+                    slip_date=raw.get("date", datetime.now().strftime("%Y-%m-%d")),
+                    file_name=raw.get("file_name", "slip.jpg"),
+                    client_name=raw.get("hotel_name", "ANR Client"),
+                    raw_item_name=raw.get("raw_item_name", i.item_or_description),
+                    standard_item_name=i.item_or_description,
+                    pickup_qty=int(i.credit_amount),
+                    delivery_qty=int(i.quantity_or_debit),
+                    loss_qty=int(i.discrepancy),
+                    confidence_score=ConfidenceLevel.HIGH,
+                    drive_file_url="",
+                    processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                )
+            )
+
+        self.sheets.append_daily_slip_details(sheet_id, detail_rows)
+
+        summary_rows = [
+            MonthlySummaryRow(
+                client_name="ANR Client",
+                zoho_contact_id="zoho_contact_anr",
+                zoho_item_id="zoho_item_01",
+                standard_item_name=i.item_or_description,
+                raw_names_seen=i.item_or_description,
+                confidence_score=ConfidenceLevel.HIGH,
+                unit_rate=i.unit_price,
+                total_picked_up=int(i.credit_amount),
+                total_delivered=int(i.quantity_or_debit),
+                linen_discrepancy=int(i.discrepancy),
+                total_billed=i.total_amount,
+                audit_notes="OCR Extracted",
+                status=SlipStatus.PENDING,
+            )
+            for i in items
+        ]
+        self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
 
         return {
             "spreadsheet_id": sheet_id,
             "spreadsheet_url": sheet_url,
-            "daily_rows_written": len(daily_rows),
+            "daily_rows_written": len(detail_rows),
         }
 
     async def post_to_accounting(
