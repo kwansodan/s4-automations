@@ -290,6 +290,8 @@ export const ClientSetupWizardModal: React.FC = () => {
   // Step 2: Target Accounting Platform State
   const [accountingSoftware, setAccountingSoftware] = useState<AccountingSoftware>('zoho_books');
   const [zohoOrgId, setZohoOrgId] = useState<string>('');
+  const [zohoRefreshToken, setZohoRefreshToken] = useState<string>('');
+  const [zohoOrgName, setZohoOrgName] = useState<string>('');
   const [defaultIncomeAccount, setDefaultIncomeAccount] = useState<string>('4000 - Commercial Sales Revenue');
   const [taxRateVat, setTaxRateVat] = useState<string>('Standard Ghana GRA (15% VAT + 2.5% NHIL + 2.5% GETFund + 1% COVID)');
 
@@ -453,6 +455,8 @@ export const ClientSetupWizardModal: React.FC = () => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'ZOHO_OAUTH_SUCCESS' && event.data.orgId) {
         setZohoOrgId(event.data.orgId);
+        if (event.data.refreshToken) setZohoRefreshToken(event.data.refreshToken);
+        if (event.data.orgName) setZohoOrgName(event.data.orgName);
         addLog('success', `🎉 1-Click Connected to Zoho Books Org: ${event.data.orgName} (${event.data.orgId})`);
         handleFetchAccountingData();
       }
@@ -534,6 +538,9 @@ export const ClientSetupWizardModal: React.FC = () => {
           notification_email: notificationEmail,
           default_income_account: defaultIncomeAccount,
           tax_rate_vat: taxRateVat,
+          zoho_refresh_token: zohoRefreshToken || undefined,
+          zoho_org_name: zohoOrgName || undefined,
+          zoho_auth_type: zohoRefreshToken ? '1-click-oauth' : undefined,
         },
       });
 

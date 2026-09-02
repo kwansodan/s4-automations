@@ -35,18 +35,12 @@ def get_redirect_uri(request: Request) -> str:
 
 @router.get("/zoho/authorize-url")
 async def get_zoho_authorize_url(
-    client_id: str = Query(..., description="Client organization slug, e.g. anr_group"),
+    client_id: str = Query(..., description="Client organization slug, e.g. anr_group or new_client_slug"),
     request: Request = None,
 ) -> Dict[str, Any]:
     """Generates the Zoho OAuth2 authorization consent URL for 1-Click tenant connection."""
-    with Session(get_engine()) as session:
-        client_obj = session.exec(
-            select(ClientOrganization).where(
-                (ClientOrganization.id == client_id) | (ClientOrganization.name == client_id)
-            )
-        ).first()
-        if not client_obj:
-            raise HTTPException(status_code=404, detail=f"Client organization '{client_id}' not found.")
+    if not client_id or not client_id.strip():
+        raise HTTPException(status_code=400, detail="client_id parameter is required.")
 
     app_client_id = settings.ZOHO_CLIENT_ID or "1000.MOCK_S4_APP_ID"
     redirect_uri = get_redirect_uri(request) if request else "http://localhost:8000/api/v1/oauth/zoho/callback"
@@ -88,6 +82,7 @@ async def connect_zoho_direct(
 async def zoho_oauth_callback(
     code: Optional[str] = Query(None),
     state: Optional[str] = Query(None, description="Client organization slug passed in state"),
+    location: Optional[str] = Query(None, description="Zoho regional data center, e.g. eu, in, com, au, ca"),
     error: Optional[str] = Query(None),
     request: Request = None,
 ) -> HTMLResponse:
@@ -134,6 +129,9 @@ async def zoho_oauth_callback(
         refresh_token = f"mock_ref_{client_slug}_{int(datetime.now(timezone.utc).timestamp())}"
     else:
         accounts_url = settings.ZOHO_ACCOUNTS_URL.rstrip("/")
+        if location and location.lower() in ("eu", "in", "com.au", "au", "ca", "jp"):
+            accounts_url = f"https://accounts.zoho.{location.lower()}"
+
         token_url = f"{accounts_url}/oauth/v2/token"
         
         token_payload = {
@@ -301,7 +299,8 @@ async def zoho_oauth_callback(
                     type: 'ZOHO_OAUTH_SUCCESS',
                     clientId: '{client_slug}',
                     orgId: '{org_id}',
-                    orgName: '{display_org_name}'
+                    orgName: '{display_org_name}',
+                    refreshToken: '{refresh_token or ""}'
                   }}, '*');
                   setTimeout(() => window.close(), 1600);
                 }} else {{
