@@ -21,9 +21,8 @@ def test_database_initialization_and_client_seeding():
         clients = session.exec(select(ClientOrganization)).all()
         client_ids = [c.id for c in clients]
 
-        assert len(clients) >= 2
+        assert len(clients) >= 1
         assert "anr_group" in client_ids
-        assert "mr_osei" in client_ids
 
 
 def test_auth_service_db_backed_otp_lifecycle():

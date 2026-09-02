@@ -20,10 +20,9 @@ def test_list_clients_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert isinstance(data, list)
-    assert len(data) >= 2
+    assert len(data) >= 1
     client_ids = [c["id"] for c in data]
     assert "anr_group" in client_ids
-    assert "mr_osei" in client_ids
 
 
 def test_create_and_get_client_endpoint():

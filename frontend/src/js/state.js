@@ -17,24 +17,6 @@ const DEFAULT_CLIENTS = [
     ],
     integrations: ['Google Drive', 'Google Sheets', 'Zoho Books', 'Gemini Flash AI'],
   },
-  {
-    id: 'mr_osei',
-    name: 'Mr Osei',
-    industry: 'Real Estate & Property Management',
-    icon: '🏢',
-    status: 'setup_pending',
-    statusLabel: 'Setup Pending',
-    badgeClass: 'badge-primary',
-    tagline: 'Tenant Rent Billing, Receipt Matching & Utility Allocations',
-    description: 'End-to-end property tenant invoicing, rent receipt bank matching, automatic utility sub-meter calculations, and monthly arrears tracking.',
-    stats: { propertiesCount: '12 Units', monthlyVolume: 'Ready to Setup', syncStatus: 'Not Connected' },
-    workflows: [
-      { name: 'Rent Receipt Verification', status: 'planned', icon: '🧾' },
-      { name: 'Automated Monthly Rent Invoicing', status: 'planned', icon: '🏢' },
-      { name: 'Utility Sub-meter Allocations', status: 'planned', icon: '💡' },
-    ],
-    integrations: ['WhatsApp Receipts', 'Google Sheets', 'Zoho Invoicing'],
-  },
 ];
 
 function loadSavedClients() {
