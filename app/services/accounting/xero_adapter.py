@@ -1,6 +1,7 @@
 """Concrete Xero Adapter for S4 Multi-Platform Engine."""
 
 from typing import Dict, Any, List, Optional
+from app.config import settings
 from app.services.accounting.base import BaseAccountingAdapter, AccountingContact, AccountingItem, AccountingPostResult
 from app.services.xero_service import XeroService
 
@@ -10,12 +11,21 @@ class XeroAdapter(BaseAccountingAdapter):
 
     def __init__(self, client_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(client_id, config)
-        tenant_id = self.config.get("accounting_org_id") or self.config.get("tenant_id") or self.config.get("zoho_org_id")
+        tenant_id = (
+            self.config.get("xero_tenant_id")
+            or self.config.get("accounting_org_id")
+            or self.config.get("tenant_id")
+            or self.config.get("zoho_org_id")
+        )
+        app_client_id = self.config.get("xero_client_id") or self.config.get("client_id") or settings.XERO_CLIENT_ID
+        app_client_secret = self.config.get("xero_client_secret") or self.config.get("client_secret") or settings.XERO_CLIENT_SECRET
+        refresh_token = self.config.get("xero_refresh_token") or self.config.get("refresh_token")
+
         self.xero = XeroService(
             tenant_id=tenant_id,
-            client_id=self.config.get("client_id"),
-            client_secret=self.config.get("client_secret"),
-            refresh_token=self.config.get("refresh_token"),
+            client_id=app_client_id,
+            client_secret=app_client_secret,
+            refresh_token=refresh_token,
         )
 
     @property

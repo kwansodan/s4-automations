@@ -1,6 +1,7 @@
 """Concrete QuickBooks Online (Intuit) Adapter for S4 Multi-Platform Engine."""
 
 from typing import Dict, Any, List, Optional
+from app.config import settings
 from app.services.accounting.base import BaseAccountingAdapter, AccountingContact, AccountingItem, AccountingPostResult
 from app.services.quickbooks_service import QuickBooksService
 
@@ -10,13 +11,23 @@ class QuickBooksAdapter(BaseAccountingAdapter):
 
     def __init__(self, client_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(client_id, config)
-        realm_id = self.config.get("accounting_org_id") or self.config.get("realm_id") or self.config.get("zoho_org_id")
+        realm_id = (
+            self.config.get("quickbooks_realm_id")
+            or self.config.get("accounting_org_id")
+            or self.config.get("realm_id")
+            or self.config.get("zoho_org_id")
+        )
+        app_client_id = self.config.get("quickbooks_client_id") or self.config.get("client_id") or settings.QUICKBOOKS_CLIENT_ID
+        app_client_secret = self.config.get("quickbooks_client_secret") or self.config.get("client_secret") or settings.QUICKBOOKS_CLIENT_SECRET
+        refresh_token = self.config.get("quickbooks_refresh_token") or self.config.get("refresh_token")
+        is_sandbox = self.config.get("is_sandbox", settings.QUICKBOOKS_ENVIRONMENT != "production")
+
         self.qbo = QuickBooksService(
             realm_id=realm_id,
-            client_id=self.config.get("client_id"),
-            client_secret=self.config.get("client_secret"),
-            refresh_token=self.config.get("refresh_token"),
-            is_sandbox=self.config.get("is_sandbox", True),
+            client_id=app_client_id,
+            client_secret=app_client_secret,
+            refresh_token=refresh_token,
+            is_sandbox=is_sandbox,
         )
 
     @property
