@@ -696,17 +696,20 @@ export async function submitPortalExplanation(
 }
 
 // ---------------------------------------------------------------------------
-// 1-Click Multi-Tenant OAuth2 Connection Engine
+// 1-Click Multi-Tenant OAuth2 Connection Engine (Zoho, QuickBooks, Xero)
 // ---------------------------------------------------------------------------
 
-export interface ZohoOAuthAuthorizeUrlResponse {
+export type SupportedAccountingPlatform = 'zoho_books' | 'quickbooks_online' | 'xero';
+
+export interface AccountingOAuthAuthorizeUrlResponse {
+  platform: string;
   authorize_url: string;
   client_id: string;
   redirect_uri: string;
-  accounts_url: string;
+  accounts_url?: string;
 }
 
-export interface ZohoOAuthStatusResponse {
+export interface AccountingOAuthStatusResponse {
   client_id: string;
   platform: string;
   is_connected: boolean;
@@ -716,25 +719,52 @@ export interface ZohoOAuthStatusResponse {
   auth_type?: string;
 }
 
-export async function getZohoAuthorizeUrl(clientId: string): Promise<ZohoOAuthAuthorizeUrlResponse> {
-  const res = await resilientFetch(`/api/v1/oauth/zoho/authorize-url?client_id=${encodeURIComponent(clientId)}`, {
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<ZohoOAuthAuthorizeUrlResponse>(res, 'Get Zoho OAuth Authorize URL');
+export type ZohoOAuthAuthorizeUrlResponse = AccountingOAuthAuthorizeUrlResponse;
+export type ZohoOAuthStatusResponse = AccountingOAuthStatusResponse;
+
+function normalizePlatformPrefix(platform: string): 'zoho' | 'quickbooks' | 'xero' {
+  if (platform.includes('quickbooks')) return 'quickbooks';
+  if (platform.includes('xero')) return 'xero';
+  return 'zoho';
 }
 
-export async function getZohoOAuthStatus(clientId: string): Promise<ZohoOAuthStatusResponse> {
-  const res = await resilientFetch(`/api/v1/oauth/zoho/status?client_id=${encodeURIComponent(clientId)}`, {
+export async function getAccountingOAuthAuthorizeUrl(
+  platform: string,
+  clientId: string
+): Promise<AccountingOAuthAuthorizeUrlResponse> {
+  const prefix = normalizePlatformPrefix(platform);
+  const res = await resilientFetch(`/api/v1/oauth/${prefix}/authorize-url?client_id=${encodeURIComponent(clientId)}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<ZohoOAuthStatusResponse>(res, 'Get Zoho OAuth Status');
+  return handleResponse<AccountingOAuthAuthorizeUrlResponse>(res, `Get ${platform} OAuth Authorize URL`);
 }
 
-export async function disconnectZohoOAuth(clientId: string): Promise<{ success: boolean; message: string }> {
-  const res = await resilientFetch(`/api/v1/oauth/zoho/disconnect?client_id=${encodeURIComponent(clientId)}`, {
+export async function getAccountingOAuthStatus(
+  platform: string,
+  clientId: string
+): Promise<AccountingOAuthStatusResponse> {
+  const prefix = normalizePlatformPrefix(platform);
+  const res = await resilientFetch(`/api/v1/oauth/${prefix}/status?client_id=${encodeURIComponent(clientId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<AccountingOAuthStatusResponse>(res, `Get ${platform} OAuth Status`);
+}
+
+export async function disconnectAccountingOAuth(
+  platform: string,
+  clientId: string
+): Promise<{ success: boolean; message: string }> {
+  const prefix = normalizePlatformPrefix(platform);
+  const res = await resilientFetch(`/api/v1/oauth/${prefix}/disconnect?client_id=${encodeURIComponent(clientId)}`, {
     method: 'POST',
     headers: getAuthHeaders(),
   });
-  return handleResponse<{ success: boolean; message: string }>(res, 'Disconnect Zoho OAuth');
+  return handleResponse<{ success: boolean; message: string }>(res, `Disconnect ${platform} OAuth`);
 }
+
+// Backwards-compatible aliases
+export const getZohoAuthorizeUrl = (clientId: string) => getAccountingOAuthAuthorizeUrl('zoho_books', clientId);
+export const getZohoOAuthStatus = (clientId: string) => getAccountingOAuthStatus('zoho_books', clientId);
+export const disconnectZohoOAuth = (clientId: string) => disconnectAccountingOAuth('zoho_books', clientId);
+
 

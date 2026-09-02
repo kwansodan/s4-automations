@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { fetchAccountingCatalog, getZohoAuthorizeUrl } from '../../lib/api';
+import { fetchAccountingCatalog, getAccountingOAuthAuthorizeUrl } from '../../lib/api';
 import type {
   IngestionPipeline,
   StarterRecipe,
@@ -453,11 +453,16 @@ export const ClientSetupWizardModal: React.FC = () => {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'ZOHO_OAUTH_SUCCESS' && event.data.orgId) {
+      if (
+        (event.data?.type === 'ZOHO_OAUTH_SUCCESS' ||
+          event.data?.type === 'QUICKBOOKS_OAUTH_SUCCESS' ||
+          event.data?.type === 'XERO_OAUTH_SUCCESS') &&
+        event.data.orgId
+      ) {
         setZohoOrgId(event.data.orgId);
         if (event.data.refreshToken) setZohoRefreshToken(event.data.refreshToken);
         if (event.data.orgName) setZohoOrgName(event.data.orgName);
-        addLog('success', `🎉 1-Click Connected to Zoho Books Org: ${event.data.orgName} (${event.data.orgId})`);
+        addLog('success', `🎉 1-Click Connected to ${event.data.orgName} (${event.data.orgId})`);
         handleFetchAccountingData();
       }
     };
@@ -468,12 +473,12 @@ export const ClientSetupWizardModal: React.FC = () => {
   const handleWizardLaunchOAuth = async () => {
     try {
       const clientSlug = (name.trim() || 'new_client').toLowerCase().replace(/[^a-z0-9]+/g, '_');
-      const { authorize_url } = await getZohoAuthorizeUrl(clientSlug);
+      const { authorize_url } = await getAccountingOAuthAuthorizeUrl(accountingSoftware, clientSlug);
       const width = 640;
       const height = 750;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
-      window.open(authorize_url, 'zoho_oauth_window', `width=${width},height=${height},top=${top},left=${left}`);
+      window.open(authorize_url, `${accountingSoftware}_oauth_window`, `width=${width},height=${height},top=${top},left=${left}`);
     } catch (err: any) {
       alert(`Could not launch OAuth: ${err.message}`);
     }
@@ -849,23 +854,23 @@ export const ClientSetupWizardModal: React.FC = () => {
 
                     return (
                       <>
-                        {accountingSoftware === 'zoho_books' && (
+                        {['zoho_books', 'quickbooks_online', 'xero'].includes(accountingSoftware) && (
                           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                                 <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>1-Click Multi-Tenant Authorization</span>
+                                <span>1-Click {sel?.name} Multi-Tenant Authorization</span>
                               </span>
                               {zohoOrgId ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
-                                  <span>🟢 Authorized (Org: {zohoOrgId})</span>
+                                  <span>🟢 Authorized (ID: {zohoOrgId})</span>
                                 </span>
                               ) : (
                                 <span className="text-[10px] text-slate-500 font-mono">Recommended</span>
                               )}
                             </div>
                             <p className="text-[11px] text-slate-400">
-                              Authorize S4 Automations directly with Zoho Books. No developer app setup or API Console configuration required.
+                              Authorize S4 Automations directly with {sel?.name}. No developer app setup or manual API credential configuration required.
                             </p>
                             <button
                               type="button"
@@ -873,7 +878,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2 px-3.5 rounded-lg shadow transition cursor-pointer"
                             >
                               <Zap className="w-3.5 h-3.5" />
-                              <span>{zohoOrgId ? 'Re-authorize with Zoho Books' : 'Connect with Zoho Books (1-Click OAuth)'}</span>
+                              <span>{zohoOrgId ? `Re-authorize with ${sel?.name}` : `Connect with ${sel?.name} (1-Click OAuth)`}</span>
                             </button>
                           </div>
                         )}

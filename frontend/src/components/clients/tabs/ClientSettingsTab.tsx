@@ -4,10 +4,10 @@ import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchClientConfig,
   saveClientConfig,
-  getZohoAuthorizeUrl,
-  getZohoOAuthStatus,
-  disconnectZohoOAuth,
-  type ZohoOAuthStatusResponse,
+  getAccountingOAuthAuthorizeUrl,
+  getAccountingOAuthStatus,
+  disconnectAccountingOAuth,
+  type AccountingOAuthStatusResponse,
 } from '../../../lib/api';
 import { ACCOUNTING_PLATFORMS } from '../../../types/client';
 import {
@@ -39,8 +39,11 @@ export const ClientSettingsTab: React.FC = () => {
   const [configSaveSuccess, setConfigSaveSuccess] = useState(false);
   const [isDeletingOrg, setIsDeletingOrg] = useState(false);
 
+  const activePlatform = (currentClient.accounting_software || 'zoho_books') as 'zoho_books' | 'quickbooks_online' | 'xero';
+  const platformMeta = ACCOUNTING_PLATFORMS.find((p) => p.id === activePlatform) || ACCOUNTING_PLATFORMS[0];
+
   // 1-Click OAuth State
-  const [oauthStatus, setOauthStatus] = useState<ZohoOAuthStatusResponse | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<AccountingOAuthStatusResponse | null>(null);
   const [isLoadingOAuth, setIsLoadingOAuth] = useState(false);
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
   const [isAdvancedOAuthOpen, setIsAdvancedOAuthOpen] = useState(false);
@@ -63,10 +66,10 @@ export const ClientSettingsTab: React.FC = () => {
   const loadOAuthStatus = async () => {
     setIsLoadingOAuth(true);
     try {
-      const res = await getZohoOAuthStatus(currentClient.id);
+      const res = await getAccountingOAuthStatus(activePlatform, currentClient.id);
       setOauthStatus(res);
     } catch (err) {
-      console.warn('Could not load OAuth status:', err);
+      console.warn(`Could not load ${activePlatform} OAuth status:`, err);
     } finally {
       setIsLoadingOAuth(false);
     }
@@ -97,12 +100,16 @@ export const ClientSettingsTab: React.FC = () => {
   useEffect(() => {
     loadConfig();
     loadOAuthStatus();
-  }, [currentClient.id]);
+  }, [currentClient.id, activePlatform]);
 
-  // Listen for popup success message
+  // Listen for popup success message across platforms
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'ZOHO_OAUTH_SUCCESS') {
+      if (
+        event.data?.type === 'ZOHO_OAUTH_SUCCESS' ||
+        event.data?.type === 'QUICKBOOKS_OAUTH_SUCCESS' ||
+        event.data?.type === 'XERO_OAUTH_SUCCESS'
+      ) {
         addLog('success', `🎉 1-Click OAuth Connected: ${event.data.orgName} (${event.data.orgId})`);
         loadOAuthStatus();
         loadConfig();
@@ -110,13 +117,13 @@ export const ClientSettingsTab: React.FC = () => {
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [currentClient.id]);
+  }, [currentClient.id, activePlatform]);
 
   const handleLaunchOAuth = async () => {
     setIsConnectingOAuth(true);
     try {
-      addLog('info', `[OAUTH] Requesting 1-Click Zoho Books authorization URL for ${currentClient.name}...`);
-      const { authorize_url } = await getZohoAuthorizeUrl(currentClient.id);
+      addLog('info', `[OAUTH] Requesting 1-Click ${platformMeta.name} authorization URL for ${currentClient.name}...`);
+      const { authorize_url } = await getAccountingOAuthAuthorizeUrl(activePlatform, currentClient.id);
       
       const width = 640;
       const height = 750;
@@ -125,11 +132,11 @@ export const ClientSettingsTab: React.FC = () => {
 
       window.open(
         authorize_url,
-        'zoho_oauth_window',
+        `${activePlatform}_oauth_window`,
         `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,toolbar=no`
       );
     } catch (err: any) {
-      addLog('error', `Failed to initiate Zoho OAuth: ${err.message}`);
+      addLog('error', `Failed to initiate ${platformMeta.name} OAuth: ${err.message}`);
       alert(`Could not launch OAuth: ${err.message}`);
     } finally {
       setIsConnectingOAuth(false);
@@ -137,12 +144,12 @@ export const ClientSettingsTab: React.FC = () => {
   };
 
   const handleDisconnectOAuth = async () => {
-    if (!confirm(`Are you sure you want to disconnect Zoho Books for ${currentClient.name}?`)) {
+    if (!confirm(`Are you sure you want to disconnect ${platformMeta.name} for ${currentClient.name}?`)) {
       return;
     }
     try {
-      await disconnectZohoOAuth(currentClient.id);
-      addLog('info', `Disconnected Zoho Books integration for ${currentClient.name}.`);
+      await disconnectAccountingOAuth(activePlatform, currentClient.id);
+      addLog('info', `Disconnected ${platformMeta.name} integration for ${currentClient.name}.`);
       await loadOAuthStatus();
       await loadConfig();
     } catch (err: any) {
@@ -314,7 +321,7 @@ export const ClientSettingsTab: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                 <Database className="w-4 h-4" />
-                <span>2. Accounting Platform (Zoho Books)</span>
+                <span>2. Accounting Platform ({platformMeta.name})</span>
               </div>
               {oauthStatus?.is_connected ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
@@ -336,11 +343,11 @@ export const ClientSettingsTab: React.FC = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>🟢</span>
+                        <span>{platformMeta.icon || '🟢'}</span>
                         <span>{oauthStatus.org_name || currentClient.name}</span>
                       </p>
                       <p className="text-[10px] font-mono text-sky-400 mt-0.5">
-                        Org ID: {oauthStatus.org_id || clientConfig.zoho_org_id || 'Auto-Detected'}
+                        ID: {oauthStatus.org_id || clientConfig.zoho_org_id || 'Auto-Detected'}
                       </p>
                       {oauthStatus.connected_at && (
                         <p className="text-[10px] text-slate-500 mt-0.5">
@@ -355,7 +362,7 @@ export const ClientSettingsTab: React.FC = () => {
                         onClick={handleLaunchOAuth}
                         disabled={isConnectingOAuth}
                         className="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-lg border border-slate-700 transition cursor-pointer flex items-center gap-1"
-                        title="Re-authenticate with Zoho Books"
+                        title={`Re-authenticate with ${platformMeta.name}`}
                       >
                         <RefreshCw className={`w-3 h-3 ${isConnectingOAuth ? 'animate-spin' : ''}`} />
                         <span>Re-auth</span>
@@ -373,7 +380,7 @@ export const ClientSettingsTab: React.FC = () => {
               ) : (
                 <div className="space-y-2.5">
                   <p className="text-xs text-slate-300">
-                    Connect this client to their Zoho Books organization in 1-Click. No developer app setup or grant code copying required.
+                    Connect this client to their {platformMeta.name} account in 1-Click. No developer app setup or API keys required.
                   </p>
                   
                   <button
@@ -383,7 +390,7 @@ export const ClientSettingsTab: React.FC = () => {
                     className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer disabled:opacity-50"
                   >
                     <Zap className={`w-4 h-4 text-emerald-200 ${isConnectingOAuth ? 'animate-bounce' : ''}`} />
-                    <span>{isConnectingOAuth ? 'Launching Zoho Consent...' : 'Connect with Zoho Books (1-Click)'}</span>
+                    <span>{isConnectingOAuth ? `Launching ${platformMeta.name} Consent...` : `Connect with ${platformMeta.name} (1-Click)`}</span>
                     <ExternalLink className="w-3.5 h-3.5 opacity-70" />
                   </button>
                 </div>

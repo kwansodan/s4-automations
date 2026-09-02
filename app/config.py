@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     ZOHO_BOOKS_API_URL: str = Field(default="https://www.zohoapis.com/books/v3", description="Zoho Books API Base URL")
     ZOHO_REDIRECT_URI: Optional[str] = Field(default=None, description="Zoho OAuth2 Callback Redirect URI")
 
+    # QuickBooks Online (Intuit) OAuth Credentials
+    QUICKBOOKS_CLIENT_ID: Optional[str] = Field(default=None, description="QuickBooks OAuth2 Client ID")
+    QUICKBOOKS_CLIENT_SECRET: Optional[str] = Field(default=None, description="QuickBooks OAuth2 Client Secret")
+    QUICKBOOKS_REDIRECT_URI: Optional[str] = Field(default=None, description="QuickBooks OAuth2 Redirect URI")
+    QUICKBOOKS_ENVIRONMENT: str = Field(default="sandbox", description="QuickBooks environment: sandbox or production")
+
+    # Xero OAuth Credentials
+    XERO_CLIENT_ID: Optional[str] = Field(default=None, description="Xero OAuth2 Client ID")
+    XERO_CLIENT_SECRET: Optional[str] = Field(default=None, description="Xero OAuth2 Client Secret")
+    XERO_REDIRECT_URI: Optional[str] = Field(default=None, description="Xero OAuth2 Redirect URI")
+
     # Google Workspace (Drive & Sheets)
     CONTROL_SHEETS_FOLDER_ID: str = Field(default="", description="Google Drive root folder ID for control sheets")
     GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: Optional[str] = Field(default=None, description="Base64-encoded Service Account JSON")
