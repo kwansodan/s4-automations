@@ -61,7 +61,9 @@ def run_schema_migrations(active_engine: Engine):
     Safely and idempotently adds missing columns to existing tables for PostgreSQL and SQLite.
     Inspects existing columns first to avoid aborted transactions on PostgreSQL.
     Executes each statement in its own isolated connection with explicit rollback on error.
+    Combines explicit curated column definitions with dynamic SQLModel reflection fallback.
     """
+    import app.models.db_models  # Ensure all SQLModel schemas are registered
     from sqlalchemy import inspect, text
 
     is_postgres = active_engine.dialect.name == "postgresql"
@@ -71,6 +73,12 @@ def run_schema_migrations(active_engine: Engine):
     columns_to_ensure = [
         # clients table
         ("clients", "accounting_software", "VARCHAR DEFAULT 'zoho_books'"),
+        ("clients", "folder_id", "VARCHAR"),
+        ("clients", "zoho_org_id", "VARCHAR"),
+        ("clients", "zoho_contact_id", "VARCHAR"),
+        ("clients", "source_type", "VARCHAR DEFAULT 'google_drive'"),
+        ("clients", "status_text", "VARCHAR DEFAULT 'In Development'"),
+        ("clients", "icon", "VARCHAR DEFAULT '🏢'"),
         ("clients", "pipelines", f"{json_type} DEFAULT '[]'"),
         ("clients", "team_members", f"{json_type} DEFAULT '[]'"),
         ("clients", "watched_accounts", f"{json_type} DEFAULT '[\"6990\", \"850\", \"suspense\", \"uncategorized\"]'"),
@@ -81,19 +89,22 @@ def run_schema_migrations(active_engine: Engine):
         ("clients", "stats_summary", f"{json_type} DEFAULT '{{}}'"),
         ("clients", "source_email", "VARCHAR"),
         ("clients", "last_run_at", ts_type),
+        ("clients", "updated_at", f"{ts_type} DEFAULT CURRENT_TIMESTAMP"),
 
         # staged_transactions table
         ("staged_transactions", "pipeline_id", "VARCHAR"),
         ("staged_transactions", "pipeline_name", "VARCHAR"),
         ("staged_transactions", "entity_type", "VARCHAR DEFAULT 'ar_sales_invoice'"),
         ("staged_transactions", "pipeline_type", "VARCHAR DEFAULT 'AR'"),
+        ("staged_transactions", "confidence_score", "FLOAT DEFAULT 1.0"),
+        ("staged_transactions", "discrepancy_amount", "FLOAT DEFAULT 0.0"),
+        ("staged_transactions", "discrepancy_reason", "VARCHAR"),
         ("staged_transactions", "validation_status", "VARCHAR DEFAULT 'VALID'"),
         ("staged_transactions", "validation_errors", f"{json_type} DEFAULT '[]'"),
         ("staged_transactions", "checksum", "VARCHAR"),
         ("staged_transactions", "source_identifier", "VARCHAR"),
         ("staged_transactions", "category_or_account", "VARCHAR"),
         ("staged_transactions", "accounting_ref_id", "VARCHAR"),
-        ("staged_transactions", "discrepancy_reason", "VARCHAR"),
         ("staged_transactions", "metadata_json", f"{json_type} DEFAULT '{{}}'"),
 
         # bank_transactions table
@@ -112,6 +123,16 @@ def run_schema_migrations(active_engine: Engine):
         ("bank_transactions", "response_date", ts_type),
         ("bank_transactions", "source_platform", "VARCHAR DEFAULT 'bank_feed'"),
         ("bank_transactions", "metadata_json", f"{json_type} DEFAULT '{{}}'"),
+        ("bank_transactions", "updated_at", f"{ts_type} DEFAULT CURRENT_TIMESTAMP"),
+
+        # auth_otps table
+        ("auth_otps", "is_verified", "BOOLEAN DEFAULT FALSE"),
+        ("auth_otps", "attempts", "INTEGER DEFAULT 0"),
+
+        # audit_logs table
+        ("audit_logs", "actor_email", "VARCHAR DEFAULT 'system'"),
+        ("audit_logs", "source_type", "VARCHAR DEFAULT 'system'"),
+        ("audit_logs", "source_identifier", "VARCHAR"),
     ]
 
     try:
@@ -121,6 +142,7 @@ def run_schema_migrations(active_engine: Engine):
         logger.warning(f"Failed to inspect database tables: {e}")
         existing_tables = set()
 
+    # Step 1: Explicit curated column migration
     for table_name, column_name, col_def in columns_to_ensure:
         if table_name not in existing_tables:
             continue
@@ -153,6 +175,44 @@ def run_schema_migrations(active_engine: Engine):
                         logger.warning(f"Notice on adding column '{column_name}' to '{table_name}': {ex}")
         except Exception as conn_err:
             logger.warning(f"Connection error while migrating '{table_name}.{column_name}': {conn_err}")
+
+    # Step 2: Dynamic reflection fallback across all registered SQLModel tables
+    for table_name, table in SQLModel.metadata.tables.items():
+        if table_name not in existing_tables:
+            continue
+
+        try:
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+
+        for col in table.columns:
+            if col.name in existing_cols:
+                continue
+
+            try:
+                col_type = col.type.compile(dialect=active_engine.dialect)
+            except Exception:
+                col_type = "VARCHAR"
+
+            logger.info(f"Dynamic schema migration: Detected unmigrated column '{col.name}' ({col_type}) on table '{table_name}'...")
+            if is_postgres:
+                stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col.name} {col_type}"
+            else:
+                stmt = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"
+
+            try:
+                with active_engine.connect() as conn:
+                    try:
+                        conn.execute(text(stmt))
+                        conn.commit()
+                        logger.info(f"Successfully dynamically added column '{col.name}' to '{table_name}'.")
+                    except Exception as ex:
+                        conn.rollback()
+                        if "already exists" not in str(ex).lower():
+                            logger.warning(f"Notice on dynamically adding column '{col.name}' to '{table_name}': {ex}")
+            except Exception as conn_err:
+                logger.warning(f"Connection error while dynamically adding '{table_name}.{col.name}': {conn_err}")
 
 
 def init_db():
