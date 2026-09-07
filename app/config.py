@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     XERO_REDIRECT_URI: Optional[str] = Field(default=None, description="Xero OAuth2 Redirect URI")
 
     # Google Workspace (Drive & Sheets)
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: str = Field(
+        default="s4-vision-ingest@s4-automations.iam.gserviceaccount.com",
+        description="Google Cloud Service Account email used for Google Drive folder sharing",
+    )
     CONTROL_SHEETS_FOLDER_ID: str = Field(default="", description="Google Drive root folder ID for control sheets")
     GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: Optional[str] = Field(default=None, description="Base64-encoded Service Account JSON")
     GOOGLE_SERVICE_ACCOUNT_FILE: Optional[str] = Field(default=None, description="Path to Service Account JSON key file")
@@ -102,6 +106,7 @@ class Settings(BaseSettings):
             "ZOHO_ORG_ID": self.ZOHO_ORG_ID,
             "ZOHO_ACCOUNTS_URL": self.ZOHO_ACCOUNTS_URL,
             "ZOHO_BOOKS_API_URL": self.ZOHO_BOOKS_API_URL,
+            "GOOGLE_SERVICE_ACCOUNT_EMAIL": self.GOOGLE_SERVICE_ACCOUNT_EMAIL,
             "CONTROL_SHEETS_FOLDER_ID": self.CONTROL_SHEETS_FOLDER_ID,
             "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64": mask(self.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 or ""),
             "GOOGLE_SERVICE_ACCOUNT_FILE": self.GOOGLE_SERVICE_ACCOUNT_FILE or "",
@@ -150,6 +155,7 @@ class Settings(BaseSettings):
             f"ZOHO_ACCOUNTS_URL={self.ZOHO_ACCOUNTS_URL}",
             f"ZOHO_BOOKS_API_URL={self.ZOHO_BOOKS_API_URL}",
             "",
+            f"GOOGLE_SERVICE_ACCOUNT_EMAIL={self.GOOGLE_SERVICE_ACCOUNT_EMAIL}",
             f"CONTROL_SHEETS_FOLDER_ID={self.CONTROL_SHEETS_FOLDER_ID}",
             f"GOOGLE_SERVICE_ACCOUNT_JSON_BASE64={self.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 or ''}",
             f"GOOGLE_SERVICE_ACCOUNT_FILE={self.GOOGLE_SERVICE_ACCOUNT_FILE or ''}",

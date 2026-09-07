@@ -108,7 +108,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   initialPipeline,
   targetAccountingSoftware = 'zoho_books',
 }) => {
-  const { addLog } = useAutomation();
+  const { addLog, config } = useAutomation();
+  const serviceAccountEmail = config?.GOOGLE_SERVICE_ACCOUNT_EMAIL || SERVICE_ACCOUNT_EMAIL;
 
   const [step, setStep] = useState<number>(1);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -706,10 +707,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       Share your client's target Google Drive folder with the Service Account email below as <strong>Viewer</strong> or <strong>Editor</strong>:
                     </p>
                     <div className="p-2 bg-slate-900 border border-slate-700 rounded font-mono text-[11px] text-sky-300 flex items-center justify-between">
-                      <span className="truncate">{SERVICE_ACCOUNT_EMAIL}</span>
+                      <span className="truncate">{serviceAccountEmail}</span>
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(SERVICE_ACCOUNT_EMAIL, 'sa_email')}
+                        onClick={() => copyToClipboard(serviceAccountEmail, 'sa_email')}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] px-2 py-0.5 rounded cursor-pointer ml-2"
                       >
                         {copiedKey === 'sa_email' ? 'Copied' : 'Copy'}

@@ -10,6 +10,7 @@ export interface SystemConfig {
   ZOHO_ACCOUNTS_URL?: string;
   ZOHO_BOOKS_API_URL?: string;
   CONTROL_SHEETS_FOLDER_ID?: string;
+  GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;
   GOOGLE_SERVICE_ACCOUNT_FILE?: string;
   GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?: string;
   NOTIFICATION_EMAIL?: string;

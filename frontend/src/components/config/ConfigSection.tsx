@@ -42,6 +42,7 @@ export const ConfigSection: React.FC = () => {
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showMailjetSecret, setShowMailjetSecret] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [showSaKey, setShowSaKey] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -681,6 +682,67 @@ export const ConfigSection: React.FC = () => {
                 <span className="text-[11px] text-slate-500 mt-1 block">
                   Supports PostgreSQL URL (e.g. <code className="text-sky-300">postgresql://user:pass@host:5432/db</code>) or local SQLite fallback.
                 </span>
+              </div>
+
+              {/* Google Workspace & Cloud Service Account */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3 mt-4">
+                <div className="border-b border-slate-850 pb-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-bold text-white">Google Cloud Platform Service Account (Drive &amp; Sheets)</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-semibold">
+                    Centralized Platform Identity
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  All onboarded clients share their Google Drive folders with this central Service Account email as <strong>Viewer</strong> or <strong>Editor</strong>. Clients do <em>not</em> receive or require separate GCP service accounts.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Service Account Email (Shared with Client Folders)
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.GOOGLE_SERVICE_ACCOUNT_EMAIL || 's4-vision-ingest@s4-automations.iam.gserviceaccount.com'}
+                      onChange={(e) => handleChange('GOOGLE_SERVICE_ACCOUNT_EMAIL', e.target.value)}
+                      placeholder="s4-vision-ingest@s4-automations.iam.gserviceaccount.com"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      The IAM service account email provided to clients during onboarding and stream configuration.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Service Account Private Key (JSON / Base64)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSaKey ? 'text' : 'password'}
+                        value={formData.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || ''}
+                        onChange={(e) => handleChange('GOOGLE_SERVICE_ACCOUNT_JSON_BASE64', e.target.value)}
+                        placeholder="Paste GCP Service Account JSON or Base64"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSaKey(!showSaKey)}
+                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                        title={showSaKey ? 'Hide key' : 'Show key'}
+                      >
+                        {showSaKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Downloaded from GCP Console &gt; IAM &amp; Admin &gt; Service Accounts &gt; Keys.
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
