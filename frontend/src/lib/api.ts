@@ -317,17 +317,10 @@ export async function fetchHealth(): Promise<{ status: string; service: string; 
   return handleResponse<{ status: string; service: string; mock_mode: boolean }>(res, 'Health check');
 }
 
-export async function fetchPipelineStats(): Promise<DashboardStats> {
-  let res = await resilientFetch('/api/pipeline/stats', {
-    headers: getAuthHeaders(),
-  });
-  if (res.status === 404) {
-    res = await resilientFetch('/api/config/stats', {
-      headers: getAuthHeaders(),
-    });
-  }
-  return handleResponse<DashboardStats>(res, 'Fetch pipeline stats');
+export async function fetchPipelineStats(month?: string, year?: number): Promise<DashboardStats> {
+  return fetchStats(month, year);
 }
+
 
 export async function fetchPipelineProgress(): Promise<PipelineProgress> {
   let res = await resilientFetch('/api/pipeline/progress', {
@@ -587,11 +580,17 @@ export async function fetchAuditLogs(limit = 50, clientId?: string): Promise<any
 
 export async function fetchStats(month?: string, year?: number): Promise<DashboardStats> {
   const query = month && year ? `?month=${month}&year=${year}` : '';
-  const res = await resilientFetch(`/api/pipeline/stats${query}`, {
+  let res = await resilientFetch(`/api/pipeline/stats${query}`, {
     headers: getAuthHeaders(),
   });
+  if (res.status === 404) {
+    res = await resilientFetch(`/api/config/stats${query}`, {
+      headers: getAuthHeaders(),
+    });
+  }
   return handleResponse<DashboardStats>(res, 'Fetch stats');
 }
+
 
 export async function fetchConfig(): Promise<{ status: string; config: any }> {
   const res = await resilientFetch('/api/config', {
