@@ -4,7 +4,11 @@ import { useErrors } from '../../context/ErrorContext';
 import { RefreshCw, CheckCircle2, AlertCircle, PlayCircle, BarChart3, Terminal } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
-export const ProgressTracker: React.FC = () => {
+interface ProgressTrackerProps {
+  showRunButton?: boolean;
+}
+
+export const ProgressTracker: React.FC<ProgressTrackerProps> = ({ showRunButton = true }) => {
   const { pipelineProgress, selectedMonth, selectedYear, setIsPipelineModalOpen } = useAutomation();
   const { openDebugDrawer } = useErrors();
 
@@ -18,45 +22,47 @@ export const ProgressTracker: React.FC = () => {
   const stats = pipelineProgress?.stats;
 
   return (
-    <div className={`bg-slate-900/90 border rounded-2xl p-6 shadow-xl backdrop-blur-xl transition-all ${
+    <div className={`bg-slate-900/80 border rounded-2xl p-5 shadow-lg backdrop-blur-xl transition-all ${
       isError ? 'border-red-500/40 shadow-[0_0_25px_rgba(239,68,68,0.15)]' : 'border-slate-800'
     }`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-white tracking-tight">
+            <h2 className="text-sm font-bold text-white tracking-tight">
               Daily Vision Ingestion Pipeline
             </h2>
             {isRunning ? (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-sky-400 bg-sky-950/80 border border-sky-500/40 px-2.5 py-0.5 rounded-full animate-pulse">
-                <RefreshCw className="w-3 h-3 animate-spin" />
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-sky-400 bg-sky-950/80 border border-sky-500/40 px-2 py-0.5 rounded-full animate-pulse">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin" />
                 <span>Active Execution</span>
               </span>
             ) : isError ? (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2.5 py-0.5 rounded-full animate-pulse">
-                <AlertCircle className="w-3 h-3 text-rose-400" />
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2 py-0.5 rounded-full animate-pulse">
+                <AlertCircle className="w-2.5 h-2.5 text-rose-400" />
                 <span>Execution Failed</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                <CheckCircle2 className="w-3 h-3" />
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                <CheckCircle2 className="w-2.5 h-2.5" />
                 <span>Ready</span>
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Automated Gemini 3.6 Flash extraction from Google Drive slips into Google Sheets review tables.
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Automated Gemini Flash OCR extraction from Google Drive into review sheets.
           </p>
         </div>
 
-        <button
-          onClick={() => setIsPipelineModalOpen(true)}
-          disabled={isRunning}
-          className="flex items-center justify-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:from-sky-700 active:to-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-sky-600/25 transition-all disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          <PlayCircle className="w-4 h-4" />
-          <span>Run Pipeline for {selectedMonth} {selectedYear}</span>
-        </button>
+        {showRunButton && (
+          <button
+            onClick={() => setIsPipelineModalOpen(true)}
+            disabled={isRunning}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:from-sky-700 active:to-indigo-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-sky-600/25 transition-all disabled:opacity-50 cursor-pointer shrink-0"
+          >
+            <PlayCircle className="w-3.5 h-3.5" />
+            <span>Run Pipeline ({selectedMonth} {selectedYear})</span>
+          </button>
+        )}
       </div>
 
       {/* Error Alert Box if pipeline failed */}

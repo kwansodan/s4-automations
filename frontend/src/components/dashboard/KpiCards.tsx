@@ -1,10 +1,10 @@
 import React from 'react';
 import { useAutomation } from '../../context/AutomationContext';
-import { FileText, AlertTriangle, CheckCircle, Clock, Building2 } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle, Clock, ArrowUpRight } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
 export const KpiCards: React.FC = () => {
-  const { stats, selectedMonth, selectedYear } = useAutomation();
+  const { stats, selectedMonth, selectedYear, navigateToClientSubTab } = useAutomation();
 
   const totalSlips = stats?.total_slips_ingested ?? 2;
   const linenLoss = stats?.unreturned_linen_loss_count ?? 3;
@@ -12,67 +12,89 @@ export const KpiCards: React.FC = () => {
   const pendingCount = stats?.pending_approval_count ?? 1;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
       {/* 1. Total Slips Ingested */}
-      <div className="bg-slate-900/80 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-5 shadow-lg backdrop-blur-xl transition-all hover:shadow-sky-500/5 group">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-slate-400">Daily Slips Ingested</span>
-          <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
-            <FileText className="w-4 h-4" />
+      <div
+        onClick={() => navigateToClientSubTab('ar')}
+        className="bg-slate-900/70 hover:bg-slate-900 border border-slate-800/90 hover:border-sky-500/50 rounded-xl p-4 shadow-sm backdrop-blur-xl transition-all cursor-pointer group"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-400">Slips Ingested</span>
+          <div className="flex items-center gap-1">
+            <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+              <FileText className="w-3.5 h-3.5" />
+            </div>
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
           </div>
         </div>
-        <div className="text-2xl font-extrabold text-white tracking-tight">{totalSlips}</div>
-        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-          <span>Vision OCR extracted for</span>
-          <strong className="text-sky-400 font-semibold">{selectedMonth} {selectedYear}</strong>
+        <div className="text-2xl font-bold text-white tracking-tight">{totalSlips}</div>
+        <div className="text-[11px] text-slate-400 mt-1 truncate">
+          <span>OCR extracted • </span>
+          <span className="text-sky-400 font-medium">{selectedMonth} {selectedYear}</span>
         </div>
       </div>
 
       {/* 2. Unreturned Linen Loss Count */}
-      <div className="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-5 shadow-lg backdrop-blur-xl transition-all hover:shadow-amber-500/5 group">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-slate-400">Linen Loss Discrepancies</span>
-          <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-            <AlertTriangle className="w-4 h-4" />
+      <div
+        onClick={() => navigateToClientSubTab('ar')}
+        className="bg-slate-900/70 hover:bg-slate-900 border border-slate-800/90 hover:border-amber-500/50 rounded-xl p-4 shadow-sm backdrop-blur-xl transition-all cursor-pointer group"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-400">Linen Discrepancies</span>
+          <div className="flex items-center gap-1">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+              <AlertTriangle className="w-3.5 h-3.5" />
+            </div>
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all" />
           </div>
         </div>
-        <div className="text-2xl font-extrabold text-amber-400 tracking-tight">{linenLoss}</div>
-        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-          <span>Pickup &gt; Delivery items flagged for audit</span>
+        <div className="text-2xl font-bold text-amber-400 tracking-tight">{linenLoss}</div>
+        <div className="text-[11px] text-slate-400 mt-1 truncate">
+          <span>Pickup &gt; Delivery flagged for audit</span>
         </div>
       </div>
 
       {/* 3. Approved Billing Total */}
-      <div className="bg-slate-900/80 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg backdrop-blur-xl transition-all hover:shadow-emerald-500/5 group">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-slate-400">Approved Billing Amount</span>
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-            <CheckCircle className="w-4 h-4" />
+      <div
+        onClick={() => navigateToClientSubTab('ar')}
+        className="bg-slate-900/70 hover:bg-slate-900 border border-slate-800/90 hover:border-emerald-500/50 rounded-xl p-4 shadow-sm backdrop-blur-xl transition-all cursor-pointer group"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-400">Approved Billing</span>
+          <div className="flex items-center gap-1">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+              <CheckCircle className="w-3.5 h-3.5" />
+            </div>
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-all" />
           </div>
         </div>
-        <div className="text-2xl font-extrabold text-emerald-400 tracking-tight font-mono">
+        <div className="text-2xl font-bold text-emerald-400 tracking-tight font-mono">
           {formatCurrency(approvedTotal)}
         </div>
-        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-          <span>Ready for 1-click accounting invoice export</span>
+        <div className="text-[11px] text-slate-400 mt-1 truncate">
+          <span>Ready for 1-click invoice export</span>
         </div>
       </div>
 
       {/* 4. Pending Review Rows */}
-      <div className="bg-slate-900/80 border border-slate-800 hover:border-indigo-500/40 rounded-2xl p-5 shadow-lg backdrop-blur-xl transition-all hover:shadow-indigo-500/5 group">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-slate-400">Pending Review Line Items</span>
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
-            <Clock className="w-4 h-4" />
+      <div
+        onClick={() => navigateToClientSubTab('ar')}
+        className="bg-slate-900/70 hover:bg-slate-900 border border-slate-800/90 hover:border-indigo-500/50 rounded-xl p-4 shadow-sm backdrop-blur-xl transition-all cursor-pointer group"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-400">Pending Review Items</span>
+          <div className="flex items-center gap-1">
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
+              <Clock className="w-3.5 h-3.5" />
+            </div>
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all" />
           </div>
         </div>
-        <div className="text-2xl font-extrabold text-indigo-300 tracking-tight">{pendingCount}</div>
-        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-          <span>Awaiting bookkeeper sign-off in Tab 2</span>
+        <div className="text-2xl font-bold text-indigo-300 tracking-tight">{pendingCount}</div>
+        <div className="text-[11px] text-slate-400 mt-1 truncate">
+          <span>Awaiting bookkeeper sign-off</span>
         </div>
       </div>
-
     </div>
   );
 };

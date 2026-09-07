@@ -4,25 +4,27 @@ import { useAutomation } from '../../../context/AutomationContext';
 import { KpiCards } from '../../dashboard/KpiCards';
 import { ProgressTracker } from '../../dashboard/ProgressTracker';
 import { runClientStrategy, testClientIngestion, triggerClientPipeline } from '../../../lib/api';
+import { ACCOUNTING_PLATFORMS } from '../../../types/client';
 import {
   PlayCircle,
   RefreshCw,
-  Sparkles,
   CheckCircle2,
   AlertTriangle,
   Layers,
   ArrowRight,
-  Receipt,
-  DollarSign,
-  Landmark,
-  ShieldCheck,
   Settings2,
   Clock,
   ExternalLink,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Sparkles,
+  HardDrive,
 } from 'lucide-react';
 
 export const ClientOverviewTab: React.FC = () => {
-  const { currentClient, setIsWizardOpen } = useClient();
+  const { currentClient } = useClient();
   const { addLog, selectedMonth, selectedYear, navigateToClientSubTab } = useAutomation();
 
   const [isRunning, setIsRunning] = useState(false);
@@ -30,6 +32,11 @@ export const ClientOverviewTab: React.FC = () => {
   const [isProbing, setIsProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<any | null>(null);
   const [triggeringPipeId, setTriggeringPipeId] = useState<string | null>(null);
+  const [showBlueprint, setShowBlueprint] = useState(false);
+
+  const currentPlatform =
+    ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient.accounting_software) ||
+    ACCOUNTING_PLATFORMS[0];
 
   const handleSimulateRun = async () => {
     setIsRunning(true);
@@ -83,35 +90,41 @@ export const ClientOverviewTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-5 animate-in fade-in duration-200">
       
-      {/* Action Trigger Toolbar Banner */}
-      <div className="glass-panel rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-800">
-        <div>
-          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Automation Operations</span>
-            <span className="text-[11px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
-              {selectedMonth} {selectedYear}
-            </span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Real-time multi-stream orchestration across Google Drive, Email Inbound, and Accounting API sync.
-          </p>
+      {/* 1. Streamlined Action & Status Header */}
+      <div className="glass-panel rounded-2xl px-5 py-4 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-800/90">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Operational Monitor</span>
+          </span>
+          <span className="text-[11px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2.5 py-0.5 rounded-full">
+            {selectedMonth} {selectedYear}
+          </span>
+          <span className="text-[11px] text-slate-400 hidden md:inline">
+            • Live multi-stream ingestion &amp; Zoho Books sync
+          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setIsWizardOpen(true)}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
+            onClick={() => setShowBlueprint((prev) => !prev)}
+            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+              showBlueprint
+                ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
+                : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+            }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-            <span>Setup Checklist</span>
+            <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+            <span>Blueprint</span>
+            {showBlueprint ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
           </button>
 
           <button
             onClick={handleTestProbe}
             disabled={isProbing}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isProbing ? 'animate-spin text-sky-400' : ''}`} />
             <span>{isProbing ? 'Probing...' : 'Test Ingestion'}</span>
@@ -120,48 +133,56 @@ export const ClientOverviewTab: React.FC = () => {
           <button
             onClick={handleSimulateRun}
             disabled={isRunning}
-            className="flex items-center gap-2 bg-gradient-to-r from-sky-500 via-indigo-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-md shadow-sky-500/20 transition cursor-pointer disabled:opacity-50"
           >
             {isRunning ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Running Pipeline...</span>
+                <span>Running...</span>
               </>
             ) : (
               <>
                 <PlayCircle className="w-3.5 h-3.5" />
-                <span>Run Ingestion Pipeline</span>
+                <span>Run Ingestion</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Ingestion Probe Result Banner */}
+      {/* 2. Dismissible Ingestion Probe Result Banner */}
       {probeResult && (
         <div
-          className={`p-4 rounded-xl border flex items-start gap-3 text-xs shadow-lg ${
+          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs shadow-md animate-in fade-in ${
             probeResult.success
-              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-              : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+              ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+              : 'bg-rose-950/70 border-rose-500/40 text-rose-300'
           }`}
         >
-          {probeResult.success ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-          )}
-          <div className="flex-1">
-            <span className="font-bold uppercase tracking-wider">{probeResult.status || (probeResult.success ? 'CONNECTED' : 'FAILED')}: </span>
-            <span>{probeResult.message}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {probeResult.success ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            )}
+            <span className="truncate">
+              <strong className="uppercase">{probeResult.status || (probeResult.success ? 'CONNECTED' : 'FAILED')}:</strong>{' '}
+              {probeResult.message}
+            </span>
           </div>
+          <button
+            onClick={() => setProbeResult(null)}
+            className="text-slate-400 hover:text-white p-1 rounded transition cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
-      {/* Execution Result Banner */}
+      {/* 3. Dismissible Execution Result Summary */}
       {executionResult && (
         <div
-          className={`p-4 rounded-2xl border shadow-xl ${
+          className={`p-4 rounded-xl border shadow-lg animate-in fade-in ${
             executionResult.status === 'COMPLETED'
               ? 'bg-sky-950/70 border-sky-500/40 text-sky-200'
               : 'bg-rose-950/70 border-rose-500/40 text-rose-200'
@@ -170,292 +191,275 @@ export const ClientOverviewTab: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {executionResult.status === 'COMPLETED' ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               ) : (
-                <AlertTriangle className="w-5 h-5 text-rose-400" />
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
               )}
-              <span className="font-bold text-white text-sm">
+              <span className="font-bold text-white text-xs">
                 {executionResult.status === 'COMPLETED' ? 'Ingestion Pipeline Executed' : 'Execution Notice'}
               </span>
+              <span className="text-[10px] font-mono text-slate-400">
+                ({executionResult.month} {executionResult.year})
+              </span>
             </div>
-            <span className="text-xs font-mono text-slate-400">
-              {executionResult.month} {executionResult.year}
-            </span>
+            <button
+              onClick={() => setExecutionResult(null)}
+              className="text-slate-400 hover:text-white p-1 rounded transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
           <p className="text-xs text-slate-300 mt-1">{executionResult.message}</p>
 
           {executionResult.status === 'COMPLETED' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-sky-900/60 text-xs">
-              <div className="bg-slate-950/60 p-2.5 rounded-xl border border-sky-500/10">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Sources Discovered</span>
-                <span className="font-bold text-white text-sm">{executionResult.sources_discovered || 1} Doc(s)</span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-3 pt-3 border-t border-sky-900/60 text-xs">
+              <div className="bg-slate-950/60 px-3 py-2 rounded-lg border border-sky-500/10">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Sources</span>
+                <span className="font-bold text-white text-xs">{executionResult.sources_discovered || 1} Document(s)</span>
               </div>
-              <div className="bg-slate-950/60 p-2.5 rounded-xl border border-sky-500/10">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Extracted Items</span>
-                <span className="font-bold text-emerald-300 text-sm">{executionResult.items_extracted || 0} Transactions</span>
+              <div className="bg-slate-950/60 px-3 py-2 rounded-lg border border-sky-500/10">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Extracted</span>
+                <span className="font-bold text-emerald-300 text-xs">{executionResult.items_extracted || 0} Items</span>
               </div>
-              <div className="bg-slate-950/60 p-2.5 rounded-xl border border-sky-500/10">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Total Volume</span>
-                <span className="font-bold text-white text-sm">GHS {Number(executionResult.total_amount || 0).toLocaleString()}</span>
+              <div className="bg-slate-950/60 px-3 py-2 rounded-lg border border-sky-500/10">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Billed Volume</span>
+                <span className="font-bold text-white text-xs">GHS {Number(executionResult.total_amount || 0).toLocaleString()}</span>
               </div>
-              <div className="bg-slate-950/60 p-2.5 rounded-xl border border-sky-500/10">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Ledger Status</span>
-                <span className="font-bold text-sky-400 text-sm">Staged in PostgreSQL</span>
+              <div className="bg-slate-950/60 px-3 py-2 rounded-lg border border-sky-500/10">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Ledger Status</span>
+                <span className="font-bold text-sky-400 text-xs">Staged in PostgreSQL</span>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* KPI Cards Grid */}
+      {/* 4. Collapsible Automation Architecture Blueprint */}
+      {showBlueprint && (
+        <div className="glass-panel rounded-2xl p-5 shadow-lg border border-sky-500/20 bg-slate-950/90 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-sky-400" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                Automation Architecture Blueprint
+              </h3>
+            </div>
+            <button
+              onClick={() => setShowBlueprint(false)}
+              className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+            >
+              <span>Collapse</span>
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {currentClient.blueprints?.map((step, idx) => {
+              const isDone = step.status === 'active';
+              const isInProgress = step.status === 'in_progress';
+
+              return (
+                <div
+                  key={idx}
+                  className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex items-start gap-3"
+                >
+                  <div
+                    className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                      isDone
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : isInProgress
+                        ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                        : 'bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 ${
+                          isDone
+                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            : isInProgress
+                            ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                            : 'bg-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {isDone ? (
+                          <>
+                            <CheckCircle2 className="w-2.5 h-2.5" /> Active
+                          </>
+                        ) : isInProgress ? (
+                          <>
+                            <Sparkles className="w-2.5 h-2.5 text-sky-400" /> In Progress
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-2.5 h-2.5" /> Queued
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-bold text-white mb-0.5">{step.title}</h4>
+                    <p className="text-[11px] text-slate-400 line-clamp-2">{step.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Compact KPI Metric Strip */}
       <div>
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Key Telemetry Metrics</h3>
         <KpiCards />
       </div>
 
-      {/* Live Pipeline Telemetry & Progress */}
-      <ProgressTracker />
+      {/* 6. Core 2-Column Operational Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        {/* Left / Primary Column (7 cols): Live Pipeline Monitor */}
+        <div className="lg:col-span-7 space-y-5">
+          <ProgressTracker showRunButton={false} />
+        </div>
 
-      {/* Quick Navigation Cards */}
-      <div>
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Workflows & Modules</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Right / Secondary Column (5 cols): Active Streams & Integrations */}
+        <div className="lg:col-span-5 space-y-5">
           
-          {/* Card 1: AR */}
-          <div
-            onClick={() => navigateToClientSubTab('ar')}
-            className="glass-card rounded-2xl p-4 cursor-pointer group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-500/30">
-                  AR Revenue
-                </span>
+          {/* Active Pipeline Streams Card */}
+          <div className="glass-panel rounded-2xl p-4.5 shadow-lg border border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-sky-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Active Streams ({currentClient.pipelines?.length || 0})
+                </h3>
               </div>
-              <h4 className="text-sm font-bold text-white group-hover:text-sky-300 transition-colors">
-                Control Slips &amp; Review
-              </h4>
-              <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                Audit OCR linen extractions in Google Sheets Tab 1 &amp; 2, resolve discrepancies, and draft invoices.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-sky-400 font-semibold">
-              <span>Open AR Ledger</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 2: AP */}
-          <div
-            onClick={() => navigateToClientSubTab('ap')}
-            className="glass-card rounded-2xl p-4 cursor-pointer group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
-                  AP Bills
-                </span>
-              </div>
-              <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
-                Vendor Invoices (OCR)
-              </h4>
-              <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                Parse supplier bills with Gemini Vision, map accounting contacts, and auto-post draft bills.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-indigo-400 font-semibold">
-              <span>Open AP Ledger</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 3: Bank Recon */}
-          <div
-            onClick={() => navigateToClientSubTab('bank')}
-            className="glass-card rounded-2xl p-4 cursor-pointer group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-                  <Landmark className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
-                  Reconciliation
-                </span>
-              </div>
-              <h4 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
-                Bank Feeds &amp; Statements
-              </h4>
-              <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                Ingest PDF/CSV bank statements, monitor watched suspense accounts, and reconcile unmatched lines.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-emerald-400 font-semibold">
-              <span>Open Bank Recon</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 4: Information Requests */}
-          <div
-            onClick={() => navigateToClientSubTab('requests')}
-            className="glass-card rounded-2xl p-4 cursor-pointer group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/30">
-                  Client Portal
-                </span>
-              </div>
-              <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                Information Requests
-              </h4>
-              <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                Dispatch questions for unclassified transactions to the client clarification portal.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-amber-400 font-semibold">
-              <span>Open Requests Hub</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Active Pipelines Summary */}
-      <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-sky-400" />
-            <h3 className="text-base font-bold text-white tracking-tight">Active Ingestion Pipeline Streams</h3>
-          </div>
-          <button
-            onClick={() => navigateToClientSubTab('pipelines')}
-            className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
-          >
-            <span>Manage All ({currentClient.pipelines?.length || 0})</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {(currentClient.pipelines || []).length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {currentClient.pipelines?.slice(0, 3).map((pipe, idx) => (
-              <div
-                key={pipe.id || idx}
-                className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between space-y-3"
+              <button
+                onClick={() => navigateToClientSubTab('pipelines')}
+                className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700">
-                      {pipe.section} • {pipe.entity_type?.replace(/_/g, ' ')}
-                    </span>
-                    <span className={`w-2 h-2 rounded-full ${pipe.is_active !== false ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-slate-500'}`} />
-                  </div>
-                  <h4 className="text-xs font-bold text-white truncate">{pipe.name}</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Channel: <code className="text-sky-300 font-mono">{pipe.source_type}</code>
-                  </p>
-                </div>
+                <span>Configure All</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
 
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {pipe.schedule || 'Daily @ 18:00 UTC'}
-                  </span>
-                  <button
-                    onClick={() => handleTriggerStream(pipe.id, pipe.name)}
-                    disabled={triggeringPipeId === pipe.id}
-                    className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/60 border border-sky-500/30 px-2 py-1 rounded-lg transition cursor-pointer disabled:opacity-50"
+            {(currentClient.pipelines || []).length > 0 ? (
+              <div className="space-y-2.5">
+                {currentClient.pipelines?.slice(0, 3).map((pipe, idx) => (
+                  <div
+                    key={pipe.id || idx}
+                    className="bg-slate-900/60 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-slate-700 transition"
                   >
-                    {triggeringPipeId === pipe.id ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <PlayCircle className="w-3 h-3" />
-                    )}
-                    <span>Run</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-6 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
-            No pipeline streams configured. Click "Manage All" to add one.
-          </div>
-        )}
-      </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pipe.is_active !== false ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-slate-500'}`} />
+                        <h4 className="text-xs font-semibold text-white truncate">{pipe.name}</h4>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span className="font-mono text-sky-400 bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-500/20">
+                          {pipe.source_type}
+                        </span>
+                        <span>•</span>
+                        <span className="font-mono text-slate-500">{pipe.schedule || 'Daily @ 18:00 UTC'}</span>
+                      </div>
+                    </div>
 
-      {/* Blueprint Architecture */}
-      <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800">
-        <div className="flex items-center gap-2 mb-4">
-          <Layers className="w-5 h-5 text-sky-400" />
-          <h3 className="text-base font-bold text-white tracking-tight">Automation Architecture Blueprint</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {currentClient.blueprints?.map((step, idx) => {
-            const isDone = step.status === 'active';
-            const isInProgress = step.status === 'in_progress';
-
-            return (
-              <div
-                key={idx}
-                className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 flex items-start gap-3"
-              >
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                    isDone
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : isInProgress
-                      ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                      : 'bg-slate-800 text-slate-500 border border-slate-700'
-                  }`}
-                >
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                        isDone
-                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                          : isInProgress
-                          ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-                          : 'bg-slate-800 text-slate-500'
-                      }`}
+                    <button
+                      onClick={() => handleTriggerStream(pipe.id, pipe.name)}
+                      disabled={triggeringPipeId === pipe.id}
+                      className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/70 border border-sky-500/30 px-2.5 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-50 shrink-0"
                     >
-                      {isDone ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3" /> Active
-                        </>
-                      ) : isInProgress ? (
-                        <>
-                          <Sparkles className="w-3 h-3 text-sky-400" /> In Progress
-                        </>
+                      {triggeringPipeId === pipe.id ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
                       ) : (
-                        <>
-                          <Clock className="w-3 h-3" /> Queued
-                        </>
+                        <PlayCircle className="w-3 h-3" />
                       )}
+                      <span>Run</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-5 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
+                <span>No active streams configured.</span>
+                <button
+                  onClick={() => navigateToClientSubTab('pipelines')}
+                  className="block mx-auto mt-1 text-sky-400 hover:underline font-semibold text-[11px] cursor-pointer"
+                >
+                  Add a pipeline stream →
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Connected Integrations & Storage Card */}
+          <div className="glass-panel rounded-2xl p-4.5 shadow-lg border border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Linked Integrations
+                </h3>
+              </div>
+              <button
+                onClick={() => navigateToClientSubTab('settings')}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+              >
+                <span>Settings</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {/* Google Drive Folder */}
+              <div className="bg-slate-900/60 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+                    <HardDrive className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Google Drive OCR Folder</span>
+                    <span className="text-xs font-mono text-slate-200 truncate block">
+                      {currentClient.folder_id ? `${currentClient.folder_id.slice(0, 16)}...` : 'Linked & Monitored'}
                     </span>
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1">{step.title}</h4>
-                  <p className="text-xs text-slate-400">{step.desc}</p>
                 </div>
+                {currentClient.folder_id && (
+                  <a
+                    href={`https://drive.google.com/drive/folders/${currentClient.folder_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-slate-400 hover:text-sky-400 p-1.5 transition shrink-0"
+                    title="Open in Google Drive"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
-            );
-          })}
+
+              {/* Accounting ERP Platform */}
+              <div className="bg-slate-900/60 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-sm shrink-0">
+                    {currentPlatform.icon || '🟢'}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Accounting Software</span>
+                    <span className="text-xs font-semibold text-white truncate block">
+                      {currentPlatform.name}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 shrink-0">
+                  Active Sync
+                </span>
+              </div>
+            </div>
+          </div>
+
         </div>
+
       </div>
 
     </div>
