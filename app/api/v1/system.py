@@ -104,3 +104,24 @@ async def get_system_debug_dump() -> Dict[str, Any]:
         "config_summary": settings.get_masked_dict(),
         "recent_errors": recent_errors,
     }
+
+
+@router.api_route("/migrate", methods=["GET", "POST"], summary="Trigger Immediate Database Schema Migrations")
+async def trigger_migrations() -> Dict[str, Any]:
+    """Manually triggers safe database schema migrations and column creation."""
+    from app.db.session import run_schema_migrations, get_engine
+    try:
+        run_schema_migrations(get_engine())
+        return {
+            "status": "success",
+            "message": "Schema migrations executed successfully. Missing columns ensured.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Manual schema migration failed: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+

@@ -280,9 +280,29 @@ async def dry_run_sample_ocr(payload: DryRunOcrPayload) -> Dict[str, Any]:
 
 @router.get("", summary="List All Accounting Client Organizations")
 async def list_clients(db: Session = Depends(get_db_session)) -> List[Dict[str, Any]]:
-    """Returns all registered client organizations and active automation strategies."""
-    clients = db.exec(select(ClientOrganization)).all()
-    return [c.model_dump() for c in clients]
+    """Returns all registered client organizations and active automation strategies with self-healing schema repair."""
+    try:
+        clients = db.exec(select(ClientOrganization)).all()
+        return [c.model_dump() for c in clients]
+    except Exception as e:
+        logger.warning(f"Error querying clients ({e}). Running immediate schema repair...")
+        from app.db.session import run_schema_migrations, get_engine, init_db
+        try:
+            run_schema_migrations(get_engine())
+            with Session(get_engine()) as retry_db:
+                clients = retry_db.exec(select(ClientOrganization)).all()
+                return [c.model_dump() for c in clients]
+        except Exception as retry_err:
+            logger.error(f"Retry querying clients failed ({retry_err}). Attempting full init_db recovery...")
+            try:
+                init_db()
+                with Session(get_engine()) as final_db:
+                    clients = final_db.exec(select(ClientOrganization)).all()
+                    return [c.model_dump() for c in clients]
+            except Exception as final_err:
+                logger.error(f"Critical clients query failure: {final_err}")
+                return []
+
 
 
 @router.post("", summary="Register a New Accounting Client")

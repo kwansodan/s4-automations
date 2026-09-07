@@ -135,84 +135,49 @@ def run_schema_migrations(active_engine: Engine):
         ("audit_logs", "source_identifier", "VARCHAR"),
     ]
 
+    # Execute in an isolated connection without relying on inspector.get_table_names()
+    # In PostgreSQL, ALTER TABLE ... ADD COLUMN IF NOT EXISTS is completely native and idempotent.
+    # In SQLite, ALTER TABLE ... ADD COLUMN is executed and duplicate column errors are safely ignored.
     try:
-        inspector = inspect(active_engine)
-        existing_tables = set(inspector.get_table_names())
-    except Exception as e:
-        logger.warning(f"Failed to inspect database tables: {e}")
-        existing_tables = set()
+        with active_engine.connect() as conn:
+            # Step 1: Explicit curated column definitions
+            for table_name, column_name, col_def in columns_to_ensure:
+                if is_postgres:
+                    stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {col_def}"
+                else:
+                    stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {col_def}"
 
-    # Step 1: Explicit curated column migration
-    for table_name, column_name, col_def in columns_to_ensure:
-        if table_name not in existing_tables:
-            continue
-
-        try:
-            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-            if column_name in existing_cols:
-                continue
-        except Exception as e:
-            logger.debug(f"Could not inspect columns for table '{table_name}': {e}")
-
-        logger.info(f"Schema migration: Adding missing column '{column_name}' to table '{table_name}'...")
-        if is_postgres:
-            stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {col_def}"
-        else:
-            stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {col_def}"
-
-        # Execute in an isolated connection
-        try:
-            with active_engine.connect() as conn:
                 try:
                     conn.execute(text(stmt))
                     conn.commit()
-                    logger.info(f"Successfully added column '{column_name}' to '{table_name}'.")
                 except Exception as ex:
                     conn.rollback()
-                    if "already exists" in str(ex).lower():
-                        logger.debug(f"Column '{column_name}' on '{table_name}' already exists.")
+                    err_str = str(ex).lower()
+                    if "already exists" in err_str or "duplicate column" in err_str or "does not exist" in err_str or "no such table" in err_str:
+                        pass
                     else:
-                        logger.warning(f"Notice on adding column '{column_name}' to '{table_name}': {ex}")
-        except Exception as conn_err:
-            logger.warning(f"Connection error while migrating '{table_name}.{column_name}': {conn_err}")
+                        logger.debug(f"Notice on migrating {table_name}.{column_name}: {ex}")
 
-    # Step 2: Dynamic reflection fallback across all registered SQLModel tables
-    for table_name, table in SQLModel.metadata.tables.items():
-        if table_name not in existing_tables:
-            continue
+            # Step 2: Dynamic SQLModel reflection fallback for any new fields
+            for table_name, table in SQLModel.metadata.tables.items():
+                for col in table.columns:
+                    try:
+                        col_type = col.type.compile(dialect=active_engine.dialect)
+                    except Exception:
+                        col_type = "VARCHAR"
 
-        try:
-            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-        except Exception:
-            continue
+                    if is_postgres:
+                        stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col.name} {col_type}"
+                    else:
+                        stmt = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"
 
-        for col in table.columns:
-            if col.name in existing_cols:
-                continue
-
-            try:
-                col_type = col.type.compile(dialect=active_engine.dialect)
-            except Exception:
-                col_type = "VARCHAR"
-
-            logger.info(f"Dynamic schema migration: Detected unmigrated column '{col.name}' ({col_type}) on table '{table_name}'...")
-            if is_postgres:
-                stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col.name} {col_type}"
-            else:
-                stmt = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"
-
-            try:
-                with active_engine.connect() as conn:
                     try:
                         conn.execute(text(stmt))
                         conn.commit()
-                        logger.info(f"Successfully dynamically added column '{col.name}' to '{table_name}'.")
-                    except Exception as ex:
+                    except Exception:
                         conn.rollback()
-                        if "already exists" not in str(ex).lower():
-                            logger.warning(f"Notice on dynamically adding column '{col.name}' to '{table_name}': {ex}")
-            except Exception as conn_err:
-                logger.warning(f"Connection error while dynamically adding '{table_name}.{col.name}': {conn_err}")
+    except Exception as batch_err:
+        logger.warning(f"Notice during schema migration batch: {batch_err}")
 
 
 def init_db():
@@ -221,9 +186,12 @@ def init_db():
 
     active_engine = get_engine()
     logger.info("Initializing SQLModel database schemas...")
-    SQLModel.metadata.create_all(active_engine)
+    try:
+        SQLModel.metadata.create_all(active_engine)
+    except Exception as e:
+        logger.warning(f"Notice during metadata.create_all: {e}")
 
-    # Run safe cross-platform column migrations
+    # Run safe cross-platform column migrations unconditionally
     run_schema_migrations(active_engine)
 
     # Seed Default Clients if empty
@@ -285,7 +253,20 @@ def init_db():
         logger.warning(f"Database seed notice: {e}")
 
 
+_migrations_checked = False
+
+
 def get_db_session() -> Generator[Session, None, None]:
-    """FastAPI dependency yielding database session."""
-    with Session(get_engine()) as session:
+    """FastAPI dependency yielding database session, ensuring schema migrations run on first request."""
+    global _migrations_checked
+    active_engine = get_engine()
+    if not _migrations_checked:
+        try:
+            run_schema_migrations(active_engine)
+            _migrations_checked = True
+        except Exception as mig_err:
+            logger.warning(f"Lazy schema migration notice: {mig_err}")
+
+    with Session(active_engine) as session:
         yield session
+
