@@ -122,6 +122,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const loadBackendClients = async () => {
       try {
         const dbClients = await fetchClients();
+        if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
           const mapped: ClientProfile[] = dbClients.map((c: any) => {
             const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
             const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
