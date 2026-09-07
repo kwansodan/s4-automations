@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -82,7 +82,7 @@ class AuthService:
         }
 
     @classmethod
-    def get_user_organizations(cls, email: str) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    def get_user_organizations(cls, email: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Returns active primary organization and list of all organizations the user belongs to."""
         from app.models.db_models import Organization, UserOrganizationMembership
         orgs = []
