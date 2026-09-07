@@ -4,14 +4,6 @@ import { useErrors } from '../../context/ErrorContext';
 import { PlayCircle, X, AlertCircle, Terminal, Loader2 } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 
-const HOTELS = [
-  { slug: 'luxwood', name: 'Luxwood Hotel & Suites' },
-  { slug: 'the_bantree', name: 'The Bantree Residences' },
-  { slug: 'the_lennox', name: 'The Lennox Luxury Apartments' },
-  { slug: 'active8', name: 'Active 8 Spintex' },
-  { slug: 'maharaja', name: 'Maharaja Restaurant & Suites' },
-];
-
 export const PipelineModal: React.FC = () => {
   const {
     isPipelineModalOpen,
@@ -19,10 +11,43 @@ export const PipelineModal: React.FC = () => {
     selectedMonth,
     selectedYear,
     runPipeline,
+    catalog,
+    sheetsData,
   } = useAutomation();
   const { openDebugDrawer } = useErrors();
 
-  const [selectedSlugs, setSelectedSlugs] = useState<string[]>(HOTELS.map((h) => h.slug));
+  // Dynamically derive available clients from Zoho Contacts and Google Sheets data
+  const availableClients = React.useMemo(() => {
+    const clientsMap = new Map<string, { slug: string; name: string }>();
+
+    // 1. Zoho Contacts
+    if (catalog?.contacts && catalog.contacts.length > 0) {
+      for (const c of catalog.contacts) {
+        const name = c.company_name || c.contact_name;
+        const slug = (c.contact_name || name).toLowerCase().replace(/[\s-]+/g, '_').replace(/[^\w]/g, '');
+        if (name && !clientsMap.has(slug)) {
+          clientsMap.set(slug, { slug, name });
+        }
+      }
+    }
+
+    // 2. Google Sheets Review Data
+    if (sheetsData?.monthly_summary && sheetsData.monthly_summary.length > 0) {
+      for (const row of sheetsData.monthly_summary) {
+        const name = row.client_name;
+        if (name) {
+          const slug = name.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^\w]/g, '');
+          if (!clientsMap.has(slug)) {
+            clientsMap.set(slug, { slug, name });
+          }
+        }
+      }
+    }
+
+    return Array.from(clientsMap.values());
+  }, [catalog, sheetsData]);
+
+  const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
   const [month, setMonth] = useState(selectedMonth);
   const [year, setYear] = useState(selectedYear);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +57,15 @@ export const PipelineModal: React.FC = () => {
     traceback?: string;
     troubleshootingHint?: string;
   } | null>(null);
+
+  // Initialize selectedSlugs whenever availableClients updates
+  React.useEffect(() => {
+    if (availableClients.length > 0) {
+      setSelectedSlugs(availableClients.map((c) => c.slug));
+    } else {
+      setSelectedSlugs([]);
+    }
+  }, [availableClients]);
 
   if (!isPipelineModalOpen) return null;
 
@@ -54,12 +88,15 @@ export const PipelineModal: React.FC = () => {
     setModalError(null);
     setIsSubmitting(true);
     try {
+      const isAllSelected =
+        availableClients.length === 0 || selectedSlugs.length === availableClients.length;
       await runPipeline({
         month,
         year,
-        client_slugs: selectedSlugs.length === HOTELS.length ? null : selectedSlugs,
+        client_slugs: isAllSelected ? null : selectedSlugs,
       });
       // runPipeline closes modal on success
+
     } catch (err: any) {
       if (err instanceof ApiError) {
         setModalError({
@@ -171,40 +208,55 @@ export const PipelineModal: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold text-slate-300">Filter Hotels / Clients</label>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedSlugs(selectedSlugs.length === HOTELS.length ? [] : HOTELS.map((h) => h.slug))
-                }
-                disabled={isSubmitting}
-                className="text-[11px] text-sky-400 hover:underline cursor-pointer disabled:opacity-50"
-              >
-                {selectedSlugs.length === HOTELS.length ? 'Deselect All' : 'Select All'}
-              </button>
+              {availableClients.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedSlugs(
+                      selectedSlugs.length === availableClients.length
+                        ? []
+                        : availableClients.map((h) => h.slug)
+                    )
+                  }
+                  disabled={isSubmitting}
+                  className="text-[11px] text-sky-400 hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  {selectedSlugs.length === availableClients.length ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
             </div>
-            <div className="space-y-1.5 max-h-44 overflow-y-auto bg-slate-950 p-2.5 rounded-xl border border-slate-800 custom-scrollbar">
-              {HOTELS.map((hotel) => {
-                const checked = selectedSlugs.includes(hotel.slug);
-                return (
-                  <label
-                    key={hotel.slug}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-900 cursor-pointer transition"
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSlug(hotel.slug)}
-                        disabled={isSubmitting}
-                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-sky-600 focus:ring-sky-500"
-                      />
-                      <span className="text-xs font-medium text-slate-200">{hotel.name}</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-500">{hotel.slug}</span>
-                  </label>
-                );
-              })}
-            </div>
+            {availableClients.length > 0 ? (
+              <div className="space-y-1.5 max-h-44 overflow-y-auto bg-slate-950 p-2.5 rounded-xl border border-slate-800 custom-scrollbar">
+                {availableClients.map((hotel) => {
+                  const checked = selectedSlugs.includes(hotel.slug);
+                  return (
+                    <label
+                      key={hotel.slug}
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-900 cursor-pointer transition"
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSlug(hotel.slug)}
+                          disabled={isSubmitting}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-sky-600 focus:ring-sky-500"
+                        />
+                        <span className="text-xs font-medium text-slate-200">{hotel.name}</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500">{hotel.slug}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center gap-2.5">
+                <span className="text-base">📁</span>
+                <span>
+                  <strong>All Google Drive Client Folders:</strong> Automatic discovery mode. The pipeline will scan every client folder located in Google Drive for {month} {year}.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="bg-sky-950/40 border border-sky-500/20 rounded-xl p-3 text-[11px] text-sky-300">
