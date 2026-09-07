@@ -428,10 +428,16 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
 }
 
 export async function runDiagnostics(): Promise<DiagnosticsResult> {
-  const res = await resilientFetch('/api/config/diagnostics', {
+  let res = await resilientFetch('/api/config/test', {
     method: 'POST',
     headers: getAuthHeaders(),
   });
+  if (res.status === 404) {
+    res = await resilientFetch('/api/config/diagnostics', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+  }
   return handleResponse<DiagnosticsResult>(res, 'Run diagnostics');
 }
 

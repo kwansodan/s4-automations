@@ -72,7 +72,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
-    { tab: 'config', label: 'System Diagnostics', icon: SlidersHorizontal },
+    ...(user?.role === 'admin'
+      ? [{ tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' }]
+      : []),
     { tab: 'logs', label: 'Live Telemetry Logs', icon: Terminal },
   ];
 
@@ -301,7 +303,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
                   <span className="text-xs font-semibold text-white block truncate">
                     {user?.email?.split('@')[0] || 'Admin'}
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-mono block">Accounting Admin</span>
+                  <span className="text-[10px] text-emerald-400 font-mono block">
+                    {user?.role === 'admin' ? 'Platform Administrator' : user?.role === 'bookkeeper' ? 'Staff Bookkeeper' : 'Auditor'}
+                  </span>
                 </div>
               )}
             </div>

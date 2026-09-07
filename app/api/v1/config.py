@@ -44,11 +44,12 @@ async def update_configuration(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.post("/config/test", summary="Run Connectivity Diagnostics")
+@router.post("/config/diagnostics", summary="Run Connectivity Diagnostics (Alias)")
 async def test_configuration_connections() -> Dict[str, Any]:
     """
-    Performs live connectivity diagnostics against Gemini, Zoho Books, Google Drive, and Inngest.
+    Performs live connectivity diagnostics against Gemini, Zoho Books, Google Drive, Inngest, and Database.
     """
-    logger.info("Running connectivity test for all integrations...")
+    logger.info("Running connectivity test for all platform integrations...")
     results = {
         "gemini_status": "UNKNOWN",
         "gemini_message": "",
@@ -58,6 +59,8 @@ async def test_configuration_connections() -> Dict[str, Any]:
         "google_message": "",
         "inngest_status": "UNKNOWN",
         "inngest_message": "",
+        "database_status": "UNKNOWN",
+        "database_message": "",
         "all_healthy": True,
     }
 
@@ -109,6 +112,21 @@ async def test_configuration_connections() -> Dict[str, Any]:
     else:
         results["inngest_status"] = "WARNING"
         results["inngest_message"] = "Inngest keys missing or running in local dev mode"
+
+    # 5. Database Connection (PostgreSQL / SQLite)
+    try:
+        from app.db.session import get_engine
+        from sqlalchemy import text
+        engine = get_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        dialect = engine.dialect.name
+        results["database_status"] = "CONNECTED"
+        results["database_message"] = f"Database online ({dialect.upper()})"
+    except Exception as e:
+        results["database_status"] = "FAILED"
+        results["database_message"] = f"Database connectivity error: {str(e)}"
+        results["all_healthy"] = False
 
     return results
 

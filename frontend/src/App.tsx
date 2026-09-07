@@ -19,9 +19,10 @@ import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardMod
 import { ClientPortal } from './components/portal/ClientPortal';
 import { InformationRequestsSection } from './components/banking/InformationRequestsSection';
 import { SheetsViewer } from './components/sheets/SheetsViewer';
+import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { activeTab, setActiveTab } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -64,7 +65,27 @@ const MainLayout: React.FC = () => {
             ) : activeTab === 'catalog' ? (
               <CatalogSection />
             ) : activeTab === 'config' ? (
-              <ConfigSection />
+              user?.role === 'admin' ? (
+                <ConfigSection />
+              ) : (
+                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Platform Settings contains sensitive global infrastructure credentials (AI OCR models, SMTP gateways, database connections, and server keys). Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to view or modify these parameters.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab('workspace')}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Return to Client Workspace
+                    </button>
+                  </div>
+                </div>
+              )
             ) : activeTab === 'logs' ? (
               <LiveConsole />
             ) : (
