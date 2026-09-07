@@ -28,12 +28,15 @@ export const ClientWorkspace: React.FC = () => {
     ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient.accounting_software) ||
     ACCOUNTING_PLATFORMS[0];
 
-  const subTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  const operationsTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'ar', label: 'AR Revenue & Sheets', icon: Receipt },
     { id: 'ap', label: 'AP Vendor Bills', icon: DollarSign },
     { id: 'bank', label: 'Bank Statements', icon: Landmark },
     { id: 'requests', label: 'Information Requests', icon: ShieldCheck },
+  ];
+
+  const configTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'pipelines', label: 'Pipelines & Streams', icon: Layers },
     { id: 'settings', label: 'Client Settings', icon: Settings2 },
   ];
@@ -95,7 +98,30 @@ export const ClientWorkspace: React.FC = () => {
 
         {/* Sub-Tab Navigation Bar */}
         <div className="flex items-center gap-1.5 mt-6 pt-4 border-t border-slate-800/80 overflow-x-auto custom-scrollbar">
-          {subTabs.map((tab) => {
+          {operationsTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = workspaceSubTab === tab.id;
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setWorkspaceSubTab(tab.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-slate-800/80'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+
+          {/* Visual Divider between Operations and Configuration */}
+          <div className="h-5 w-px bg-slate-800 mx-1.5 shrink-0 hidden sm:block" />
+
+          {configTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = workspaceSubTab === tab.id;
 

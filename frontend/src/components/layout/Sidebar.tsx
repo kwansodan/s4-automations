@@ -50,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setIsMobileOpen(false);
   };
 
-  const clientNavItems: Array<{
+  const clientOpsNavItems: Array<{
     sub: WorkspaceSubTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
@@ -61,6 +61,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     { sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign },
     { sub: 'bank', label: 'Bank Statements', icon: Landmark },
     { sub: 'requests', label: 'Info Requests', icon: ShieldCheck },
+  ];
+
+  const clientConfigNavItems: Array<{
+    sub: WorkspaceSubTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
     { sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
     { sub: 'settings', label: 'Client Settings', icon: Settings2 },
   ];
@@ -184,7 +192,48 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               </span>
             )}
 
-            {clientNavItems.map((item) => {
+            {clientOpsNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
+
+              return (
+                <button
+                  key={item.sub}
+                  onClick={() => handleNav('workspace', item.sub)}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  {!isCollapsed && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* GROUP 2: AUTOMATION & SETTINGS */}
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
+                Automation &amp; Settings
+              </span>
+            )}
+
+            {clientConfigNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
 
