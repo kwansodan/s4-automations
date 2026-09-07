@@ -1,6 +1,7 @@
 """Zoho Books API Service integration with OAuth2 refresh, Catalog sync, and Invoicing."""
 
 import time
+from difflib import SequenceMatcher
 from typing import List, Dict, Optional, Any
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -346,6 +347,25 @@ class ZohoBooksService:
                 return contact
             if contact.contact_name.strip().lower() in cleaned_client:
                 return contact
+
+        # 3. Fuzzy similarity match (>= 0.72)
+        best_contact = None
+        highest_score = 0.0
+        for contact in self._cached_contacts:
+            name_score = SequenceMatcher(None, cleaned_client, contact.contact_name.strip().lower()).ratio()
+            comp_score = (
+                SequenceMatcher(None, cleaned_client, contact.company_name.strip().lower()).ratio()
+                if contact.company_name
+                else 0.0
+            )
+            max_score = max(name_score, comp_score)
+            if max_score > highest_score:
+                highest_score = max_score
+                best_contact = contact
+
+        if highest_score >= 0.72 and best_contact:
+            logger.info(f"Fuzzy matched client '{client_name}' to Zoho contact '{best_contact.contact_name}' (score: {highest_score:.2f})")
+            return best_contact
 
         return None
 
