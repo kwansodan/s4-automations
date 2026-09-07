@@ -58,10 +58,61 @@ class AccountingSoftware(str, Enum):
     BUSY_ACCOUNTING = "busy_accounting"             # In Progress
 
 
+class OrganizationType(str, Enum):
+    ACCOUNTING_FIRM = "ACCOUNTING_FIRM"           # Aggregator: Accounting / Audit Firm managing multiple clients
+    INDIVIDUAL_BUSINESS = "INDIVIDUAL_BUSINESS"   # Direct: Single commercial enterprise / SMB managing own books
+
+
+class UserOrgRole(str, Enum):
+    OWNER = "OWNER"                   # Firm Partner or Company Managing Director
+    ADMIN = "ADMIN"                   # Senior Accountant or Finance Controller
+    STAFF = "STAFF"                   # Junior Bookkeeper or AP Clerk
+    AUDITOR = "AUDITOR"               # Read-Only Audit Reviewer
+    CLIENT_USER = "CLIENT_USER"       # External Portal Contact
+
+
+class Organization(SQLModel, table=True):
+    __tablename__ = "organizations"
+
+    id: str = Field(primary_key=True, description="Organization slug identifier, e.g. s4_advisory or anr_group")
+    name: str = Field(index=True, description="Organization display name")
+    org_type: str = Field(default="ACCOUNTING_FIRM", description="ACCOUNTING_FIRM or INDIVIDUAL_BUSINESS")
+    plan_tier: str = Field(default="pro", description="starter, pro, scale, enterprise")
+    max_clients: int = Field(default=25, description="Max client quota for accounting firms, or 1 for individual business")
+    industry: Optional[str] = Field(default="Accounting & Advisory", description="Industry domain")
+    icon: str = Field(default="🏛️", description="Organization icon")
+    
+    # White-label & Portal Branding
+    white_label_logo_url: Optional[str] = Field(default=None)
+    custom_portal_subdomain: Optional[str] = Field(default=None)
+    contact_email: Optional[str] = Field(default=None)
+    
+    # Storage Mode: platform_managed or byos
+    storage_strategy: str = Field(default="platform_managed", description="platform_managed, byos_google, byos_onedrive")
+    storage_credentials: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class UserOrganizationMembership(SQLModel, table=True):
+    __tablename__ = "user_organization_memberships"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_email: str = Field(index=True, description="Staff / User email address")
+    organization_id: str = Field(index=True, description="Organization slug ID")
+    role: str = Field(default="ADMIN", description="OWNER, ADMIN, STAFF, AUDITOR, CLIENT_USER")
+    title: Optional[str] = Field(default="Managing Partner")
+    is_primary: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=get_utc_now)
+
+
 class ClientOrganization(SQLModel, table=True):
     __tablename__ = "clients"
 
     id: str = Field(primary_key=True, description="Client slug identifier, e.g. anr_group")
+    organization_id: Optional[str] = Field(default="s4_advisory", index=True, description="Parent Organization ID (Accounting Firm ID or self)")
     name: str = Field(index=True, description="Organization name")
     industry: str = Field(description="Business industry / domain tag")
     icon: str = Field(default="🏢", description="Emoji icon")

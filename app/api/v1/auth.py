@@ -45,3 +45,79 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
     return {"authenticated": True, "user": user}
+
+
+class SwitchOrgPayload(BaseModel):
+    organization_id: str = Field(description="Target organization slug identifier")
+
+
+@router.post("/switch-org", summary="Switch Active Organization Context")
+async def switch_active_organization(payload: SwitchOrgPayload, request: Request) -> Dict[str, Any]:
+    """Switches the active primary organization context for the authenticated user."""
+    from sqlmodel import Session, select
+    from app.db.session import get_engine
+    from app.models.db_models import UserOrganizationMembership, Organization
+
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
+    user = AuthService.validate_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    target_org_id = payload.organization_id.strip()
+    with Session(get_engine()) as session:
+        memberships = session.exec(
+            select(UserOrganizationMembership).where(UserOrganizationMembership.user_email == user["email"])
+        ).all()
+
+        target_found = False
+        for m in memberships:
+            if m.organization_id == target_org_id:
+                m.is_primary = True
+                target_found = True
+            else:
+                m.is_primary = False
+            session.add(m)
+
+        # If user is admin/owner and membership record doesn't exist yet, auto-provision it
+        if not target_found:
+            target_org = session.exec(select(Organization).where(Organization.id == target_org_id)).first()
+            if target_org:
+                new_m = UserOrganizationMembership(
+                    user_email=user["email"],
+                    organization_id=target_org_id,
+                    role="ADMIN",
+                    title="Platform Administrator",
+                    is_primary=True,
+                )
+                session.add(new_m)
+                target_found = True
+
+        if target_found:
+            session.commit()
+
+    current_org, orgs = AuthService.get_user_organizations(user["email"])
+    user["organization"] = current_org
+    user["organizations"] = orgs
+
+    return {
+        "success": True,
+        "message": f"Switched active workspace to {current_org['name']}",
+        "user": user,
+    }
+
+
+@router.get("/organizations", summary="List User Organizations")
+async def list_user_organizations(request: Request) -> Dict[str, Any]:
+    """Returns the list of organizations accessible by the authenticated user."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
+    user = AuthService.validate_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    current_org, orgs = AuthService.get_user_organizations(user["email"])
+    return {
+        "active_organization": current_org,
+        "organizations": orgs,
+    }

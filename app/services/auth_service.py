@@ -82,6 +82,55 @@ class AuthService:
         }
 
     @classmethod
+    def get_user_organizations(cls, email: str) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Returns active primary organization and list of all organizations the user belongs to."""
+        from app.models.db_models import Organization, UserOrganizationMembership
+        orgs = []
+        current_org = None
+        try:
+            with Session(get_engine()) as session:
+                memberships = session.exec(
+                    select(UserOrganizationMembership).where(UserOrganizationMembership.user_email == email.strip().lower())
+                ).all()
+                for m in memberships:
+                    org = session.exec(select(Organization).where(Organization.id == m.organization_id)).first()
+                    if org:
+                        org_dict = {
+                            "id": org.id,
+                            "name": org.name,
+                            "org_type": org.org_type,
+                            "plan_tier": org.plan_tier,
+                            "max_clients": org.max_clients,
+                            "industry": org.industry,
+                            "icon": org.icon,
+                            "role": m.role,
+                            "title": m.title,
+                            "is_primary": m.is_primary,
+                        }
+                        orgs.append(org_dict)
+                        if m.is_primary or current_org is None:
+                            current_org = org_dict
+        except Exception as e:
+            logger.warning(f"Could not load organizations for {email}: {e}")
+
+        if not current_org:
+            current_org = {
+                "id": "s4_advisory",
+                "name": "S4 Accounting & Advisory Partners",
+                "org_type": "ACCOUNTING_FIRM",
+                "plan_tier": "firm_scale",
+                "max_clients": 50,
+                "industry": "Chartered Accounting & Audit Practice",
+                "icon": "🏛️",
+                "role": "OWNER",
+                "title": "Managing Partner",
+                "is_primary": True,
+            }
+            orgs = [current_org]
+
+        return current_org, orgs
+
+    @classmethod
     def verify_otp(cls, email: str, otp_code: str) -> Dict[str, Any]:
         """Verifies the 6-digit OTP from database and issues a bearer access token."""
         cleaned_email = email.strip().lower()
@@ -98,49 +147,58 @@ class AuthService:
                 if not record:
                     return {
                         "success": False,
-                        "status": "NO_ACTIVE_OTP",
-                        "message": "No active verification code found. Please request a new code.",
+                        "status": "NOT_FOUND",
+                        "message": "No active OTP request found for this email. Please request a new code.",
                     }
 
-                now_utc = datetime.now(timezone.utc)
                 record_exp = record.expires_at
                 if record_exp.tzinfo is None:
                     record_exp = record_exp.replace(tzinfo=timezone.utc)
 
-                if now_utc > record_exp:
+                if datetime.now(timezone.utc) > record_exp:
                     session.delete(record)
                     session.commit()
                     return {
                         "success": False,
                         "status": "EXPIRED",
-                        "message": "Verification code has expired. Please request a new one.",
+                        "message": "Verification code has expired. Please request a new code.",
+                    }
+
+                record.attempts += 1
+                if record.attempts > 5:
+                    session.delete(record)
+                    session.commit()
+                    return {
+                        "success": False,
+                        "status": "TOO_MANY_ATTEMPTS",
+                        "message": "Too many failed attempts. Code has been invalidated. Please request a new one.",
                     }
 
                 expected_hash = cls._hash_otp(cleaned_otp, record.salt)
-                if record.otp_hash != expected_hash:
-                    record.attempts += 1
+                if not hmac.compare_digest(record.otp_hash, expected_hash):
                     session.add(record)
                     session.commit()
                     return {
                         "success": False,
                         "status": "INVALID_OTP",
-                        "message": "Incorrect 6-digit verification code. Please try again.",
+                        "message": f"Incorrect verification code. {5 - record.attempts} attempt(s) remaining.",
                     }
 
-                # OTP is valid -> delete record and issue token
+                # Mark verified & cleanup
+                record.is_verified = True
                 session.delete(record)
                 session.commit()
-
         except Exception as e:
-            logger.error(f"Database error during OTP verification: {e}")
+            logger.error(f"Database error verifying OTP: {e}")
             return {
                 "success": False,
                 "status": "DB_ERROR",
-                "message": "Verification failed due to a database exception.",
+                "message": f"Database verification error: {str(e)}",
             }
 
         token = cls._create_token(cleaned_email)
-        logger.info(f"✅ User {cleaned_email} successfully authenticated via Email OTP.")
+        current_org, orgs = cls.get_user_organizations(cleaned_email)
+        logger.info(f"✅ User {cleaned_email} successfully authenticated via Email OTP ({current_org['org_type']}).")
 
         return {
             "success": True,
@@ -151,6 +209,8 @@ class AuthService:
                 "email": cleaned_email,
                 "name": "S4 Bookkeeping Admin",
                 "role": "admin",
+                "organization": current_org,
+                "organizations": orgs,
             },
         }
 
@@ -206,10 +266,15 @@ class AuthService:
                 logger.warning("Expired session token presented.")
                 return None
 
+            email = payload.get("sub", "")
+            current_org, orgs = cls.get_user_organizations(email)
+
             return {
-                "email": payload.get("sub"),
+                "email": email,
                 "name": "S4 Bookkeeping Admin",
                 "role": payload.get("role", "admin"),
+                "organization": current_org,
+                "organizations": orgs,
             }
         except Exception as e:
             logger.warning(f"Failed parsing session token: {e}")

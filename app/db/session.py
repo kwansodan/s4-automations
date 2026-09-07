@@ -72,6 +72,7 @@ def run_schema_migrations(active_engine: Engine):
 
     columns_to_ensure = [
         # clients table
+        ("clients", "organization_id", "VARCHAR DEFAULT 's4_advisory'"),
         ("clients", "accounting_software", "VARCHAR DEFAULT 'zoho_books'"),
         ("clients", "folder_id", "VARCHAR"),
         ("clients", "zoho_org_id", "VARCHAR"),
@@ -283,6 +284,62 @@ def init_db():
                 session.add(anr_client)
                 session.commit()
                 logger.info("Successfully updated ANR Group pipelines.")
+
+            # Seed Default Organizations (Accounting Firm & Direct Business) if empty
+            from app.models.db_models import Organization, UserOrganizationMembership
+            from app.config import settings
+
+            existing_org = session.exec(select(Organization)).first()
+            if not existing_org:
+                logger.info("Seeding default dual-mode SaaS organizations...")
+                default_orgs = [
+                    Organization(
+                        id="s4_advisory",
+                        name="S4 Accounting & Advisory Partners",
+                        org_type="ACCOUNTING_FIRM",
+                        plan_tier="firm_scale",
+                        max_clients=50,
+                        industry="Chartered Accounting & Audit Practice",
+                        icon="🏛️",
+                        contact_email=settings.AUTH_EMAIL,
+                    ),
+                    Organization(
+                        id="anr_group_direct",
+                        name="ANR Group (Commercial Laundry)",
+                        org_type="INDIVIDUAL_BUSINESS",
+                        plan_tier="pro",
+                        max_clients=1,
+                        industry="Commercial Hospitality & Laundry Services",
+                        icon="🧺",
+                        contact_email="cfo@anrgroup.com",
+                    ),
+                ]
+                for org in default_orgs:
+                    session.add(org)
+                session.commit()
+
+                # Seed primary membership for admin
+                admin_email = settings.AUTH_EMAIL.strip().lower()
+                session.add(
+                    UserOrganizationMembership(
+                        user_email=admin_email,
+                        organization_id="s4_advisory",
+                        role="OWNER",
+                        title="Managing Partner",
+                        is_primary=True,
+                    )
+                )
+                session.add(
+                    UserOrganizationMembership(
+                        user_email=admin_email,
+                        organization_id="anr_group_direct",
+                        role="ADMIN",
+                        title="Advisory Partner / CFO",
+                        is_primary=False,
+                    )
+                )
+                session.commit()
+                logger.info("Successfully seeded dual-mode SaaS organizations and memberships.")
     except Exception as e:
         logger.warning(f"Database seed notice: {e}")
 

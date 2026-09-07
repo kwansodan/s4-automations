@@ -326,6 +326,22 @@ export async function fetchCurrentUser(): Promise<{ authenticated: boolean; user
   return handleResponse<{ authenticated: boolean; user: AuthUser }>(res, 'Fetch current user');
 }
 
+export async function switchActiveOrganization(organizationId: string): Promise<{ success: boolean; message: string; user: AuthUser }> {
+  const res = await resilientFetch('/api/auth/switch-org', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ organization_id: organizationId }),
+  });
+  return handleResponse<{ success: boolean; message: string; user: AuthUser }>(res, 'Switch organization context');
+}
+
+export async function fetchUserOrganizations(): Promise<{ organizations: any[]; current_organization: any }> {
+  const res = await resilientFetch('/api/auth/organizations', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ organizations: any[]; current_organization: any }>(res, 'Fetch user organizations');
+}
+
 // -------------------------------------------------------------------------
 // Dashboard & Pipeline Endpoints
 // -------------------------------------------------------------------------
@@ -445,8 +461,9 @@ export async function runDiagnostics(): Promise<DiagnosticsResult> {
 // Multi-Client API Endpoints
 // -------------------------------------------------------------------------
 
-export async function fetchClients(): Promise<any[]> {
-  const res = await resilientFetch('/api/clients', {
+export async function fetchClients(organizationId?: string): Promise<any[]> {
+  const query = organizationId ? `?organization_id=${encodeURIComponent(organizationId)}` : '';
+  const res = await resilientFetch(`/api/clients${query}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<any[]>(res, 'Fetch clients');

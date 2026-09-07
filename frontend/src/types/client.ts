@@ -1,5 +1,20 @@
 export type ClientStatus = 'live' | 'dev' | 'pending';
 
+export type OrganizationType = 'ACCOUNTING_FIRM' | 'INDIVIDUAL_BUSINESS';
+
+export interface Organization {
+  id: string;
+  name: string;
+  org_type: OrganizationType;
+  plan_tier: string;
+  max_clients?: number;
+  industry?: string;
+  icon?: string;
+  role?: string;
+  title?: string;
+  is_primary?: boolean;
+}
+
 export type AccountingSection = 'AR' | 'AP' | 'BANK' | 'GL';
 
 export type AccountingEntityType =
@@ -233,6 +248,7 @@ export interface OrganizationTeamMember {
 
 export interface ClientProfile {
   id: string;
+  organization_id?: string;
   name: string;
   industry: string;
   icon: string;

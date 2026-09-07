@@ -20,6 +20,8 @@ import {
   ExternalLink,
   ChevronDown,
   Sparkles,
+  Building2,
+  Check,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,8 +30,15 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen }) => {
-  const { user, logout } = useAuth();
-  const { currentClient, clients, setClient } = useClient();
+  const { user, logout, switchOrganization } = useAuth();
+  const {
+    currentClient,
+    clients,
+    setClient,
+    isIndividualBusiness,
+    isAccountingFirm,
+    activeOrganization,
+  } = useClient();
   const {
     activeTab,
     setActiveTab,
@@ -41,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
   const handleNav = (tab: ActiveTab, sub?: WorkspaceSubTab) => {
     setActiveTab(tab);
@@ -57,10 +67,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { sub: 'ar', label: 'AR Revenue & Sheets', icon: Receipt },
+    { sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt },
     { sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign },
     { sub: 'bank', label: 'Bank Statements', icon: Landmark },
-    { sub: 'requests', label: 'Info Requests', icon: ShieldCheck },
+    { sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck },
   ];
 
   const clientConfigNavItems: Array<{
@@ -70,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
-    { sub: 'settings', label: 'Client Settings', icon: Settings2 },
+    { sub: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
   ];
 
   const globalNavItems: Array<{
@@ -104,22 +114,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Top: App Brand */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800/80 shrink-0">
+        {/* Top: App Brand & Organization Context Switcher */}
+        <div className="h-16 flex items-center justify-between px-3.5 border-b border-slate-800/80 shrink-0 relative">
           <div
             onClick={() => handleNav('workspace', 'overview')}
-            className="flex items-center gap-3 cursor-pointer group overflow-hidden"
+            className="flex items-center gap-2.5 cursor-pointer group overflow-hidden min-w-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0 group-hover:scale-105 transition-transform">
-              <Zap className="w-5 h-5" />
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 group-hover:scale-105 transition-transform ${
+              isIndividualBusiness
+                ? 'bg-gradient-to-tr from-amber-500 to-orange-600 shadow-amber-500/20'
+                : 'bg-gradient-to-tr from-sky-500 to-indigo-600 shadow-sky-500/20'
+            }`}>
+              {isIndividualBusiness ? (
+                <span className="text-base">{activeOrganization?.icon || '🧺'}</span>
+              ) : (
+                <Zap className="w-4 h-4" />
+              )}
             </div>
             {!isCollapsed && (
               <div className="min-w-0">
-                <span className="text-sm font-extrabold text-white tracking-tight block truncate group-hover:text-sky-300 transition-colors">
-                  S4 Automations
+                <span className="text-xs font-extrabold text-white tracking-tight block truncate group-hover:text-sky-300 transition-colors">
+                  {isIndividualBusiness
+                    ? (activeOrganization?.name?.split('(')[0].trim() || 'ANR Group')
+                    : 'S4 Automations'}
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono block truncate">
-                  Multi-Client Suite
+                <span className="text-[9px] font-mono block truncate text-slate-400">
+                  {isIndividualBusiness ? 'Direct Business' : 'Accounting Practice'}
                 </span>
               </div>
             )}
@@ -128,54 +148,127 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           {/* Desktop Collapse Toggle */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition cursor-pointer"
+            className="hidden lg:flex p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition cursor-pointer"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Client Switcher Card in Sidebar */}
-        {!isCollapsed && currentClient && (
-          <div className="p-3 border-b border-slate-800/60 relative">
-            <div
-              onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
-              className="bg-slate-900/90 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/40 rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition"
+        {/* Dual-Mode Organization Switcher Badge */}
+        {!isCollapsed && user?.organizations && user.organizations.length > 1 && (
+          <div className="px-3 pt-2.5 relative">
+            <button
+              onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
+              className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer group"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="text-xl shrink-0">{currentClient.icon || '🏢'}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm shrink-0">{activeOrganization?.icon || (isIndividualBusiness ? '🧺' : '🏛️')}</span>
                 <div className="min-w-0">
-                  <span className="text-xs font-bold text-white block truncate">{currentClient.name}</span>
-                  <span className="text-[10px] text-sky-400 font-mono block truncate">{currentClient.industry}</span>
+                  <span className="text-[11px] font-bold text-white block truncate group-hover:text-sky-300">
+                    {activeOrganization?.name || 'Switch Workspace'}
+                  </span>
+                  <span className="text-[9px] text-sky-400 font-mono block truncate">
+                    {activeOrganization?.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Company Account' : 'Accounting Practice Portfolio'}
+                  </span>
                 </div>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            </div>
+              <ChevronDown className={`w-3 h-3 text-slate-400 group-hover:text-white transition-transform ${isOrgDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-            {/* Quick Dropdown Menu */}
-            {isClientDropdownOpen && (
-              <div className="absolute left-3 right-3 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-1.5 shadow-2xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in">
-                <span className="text-[10px] font-bold text-slate-400 uppercase px-2 py-1 block">
-                  Switch Active Client
+            {isOrgDropdownOpen && (
+              <div className="absolute left-3 right-3 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-1.5 shadow-2xl z-50 animate-in fade-in">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 block font-mono">
+                  Switch Workspace Model
                 </span>
-                {clients.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setClient(c.id);
-                      setIsClientDropdownOpen(false);
-                      handleNav('workspace', 'overview');
-                    }}
-                    className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                      currentClient.id === c.id
-                        ? 'bg-sky-600 text-white font-bold'
-                        : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>{c.icon}</span>
-                    <span className="truncate">{c.name}</span>
-                  </button>
-                ))}
+                {user.organizations.map((org) => {
+                  const isCurrent = (activeOrganization?.id || 's4_advisory') === org.id;
+                  return (
+                    <button
+                      key={org.id}
+                      onClick={async () => {
+                        await switchOrganization(org.id);
+                        setIsOrgDropdownOpen(false);
+                      }}
+                      className={`w-full text-left flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
+                        isCurrent ? 'bg-sky-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm shrink-0">{org.icon || (org.org_type === 'INDIVIDUAL_BUSINESS' ? '🧺' : '🏛️')}</span>
+                        <div className="min-w-0">
+                          <span className="truncate block font-semibold text-[11px]">{org.name}</span>
+                          <span className={`text-[8px] font-mono block ${isCurrent ? 'text-sky-200' : 'text-slate-400'}`}>
+                            {org.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Business' : 'Accounting Practice'}
+                          </span>
+                        </div>
+                      </div>
+                      {isCurrent && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Client Switcher Card in Sidebar (Only shown for Accounting Practice Hub) */}
+        {!isCollapsed && currentClient && (
+          <div className="p-3 border-b border-slate-800/60 relative">
+            {isAccountingFirm ? (
+              <>
+                <div
+                  onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
+                  className="bg-slate-900/90 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/40 rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl shrink-0">{currentClient.icon || '🏢'}</span>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-white block truncate">{currentClient.name}</span>
+                      <span className="text-[10px] text-sky-400 font-mono block truncate">{currentClient.industry}</span>
+                    </div>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                </div>
+
+                {/* Quick Dropdown Menu */}
+                {isClientDropdownOpen && (
+                  <div className="absolute left-3 right-3 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-1.5 shadow-2xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase px-2 py-1 block">
+                      Switch Active Client
+                    </span>
+                    {clients.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setClient(c.id);
+                          setIsClientDropdownOpen(false);
+                          handleNav('workspace', 'overview');
+                        }}
+                        className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
+                          currentClient.id === c.id
+                            ? 'bg-sky-600 text-white font-bold'
+                            : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{c.icon}</span>
+                        <span className="truncate">{c.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Direct Company Account Card */
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 flex items-center gap-2.5">
+                <span className="text-xl shrink-0">{currentClient.icon || '🧺'}</span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white block truncate">{currentClient.name}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-mono block truncate">Direct Internal Workspace</span>
+                </div>
               </div>
             )}
           </div>
@@ -188,7 +281,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           <div className="space-y-1">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Client Workspace
+                {isIndividualBusiness ? 'Company Operations' : 'Client Workspace'}
               </span>
             )}
 
@@ -229,7 +322,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           <div className="space-y-1">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Automation &amp; Settings
+                {isIndividualBusiness ? 'Pipelines & Settings' : 'Automation & Settings'}
               </span>
             )}
 
@@ -307,17 +400,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             })}
           </div>
 
-          {/* GROUP 3: EXTERNAL CLIENT PORTAL */}
+          {/* GROUP 3: EXTERNAL CLIENT PORTAL / COLLABORATION */}
           <div className="space-y-1 pt-2 border-t border-slate-850">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                External Portal
+                {isIndividualBusiness ? 'Accountant Collaboration' : 'External Portal'}
               </span>
             )}
 
             <button
               onClick={() => handleNav('portal')}
-              title={isCollapsed ? 'Client Clarification Portal' : undefined}
+              title={isCollapsed ? (isIndividualBusiness ? 'Accountant Clarification Portal' : 'Client Clarification Portal') : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'portal'
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
@@ -325,7 +418,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               }`}
             >
               <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
-              {!isCollapsed && <span className="truncate">Client Portal View</span>}
+              {!isCollapsed && (
+                <span className="truncate">
+                  {isIndividualBusiness ? 'Accountant Query Portal' : 'Client Portal View'}
+                </span>
+              )}
             </button>
           </div>
 

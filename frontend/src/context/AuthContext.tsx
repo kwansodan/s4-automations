@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { AuthState, AuthUser } from '../types/auth';
-import { requestOtpApi, verifyOtpApi } from '../lib/api';
+import { requestOtpApi, verifyOtpApi, switchActiveOrganization, fetchCurrentUser } from '../lib/api';
 
 interface AuthContextType extends AuthState {
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
   requestOtp: (email: string) => Promise<{ success: boolean; message: string; dev_hint?: string | null }>;
   verifyOtp: (email: string, otp: string) => Promise<boolean>;
+  switchOrganization: (organizationId: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +44,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user: user || (token ? { email: 's4bookkeeping@service4gh.com', name: 'S4 Bookkeeping Admin', role: 'admin' } : null),
     };
   });
+
+  // Re-verify and refresh current user organizations on mount if token exists
+  useEffect(() => {
+    if (!authState.token) return;
+    fetchCurrentUser()
+      .then((res) => {
+        if (res?.authenticated && res.user) {
+          setAuthState((prev) => ({
+            ...prev,
+            user: res.user,
+          }));
+          localStorage.setItem('S4_AUTH_USER', JSON.stringify(res.user));
+        }
+      })
+      .catch((err) => {
+        console.warn('Silent user session refresh notice:', err);
+      });
+  }, [authState.token]);
 
   const login = (token: string, user: AuthUser) => {
     localStorage.setItem('S4_AUTH_TOKEN', token);
@@ -82,6 +101,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
+  const switchOrganization = async (organizationId: string): Promise<boolean> => {
+    try {
+      const res = await switchActiveOrganization(organizationId);
+      if (res?.success && res.user) {
+        setAuthState((prev) => ({
+          ...prev,
+          user: res.user,
+        }));
+        localStorage.setItem('S4_AUTH_USER', JSON.stringify(res.user));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to switch active organization:', err);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -90,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         requestOtp,
         verifyOtp,
+        switchOrganization,
       }}
     >
       {children}

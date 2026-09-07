@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { ClientProfile, OrganizationTeamMember } from '../types/client';
+import type { ClientProfile, OrganizationTeamMember, Organization } from '../types/client';
 import { fetchClients, createClient, deleteClient as apiDeleteClient, deletePipeline as apiDeletePipeline } from '../lib/api';
+import { useAuth } from './AuthContext';
 
 const DEFAULT_CLIENTS: ClientProfile[] = [
   {
@@ -88,11 +89,19 @@ interface ClientContextType {
   wizardDraft: any;
   saveWizardDraft: (draft: any) => void;
   clearWizardDraft: () => void;
+  isIndividualBusiness: boolean;
+  isAccountingFirm: boolean;
+  activeOrganization?: Organization;
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
 
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const activeOrg = user?.organization;
+  const isIndividualBusiness = activeOrg?.org_type === 'INDIVIDUAL_BUSINESS';
+  const isAccountingFirm = !isIndividualBusiness;
+
   const [clients, setClients] = useState<ClientProfile[]>(DEFAULT_CLIENTS);
 
   const [currentClientId, setCurrentClientId] = useState<string>(() => {
@@ -119,11 +128,11 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return null;
   });
 
-  // Sync with backend PostgreSQL database on mount
+  // Sync with backend PostgreSQL database on mount or when active organization changes
   useEffect(() => {
     const loadBackendClients = async () => {
       try {
-        const dbClients = await fetchClients();
+        const dbClients = await fetchClients(activeOrg?.id);
         if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
           const mapped: ClientProfile[] = dbClients.map((c: any) => {
             const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
@@ -138,6 +147,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             return {
               id: c.id,
+              organization_id: c.organization_id || 's4_advisory',
               name: c.name,
               industry: c.industry,
               icon: c.icon || defaultMatch?.icon || '🏢',
@@ -172,13 +182,25 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             };
           });
           setClients(mapped);
+
+          // If in individual business mode, lock focus onto company client
+          if (isIndividualBusiness) {
+            const matched = mapped.find(
+              (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id || c.id === 'anr_group'
+            );
+            if (matched) {
+              setCurrentClientId(matched.id);
+            } else if (mapped.length > 0) {
+              setCurrentClientId(mapped[0].id);
+            }
+          }
         }
       } catch (err) {
         console.warn('Using local client registry fallback:', err);
       }
     };
     loadBackendClients();
-  }, []);
+  }, [activeOrg?.id, isIndividualBusiness]);
 
   const currentClient = clients.find((c) => c.id === currentClientId) || clients[0];
 
@@ -246,6 +268,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       await createClient({
         name: newProfile.name,
+        organization_id: activeOrg?.id || 's4_advisory',
         industry: newProfile.industry,
         icon: newProfile.icon,
         status: newProfile.status,
@@ -274,6 +297,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addClient = async (clientData: Omit<ClientProfile, 'id' | 'workflowsCount' | 'projectedMonthlyVolume' | 'activeIntegrations' | 'blueprints'>) => {
     await createClientFromWizard({
       ...clientData,
+      organization_id: activeOrg?.id || 's4_advisory',
       description: clientData.desc,
       folder_id: clientData.folderId,
       zoho_org_id: clientData.zohoOrg,
@@ -352,6 +376,9 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         wizardDraft,
         saveWizardDraft,
         clearWizardDraft,
+        isIndividualBusiness,
+        isAccountingFirm,
+        activeOrganization: activeOrg,
       }}
     >
       {children}

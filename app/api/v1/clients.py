@@ -39,6 +39,7 @@ class ClientCreatePayload(BaseModel):
     pipelines: Optional[List[Dict[str, Any]]] = None
     team_members: Optional[List[Dict[str, Any]]] = None
     active_integrations: Optional[List[str]] = None
+    organization_id: Optional[str] = Field(default="s4_advisory", description="Parent organization ID (e.g. accounting firm or direct company)")
 
 
 class ExternalProbePayload(BaseModel):
@@ -307,10 +308,24 @@ DEFAULT_ANR_PIPELINES: List[Dict[str, Any]] = [
 
 
 @router.get("", summary="List All Accounting Client Organizations")
-async def list_clients(db: Session = Depends(get_db_session)) -> List[Dict[str, Any]]:
-    """Returns all registered client organizations and active automation strategies with self-healing schema repair."""
+async def list_clients(
+    organization_id: Optional[str] = None,
+    db: Session = Depends(get_db_session),
+) -> List[Dict[str, Any]]:
+    """Returns all registered client organizations filtered by organization context (if provided) with self-healing schema repair."""
     try:
-        clients = db.exec(select(ClientOrganization)).all()
+        query = select(ClientOrganization)
+        if organization_id:
+            query = query.where(
+                (ClientOrganization.organization_id == organization_id) |
+                (ClientOrganization.id == organization_id) |
+                ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
+            )
+        clients = db.exec(query).all()
+        # Fallback if specific org filter returned empty: if firm, show all firm clients
+        if not clients and organization_id in ("s4_advisory", None):
+            clients = db.exec(select(ClientOrganization)).all()
+
         updated = False
         for c in clients:
             if c.id == "anr_group" and (not c.pipelines or len(c.pipelines) == 0):
@@ -331,14 +346,32 @@ async def list_clients(db: Session = Depends(get_db_session)) -> List[Dict[str, 
         try:
             run_schema_migrations(get_engine())
             with Session(get_engine()) as retry_db:
-                clients = retry_db.exec(select(ClientOrganization)).all()
+                retry_query = select(ClientOrganization)
+                if organization_id:
+                    retry_query = retry_query.where(
+                        (ClientOrganization.organization_id == organization_id) |
+                        (ClientOrganization.id == organization_id) |
+                        ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
+                    )
+                clients = retry_db.exec(retry_query).all()
+                if not clients and organization_id in ("s4_advisory", None):
+                    clients = retry_db.exec(select(ClientOrganization)).all()
                 return [c.model_dump() for c in clients]
         except Exception as retry_err:
             logger.error(f"Retry querying clients failed ({retry_err}). Attempting full init_db recovery...")
             try:
                 init_db()
                 with Session(get_engine()) as final_db:
-                    clients = final_db.exec(select(ClientOrganization)).all()
+                    final_query = select(ClientOrganization)
+                    if organization_id:
+                        final_query = final_query.where(
+                            (ClientOrganization.organization_id == organization_id) |
+                            (ClientOrganization.id == organization_id) |
+                            ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
+                        )
+                    clients = final_db.exec(final_query).all()
+                    if not clients and organization_id in ("s4_advisory", None):
+                        clients = final_db.exec(select(ClientOrganization)).all()
                     return [c.model_dump() for c in clients]
             except Exception as final_err:
                 logger.error(f"Critical clients query failure: {final_err}")
@@ -373,6 +406,7 @@ async def create_client(
 
     new_client = ClientOrganization(
         id=slug,
+        organization_id=payload.organization_id or "s4_advisory",
         name=payload.name,
         industry=payload.industry,
         icon=payload.icon,
