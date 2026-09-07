@@ -3,6 +3,10 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
+  "allowScripts": {
+    "@parcel/watcher": true,
+    "esbuild": true
+  },
   "scripts": {
     "dev": "vite",
     "build:css": "npx @tailwindcss/cli -i src/index.css -o src/compiled.css",

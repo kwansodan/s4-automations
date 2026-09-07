@@ -109,7 +109,7 @@ export const DebugDrawer: React.FC = () => {
   };
 
   const handleClearServerLogs = async () => {
-    if (!confirm('Are you sure you want to clear in-memory server logs?')) return;
+    if (!window.confirm('Are you sure you want to clear in-memory server logs?')) return;
     try {
       await clearServerLogsApi();
       setServerLogs([]);
