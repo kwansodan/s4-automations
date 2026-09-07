@@ -241,7 +241,9 @@ export interface ClientProfile {
   desc: string;
   accounting_software?: AccountingSoftware;
   folderId?: string;
+  folder_id?: string;
   zohoOrg?: string;
+  zoho_org_id?: string;
   zohoContactId?: string;
   sourceType?: string;
   sourceEmail?: string;

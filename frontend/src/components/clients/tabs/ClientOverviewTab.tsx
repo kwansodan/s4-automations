@@ -421,13 +421,13 @@ export const ClientOverviewTab: React.FC = () => {
                   <div className="min-w-0">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Google Drive OCR Folder</span>
                     <span className="text-xs font-mono text-slate-200 truncate block">
-                      {currentClient.folder_id ? `${currentClient.folder_id.slice(0, 16)}...` : 'Linked & Monitored'}
+                      {(currentClient.folderId || currentClient.folder_id) ? `${(currentClient.folderId || currentClient.folder_id)!.slice(0, 16)}...` : 'Linked & Monitored'}
                     </span>
                   </div>
                 </div>
-                {currentClient.folder_id && (
+                {(currentClient.folderId || currentClient.folder_id) && (
                   <a
-                    href={`https://drive.google.com/drive/folders/${currentClient.folder_id}`}
+                    href={`https://drive.google.com/drive/folders/${currentClient.folderId || currentClient.folder_id}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-slate-400 hover:text-sky-400 p-1.5 transition shrink-0"
