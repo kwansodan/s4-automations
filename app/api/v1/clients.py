@@ -278,11 +278,52 @@ async def dry_run_sample_ocr(payload: DryRunOcrPayload) -> Dict[str, Any]:
         }
 
 
+DEFAULT_ANR_PIPELINES: List[Dict[str, Any]] = [
+    {
+        "id": "pipe_anr_daily_slips",
+        "name": "Daily Control Slips OCR",
+        "section": "AR",
+        "entity_type": "ar_sales_invoice",
+        "source_type": "google_drive",
+        "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
+        "schedule": "Daily @ 18:00 UTC",
+        "auto_post_draft": False,
+        "is_active": True,
+        "active": True,
+    },
+    {
+        "id": "pipe_anr_detergent_bills",
+        "name": "Chemical & Detergent Vendor Bills",
+        "section": "AP",
+        "entity_type": "ap_vendor_bill",
+        "source_type": "email",
+        "source_identifier": "bills@anrgroup.com",
+        "schedule": "Weekly on Friday",
+        "auto_post_draft": False,
+        "is_active": True,
+        "active": True,
+    },
+]
+
+
 @router.get("", summary="List All Accounting Client Organizations")
 async def list_clients(db: Session = Depends(get_db_session)) -> List[Dict[str, Any]]:
     """Returns all registered client organizations and active automation strategies with self-healing schema repair."""
     try:
         clients = db.exec(select(ClientOrganization)).all()
+        updated = False
+        for c in clients:
+            if c.id == "anr_group" and (not c.pipelines or len(c.pipelines) == 0):
+                c.pipelines = DEFAULT_ANR_PIPELINES
+                db.add(c)
+                updated = True
+        if updated:
+            try:
+                db.commit()
+                for c in clients:
+                    db.refresh(c)
+            except Exception as commit_err:
+                logger.warning(f"Could not auto-heal ANR pipelines: {commit_err}")
         return [c.model_dump() for c in clients]
     except Exception as e:
         logger.warning(f"Error querying clients ({e}). Running immediate schema repair...")
@@ -441,6 +482,15 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
+    if client.id == "anr_group" and (not client.pipelines or len(client.pipelines) == 0):
+        client.pipelines = DEFAULT_ANR_PIPELINES
+        try:
+            db.add(client)
+            db.commit()
+            db.refresh(client)
+        except Exception:
+            pass
+
     return {
         "client_id": client.id,
         "name": client.name,
@@ -525,6 +575,14 @@ async def get_client_pipelines(client_id: str, db: Session = Depends(get_db_sess
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    if client.id == "anr_group" and (not client.pipelines or len(client.pipelines) == 0):
+        client.pipelines = DEFAULT_ANR_PIPELINES
+        try:
+            db.add(client)
+            db.commit()
+            db.refresh(client)
+        except Exception:
+            pass
     return client.pipelines or []
 
 

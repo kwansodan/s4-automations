@@ -48,6 +48,7 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
         schedule: 'Daily @ 18:00 UTC',
         auto_post_draft: false,
         active: true,
+        is_active: true,
       },
       {
         id: 'pipe_anr_detergent_bills',
@@ -59,6 +60,7 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
         schedule: 'Weekly on Friday',
         auto_post_draft: false,
         active: true,
+        is_active: true,
       },
     ],
     blueprints: [
@@ -120,37 +122,50 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const loadBackendClients = async () => {
       try {
         const dbClients = await fetchClients();
-        if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
-          const mapped: ClientProfile[] = dbClients.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            industry: c.industry,
-            icon: c.icon || '🏢',
-            status: c.status || 'dev',
-            statusText: c.status_text || (c.status === 'live' ? 'Production Live' : 'In Development'),
-            desc: c.description || '',
-            accounting_software: c.accounting_software || 'zoho_books',
-            folderId: c.folder_id,
-            zohoOrg: c.zoho_org_id,
-            zohoContactId: c.zoho_contact_id,
-            sourceType: c.source_type || 'google_drive',
-            sourceEmail: c.source_email,
-            currency: c.custom_config?.currency || 'GHS',
-            varianceTolerance: c.custom_config?.variance_tolerance || 5,
-            confidenceThreshold: c.custom_config?.confidence_threshold || 80,
-            workflowsCount: (c.pipelines || []).length || (c.blueprints || []).length || 1,
-            projectedMonthlyVolume: c.custom_config?.volume || 'Active',
-            activeIntegrations: c.active_integrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest'],
-            sourceConfig: c.source_config || {},
-            customConfig: c.custom_config || {},
-            pipelines: c.pipelines || [],
-            team_members: c.team_members || [],
-            blueprints: c.blueprints || [
-              { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
-              { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
-              { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
-            ],
-          }));
+          const mapped: ClientProfile[] = dbClients.map((c: any) => {
+            const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
+            const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
+              ? c.pipelines
+              : (defaultMatch?.pipelines || []);
+            const normalizedPipelines = rawPipelines.map((p: any) => ({
+              ...p,
+              is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
+              active: p.active !== undefined ? p.active : (p.is_active !== undefined ? p.is_active : true),
+            }));
+
+            return {
+              id: c.id,
+              name: c.name,
+              industry: c.industry,
+              icon: c.icon || defaultMatch?.icon || '🏢',
+              status: c.status || defaultMatch?.status || 'dev',
+              statusText: c.status_text || (c.status === 'live' ? 'Production Live' : 'In Development'),
+              desc: c.description || defaultMatch?.desc || '',
+              accounting_software: c.accounting_software || defaultMatch?.accounting_software || 'zoho_books',
+              folderId: c.folder_id || defaultMatch?.folderId,
+              zohoOrg: c.zoho_org_id || defaultMatch?.zohoOrg,
+              zohoContactId: c.zoho_contact_id || defaultMatch?.zohoContactId,
+              sourceType: c.source_type || defaultMatch?.sourceType || 'google_drive',
+              sourceEmail: c.source_email || defaultMatch?.sourceEmail,
+              currency: c.custom_config?.currency || defaultMatch?.currency || 'GHS',
+              varianceTolerance: c.custom_config?.variance_tolerance || 5,
+              confidenceThreshold: c.custom_config?.confidence_threshold || 80,
+              workflowsCount: normalizedPipelines.length || (c.blueprints || []).length || 1,
+              projectedMonthlyVolume: c.custom_config?.volume || 'Active',
+              activeIntegrations: (c.active_integrations && c.active_integrations.length > 0)
+                ? c.active_integrations
+                : (defaultMatch?.activeIntegrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest']),
+              sourceConfig: c.source_config || {},
+              customConfig: c.custom_config || {},
+              pipelines: normalizedPipelines,
+              team_members: (c.team_members && c.team_members.length > 0) ? c.team_members : (defaultMatch?.team_members || []),
+              blueprints: (c.blueprints && c.blueprints.length > 0) ? c.blueprints : (defaultMatch?.blueprints || [
+                { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
+                { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
+                { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
+              ]),
+            };
+          });
           setClients(mapped);
         }
       } catch (err) {

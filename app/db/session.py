@@ -249,6 +249,40 @@ def init_db():
                     session.add(c)
                 session.commit()
                 logger.info("Successfully seeded default accounting client organizations.")
+
+            # Ensure ANR Group has default pipelines populated if empty
+            anr_client = session.exec(select(ClientOrganization).where(ClientOrganization.id == "anr_group")).first()
+            if anr_client and (not anr_client.pipelines or len(anr_client.pipelines) == 0):
+                logger.info("Auto-healing ANR Group pipelines in database...")
+                anr_client.pipelines = [
+                    {
+                        "id": "pipe_anr_daily_slips",
+                        "name": "Daily Control Slips OCR",
+                        "section": "AR",
+                        "entity_type": "ar_sales_invoice",
+                        "source_type": "google_drive",
+                        "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
+                        "schedule": "Daily @ 18:00 UTC",
+                        "auto_post_draft": False,
+                        "active": True,
+                        "is_active": True,
+                    },
+                    {
+                        "id": "pipe_anr_detergent_bills",
+                        "name": "Chemical & Detergent Vendor Bills",
+                        "section": "AP",
+                        "entity_type": "ap_vendor_bill",
+                        "source_type": "email",
+                        "source_identifier": "bills@anrgroup.com",
+                        "schedule": "Weekly on Friday",
+                        "auto_post_draft": False,
+                        "active": True,
+                        "is_active": True,
+                    },
+                ]
+                session.add(anr_client)
+                session.commit()
+                logger.info("Successfully updated ANR Group pipelines.")
     except Exception as e:
         logger.warning(f"Database seed notice: {e}")
 
