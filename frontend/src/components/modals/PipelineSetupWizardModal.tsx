@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult } from '../../types/client';
+import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult, ChartOfAccountItem } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
-import { probeExternalConnection, simulatePipelineExtraction } from '../../lib/api';
+import { probeExternalConnection, simulatePipelineExtraction, fetchChartOfAccounts } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
 import {
   X,
@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Copy,
   Info,
   CheckCircle2,
@@ -64,6 +65,40 @@ const PROMPT_PRESETS = [
   },
 ];
 
+const CLIENT_DEFAULT_ACCOUNTS: ChartOfAccountItem[] = [
+  // Income & Revenue
+  { account_id: 'acc_4000', account_code: '4000', account_name: 'Commercial Sales Revenue', account_type: 'Income' },
+  { account_id: 'acc_4100', account_code: '4100', account_name: 'Direct Sales Revenue', account_type: 'Income' },
+  { account_id: 'acc_4200', account_code: '4200', account_name: 'Service & Advisory Income', account_type: 'Income' },
+  { account_id: 'acc_4990', account_code: '4990', account_name: 'Uncategorized Income', account_type: 'Income', is_suspense: true },
+  // Cost of Goods & Expenses
+  { account_id: 'acc_5000', account_code: '5000', account_name: 'Operating Expenses', account_type: 'Expense' },
+  { account_id: 'acc_5050', account_code: '5050', account_name: 'Cost of Goods Sold (Inventory)', account_type: 'Expense' },
+  { account_id: 'acc_5100', account_code: '5100', account_name: 'Office Supplies & Stationery', account_type: 'Expense' },
+  { account_id: 'acc_5200', account_code: '5200', account_name: 'Vehicle Fuel & Fleet Transport', account_type: 'Expense' },
+  { account_id: 'acc_5300', account_code: '5300', account_name: 'Rent & Leasehold Utilities', account_type: 'Expense' },
+  { account_id: 'acc_5400', account_code: '5400', account_name: 'Internet & Communication (MoMo/Data)', account_type: 'Expense' },
+  { account_id: 'acc_5500', account_code: '5500', account_name: 'Repairs & Maintenance', account_type: 'Expense' },
+  { account_id: 'acc_5600', account_code: '5600', account_name: 'Professional & Legal Retainer Fees', account_type: 'Expense' },
+  { account_id: 'acc_6990', account_code: '6990', account_name: 'Uncategorized Expenses', account_type: 'Expense', is_suspense: true },
+  // Bank, Cash & Clearing Accounts
+  { account_id: 'acc_1001', account_code: '1001', account_name: 'Main Operating Bank Account', account_type: 'Bank' },
+  { account_id: 'acc_1095', account_code: '1095', account_name: 'MTN MoMo Holding / Clearing', account_type: 'Current Asset', is_suspense: true },
+  { account_id: 'acc_2150', account_code: '2150', account_name: 'Ask My Accountant / Clearing', account_type: 'Other Current Liability', is_suspense: true },
+  { account_id: 'acc_850', account_code: '850', account_name: 'Suspense Account', account_type: 'Other Current Liability', is_suspense: true },
+  // Liabilities & Equity
+  { account_id: 'acc_2000', account_code: '2000', account_name: 'Accounts Payable', account_type: 'Liability' },
+  { account_id: 'acc_1200', account_code: '1200', account_name: "Director's Loan & Drawings", account_type: 'Equity' },
+  { account_id: 'acc_9000', account_code: '9000', account_name: 'General Ledger Accruals', account_type: 'Equity' },
+];
+
+const formatAccountOptionValue = (acc: ChartOfAccountItem): string => {
+  if (acc.account_code) {
+    return `${acc.account_code} - ${acc.account_name}`;
+  }
+  return acc.account_name;
+};
+
 export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> = ({
   isOpen,
   onClose,
@@ -90,6 +125,11 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [autoPostToZoho, setAutoPostToZoho] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
 
+  // Client-specific Chart of Accounts State
+  const [accounts, setAccounts] = useState<ChartOfAccountItem[]>(CLIENT_DEFAULT_ACCOUNTS);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState<boolean>(false);
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
+
   // Simulation & Human Instructions State
   const [humanInstructions, setHumanInstructions] = useState<string>('');
   const [sampleFile, setSampleFile] = useState<File | null>(null);
@@ -114,9 +154,96 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
+  // Load client-specific Chart of Accounts when modal opens or clientId changes
+  useEffect(() => {
+    if (!isOpen || !clientId) return;
+    let isCancelled = false;
+    setIsLoadingAccounts(true);
+
+    fetchChartOfAccounts(clientId)
+      .then((data) => {
+        if (!isCancelled && data && Array.isArray(data.accounts) && data.accounts.length > 0) {
+          setAccounts(data.accounts);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch client chart of accounts for pipeline wizard:', err);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingAccounts(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, clientId]);
+
+  // Group client accounts by accounting classification
+  const groupedAccounts = React.useMemo(() => {
+    const groups: { [key: string]: ChartOfAccountItem[] } = {
+      'Income & Revenue': [],
+      'Cost of Goods & Expenses': [],
+      'Bank, Cash & Clearing Accounts': [],
+      'Liabilities & Equity': [],
+      'Other Accounts': [],
+    };
+
+    accounts.forEach((acc) => {
+      const type = (acc.account_type || '').toLowerCase();
+      const name = (acc.account_name || '').toLowerCase();
+      if (type.includes('income') || type.includes('revenue') || type.includes('sales')) {
+        groups['Income & Revenue'].push(acc);
+      } else if (type.includes('expense') || type.includes('cost of goods') || type.includes('cogs')) {
+        groups['Cost of Goods & Expenses'].push(acc);
+      } else if (
+        type.includes('bank') ||
+        type.includes('cash') ||
+        type.includes('clearing') ||
+        type.includes('current asset') ||
+        name.includes('momo') ||
+        name.includes('clearing') ||
+        acc.is_suspense
+      ) {
+        groups['Bank, Cash & Clearing Accounts'].push(acc);
+      } else if (type.includes('liability') || type.includes('equity') || type.includes('loan')) {
+        groups['Liabilities & Equity'].push(acc);
+      } else {
+        groups['Other Accounts'].push(acc);
+      }
+    });
+
+    return Object.entries(groups).filter(([_, items]) => items.length > 0);
+  }, [accounts]);
+
+  // Resolve matching selected account code value
+  const selectedValue = React.useMemo(() => {
+    if (!defaultAccountCode) return '';
+    const exactMatch = accounts.find((acc) => formatAccountOptionValue(acc) === defaultAccountCode);
+    if (exactMatch) return formatAccountOptionValue(exactMatch);
+    const codeMatch = accounts.find(
+      (acc) =>
+        acc.account_code &&
+        (acc.account_code === defaultAccountCode ||
+          defaultAccountCode.startsWith(`${acc.account_code} `) ||
+          defaultAccountCode.startsWith(`${acc.account_code} -`))
+    );
+    if (codeMatch) return formatAccountOptionValue(codeMatch);
+    return defaultAccountCode;
+  }, [defaultAccountCode, accounts]);
+
+  const hasMatchingAccount = React.useMemo(() => {
+    return accounts.some((acc) => {
+      const fullVal = formatAccountOptionValue(acc);
+      return fullVal === selectedValue || acc.account_code === selectedValue;
+    });
+  }, [accounts, selectedValue]);
+
   // Initialize or reset form when modal opens
   useEffect(() => {
     if (isOpen) {
+      setIsCustomMode(false);
       if (initialPipeline) {
         setPipeId(initialPipeline.id);
         setName(initialPipeline.name);
@@ -366,16 +493,20 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       setSection(sec);
                       if (sec === 'AR') {
                         setEntityType('ar_sales_invoice');
-                        setDefaultAccountCode('4000 - Commercial Sales Revenue');
+                        const defaultAr = accounts.find((a) => (a.account_type || '').toLowerCase().includes('income') || (a.account_type || '').toLowerCase().includes('sales'));
+                        setDefaultAccountCode(defaultAr ? formatAccountOptionValue(defaultAr) : '4000 - Commercial Sales Revenue');
                       } else if (sec === 'AP') {
                         setEntityType('ap_vendor_bill');
-                        setDefaultAccountCode('5000 - Cost of Goods Sold (Inventory)');
+                        const defaultAp = accounts.find((a) => (a.account_type || '').toLowerCase().includes('expense') || (a.account_type || '').toLowerCase().includes('cogs'));
+                        setDefaultAccountCode(defaultAp ? formatAccountOptionValue(defaultAp) : '5000 - Cost of Goods Sold (Inventory)');
                       } else if (sec === 'BANK') {
                         setEntityType('bank_statement');
-                        setDefaultAccountCode('1001 - Main Operating Bank Account');
+                        const defaultBank = accounts.find((a) => (a.account_type || '').toLowerCase().includes('bank') || (a.account_type || '').toLowerCase().includes('current asset'));
+                        setDefaultAccountCode(defaultBank ? formatAccountOptionValue(defaultBank) : '1001 - Main Operating Bank Account');
                       } else {
                         setEntityType('gl_journal');
-                        setDefaultAccountCode('9000 - General Ledger Accruals');
+                        const defaultGl = accounts.find((a) => a.account_code === '9000' || (a.account_type || '').toLowerCase().includes('equity'));
+                        setDefaultAccountCode(defaultGl ? formatAccountOptionValue(defaultGl) : '9000 - General Ledger Accruals');
                       }
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
@@ -428,16 +559,97 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Default Chart of Accounts Code for this Stream
-                </label>
-                <input
-                  type="text"
-                  value={defaultAccountCode}
-                  onChange={(e) => setDefaultAccountCode(e.target.value)}
-                  placeholder="e.g. 4000 - Sales Revenue or 5000 - Inventory COGS"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Default Chart of Accounts Code for this Stream
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {isLoadingAccounts && (
+                      <span className="text-[10px] text-sky-400 flex items-center gap-1">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        <span>Loading CoA...</span>
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomMode(!isCustomMode)}
+                      className="text-[11px] text-sky-400 hover:text-sky-300 transition underline cursor-pointer"
+                    >
+                      {isCustomMode ? 'Select from Client Accounts' : 'Enter Custom Code'}
+                    </button>
+                  </div>
+                </div>
+
+                {isCustomMode ? (
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      value={defaultAccountCode}
+                      onChange={(e) => setDefaultAccountCode(e.target.value)}
+                      placeholder="e.g. 4000 - Sales Revenue or 5000 - Inventory COGS"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">
+                        Manual account code entry mode.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomMode(false)}
+                        className="text-[10px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                      >
+                        Switch back to dropdown
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={selectedValue}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom__') {
+                          setIsCustomMode(true);
+                        } else {
+                          setDefaultAccountCode(e.target.value);
+                        }
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-sky-500 cursor-pointer appearance-none pr-8"
+                    >
+                      {defaultAccountCode && !hasMatchingAccount && (
+                        <option value={defaultAccountCode} className="bg-slate-950 text-amber-300">
+                          📌 Current: {defaultAccountCode}
+                        </option>
+                      )}
+                      {groupedAccounts.map(([groupName, groupItems]) => (
+                        <optgroup
+                          key={groupName}
+                          label={groupName}
+                          className="bg-slate-900 text-sky-400 font-sans font-bold"
+                        >
+                          {groupItems.map((acc) => {
+                            const optVal = formatAccountOptionValue(acc);
+                            return (
+                              <option
+                                key={acc.account_id || optVal}
+                                value={optVal}
+                                className="bg-slate-950 text-slate-200 font-mono py-1"
+                              >
+                                {acc.account_code ? `[${acc.account_code}] ` : ''}{acc.account_name} {acc.account_type ? `(${acc.account_type})` : ''}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      ))}
+                      <option value="__custom__" className="bg-slate-900 text-sky-400 font-sans font-semibold">
+                        ✏️ Enter Custom Code...
+                      </option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                )}
+
                 <span className="text-[10px] text-slate-400 mt-1 block">
                   Line items extracted from this stream's documents will default to this account if not explicitly overridden by AI SKU matching.
                 </span>
