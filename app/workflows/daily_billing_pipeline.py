@@ -126,14 +126,17 @@ async def run_daily_pipeline_core(
                 ocr = GeminiOCRService()
 
                 zoho_org_id = None
-                with Session(get_engine()) as session:
-                    client_obj = session.exec(
-                        select(ClientOrganization).where(
-                            (ClientOrganization.id == client_slug) | (ClientOrganization.name == client_name)
-                        )
-                    ).first()
-                    if client_obj:
-                        zoho_org_id = client_obj.zoho_org_id
+                try:
+                    with Session(get_engine()) as session:
+                        client_obj = session.exec(
+                            select(ClientOrganization).where(
+                                (ClientOrganization.id == client_slug) | (ClientOrganization.name == client_name)
+                            )
+                        ).first()
+                        if client_obj:
+                            zoho_org_id = client_obj.zoho_org_id
+                except Exception as db_err:
+                    logger.warning(f"Could not load ClientOrganization for '{client_slug}' ({db_err}). Proceeding with default configuration.")
 
                 zoho = ZohoBooksService(org_id=zoho_org_id)
 

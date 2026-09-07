@@ -29,7 +29,7 @@ def get_engine() -> Engine:
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
-                connect_args={"connect_timeout": 1},
+                connect_args={"connect_timeout": 10},
             )
             # Test connectivity immediately
             with temp_engine.connect() as conn:
@@ -38,7 +38,7 @@ def get_engine() -> Engine:
             logger.info("Connected to PostgreSQL database successfully.")
             return _engine
         except Exception as e:
-            logger.info(f"PostgreSQL connection to {db_url} not available ({e}). Using local SQLite database.")
+            logger.warning(f"PostgreSQL connection to {db_url} not available ({e}). Using local SQLite database.")
 
     # SQLite fallback
     os.makedirs("data", exist_ok=True)
@@ -56,101 +56,173 @@ class _EngineProxy:
 engine = _EngineProxy()
 
 
+def run_schema_migrations(active_engine: Engine):
+    """
+    Safely and idempotently adds missing columns to existing tables for PostgreSQL and SQLite.
+    Inspects existing columns first to avoid aborted transactions on PostgreSQL.
+    Executes each statement in its own isolated connection with explicit rollback on error.
+    """
+    from sqlalchemy import inspect, text
+
+    is_postgres = active_engine.dialect.name == "postgresql"
+    ts_type = "TIMESTAMP" if is_postgres else "DATETIME"
+    json_type = "JSON"
+
+    columns_to_ensure = [
+        # clients table
+        ("clients", "accounting_software", "VARCHAR DEFAULT 'zoho_books'"),
+        ("clients", "pipelines", f"{json_type} DEFAULT '[]'"),
+        ("clients", "team_members", f"{json_type} DEFAULT '[]'"),
+        ("clients", "watched_accounts", f"{json_type} DEFAULT '[\"6990\", \"850\", \"suspense\", \"uncategorized\"]'"),
+        ("clients", "blueprints", f"{json_type} DEFAULT '[]'"),
+        ("clients", "active_integrations", f"{json_type} DEFAULT '[]'"),
+        ("clients", "source_config", f"{json_type} DEFAULT '{{}}'"),
+        ("clients", "custom_config", f"{json_type} DEFAULT '{{}}'"),
+        ("clients", "stats_summary", f"{json_type} DEFAULT '{{}}'"),
+        ("clients", "source_email", "VARCHAR"),
+        ("clients", "last_run_at", ts_type),
+
+        # staged_transactions table
+        ("staged_transactions", "pipeline_id", "VARCHAR"),
+        ("staged_transactions", "pipeline_name", "VARCHAR"),
+        ("staged_transactions", "entity_type", "VARCHAR DEFAULT 'ar_sales_invoice'"),
+        ("staged_transactions", "pipeline_type", "VARCHAR DEFAULT 'AR'"),
+        ("staged_transactions", "validation_status", "VARCHAR DEFAULT 'VALID'"),
+        ("staged_transactions", "validation_errors", f"{json_type} DEFAULT '[]'"),
+        ("staged_transactions", "checksum", "VARCHAR"),
+        ("staged_transactions", "source_identifier", "VARCHAR"),
+        ("staged_transactions", "category_or_account", "VARCHAR"),
+        ("staged_transactions", "accounting_ref_id", "VARCHAR"),
+        ("staged_transactions", "discrepancy_reason", "VARCHAR"),
+        ("staged_transactions", "metadata_json", f"{json_type} DEFAULT '{{}}'"),
+
+        # bank_transactions table
+        ("bank_transactions", "bank_account_name", "VARCHAR DEFAULT 'Main Operating Bank Account'"),
+        ("bank_transactions", "checksum", "VARCHAR"),
+        ("bank_transactions", "mapped_account_id", "VARCHAR"),
+        ("bank_transactions", "mapped_account_name", "VARCHAR"),
+        ("bank_transactions", "payee_name", "VARCHAR"),
+        ("bank_transactions", "tax_rate", "VARCHAR"),
+        ("bank_transactions", "ai_suggested_account", "VARCHAR"),
+        ("bank_transactions", "category_confidence", "FLOAT DEFAULT 0.0"),
+        ("bank_transactions", "client_attachments", f"{json_type} DEFAULT '[]'"),
+        ("bank_transactions", "client_explanation", "VARCHAR"),
+        ("bank_transactions", "accountant_query", "VARCHAR"),
+        ("bank_transactions", "query_date", ts_type),
+        ("bank_transactions", "response_date", ts_type),
+        ("bank_transactions", "source_platform", "VARCHAR DEFAULT 'bank_feed'"),
+        ("bank_transactions", "metadata_json", f"{json_type} DEFAULT '{{}}'"),
+    ]
+
+    try:
+        inspector = inspect(active_engine)
+        existing_tables = set(inspector.get_table_names())
+    except Exception as e:
+        logger.warning(f"Failed to inspect database tables: {e}")
+        existing_tables = set()
+
+    for table_name, column_name, col_def in columns_to_ensure:
+        if table_name not in existing_tables:
+            continue
+
+        try:
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            if column_name in existing_cols:
+                continue
+        except Exception as e:
+            logger.debug(f"Could not inspect columns for table '{table_name}': {e}")
+
+        logger.info(f"Schema migration: Adding missing column '{column_name}' to table '{table_name}'...")
+        if is_postgres:
+            stmt = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {col_def}"
+        else:
+            stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {col_def}"
+
+        # Execute in an isolated connection
+        try:
+            with active_engine.connect() as conn:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    logger.info(f"Successfully added column '{column_name}' to '{table_name}'.")
+                except Exception as ex:
+                    conn.rollback()
+                    if "already exists" in str(ex).lower():
+                        logger.debug(f"Column '{column_name}' on '{table_name}' already exists.")
+                    else:
+                        logger.warning(f"Notice on adding column '{column_name}' to '{table_name}': {ex}")
+        except Exception as conn_err:
+            logger.warning(f"Connection error while migrating '{table_name}.{column_name}': {conn_err}")
+
+
 def init_db():
-    """Initializes database tables and seeds default clients."""
+    """Initializes database tables, runs safe migrations, and seeds default clients."""
     from app.models.db_models import ClientOrganization
 
     active_engine = get_engine()
     logger.info("Initializing SQLModel database schemas...")
     SQLModel.metadata.create_all(active_engine)
 
-    # SQLite migration: ensure columns exist for backward compatibility with existing databases
-    with active_engine.connect() as conn:
-        from sqlalchemy import text
-        migrations = [
-            "ALTER TABLE clients ADD COLUMN pipelines JSON DEFAULT '[]'",
-            "ALTER TABLE clients ADD COLUMN team_members JSON DEFAULT '[]'",
-            "ALTER TABLE clients ADD COLUMN watched_accounts JSON DEFAULT '[\"6990\", \"850\", \"suspense\", \"uncategorized\"]'",
-            "ALTER TABLE clients ADD COLUMN accounting_software VARCHAR DEFAULT 'zoho_books'",
-            "ALTER TABLE staged_transactions ADD COLUMN pipeline_id VARCHAR",
-            "ALTER TABLE staged_transactions ADD COLUMN pipeline_name VARCHAR",
-            "ALTER TABLE staged_transactions ADD COLUMN entity_type VARCHAR",
-            "ALTER TABLE staged_transactions ADD COLUMN pipeline_type VARCHAR DEFAULT 'AR'",
-            "ALTER TABLE staged_transactions ADD COLUMN validation_status VARCHAR DEFAULT 'VALID'",
-            "ALTER TABLE staged_transactions ADD COLUMN validation_errors JSON DEFAULT '[]'",
-            "ALTER TABLE bank_transactions ADD COLUMN bank_account_name VARCHAR DEFAULT 'Main Operating Bank Account'",
-            "ALTER TABLE bank_transactions ADD COLUMN checksum VARCHAR",
-            "ALTER TABLE bank_transactions ADD COLUMN mapped_account_name VARCHAR",
-            "ALTER TABLE bank_transactions ADD COLUMN payee_name VARCHAR",
-            "ALTER TABLE bank_transactions ADD COLUMN tax_rate VARCHAR",
-            "ALTER TABLE bank_transactions ADD COLUMN ai_suggested_account VARCHAR",
-            "ALTER TABLE bank_transactions ADD COLUMN category_confidence FLOAT DEFAULT 0.0",
-            "ALTER TABLE bank_transactions ADD COLUMN client_attachments JSON DEFAULT '[]'",
-            "ALTER TABLE bank_transactions ADD COLUMN query_date DATETIME",
-            "ALTER TABLE bank_transactions ADD COLUMN response_date DATETIME",
-            "ALTER TABLE bank_transactions ADD COLUMN source_platform VARCHAR DEFAULT 'bank_feed'",
-        ]
-        for m in migrations:
-            try:
-                conn.execute(text(m))
-                conn.commit()
-            except Exception:
-                pass
+    # Run safe cross-platform column migrations
+    run_schema_migrations(active_engine)
 
     # Seed Default Clients if empty
-    with Session(active_engine) as session:
-        existing = session.exec(select(ClientOrganization)).first()
-        if not existing:
-            logger.info("Seeding default accounting client organizations...")
-            default_clients = [
-                ClientOrganization(
-                    id="anr_group",
-                    name="ANR Group (Commercial Laundry)",
-                    industry="Commercial Hospitality & Laundry Services",
-                    icon="🧺",
-                    status="live",
-                    status_text="Production Live",
-                    accounting_software="zoho_books",
-                    description="Daily handwritten control slip OCR extraction, linen loss reconciliation, Google Sheets review sync, and Zoho Books draft invoicing.",
-                    folder_id="1Uu_Q3p8s1_anr_laundry_slips",
-                    zoho_org_id="782910482",
-                    source_type="google_drive",
-                    active_integrations=["Google Drive", "Gemini Vision 3.6", "Google Sheets", "Zoho Books", "Inngest"],
-                    pipelines=[
-                        {
-                            "id": "pipe_anr_daily_slips",
-                            "name": "Daily Control Slips OCR",
-                            "section": "AR",
-                            "entity_type": "ar_sales_invoice",
-                            "source_type": "google_drive",
-                            "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
-                            "schedule": "Daily @ 18:00 UTC",
-                            "auto_post_draft": False,
-                            "active": True,
-                        },
-                        {
-                            "id": "pipe_anr_detergent_bills",
-                            "name": "Chemical & Detergent Vendor Bills",
-                            "section": "AP",
-                            "entity_type": "ap_vendor_bill",
-                            "source_type": "email",
-                            "source_identifier": "bills@anrgroup.com",
-                            "schedule": "Weekly on Friday",
-                            "auto_post_draft": False,
-                            "active": True,
-                        },
-                    ],
-                    blueprints=[
-                        {"title": "Vision OCR Extraction", "desc": "Gemini 3.6 Flash structured extraction", "status": "active"},
-                        {"title": "Google Sheets Review Sync", "desc": "Populate Tab 1 & Tab 2", "status": "active"},
-                        {"title": "Draft Invoicing Engine", "desc": "1-Click draft invoice appending", "status": "active"},
-                    ],
-                ),
-            ]
-            for c in default_clients:
-                session.add(c)
-            session.commit()
-            logger.info("Successfully seeded 3 default accounting client organizations.")
+    try:
+        with Session(active_engine) as session:
+            existing = session.exec(select(ClientOrganization)).first()
+            if not existing:
+                logger.info("Seeding default accounting client organizations...")
+                default_clients = [
+                    ClientOrganization(
+                        id="anr_group",
+                        name="ANR Group (Commercial Laundry)",
+                        industry="Commercial Hospitality & Laundry Services",
+                        icon="🧺",
+                        status="live",
+                        status_text="Production Live",
+                        accounting_software="zoho_books",
+                        description="Daily handwritten control slip OCR extraction, linen loss reconciliation, Google Sheets review sync, and Zoho Books draft invoicing.",
+                        folder_id="1Uu_Q3p8s1_anr_laundry_slips",
+                        zoho_org_id="782910482",
+                        source_type="google_drive",
+                        active_integrations=["Google Drive", "Gemini Vision 3.6", "Google Sheets", "Zoho Books", "Inngest"],
+                        pipelines=[
+                            {
+                                "id": "pipe_anr_daily_slips",
+                                "name": "Daily Control Slips OCR",
+                                "section": "AR",
+                                "entity_type": "ar_sales_invoice",
+                                "source_type": "google_drive",
+                                "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
+                                "schedule": "Daily @ 18:00 UTC",
+                                "auto_post_draft": False,
+                                "active": True,
+                            },
+                            {
+                                "id": "pipe_anr_detergent_bills",
+                                "name": "Chemical & Detergent Vendor Bills",
+                                "section": "AP",
+                                "entity_type": "ap_vendor_bill",
+                                "source_type": "email",
+                                "source_identifier": "bills@anrgroup.com",
+                                "schedule": "Weekly on Friday",
+                                "auto_post_draft": False,
+                                "active": True,
+                            },
+                        ],
+                        blueprints=[
+                            {"title": "Vision OCR Extraction", "desc": "Gemini 3.6 Flash structured extraction", "status": "active"},
+                            {"title": "Google Sheets Review Sync", "desc": "Populate Tab 1 & Tab 2", "status": "active"},
+                            {"title": "Draft Invoicing Engine", "desc": "1-Click draft invoice appending", "status": "active"},
+                        ],
+                    ),
+                ]
+                for c in default_clients:
+                    session.add(c)
+                session.commit()
+                logger.info("Successfully seeded default accounting client organizations.")
+    except Exception as e:
+        logger.warning(f"Database seed notice: {e}")
 
 
 def get_db_session() -> Generator[Session, None, None]:
