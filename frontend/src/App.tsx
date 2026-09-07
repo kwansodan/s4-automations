@@ -12,7 +12,6 @@ import { Header } from './components/layout/Header';
 import { CatalogSection } from './components/catalog/CatalogSection';
 import { ConfigSection } from './components/config/ConfigSection';
 import { LiveConsole } from './components/console/LiveConsole';
-import { ClientsHub } from './components/clients/ClientsHub';
 import { ClientWorkspace } from './components/clients/ClientWorkspace';
 import { PipelineModal } from './components/modals/PipelineModal';
 import { InvoiceModal } from './components/modals/InvoiceModal';
@@ -58,9 +57,7 @@ const MainLayout: React.FC = () => {
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Dynamic Route Switching with Error Boundaries */}
           <ErrorBoundary componentName={`Tab: ${activeTab}`}>
-            {activeTab === 'clients' ? (
-              <ClientsHub />
-            ) : activeTab === 'sheets' || activeTab === 'invoicing' ? (
+            {activeTab === 'sheets' || activeTab === 'invoicing' ? (
               <SheetsViewer />
             ) : activeTab === 'queries' ? (
               <InformationRequestsSection />

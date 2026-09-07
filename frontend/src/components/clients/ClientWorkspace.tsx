@@ -18,13 +18,11 @@ import {
   Layers,
   Settings2,
   Sparkles,
-  ArrowLeft,
-  Building,
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
   const { currentClient, setIsWizardOpen } = useClient();
-  const { workspaceSubTab, setWorkspaceSubTab, setActiveTab } = useAutomation();
+  const { workspaceSubTab, setWorkspaceSubTab } = useAutomation();
 
   const currentPlatform =
     ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient.accounting_software) ||
@@ -85,14 +83,6 @@ export const ClientWorkspace: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setActiveTab('clients')}
-              className="flex items-center gap-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>All Clients</span>
-            </button>
-
             <button
               onClick={() => setIsWizardOpen(true)}
               className="flex items-center gap-1.5 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-500/40 text-sky-300 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"

@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   Layers,
   Settings2,
-  Building2,
   Package,
   SlidersHorizontal,
   Terminal,
@@ -72,7 +71,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { tab: 'clients', label: 'All Clients', icon: Building2, badge: `${clients.length}` },
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
     { tab: 'config', label: 'System Diagnostics', icon: SlidersHorizontal },
     { tab: 'logs', label: 'Live Telemetry Logs', icon: Terminal },
