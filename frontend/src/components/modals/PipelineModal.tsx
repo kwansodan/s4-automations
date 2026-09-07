@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
-import { PlayCircle, X, CheckSquare, Calendar, Hotel } from 'lucide-react';
+import { useErrors } from '../../context/ErrorContext';
+import { PlayCircle, X, AlertCircle, Terminal, Loader2 } from 'lucide-react';
+import { ApiError } from '../../lib/api';
 
 const HOTELS = [
   { slug: 'luxwood', name: 'Luxwood Hotel & Suites' },
@@ -11,11 +13,25 @@ const HOTELS = [
 ];
 
 export const PipelineModal: React.FC = () => {
-  const { isPipelineModalOpen, setIsPipelineModalOpen, selectedMonth, selectedYear, runPipeline } = useAutomation();
+  const {
+    isPipelineModalOpen,
+    setIsPipelineModalOpen,
+    selectedMonth,
+    selectedYear,
+    runPipeline,
+  } = useAutomation();
+  const { openDebugDrawer } = useErrors();
 
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>(HOTELS.map((h) => h.slug));
   const [month, setMonth] = useState(selectedMonth);
   const [year, setYear] = useState(selectedYear);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<{
+    message: string;
+    status?: number;
+    traceback?: string;
+    troubleshootingHint?: string;
+  } | null>(null);
 
   if (!isPipelineModalOpen) return null;
 
@@ -27,18 +43,44 @@ export const PipelineModal: React.FC = () => {
     }
   };
 
-  const handleExecute = (e: React.FormEvent) => {
+  const handleClose = () => {
+    if (isSubmitting) return;
+    setModalError(null);
+    setIsPipelineModalOpen(false);
+  };
+
+  const handleExecute = async (e: React.FormEvent) => {
     e.preventDefault();
-    runPipeline({
-      month,
-      year,
-      client_slugs: selectedSlugs.length === HOTELS.length ? null : selectedSlugs,
-    });
+    setModalError(null);
+    setIsSubmitting(true);
+    try {
+      await runPipeline({
+        month,
+        year,
+        client_slugs: selectedSlugs.length === HOTELS.length ? null : selectedSlugs,
+      });
+      // runPipeline closes modal on success
+    } catch (err: any) {
+      if (err instanceof ApiError) {
+        setModalError({
+          message: err.message,
+          status: err.status,
+          traceback: err.traceback,
+          troubleshootingHint: err.troubleshootingHint,
+        });
+      } else {
+        setModalError({
+          message: err?.message || 'An unexpected error occurred while dispatching the OCR pipeline.',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="w-full max-w-lg bg-slate-900 border border-sky-500/30 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95">
+      <div className="w-full max-w-lg bg-slate-900 border border-sky-500/30 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
@@ -47,12 +89,60 @@ export const PipelineModal: React.FC = () => {
             <h2 className="text-base font-bold text-white">Trigger Vision OCR Daily Ingestion</h2>
           </div>
           <button
-            onClick={() => setIsPipelineModalOpen(false)}
-            className="text-slate-400 hover:text-white p-1 rounded cursor-pointer"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="text-slate-400 hover:text-white p-1 rounded cursor-pointer disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Modal Inline Error Banner */}
+        {modalError && (
+          <div className="mb-4 bg-rose-950/60 border border-rose-500/50 rounded-xl p-3.5 space-y-2 animate-in fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-rose-200">Pipeline Dispatch Failed</span>
+                  {modalError.status && (
+                    <span className="text-[10px] bg-rose-900/80 text-rose-300 font-mono px-1.5 py-0.5 rounded border border-rose-700/60">
+                      HTTP {modalError.status}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-rose-300/90 mt-1">{modalError.message}</p>
+                {modalError.troubleshootingHint && (
+                  <p className="text-[11px] text-rose-400 font-mono mt-1">
+                    💡 Hint: {modalError.troubleshootingHint}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {modalError.traceback && (
+              <details className="text-[10px] font-mono text-rose-300 bg-slate-950 p-2 rounded border border-rose-900/40">
+                <summary className="cursor-pointer text-rose-400 hover:text-rose-300 font-semibold select-none">
+                  View Server Traceback
+                </summary>
+                <pre className="mt-1.5 whitespace-pre-wrap overflow-x-auto max-h-36 custom-scrollbar text-rose-300/80">
+                  {modalError.traceback}
+                </pre>
+              </details>
+            )}
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => openDebugDrawer('errors')}
+                className="flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
+              >
+                <Terminal className="w-3 h-3" />
+                <span>Open in Debug Inspector</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleExecute} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -62,7 +152,8 @@ export const PipelineModal: React.FC = () => {
                 type="text"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                disabled={isSubmitting}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 disabled:opacity-50"
               />
             </div>
             <div>
@@ -71,7 +162,8 @@ export const PipelineModal: React.FC = () => {
                 type="number"
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                disabled={isSubmitting}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 disabled:opacity-50"
               />
             </div>
           </div>
@@ -84,7 +176,8 @@ export const PipelineModal: React.FC = () => {
                 onClick={() =>
                   setSelectedSlugs(selectedSlugs.length === HOTELS.length ? [] : HOTELS.map((h) => h.slug))
                 }
-                className="text-[11px] text-sky-400 hover:underline cursor-pointer"
+                disabled={isSubmitting}
+                className="text-[11px] text-sky-400 hover:underline cursor-pointer disabled:opacity-50"
               >
                 {selectedSlugs.length === HOTELS.length ? 'Deselect All' : 'Select All'}
               </button>
@@ -102,6 +195,7 @@ export const PipelineModal: React.FC = () => {
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleSlug(hotel.slug)}
+                        disabled={isSubmitting}
                         className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-sky-600 focus:ring-sky-500"
                       />
                       <span className="text-xs font-medium text-slate-200">{hotel.name}</span>
@@ -120,17 +214,28 @@ export const PipelineModal: React.FC = () => {
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
             <button
               type="button"
-              onClick={() => setIsPipelineModalOpen(false)}
-              className="px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+              onClick={handleClose}
+              disabled={isSubmitting}
+              className="px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={selectedSlugs.length === 0}
-              className="px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition shadow-lg shadow-sky-600/30 cursor-pointer disabled:opacity-50"
+              disabled={selectedSlugs.length === 0 || isSubmitting}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition shadow-lg shadow-sky-600/30 cursor-pointer disabled:opacity-50"
             >
-              Start OCR Ingestion
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Starting Pipeline...</span>
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  <span>Start OCR Ingestion</span>
+                </>
+              )}
             </button>
           </div>
         </form>

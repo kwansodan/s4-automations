@@ -67,47 +67,211 @@ function describeHost(url: string): string {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+  statusText: string;
+  url: string;
+  method: string;
+  requestPayload?: any;
+  responseData?: any;
+  traceback?: string;
+  errorType?: string;
+  troubleshootingHint?: string;
+
+  constructor({
+    message,
+    status,
+    statusText,
+    url,
+    method,
+    requestPayload,
+    responseData,
+    traceback,
+    errorType,
+    troubleshootingHint,
+  }: {
+    message: string;
+    status: number;
+    statusText: string;
+    url: string;
+    method: string;
+    requestPayload?: any;
+    responseData?: any;
+    traceback?: string;
+    errorType?: string;
+    troubleshootingHint?: string;
+  }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.statusText = statusText;
+    this.url = url;
+    this.method = method;
+    this.requestPayload = requestPayload;
+    this.responseData = responseData;
+    this.traceback = traceback;
+    this.errorType = errorType;
+    this.troubleshootingHint = troubleshootingHint;
+  }
+}
+
 /**
- * Fetch with bidirectional fallback across every candidate URL.
- *
- * Only network-layer rejections are retried. A `fetch` promise rejects when the request
- * never completes (offline, DNS failure, TLS interception, blocked CORS preflight); HTTP
- * error statuses resolve normally and are handed straight to `handleResponse`.
+ * Fetch with bidirectional fallback across every candidate URL with telemetry.
  */
 async function resilientFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const method = (options.method || 'GET').toUpperCase();
   const candidates = buildCandidateUrls(path);
   const failedHosts: string[] = [];
 
-  for (let i = 0; i < candidates.length; i++) {
-    const url = candidates[i];
-    console.info(`📡 [S4 API] ${i === 0 ? 'Fetching' : `Fallback ${i} fetching`}: ${url}`);
+  let requestBodyParsed: any = undefined;
+  if (options.body && typeof options.body === 'string') {
     try {
-      return await fetch(url, options);
-    } catch (err: any) {
-      failedHosts.push(describeHost(url));
-      console.warn(`⚠️ [S4 API] ${url} failed at the network layer (${err?.message || err}).`);
+      requestBodyParsed = JSON.parse(options.body);
+    } catch {
+      requestBodyParsed = options.body;
     }
   }
 
-  throw new Error(
-    `Cannot reach the S4 backend — tried ${failedHosts.join(', ')}. ` +
-      `The request never left the browser, so this is not a server error. ` +
-      `Likely causes: no internet connection, a DNS block or captive portal on this network, ` +
-      `or TLS interception presenting an untrusted certificate for the API host.`
-  );
+  for (let i = 0; i < candidates.length; i++) {
+    const url = candidates[i];
+    const candidateStart = performance.now();
+    try {
+      const response = await fetch(url, options);
+      const durationMs = Math.round(performance.now() - candidateStart);
+
+      // Report to in-app Network Inspector
+      if (typeof window !== 'undefined' && (window as any).__S4_REPORT_NETWORK__) {
+        (window as any).__S4_REPORT_NETWORK__({
+          id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          timestamp: new Date().toISOString(),
+          timeDisplay: new Date().toLocaleTimeString(),
+          method,
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          durationMs,
+          requestBody: requestBodyParsed,
+          isError: !response.ok,
+        });
+      }
+
+      return response;
+    } catch (err: any) {
+      const durationMs = Math.round(performance.now() - candidateStart);
+      failedHosts.push(describeHost(url));
+      console.warn(`⚠️ [S4 API] ${url} failed at the network layer (${err?.message || err}).`);
+
+      if (typeof window !== 'undefined' && (window as any).__S4_REPORT_NETWORK__) {
+        (window as any).__S4_REPORT_NETWORK__({
+          id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          timestamp: new Date().toISOString(),
+          timeDisplay: new Date().toLocaleTimeString(),
+          method,
+          url,
+          status: 0,
+          statusText: 'Network Failed',
+          durationMs,
+          requestBody: requestBodyParsed,
+          isError: true,
+          errorMsg: err?.message || String(err),
+        });
+      }
+    }
+  }
+
+  const networkErrMessage = `Cannot reach S4 backend — tried ${failedHosts.join(', ')}. The browser network request could not complete.`;
+
+  if (typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
+    (window as any).__S4_REPORT_ERROR__({
+      severity: 'critical',
+      category: 'network',
+      title: `Network Failure: ${method} ${path}`,
+      message: networkErrMessage,
+      endpoint: path,
+      method,
+      requestPayload: requestBodyParsed,
+      troubleshootingHint: 'Verify the FastAPI backend is running on port 8000 and CORS allows requests from this origin.',
+    });
+  }
+
+  throw new ApiError({
+    message: networkErrMessage,
+    status: 0,
+    statusText: 'Network Refused',
+    url: path,
+    method,
+    requestPayload: requestBodyParsed,
+    troubleshootingHint: 'Check if backend server is running and reachable.',
+  });
 }
 
-async function handleResponse<T>(res: Response, context = 'API request'): Promise<T> {
+async function handleResponse<T>(res: Response, context = 'API request', payload?: any): Promise<T> {
+  const method = res.url ? 'HTTP' : 'API';
   if (!res.ok) {
     let errorDetail = '';
+    let responseJson: any = null;
+    let traceback: string | undefined = undefined;
+    let errorType = 'HttpError';
+    let formattedErrors: string[] = [];
+
     try {
-      const errJson = await res.json();
-      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      responseJson = await res.json();
+      errorDetail = responseJson.message || responseJson.detail || JSON.stringify(responseJson);
+      traceback = responseJson.traceback;
+      errorType = responseJson.error_type || errorType;
+      if (Array.isArray(responseJson.formatted_errors)) {
+        formattedErrors = responseJson.formatted_errors;
+      } else if (Array.isArray(responseJson.detail)) {
+        formattedErrors = responseJson.detail.map((d: any) => `[${(d.loc || []).join('.')}]: ${d.msg}`);
+      }
     } catch {
       errorDetail = await res.text().catch(() => '');
     }
-    throw new Error(`${context} failed (${res.status}): ${errorDetail || res.statusText}`);
+
+    let hint = 'Review the detailed error response and request payload below.';
+    if (res.status === 401 || res.status === 403) {
+      hint = 'Authentication or authorization failed. Check your API keys, OAuth tokens, or Service Account permissions.';
+    } else if (res.status === 404) {
+      hint = 'Resource or endpoint not found. Verify the client ID, date, or folder path.';
+    } else if (res.status === 422) {
+      hint = formattedErrors.length ? `Schema validation failed: ${formattedErrors.join(', ')}` : 'Payload failed field validation.';
+    } else if (res.status >= 500) {
+      hint = 'Server exception occurred. Inspect the Python traceback below to pinpoint the failing line in the backend.';
+    }
+
+    const fullMessage = `${context} failed (${res.status}): ${errorDetail || res.statusText}`;
+
+    // Auto-report to in-app ErrorContext & pop notification
+    if (typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
+      (window as any).__S4_REPORT_ERROR__({
+        severity: res.status >= 500 ? 'critical' : res.status === 422 ? 'warning' : 'error',
+        category: res.status === 422 ? 'validation' : 'api',
+        title: `${context} Error (${res.status} ${res.statusText})`,
+        message: fullMessage,
+        status: res.status,
+        endpoint: res.url,
+        method,
+        requestPayload: payload,
+        responseData: responseJson || errorDetail,
+        traceback,
+        troubleshootingHint: hint,
+      });
+    }
+
+    throw new ApiError({
+      message: fullMessage,
+      status: res.status,
+      statusText: res.statusText,
+      url: res.url,
+      method,
+      requestPayload: payload,
+      responseData: responseJson || errorDetail,
+      traceback,
+      errorType,
+      troubleshootingHint: hint,
+    });
   }
+
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     return res.json() as Promise<T>;
@@ -766,5 +930,51 @@ export async function disconnectAccountingOAuth(
 export const getZohoAuthorizeUrl = (clientId: string) => getAccountingOAuthAuthorizeUrl('zoho_books', clientId);
 export const getZohoOAuthStatus = (clientId: string) => getAccountingOAuthStatus('zoho_books', clientId);
 export const disconnectZohoOAuth = (clientId: string) => disconnectAccountingOAuth('zoho_books', clientId);
+
+// -------------------------------------------------------------------------
+// System Diagnostics & Server Log Streaming API
+// -------------------------------------------------------------------------
+
+export async function fetchServerLogsApi(
+  level?: string,
+  limit = 100,
+  search?: string
+): Promise<{ status: string; total_returned: number; capacity: number; logs: any[] }> {
+  const params = new URLSearchParams();
+  if (level && level !== 'ALL') params.append('level', level);
+  if (limit) params.append('limit', String(limit));
+  if (search) params.append('search', search);
+
+  const queryStr = params.toString() ? `?${params.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/system/logs${queryStr}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Server Logs');
+}
+
+export async function fetchServerErrorsApi(
+  limit = 50
+): Promise<{ status: string; total_returned: number; errors: any[] }> {
+  const res = await resilientFetch(`/api/v1/system/errors?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Server Errors');
+}
+
+export async function clearServerLogsApi(): Promise<{ status: string; message: string }> {
+  const res = await resilientFetch('/api/v1/system/logs', {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Clear Server Logs');
+}
+
+export async function fetchSystemDebugDumpApi(): Promise<any> {
+  const res = await resilientFetch('/api/v1/system/debug-dump', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch System Debug Dump');
+}
+
 
 

@@ -1,18 +1,27 @@
 import React from 'react';
 import { useAutomation } from '../../context/AutomationContext';
-import { RefreshCw, CheckCircle2, AlertCircle, PlayCircle, BarChart3 } from 'lucide-react';
+import { useErrors } from '../../context/ErrorContext';
+import { RefreshCw, CheckCircle2, AlertCircle, PlayCircle, BarChart3, Terminal } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
 export const ProgressTracker: React.FC = () => {
   const { pipelineProgress, selectedMonth, selectedYear, setIsPipelineModalOpen } = useAutomation();
+  const { openDebugDrawer } = useErrors();
 
   const isRunning = pipelineProgress?.is_running ?? false;
+  const isError =
+    pipelineProgress?.status === 'ERROR' ||
+    pipelineProgress?.status === 'FAILED' ||
+    Boolean((pipelineProgress as any)?.error_message);
+  const errorMessage = (pipelineProgress as any)?.error_message;
   const percent = pipelineProgress?.percent ?? 0;
   const currentStep = pipelineProgress?.current_step || 'Pipeline idle. Ready for scheduled run or manual trigger.';
   const stats = pipelineProgress?.stats;
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
+    <div className={`bg-slate-900/90 border rounded-2xl p-6 shadow-xl backdrop-blur-xl transition-all ${
+      isError ? 'border-red-500/40 shadow-[0_0_25px_rgba(239,68,68,0.15)]' : 'border-slate-800'
+    }`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -23,6 +32,11 @@ export const ProgressTracker: React.FC = () => {
               <span className="flex items-center gap-1 text-[11px] font-semibold text-sky-400 bg-sky-950/80 border border-sky-500/40 px-2.5 py-0.5 rounded-full animate-pulse">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 <span>Active Execution</span>
+              </span>
+            ) : isError ? (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2.5 py-0.5 rounded-full animate-pulse">
+                <AlertCircle className="w-3 h-3 text-rose-400" />
+                <span>Execution Failed</span>
               </span>
             ) : (
               <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
@@ -45,6 +59,27 @@ export const ProgressTracker: React.FC = () => {
           <span>Run Pipeline for {selectedMonth} {selectedYear}</span>
         </button>
       </div>
+
+      {/* Error Alert Box if pipeline failed */}
+      {isError && (
+        <div className="mb-5 p-3.5 bg-red-950/40 border border-red-500/40 rounded-xl flex items-start justify-between gap-3 text-xs animate-in fade-in">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-red-300 block mb-0.5">Pipeline Stage Interrupted:</span>
+              <p className="text-red-200/90 font-mono text-[11px] break-all">{errorMessage || currentStep}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => openDebugDrawer('errors')}
+            className="flex items-center gap-1 text-[11px] font-bold text-red-300 hover:text-white bg-red-900/60 hover:bg-red-800/80 border border-red-500/40 px-3 py-1.5 rounded-lg transition cursor-pointer shrink-0"
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Inspect Trace</span>
+          </button>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="space-y-1.5 mb-6">

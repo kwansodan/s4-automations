@@ -99,12 +99,30 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIsLoading(true);
     try {
       const [h, s, c, sh, cat, p] = await Promise.all([
-        fetchHealth().catch(() => null),
-        fetchStats(selectedMonth, selectedYear).catch(() => null),
-        fetchConfig().catch(() => ({ status: 'ok', config: {} })),
-        fetchSheetsData(selectedMonth, selectedYear).catch(() => ({ daily_details: [], monthly_summary: [] })),
-        fetchCatalog().catch(() => ({ contacts_count: 0, items_count: 0, contacts: [], items: [] })),
-        fetchPipelineStatus().catch(() => null),
+        fetchHealth().catch((err) => {
+          addLog('error', `Health check failed: ${err.message}`);
+          return null;
+        }),
+        fetchStats(selectedMonth, selectedYear).catch((err) => {
+          addLog('error', `Stats fetch failed: ${err.message}`);
+          return null;
+        }),
+        fetchConfig().catch((err) => {
+          addLog('error', `Config fetch failed: ${err.message}`);
+          return { status: 'ok', config: {} };
+        }),
+        fetchSheetsData(selectedMonth, selectedYear).catch((err) => {
+          addLog('error', `Sheets fetch failed: ${err.message}`);
+          return { daily_details: [], monthly_summary: [] };
+        }),
+        fetchCatalog().catch((err) => {
+          addLog('error', `Zoho catalog fetch failed: ${err.message}`);
+          return { contacts_count: 0, items_count: 0, contacts: [], items: [] };
+        }),
+        fetchPipelineStatus().catch((err) => {
+          addLog('warning', `Pipeline status check failed: ${err.message}`);
+          return null;
+        }),
       ]);
 
       setHealth(h);
@@ -150,7 +168,6 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [isAuthenticated, pipelineProgress?.is_running, addLog, refreshAll]);
 
   const runPipeline = async (payload: Record<string, any>) => {
-    setIsPipelineModalOpen(false);
     addLog('info', `Dispatching OCR Ingestion Pipeline run for ${selectedMonth} ${selectedYear}...`);
     try {
       const res = await triggerPipeline({
@@ -158,16 +175,18 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         year: selectedYear,
         ...payload,
       });
+      setIsPipelineModalOpen(false);
       addLog('success', `Pipeline Dispatched: ${res.message}`);
       const initialProgress = await fetchPipelineStatus();
       setPipelineProgress(initialProgress);
+      return res;
     } catch (e: any) {
       addLog('error', `Pipeline execution error: ${e.message}`);
+      throw e;
     }
   };
 
   const runInvoicing = async (payload: Record<string, any>) => {
-    setIsInvoiceModalOpen(false);
     addLog('info', `Dispatching Zoho Books Draft Invoice generation task for ${selectedMonth} ${selectedYear}...`);
     try {
       const res = await triggerInvoicing({
@@ -175,11 +194,14 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         year: selectedYear,
         ...payload,
       });
+      setIsInvoiceModalOpen(false);
       addLog('success', `Zoho Invoicing Task Dispatched: ${res.message}`);
       const initialProgress = await fetchPipelineStatus();
       setPipelineProgress(initialProgress);
+      return res;
     } catch (e: any) {
       addLog('error', `Invoicing dispatch error: ${e.message}`);
+      throw e;
     }
   };
 

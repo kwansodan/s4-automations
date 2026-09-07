@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
-import { ExternalLink, Check, AlertTriangle, FileSpreadsheet, RefreshCw, Layers, Calendar } from 'lucide-react';
+import { useErrors } from '../../context/ErrorContext';
+import { ExternalLink, Check, AlertTriangle, AlertCircle, FileSpreadsheet, RefreshCw, Layers, Calendar, Terminal } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -20,8 +21,13 @@ export const SheetsViewer: React.FC = () => {
     refreshAll,
     isLoading,
   } = useAutomation();
+  const { errors, openDebugDrawer } = useErrors();
 
   const [search, setSearch] = useState('');
+
+  const sheetsError = errors.find(
+    (e) => e.endpoint?.includes('sheets') || e.title?.toLowerCase().includes('sheet')
+  );
 
   const dailyDetails = sheetsData?.daily_details || [];
   const monthlySummary = sheetsData?.monthly_summary || [];
@@ -122,6 +128,48 @@ export const SheetsViewer: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Sheets Sync Error Banner */}
+      {sheetsError && (
+        <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-rose-200">Google Sheets Sync Error</h3>
+                {sheetsError.status && (
+                  <span className="text-[10px] bg-rose-900/60 text-rose-300 font-mono px-2 py-0.5 rounded border border-rose-700/50">
+                    HTTP {sheetsError.status}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-rose-300/80 mt-1">{sheetsError.message}</p>
+              {sheetsError.troubleshootingHint && (
+                <p className="text-[11px] text-rose-400/90 mt-1 font-mono">
+                  💡 Hint: {sheetsError.troubleshootingHint}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => refreshAll()}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-600/40 text-rose-200 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Retry Sync</span>
+            </button>
+            <button
+              onClick={() => openDebugDrawer('errors')}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+            >
+              <Terminal className="w-3.5 h-3.5 text-rose-400" />
+              <span>Inspect Trace</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">

@@ -77,6 +77,90 @@ app.include_router(api_v1_router)
 
 
 # -------------------------------------------------------------------------
+# Global Exception Handlers for Frontend In-App Debugging
+# -------------------------------------------------------------------------
+
+import traceback
+from fastapi import Request, status, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Formats Pydantic 422 validation errors with exact field names and locations."""
+    formatted_errors = []
+    for err in exc.errors():
+        loc = " -> ".join(str(l) for l in err.get("loc", []))
+        msg = err.get("msg", "Validation error")
+        formatted_errors.append(f"[{loc}]: {msg}")
+
+    summary_msg = "; ".join(formatted_errors)
+    logger.warning(f"422 Validation Error on {request.method} {request.url.path}: {summary_msg}")
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": True,
+            "error_type": "RequestValidationError",
+            "message": f"Validation failed: {summary_msg}",
+            "detail": exc.errors(),
+            "formatted_errors": formatted_errors,
+            "path": request.url.path,
+            "method": request.method,
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Formats standard HTTPExceptions consistently for frontend consumption."""
+    detail_str = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    logger.warning(f"HTTP {exc.status_code} on {request.method} {request.url.path}: {detail_str}")
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": True,
+            "error_type": "HTTPException",
+            "status_code": exc.status_code,
+            "message": detail_str,
+            "detail": exc.detail,
+            "path": request.url.path,
+            "method": request.method,
+        },
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catches all unhandled 500 server errors, logs with stack trace,
+    and returns rich JSON payload so the frontend Debug Drawer can display
+    the exact failing line and traceback without opening the terminal.
+    """
+    tb_str = traceback.format_exc()
+    error_type = type(exc).__name__
+    error_msg = str(exc) or error_type
+
+    logger.error(f"🚨 Unhandled 500 Exception on {request.method} {request.url.path} [{error_type}]: {error_msg}\n{tb_str}")
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": True,
+            "error_type": error_type,
+            "message": f"{error_type}: {error_msg}",
+            "detail": error_msg,
+            "traceback": tb_str,
+            "path": request.url.path,
+            "method": request.method,
+        },
+    )
+
+
+# -------------------------------------------------------------------------
 # Health Check Endpoint
 # -------------------------------------------------------------------------
 
@@ -144,11 +228,14 @@ async def favicon():
 @app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
 async def dashboard_ui() -> Any:
     """Serves the frontend control dashboard."""
-    # Check for production bundle index.html first
+    # In development mode or when testing without rebuild, prioritize dev_index
     prod_index = os.path.join(dist_dir, "index.html")
     dev_index = os.path.join(frontend_dir, "index.html")
     
-    target_index = prod_index if os.path.exists(prod_index) else dev_index
+    if (settings.ENVIRONMENT == "development" or os.environ.get("VITE_DEV")) and os.path.exists(dev_index):
+        target_index = dev_index
+    else:
+        target_index = prod_index if os.path.exists(prod_index) else dev_index
     if os.path.exists(target_index):
         with open(target_index, "r", encoding="utf-8") as f:
             return HTMLResponse(

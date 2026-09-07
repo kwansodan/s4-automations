@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
+import { useErrors } from '../../context/ErrorContext';
 import { ClientSwitcher } from './ClientSwitcher';
 import {
   Menu,
@@ -11,6 +12,8 @@ import {
   Layers,
   Building,
   ShieldCheck,
+  AlertTriangle,
+  Terminal,
 } from 'lucide-react';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -34,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
     isLoading,
     pipelineProgress,
   } = useAutomation();
+  const { errors, unreadErrorsCount, openDebugDrawer } = useErrors();
 
   return (
     <header className="sticky top-0 z-30 bg-slate-950/80 border-b border-slate-800/80 backdrop-blur-xl h-16">
@@ -83,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
         </div>
 
         {/* Right: Telemetry Health & Live Status */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Mock Mode Tag */}
           {health?.mock_mode && (
             <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium bg-amber-950/60 border border-amber-500/30 text-amber-300 px-2.5 py-0.5 rounded-full">
@@ -108,6 +112,29 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
             <span className="hidden sm:inline">Sync</span>
+          </button>
+
+          {/* In-App Debug Inspector Trigger */}
+          <button
+            onClick={() => openDebugDrawer('errors')}
+            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+              errors.length > 0
+                ? 'bg-red-950/80 hover:bg-red-900/80 border-red-500/50 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.25)] animate-pulse'
+                : 'bg-slate-900 hover:bg-slate-800 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-sky-400'
+            }`}
+            title="Open In-App Debug Inspector (Ctrl+Shift+D)"
+          >
+            {errors.length > 0 ? (
+              <>
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                <span>{errors.length} {errors.length === 1 ? 'Issue' : 'Issues'}</span>
+              </>
+            ) : (
+              <>
+                <Terminal className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden md:inline font-mono">Debug</span>
+              </>
+            )}
           </button>
         </div>
 
