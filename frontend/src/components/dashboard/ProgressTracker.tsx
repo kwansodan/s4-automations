@@ -10,7 +10,6 @@ export const ProgressTracker: React.FC = () => {
 
   const isRunning = pipelineProgress?.is_running ?? false;
   const isError =
-    pipelineProgress?.status === 'ERROR' ||
     pipelineProgress?.status === 'FAILED' ||
     Boolean((pipelineProgress as any)?.error_message);
   const errorMessage = (pipelineProgress as any)?.error_message;

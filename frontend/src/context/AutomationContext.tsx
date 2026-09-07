@@ -51,8 +51,8 @@ interface AutomationContextType {
 
   addLog: (type: 'info' | 'success' | 'warning' | 'error', message: string) => void;
   refreshAll: () => Promise<void>;
-  runPipeline: (payload: Record<string, any>) => Promise<void>;
-  runInvoicing: (payload: Record<string, any>) => Promise<void>;
+  runPipeline: (payload: Record<string, any>) => Promise<any>;
+  runInvoicing: (payload: Record<string, any>) => Promise<any>;
   handleToggleApproval: (rowIndex: number, field: 'reviewed' | 'approved', value: boolean) => Promise<void>;
   saveSystemConfig: (newConfig: Record<string, any>) => Promise<void>;
 }
