@@ -33,14 +33,33 @@ async def trigger_pipeline(
     target_year = int(event_data.get("year") or now.year)
     filter_clients = event_data.get("client_slugs")
 
-    # 1. Execute immediately in background task
-    if background_tasks:
-        background_tasks.add_task(
-            run_daily_pipeline_core,
-            target_month,
-            target_year,
-            filter_clients,
-        )
+    # 1. Execute immediately in a dedicated background daemon thread with its own event loop
+    # This prevents heavy synchronous Google Drive/Sheets I/O from blocking the main FastAPI loop
+    import threading
+    import asyncio
+
+    def _run_pipeline_worker():
+        worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(worker_loop)
+        try:
+            worker_loop.run_until_complete(
+                run_daily_pipeline_core(
+                    target_month=target_month,
+                    target_year=target_year,
+                    filter_clients=filter_clients,
+                )
+            )
+        except Exception as err:
+            logger.error(f"Background pipeline execution error: {err}")
+        finally:
+            worker_loop.close()
+
+    threading.Thread(
+        target=_run_pipeline_worker,
+        daemon=True,
+        name=f"pipeline-{target_month}-{target_year}",
+    ).start()
+
 
     # 2. Also dispatch to Inngest for durable orchestration
     try:

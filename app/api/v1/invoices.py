@@ -34,14 +34,34 @@ async def trigger_invoice_generation(
     explicit_sheet_id = event_data.get("spreadsheet_id")
     filter_client_name = event_data.get("client_name")
 
-    if background_tasks:
-        background_tasks.add_task(
-            run_zoho_invoices_core,
-            target_month,
-            target_year,
-            explicit_sheet_id,
-            filter_client_name,
-        )
+    # 1. Execute immediately in a dedicated background daemon thread with its own event loop
+    # This prevents heavy synchronous Google Sheets/Zoho API calls from blocking the main FastAPI loop
+    import threading
+    import asyncio
+
+    def _run_invoices_worker():
+        worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(worker_loop)
+        try:
+            worker_loop.run_until_complete(
+                run_zoho_invoices_core(
+                    target_month=target_month,
+                    target_year=target_year,
+                    explicit_sheet_id=explicit_sheet_id,
+                    filter_client_name=filter_client_name,
+                )
+            )
+        except Exception as err:
+            logger.error(f"Background invoice generation error: {err}")
+        finally:
+            worker_loop.close()
+
+    threading.Thread(
+        target=_run_invoices_worker,
+        daemon=True,
+        name=f"invoices-{target_month}-{target_year}",
+    ).start()
+
 
     try:
         await inngest_client.send(

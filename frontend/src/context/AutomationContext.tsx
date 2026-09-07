@@ -147,25 +147,47 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [isAuthenticated, refreshAll]);
 
   // Real-time polling when pipeline is executing
+  // Real-time sequential polling when pipeline is executing (prevents request stacking)
   useEffect(() => {
     if (!isAuthenticated || !pipelineProgress?.is_running) return;
 
-    const interval = setInterval(async () => {
+    let isMounted = true;
+    let timeoutId: any = null;
+    let isRequestInFlight = false;
+
+    const poll = async () => {
+      if (!isMounted || isRequestInFlight) return;
+      isRequestInFlight = true;
+
       try {
         const progress = await fetchPipelineStatus();
+        if (!isMounted) return;
         setPipelineProgress(progress);
+
         if (!progress.is_running) {
-          clearInterval(interval);
           addLog('success', `Pipeline completed: ${progress.current_step || 'Workflow finished.'}`);
           refreshAll();
+          return; // Terminate polling
         }
       } catch (err) {
-        console.warn('Polling error:', err);
+        console.warn('Polling notice:', err);
+      } finally {
+        isRequestInFlight = false;
+        if (isMounted) {
+          timeoutId = setTimeout(poll, 2500);
+        }
       }
-    }, 2000);
+    };
 
-    return () => clearInterval(interval);
+    // Schedule initial poll
+    timeoutId = setTimeout(poll, 1500);
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [isAuthenticated, pipelineProgress?.is_running, addLog, refreshAll]);
+
 
   const runPipeline = async (payload: Record<string, any>) => {
     addLog('info', `Dispatching OCR Ingestion Pipeline run for ${selectedMonth} ${selectedYear}...`);

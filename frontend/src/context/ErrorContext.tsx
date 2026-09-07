@@ -112,8 +112,34 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         read: false,
       };
 
-      setErrors((prev) => [newError, ...prev.slice(0, MAX_ERRORS - 1)]);
-      setUnreadErrorsCount((prev) => prev + 1);
+      // Deduplicate recurring polling errors to prevent 100+ identical errors from flooding the drawer
+      const isPollingEndpoint =
+        endpoint?.includes('/progress') || endpoint?.includes('/status') || endpoint?.includes('/logs');
+
+      setErrors((prev) => {
+        if (isPollingEndpoint) {
+          const existingIdx = prev.findIndex(
+            (e) => e.endpoint === endpoint && e.status === status
+          );
+          if (existingIdx !== -1) {
+            const updated = [...prev];
+            updated[existingIdx] = {
+              ...updated[existingIdx],
+              timestamp: now.toISOString(),
+              timeDisplay: now.toLocaleTimeString(),
+              message,
+            };
+            return updated;
+          }
+        }
+        return [newError, ...prev.slice(0, MAX_ERRORS - 1)];
+      });
+
+      setUnreadErrorsCount((prev) => {
+        if (isPollingEndpoint) return Math.min(prev, 5);
+        return prev + 1;
+      });
+
 
       if (showToast) {
         const toastId = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;

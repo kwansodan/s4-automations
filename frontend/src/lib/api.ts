@@ -13,15 +13,33 @@ import type { PipelineSimulationResult } from '../types/client';
 const DIRECT_BACKEND_URL = 'https://autapi.service4gh.com';
 
 function resolveApiBase(): string {
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
-  }
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('S4_API_URL');
-    if (saved) return saved.replace(/\/$/, '');
+    try {
+      const saved = localStorage.getItem('S4_API_URL');
+      if (saved) {
+        const clean = saved.replace(/\/$/, '');
+        // Purge dummy or unresolvable placeholder hosts stored from earlier templates
+        if (clean.includes('yourdomain.com') || clean.includes('example.com') || clean.includes('localhost:8000')) {
+          localStorage.removeItem('S4_API_URL');
+        } else {
+          return clean;
+        }
+      }
+    } catch {
+      // Ignore localStorage access restrictions
+    }
   }
+
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    const envUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+    if (!envUrl.includes('yourdomain.com') && !envUrl.includes('example.com')) {
+      return envUrl;
+    }
+  }
+
   return '';
 }
+
 
 const API_BASE = resolveApiBase();
 
