@@ -318,18 +318,29 @@ export async function fetchHealth(): Promise<{ status: string; service: string; 
 }
 
 export async function fetchPipelineStats(): Promise<DashboardStats> {
-  const res = await resilientFetch('/api/pipeline/stats', {
+  let res = await resilientFetch('/api/pipeline/stats', {
     headers: getAuthHeaders(),
   });
+  if (res.status === 404) {
+    res = await resilientFetch('/api/config/stats', {
+      headers: getAuthHeaders(),
+    });
+  }
   return handleResponse<DashboardStats>(res, 'Fetch pipeline stats');
 }
 
 export async function fetchPipelineProgress(): Promise<PipelineProgress> {
-  const res = await resilientFetch('/api/pipeline/progress', {
+  let res = await resilientFetch('/api/pipeline/progress', {
     headers: getAuthHeaders(),
   });
+  if (res.status === 404) {
+    res = await resilientFetch('/api/pipeline/status', {
+      headers: getAuthHeaders(),
+    });
+  }
   return handleResponse<PipelineProgress>(res, 'Fetch pipeline progress');
 }
+
 
 export async function triggerDailyBillingPipeline(dryRun = false): Promise<{ message: string; event_id: string }> {
   const res = await resilientFetch('/api/pipeline/trigger', {

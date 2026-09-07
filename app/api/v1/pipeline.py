@@ -75,11 +75,20 @@ async def trigger_invoices_pipeline_alias(
 
 
 @router.get("/status", summary="Get Pipeline Real-time Progress")
+@router.get("/progress", summary="Get Pipeline Real-time Progress (Alias)")
 async def get_pipeline_status() -> Dict[str, Any]:
     """
     Returns real-time execution status, stage progress, counters, and telemetry logs.
     """
     return pipeline_tracker.get_state()
+
+
+@router.get("/stats", summary="Get Pipeline KPI Stats (Forward to Dashboard Stats)")
+async def get_pipeline_stats(month: Optional[str] = None, year: Optional[int] = None) -> Dict[str, Any]:
+    """Returns aggregated KPI summary metrics for pipeline and dashboard."""
+    from app.api.v1.config import get_dashboard_stats
+    return await get_dashboard_stats(month=month, year=year)
+
 
 
 @router.post("/simulate", summary="Interactive AI Pipeline Simulation Lab")
