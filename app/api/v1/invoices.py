@@ -13,6 +13,8 @@ logger = get_logger("api.invoices")
 router = APIRouter(prefix="/invoices", tags=["Invoicing"])
 
 
+@router.post("", summary="Generate Zoho Books Draft Invoices (Root)")
+@router.post("/trigger", summary="Generate Zoho Books Draft Invoices (Trigger)")
 @router.post("/generate", summary="Generate Zoho Books Draft Invoices")
 async def trigger_invoice_generation(
     payload: Optional[InvoiceGenerateEvent] = None,

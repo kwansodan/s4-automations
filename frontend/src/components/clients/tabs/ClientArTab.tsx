@@ -115,10 +115,35 @@ export const ClientArTab: React.FC = () => {
   );
 
   const arStagedTx = transactions.filter((t) => t.pipeline_type !== 'AP');
-  const approvedRowsCount = monthlySummary.filter((s) => s.approved).length;
-  const totalApprovedAmount = monthlySummary
-    .filter((s) => s.approved)
+
+  const sheetsApprovedCount = monthlySummary.filter((s) => s.approved && s.status !== 'INVOICED').length;
+  const sheetsApprovedAmount = monthlySummary
+    .filter((s) => s.approved && s.status !== 'INVOICED')
     .reduce((sum, r) => sum + (r.total_billed || 0), 0);
+
+  const stagedApprovedCount = arStagedTx.filter((t) => t.approved && t.status !== 'INVOICED').length;
+  const stagedApprovedAmount = arStagedTx
+    .filter((t) => t.approved && t.status !== 'INVOICED')
+    .reduce((sum, t) => sum + (t.credit_amount || t.total_amount || 0), 0);
+
+  const approvedRowsCount = activeLedgerView === 'staged'
+    ? stagedApprovedCount
+    : (sheetsApprovedCount || stagedApprovedCount);
+
+  const totalApprovedAmount = activeLedgerView === 'staged'
+    ? stagedApprovedAmount
+    : (sheetsApprovedAmount || stagedApprovedAmount);
+
+  const handleGenerateInvoicesClick = () => {
+    if (approvedRowsCount === 0) {
+      addLog(
+        'warning',
+        `No approved line items found for ${selectedMonth} ${selectedYear}. Please check the 'Approved' checkbox on items in the table below, or click 'Run AR Extraction' to pull daily slips.`
+      );
+      return;
+    }
+    setIsInvoiceModalOpen(true);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -204,9 +229,13 @@ export const ClientArTab: React.FC = () => {
 
           {/* 1-Click Invoice Export */}
           <button
-            onClick={() => setIsInvoiceModalOpen(true)}
-            disabled={approvedRowsCount === 0}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/25 transition disabled:opacity-50 cursor-pointer"
+            onClick={handleGenerateInvoicesClick}
+            className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl shadow-lg transition cursor-pointer ${
+              approvedRowsCount > 0
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25'
+                : 'bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-700/60'
+            }`}
+            title={approvedRowsCount === 0 ? "Approve items below first to generate draft invoices" : "Generate Zoho Books Draft Invoices"}
           >
             <Check className="w-4 h-4" />
             <span>Generate Invoices ({approvedRowsCount} - {formatCurrency(totalApprovedAmount)})</span>

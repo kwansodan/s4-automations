@@ -61,6 +61,19 @@ async def trigger_pipeline(
     }
 
 
+@router.post("/trigger-invoices", summary="Trigger Invoicing Pipeline (Alias)")
+async def trigger_invoices_pipeline_alias(
+    payload: Optional[Dict[str, Any]] = None,
+    background_tasks: BackgroundTasks = None,
+) -> Dict[str, Any]:
+    """Alias forwarding /pipeline/trigger-invoices to /invoices/generate."""
+    from app.api.v1.invoices import trigger_invoice_generation
+    from app.models.inngest_events import InvoiceGenerateEvent
+
+    inv_payload = InvoiceGenerateEvent(**payload) if payload else None
+    return await trigger_invoice_generation(payload=inv_payload, background_tasks=background_tasks)
+
+
 @router.get("/status", summary="Get Pipeline Real-time Progress")
 async def get_pipeline_status() -> Dict[str, Any]:
     """

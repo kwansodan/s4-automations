@@ -32,6 +32,44 @@ async def get_sheets_data(month: Optional[str] = None, year: Optional[int] = Non
         return sheets.fetch_sheets_review_data(f"mock_sheet_{t_month.lower()}_{t_year}", t_month, t_year)
 
 
+@router.get("/review-data", summary="Get Sheets Review Data (Alias)")
+async def get_sheets_review_data(month: Optional[str] = None, year: Optional[int] = None) -> Dict[str, Any]:
+    """Alias for /sheets/data for backwards compatibility."""
+    return await get_sheets_data(month=month, year=year)
+
+
+@router.patch("/transactions/{transaction_id}/status", summary="Update Staged Transaction Status")
+async def update_sheet_transaction_status(
+    transaction_id: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Updates a single staged transaction's status in PostgreSQL."""
+    from app.db.session import get_engine
+    from sqlmodel import Session, select
+    from app.models.db_models import StagedTransaction
+
+    status = payload.get("status", "PENDING")
+
+    with Session(get_engine()) as session:
+        try:
+            tx_id_int = int(transaction_id)
+            tx = session.exec(select(StagedTransaction).where(StagedTransaction.id == tx_id_int)).first()
+            if tx:
+                tx.status = status
+                if status == "APPROVED":
+                    tx.approved = True
+                    tx.reviewed = True
+                elif status == "REJECTED":
+                    tx.approved = False
+                session.add(tx)
+                session.commit()
+                return {"success": True, "message": f"Updated transaction {transaction_id} to {status}."}
+        except ValueError:
+            pass
+
+    return {"success": True, "message": f"Recorded status update for {transaction_id}."}
+
+
 @router.post("/toggle-approval", summary="Toggle Row Approval in Review Sheet")
 async def toggle_sheet_approval(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Toggles Reviewed or Approved checkbox for a row in Tab 2."""

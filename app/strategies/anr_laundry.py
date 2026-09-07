@@ -151,4 +151,4 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
     ) -> Dict[str, Any]:
         """Creates or appends to Zoho Books Draft Invoices."""
         from app.workflows.zoho_invoice_generator import run_zoho_invoices_core
-        return await run_zoho_invoices_core(month=month, year=year)
+        return await run_zoho_invoices_core(target_month=month, target_year=year)

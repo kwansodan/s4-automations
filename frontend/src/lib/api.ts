@@ -354,7 +354,7 @@ export async function triggerZohoInvoiceBatch(dryRun = false): Promise<{ message
 // -------------------------------------------------------------------------
 
 export async function fetchSheetsReviewData(): Promise<SheetsReviewData> {
-  const res = await resilientFetch('/api/sheets/review-data', {
+  const res = await resilientFetch('/api/sheets/data', {
     headers: getAuthHeaders(),
   });
   return handleResponse<SheetsReviewData>(res, 'Fetch sheets review data');
@@ -591,7 +591,7 @@ export async function fetchConfig(): Promise<{ status: string; config: any }> {
 
 export async function fetchSheetsData(month?: string, year?: number): Promise<SheetsReviewData> {
   const query = month && year ? `?month=${month}&year=${year}` : '';
-  const res = await resilientFetch(`/api/sheets/review-data${query}`, {
+  const res = await resilientFetch(`/api/sheets/data${query}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<SheetsReviewData>(res, 'Fetch sheets data');
@@ -615,7 +615,7 @@ export async function triggerPipeline(payload?: any): Promise<{ message: string;
 export async function triggerInvoicing(payload?: any): Promise<{ message: string; event_id: string }> {
   const isDryRun = typeof payload === 'boolean' ? payload : Boolean(payload?.dry_run);
   const body = typeof payload === 'object' ? payload : { dry_run: isDryRun };
-  const res = await resilientFetch('/api/pipeline/trigger-invoices', {
+  const res = await resilientFetch('/api/invoices/generate', {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),

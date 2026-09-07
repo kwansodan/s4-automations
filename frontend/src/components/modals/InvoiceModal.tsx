@@ -148,6 +148,12 @@ export const InvoiceModal: React.FC = () => {
             </div>
           </div>
 
+          {approvedRows.length === 0 && (
+            <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 text-[11px] text-sky-300">
+              ℹ️ No approved rows currently selected in Google Sheet. Clicking dispatch will scan the database staged ledger and connected sheets for any approved transactions.
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Filter by Client / Hotel (Optional)</label>
             <select
@@ -185,7 +191,7 @@ export const InvoiceModal: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={approvedRows.length === 0 || isSubmitting}
+              disabled={isSubmitting}
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
             >
               {isSubmitting ? (

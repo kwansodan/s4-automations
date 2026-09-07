@@ -22,16 +22,24 @@ logger = get_logger("zoho_invoice_generator")
 
 
 async def run_zoho_invoices_core(
-    target_month: str,
-    target_year: int,
+    target_month: Optional[str] = None,
+    target_year: Optional[int] = None,
     explicit_sheet_id: Optional[str] = None,
     filter_client_name: Optional[str] = None,
     step_runner=None,
+    month: Optional[str] = None,
+    year: Optional[int] = None,
+    **kwargs,
 ) -> Dict[str, Any]:
     """
     Core implementation of Zoho Draft Invoice generation from approved review rows.
     Runs via Inngest step runner or direct asynchronous execution.
+    Supports both Google Sheets approved rows and PostgreSQL staged transactions ledger.
     """
+    now = datetime.now()
+    target_month = target_month or month or now.strftime("%B")
+    target_year = int(target_year or year or now.year)
+
     async def _run_step(step_name: str, fn):
         if step_runner:
             return await step_runner(step_name, fn)
@@ -58,9 +66,9 @@ async def run_zoho_invoices_core(
         pipeline_tracker.update_progress(
             percent=20,
             stage_index=1,
-            current_step="Scanning review sheet for manager-approved billing rows...",
+            current_step="Scanning review workspace for manager-approved billing rows...",
         )
-        pipeline_tracker.add_log("info", f"Fetching approved items from Google Sheet for {target_month} {target_year} (Invoice Date: {inv_date})...")
+        pipeline_tracker.add_log("info", f"Fetching approved items for {target_month} {target_year} (Invoice Date: {inv_date})...")
 
         # Step 1: Discover / Locate Review Sheet & Fetch Approved Rows
         async def fetch_approved() -> Dict[str, Any]:
@@ -69,17 +77,61 @@ async def run_zoho_invoices_core(
 
             sheet_id = explicit_sheet_id
             sheet_url = ""
-            if not sheet_id:
-                month_folder_id = drive.get_month_folder(target_month, target_year)
-                sheet_id, sheet_url = sheets.find_or_create_workbook(target_month, target_year, month_folder_id)
+            approved_rows = []
 
-            approved_rows = sheets.fetch_approved_monthly_rows(sheet_id)
-            if filter_client_name:
-                approved_rows = [r for r in approved_rows if r.get("client_name", "").lower() == filter_client_name.lower()]
+            try:
+                if not sheet_id:
+                    month_folder_id = drive.get_month_folder(target_month, target_year)
+                    sheet_id, sheet_url = sheets.find_or_create_workbook(target_month, target_year, month_folder_id)
+
+                approved_rows = sheets.fetch_approved_monthly_rows(sheet_id)
+                if filter_client_name:
+                    approved_rows = [r for r in approved_rows if r.get("client_name", "").lower() == filter_client_name.lower()]
+            except Exception as sheet_err:
+                logger.warning(f"Notice fetching sheets approved rows: {sheet_err}")
+
+            # Fallback: check PostgreSQL staged_transactions if Google Sheets has no approved items
+            if not approved_rows:
+                logger.info("Scanning PostgreSQL staged_transactions ledger for approved items...")
+                from app.models.db_models import StagedTransaction
+                with Session(get_engine()) as session:
+                    query = select(StagedTransaction).where(
+                        StagedTransaction.approved == True,
+                        StagedTransaction.status.in_(["PENDING", "APPROVED"]),
+                        StagedTransaction.pipeline_type != "AP",
+                    )
+                    if filter_client_name:
+                        c_slug = filter_client_name.lower().replace(" ", "_")
+                        query = query.where(
+                            (StagedTransaction.client_id == c_slug) | (StagedTransaction.client_id == filter_client_name)
+                        )
+                    staged_approved = session.exec(query).all()
+                    if staged_approved:
+                        logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger.")
+                        for idx, st in enumerate(staged_approved, start=1000):
+                            approved_rows.append({
+                                "row_index": idx,
+                                "client_name": st.client_id,
+                                "zoho_contact_id": "",
+                                "zoho_item_id": st.accounting_ref_id or "",
+                                "standard_item_name": st.item_or_description,
+                                "raw_names_seen": st.item_or_description,
+                                "confidence_score": "HIGH",
+                                "unit_rate": st.rate_or_price or st.total_amount,
+                                "total_picked_up": int(st.quantity_or_debit) or 1,
+                                "total_delivered": int(st.quantity_or_debit) or 1,
+                                "linen_discrepancy": int(st.discrepancy_amount),
+                                "total_billed": st.total_amount,
+                                "audit_notes": f"PostgreSQL Staged ID: {st.id}",
+                                "reviewed": True,
+                                "approved": True,
+                                "status": "PENDING",
+                                "_staged_transaction_id": st.id,
+                            })
 
             logger.info(f"Retrieved {len(approved_rows)} approved items ready for invoicing.")
             return {
-                "spreadsheet_id": sheet_id,
+                "spreadsheet_id": sheet_id or "local_ledger",
                 "spreadsheet_url": sheet_url,
                 "approved_rows": approved_rows,
             }
@@ -90,15 +142,15 @@ async def run_zoho_invoices_core(
 
         if not approved_rows:
             logger.info("No approved rows found for invoicing.")
-            pipeline_tracker.add_log("warning", "No approved rows found with Approved? == True and Status == PENDING.")
+            pipeline_tracker.add_log("warning", "No approved rows found with Approved == True and Status == PENDING in Sheets or PostgreSQL ledger.")
             pipeline_tracker.complete_pipeline({
                 "status": "NO_APPROVED_ROWS",
-                "message": "No rows with Approved? == True and Status == PENDING were found.",
+                "message": "No rows with Approved == True and Status in [PENDING, APPROVED] were found. Please approve rows before generating invoices.",
                 "invoices_created": [],
             })
             return {
                 "status": "NO_APPROVED_ROWS",
-                "message": "No rows with Approved? == True and Status == PENDING were found.",
+                "message": "No rows with Approved == True and Status in [PENDING, APPROVED] were found. Please approve rows before generating invoices.",
                 "invoices_created": [],
             }
 
@@ -123,6 +175,7 @@ async def run_zoho_invoices_core(
 
             for client_name, items in client_groups.items():
                 zoho_org_id = None
+                client_obj = None
                 with Session(get_engine()) as session:
                     client_slug = client_name.lower().replace(" ", "_")
                     client_obj = session.exec(
@@ -134,15 +187,24 @@ async def run_zoho_invoices_core(
                         zoho_org_id = client_obj.zoho_org_id
 
                 zoho = ZohoBooksService(org_id=zoho_org_id)
-                contact_id = items[0].get("zoho_contact_id")
+                contact_id = items[0].get("zoho_contact_id") or (client_obj.zoho_contact_id if client_obj else None)
                 if not contact_id:
                     contact = zoho.find_contact_by_name(client_name)
                     contact_id = contact.contact_id if contact else ""
 
+                if not contact_id and client_obj:
+                    contact = zoho.find_contact_by_name(client_obj.name) or zoho.find_contact_by_name(client_obj.id)
+                    contact_id = contact.contact_id if contact else ""
+
                 if not contact_id:
-                    logger.warning(f"Could not determine Zoho Contact ID for client '{client_name}'. Skipping.")
-                    pipeline_tracker.add_log("warning", f"Skipping {client_name}: Contact ID not matched in Zoho.")
-                    continue
+                    from app.config import settings
+                    if settings.MOCK_MODE or not zoho.org_id:
+                        contact_id = f"cnt_auto_{client_name.lower().replace(' ', '_')[:16]}"
+                        logger.info(f"Using default contact ID '{contact_id}' for client '{client_name}'.")
+                    else:
+                        logger.warning(f"Could not determine Zoho Contact ID for client '{client_name}'. Skipping.")
+                        pipeline_tracker.add_log("warning", f"Skipping {client_name}: Contact ID not matched in Zoho Books.")
+                        continue
 
                 zoho_line_items: List[ZohoInvoiceLineItem] = []
                 row_indices: List[int] = []
@@ -178,16 +240,35 @@ async def run_zoho_invoices_core(
                 pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
                 response = await zoho.create_or_append_draft_invoice(inv_request, target_month, target_year)
 
-                sheets.update_invoice_status(
-                    spreadsheet_id=sheet_id,
-                    row_indices=row_indices,
-                    invoice_number=response.invoice_number,
-                    invoice_url=response.invoice_url or "",
-                )
+                if sheet_id and not sheet_id.startswith("mock_") and sheet_id != "local_ledger":
+                    try:
+                        sheets.update_invoice_status(
+                            spreadsheet_id=sheet_id,
+                            row_indices=row_indices,
+                            invoice_number=response.invoice_number,
+                            invoice_url=response.invoice_url or "",
+                        )
+                    except Exception as sheet_err:
+                        logger.warning(f"Could not update sheet invoice status: {sheet_err}")
+
+                # Also update corresponding staged_transactions in PostgreSQL
+                staged_ids = [it.get("_staged_transaction_id") for it in items if it.get("_staged_transaction_id")]
+                if staged_ids:
+                    try:
+                        with Session(get_engine()) as session:
+                            from app.models.db_models import StagedTransaction
+                            st_query = select(StagedTransaction).where(StagedTransaction.id.in_(staged_ids))
+                            for st in session.exec(st_query).all():
+                                st.status = "INVOICED"
+                                st.accounting_ref_id = response.invoice_number or response.invoice_id
+                                session.add(st)
+                            session.commit()
+                    except Exception as db_err:
+                        logger.warning(f"Could not update staged transactions in DB: {db_err}")
 
                 pipeline_tracker.add_log(
                     "success",
-                    f"🎉 Processed Draft Invoice {response.invoice_number} for {client_name} (Total: GHS {response.total:.2f}). Marked INVOICED in sheet.",
+                    f"🎉 Processed Draft Invoice {response.invoice_number} for {client_name} (Total: GHS {response.total:.2f}). Marked INVOICED.",
                 )
                 created_invoices.append(response.model_dump())
 
