@@ -738,7 +738,10 @@ async def trigger_pipeline_stream(
     now = datetime.now()
     month = payload.month or now.strftime("%B") if payload else now.strftime("%B")
     year = payload.year or now.year if payload else now.year
-    auto_post = payload.auto_post_to_accounting if payload else pipeline.get("auto_post_to_zoho", False)
+    if payload and payload.auto_post_to_accounting is not None:
+        auto_post = payload.auto_post_to_accounting
+    else:
+        auto_post = bool(pipeline.get("auto_post_to_zoho", False) or pipeline.get("auto_post_draft", False))
 
     from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
     strategy = DynamicBlueprintStrategy(client)
@@ -747,7 +750,7 @@ async def trigger_pipeline_stream(
         # Discover and extract for this specific pipeline
         sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
         extracted = await strategy.extract_and_validate(sources)
-        sync_res = await strategy.sync_review_workspace(month, year, extracted)
+        sync_res = await strategy.sync_review_workspace(month, year, extracted, auto_post=auto_post)
     except Exception as e:
         logger.error(f"Pipeline stream '{pipeline_id}' execution exception: {e}")
         return {
@@ -768,7 +771,7 @@ async def trigger_pipeline_stream(
 
     post_res = {"status": "SKIPPED", "invoices_created": 0}
     if auto_post:
-        post_res = await strategy.post_to_accounting(month, year)
+        post_res = await strategy.post_to_accounting(month, year, pipeline_id=pipeline_id)
 
     exec_errors = getattr(strategy, "execution_errors", [])
     exec_warnings = getattr(strategy, "execution_warnings", [])

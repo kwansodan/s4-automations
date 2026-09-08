@@ -240,6 +240,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     source_checksum=checksum,
                     raw_extracted_data={
                         **extraction,
+                        "file_name": doc.file_name,
+                        "source_identifier": doc.source_identifier,
+                        "date": extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                        "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                         "pipeline_id": pipeline_id,
                         "pipeline_name": pipeline_name,
                         "entity_type": entity_type,
@@ -263,6 +267,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         source_checksum=checksum,
                         raw_extracted_data={
                             **raw_it,
+                            "file_name": doc.file_name,
+                            "source_identifier": doc.source_identifier,
+                            "date": extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                            "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                             "pipeline_id": pipeline_id,
                             "pipeline_name": pipeline_name,
                             "entity_type": entity_type,
@@ -292,10 +300,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         return extracted_items
 
     async def sync_review_workspace(
-        self, month: str, year: int, items: List[ExtractedLineItem]
+        self, month: str, year: int, items: List[ExtractedLineItem], auto_post: bool = False
     ) -> Dict[str, Any]:
-        """Stages extracted transactions into PostgreSQL database ledger with validation status."""
-        logger.info(f"[{self.client_name}] Stage 3: Staging {len(items)} items in review ledger...")
+        """Stages extracted transactions into PostgreSQL database ledger and Google Sheets with validation status."""
+        logger.info(f"[{self.client_name}] Stage 3: Staging {len(items)} items in review ledger (auto_post={auto_post})...")
         batch_id = f"batch_{self.client_id}_{month}_{year}_{int(datetime.now(timezone.utc).timestamp())}"
         staged_count = 0
         held_count = 0
@@ -308,9 +316,15 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 entity_type = raw_meta.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)
                 pipeline_id = raw_meta.get("pipeline_id")
                 pipeline_name = raw_meta.get("pipeline_name")
+                file_name = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
+                source_identifier = raw_meta.get("source_identifier")
+                tx_date = raw_meta.get("date") or f"{year}-{month}-01"
 
-                status = "PENDING_VALIDATION_ERROR" if val_status != "VALID" else "PENDING"
-                if status == "PENDING_VALIDATION_ERROR":
+                # If auto_post is active and validation passed, pre-approve for immediate Zoho posting
+                is_valid = val_status == "VALID"
+                is_pre_approved = bool(auto_post and is_valid)
+                status = "PENDING_VALIDATION_ERROR" if not is_valid else ("APPROVED" if is_pre_approved else "PENDING")
+                if not is_valid:
                     held_count += 1
 
                 staged = StagedTransaction(
@@ -319,17 +333,18 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     pipeline_id=pipeline_id,
                     pipeline_name=pipeline_name,
                     entity_type=entity_type,
-                    transaction_date=f"{year}-{month}-01",
-                    source_type=self.client.source_type or "system",
-                    source_file_name=f"{self.client_id}_{month}_{year}",
+                    transaction_date=str(tx_date),
+                    source_type=self.client.source_type or "google_drive",
+                    source_file_name=str(file_name),
+                    source_identifier=source_identifier,
                     item_or_description=it.item_or_description,
                     category_or_account=it.category_or_account,
                     quantity_or_debit=it.quantity_or_debit,
                     credit_amount=it.credit_amount,
                     rate_or_price=it.unit_price,
                     total_amount=it.total_amount,
-                    reviewed=False,
-                    approved=False,
+                    reviewed=is_pre_approved,
+                    approved=is_pre_approved,
                     status=status,
                     validation_status=val_status,
                     validation_errors=val_errors,
@@ -343,18 +358,91 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 staged_count += 1
             session.commit()
 
+        # Log file entries into Google Sheets review workbook
+        sheet_url = None
+        sheet_id = None
+        try:
+            from app.services.google_sheets_service import GoogleSheetsService
+            from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
+
+            drive = GoogleDriveService()
+            sheets = GoogleSheetsService()
+            month_folder_id = self.client.folder_id or "root"
+            try:
+                m_fid = drive.get_month_folder(month, year)
+                if m_fid:
+                    month_folder_id = m_fid
+            except Exception:
+                pass
+
+            sheet_id, sheet_url = sheets.find_or_create_workbook(month, year, month_folder_id)
+            if sheet_id and not sheet_id.startswith("mock_"):
+                detail_rows = []
+                for it in items:
+                    raw_meta = it.raw_extracted_data or {}
+                    fn = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
+                    c_name = raw_meta.get("vendor") or raw_meta.get("hotel_name") or raw_meta.get("client_name") or self.client_name
+                    slip_d = raw_meta.get("date") or f"{year}-{month}-01"
+                    detail_rows.append(
+                        DailySlipDetailRow(
+                            slip_date=str(slip_d),
+                            file_name=str(fn),
+                            client_name=str(c_name),
+                            raw_item_name=it.item_or_description,
+                            standard_item_name=it.item_or_description,
+                            pickup_qty=int(it.credit_amount or 0),
+                            delivery_qty=int(it.quantity_or_debit or 1),
+                            loss_qty=int(it.discrepancy or 0),
+                            confidence_score=ConfidenceLevel.HIGH,
+                            drive_file_url="",
+                            processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        )
+                    )
+                if detail_rows:
+                    sheets.append_daily_slip_details(sheet_id, detail_rows)
+
+                summary_status = SlipStatus.APPROVED if auto_post else SlipStatus.PENDING
+                summary_rows = []
+                for it in items:
+                    raw_meta = it.raw_extracted_data or {}
+                    c_name = raw_meta.get("vendor") or raw_meta.get("client_name") or self.client_name
+                    summary_rows.append(
+                        MonthlySummaryRow(
+                            client_name=str(c_name),
+                            zoho_contact_id=str(self.client.zoho_contact_id or ""),
+                            zoho_item_id="",
+                            standard_item_name=it.item_or_description,
+                            raw_names_seen=it.item_or_description,
+                            confidence_score=ConfidenceLevel.HIGH,
+                            unit_rate=it.unit_price or 0.0,
+                            total_picked_up=int(it.credit_amount or 0),
+                            total_delivered=int(it.quantity_or_debit or 1),
+                            linen_discrepancy=int(it.discrepancy or 0),
+                            total_billed=it.total_amount or 0.0,
+                            audit_notes="Auto-Posted Live" if auto_post else "Pending Human Review",
+                            status=summary_status,
+                        )
+                    )
+                if summary_rows:
+                    sheets.sync_monthly_summaries(sheet_id, summary_rows)
+                logger.info(f"📊 Logged {len(detail_rows)} file entries into Google Sheet '{sheet_id}' (auto_post={auto_post})")
+        except Exception as gs_err:
+            logger.warning(f"Google Sheets sync notice: {gs_err}")
+
         return {
             "status": "STAGED",
             "batch_id": batch_id,
             "staged_transactions_count": staged_count,
             "held_validation_count": held_count,
+            "spreadsheet_id": sheet_id,
+            "spreadsheet_url": sheet_url,
             "message": f"Successfully staged {staged_count} transactions ({held_count} held on validation review).",
         }
 
     async def post_to_accounting(
-        self, month: str, year: int, approved_items: Optional[List[Any]] = None
+        self, month: str, year: int, approved_items: Optional[List[Any]] = None, pipeline_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Posts approved staged transactions to the client's configured accounting platform."""
+        """Posts approved staged transactions to the client's configured accounting platform and updates spreadsheet."""
         from app.services.accounting.factory import AccountingAdapterFactory
         platform_id = self.client.accounting_software or "zoho_books"
         logger.info(f"[{self.client_name}] Stage 4: Posting approved transactions to {platform_id}...")
@@ -378,6 +466,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 StagedTransaction.approved == True,
                 StagedTransaction.status.in_(["PENDING", "APPROVED"]),
             )
+            if pipeline_id:
+                query = query.where(StagedTransaction.pipeline_id == pipeline_id)
             to_post = session.exec(query).all()
 
             if not to_post:
@@ -410,11 +500,26 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     "total_amount": sum(t.total_amount for t in inv_items),
                     "notes": f"Generated by S4 Automations for {self.client_name}.",
                 })
+                doc_ref = post_res.document_number or post_res.document_id or f"INV-{month[:3].upper()}-{year}"
                 for t in inv_items:
                     t.status = "INVOICED"
-                    t.accounting_ref_id = post_res.external_id or post_res.document_number
+                    t.accounting_ref_id = doc_ref
                     session.add(t)
+                session.commit()
                 posted_results["invoices_created"] = 1
+
+                # Update status in Google Sheets review workbook to INVOICED
+                try:
+                    from app.services.google_sheets_service import GoogleSheetsService
+                    drive = GoogleDriveService()
+                    sheets = GoogleSheetsService()
+                    m_fid = drive.get_month_folder(month, year) or self.client.folder_id or "root"
+                    sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
+                    if sheet_id and not sheet_id.startswith("mock_"):
+                        sheets.update_invoice_status(sheet_id, list(range(2, 2 + len(inv_items))), doc_ref, "")
+                        logger.info(f"Updated Google Sheets to INVOICED with ref '{doc_ref}'")
+                except Exception as gs_err:
+                    logger.warning(f"Could not update Google Sheets invoice status: {gs_err}")
 
             # 2. Post Vendor Bills (AP)
             if AccountingEntityType.AP_VENDOR_BILL.value in grouped:
@@ -435,11 +540,26 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     "total_amount": sum(t.total_amount for t in bill_items),
                     "notes": f"Generated automatically by S4 Automations for {self.client_name}.",
                 })
+                doc_ref = bill_res.document_number or bill_res.document_id or f"BILL-{month[:3].upper()}-{year}"
                 for t in bill_items:
                     t.status = "BILLED"
-                    t.accounting_ref_id = bill_res.external_id or bill_res.document_number
+                    t.accounting_ref_id = doc_ref
                     session.add(t)
+                session.commit()
                 posted_results["bills_created"] = 1
+
+                # Update status in Google Sheets review workbook to BILLED
+                try:
+                    from app.services.google_sheets_service import GoogleSheetsService
+                    drive = GoogleDriveService()
+                    sheets = GoogleSheetsService()
+                    m_fid = drive.get_month_folder(month, year) or self.client.folder_id or "root"
+                    sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
+                    if sheet_id and not sheet_id.startswith("mock_"):
+                        sheets.update_invoice_status(sheet_id, list(range(2, 2 + len(bill_items))), doc_ref, "")
+                        logger.info(f"Updated Google Sheets to BILLED with ref '{doc_ref}'")
+                except Exception as gs_err:
+                    logger.warning(f"Could not update Google Sheets bill status: {gs_err}")
 
             # 3. Post Customer Payments (AR)
             if AccountingEntityType.AR_CUSTOMER_PAYMENT.value in grouped:
