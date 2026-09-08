@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Sliders,
   ChevronDown,
+  Copy,
 } from 'lucide-react';
 
 export const ClientSettingsTab: React.FC = () => {
@@ -47,6 +48,9 @@ export const ClientSettingsTab: React.FC = () => {
   const [isLoadingOAuth, setIsLoadingOAuth] = useState(false);
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
   const [isAdvancedOAuthOpen, setIsAdvancedOAuthOpen] = useState(false);
+  const [detectedRedirectUri, setDetectedRedirectUri] = useState<string>('https://autapi.service4gh.com/api/v1/oauth/zoho/callback');
+  const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
+  const [appClientId, setAppClientId] = useState<string>('');
 
   const [clientConfig, setClientConfig] = useState({
     name: '',
@@ -100,6 +104,18 @@ export const ClientSettingsTab: React.FC = () => {
   useEffect(() => {
     loadConfig();
     loadOAuthStatus();
+
+    // Prefetch authorize URL details to display exact redirect URI to the user
+    const prefetchOAuthDetails = async () => {
+      try {
+        const data = await getAccountingOAuthAuthorizeUrl(activePlatform, currentClient.id);
+        if (data.redirect_uri) setDetectedRedirectUri(data.redirect_uri);
+        if (data.app_client_id) setAppClientId(data.app_client_id);
+      } catch {
+        // Silently use defaults
+      }
+    };
+    prefetchOAuthDetails();
   }, [currentClient.id, activePlatform]);
 
   // Listen for popup success message across platforms
@@ -123,7 +139,12 @@ export const ClientSettingsTab: React.FC = () => {
     setIsConnectingOAuth(true);
     try {
       addLog('info', `[OAUTH] Requesting 1-Click ${platformMeta.name} authorization URL for ${currentClient.name}...`);
-      const { authorize_url } = await getAccountingOAuthAuthorizeUrl(activePlatform, currentClient.id);
+      const { authorize_url, redirect_uri } = await getAccountingOAuthAuthorizeUrl(
+        activePlatform,
+        currentClient.id,
+        detectedRedirectUri
+      );
+      if (redirect_uri) setDetectedRedirectUri(redirect_uri);
       
       const width = 640;
       const height = 750;
@@ -393,6 +414,31 @@ export const ClientSettingsTab: React.FC = () => {
                     <span>{isConnectingOAuth ? `Launching ${platformMeta.name} Consent...` : `Connect with ${platformMeta.name} (1-Click)`}</span>
                     <ExternalLink className="w-3.5 h-3.5 opacity-70" />
                   </button>
+
+                  {/* Zoho Authorized Redirect URI Helper Card */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-3 space-y-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-300">Authorized Redirect URI:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(detectedRedirectUri);
+                          setCopiedRedirectUri(true);
+                          setTimeout(() => setCopiedRedirectUri(false), 2000);
+                        }}
+                        className="flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-medium px-2 py-0.5 rounded bg-sky-950/50 border border-sky-800/40 hover:bg-sky-900/50 transition cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedRedirectUri ? 'Copied!' : 'Copy URI'}</span>
+                      </button>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 font-mono text-[11px] text-emerald-400 break-all select-all">
+                      {detectedRedirectUri}
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      💡 <span className="text-slate-300 font-medium">Zoho Requirement:</span> If you see <span className="text-amber-300 font-semibold">"Invalid Redirect Uri"</span> in Zoho, ensure this exact URL is added to <span className="text-white font-medium">Authorized Redirect URIs</span> under your application in the <a href="https://api-console.zoho.com" target="_blank" rel="noreferrer" className="text-sky-400 underline hover:text-sky-300 font-medium">Zoho API Console</a>{appClientId ? ` (Client ID: ${appClientId})` : ''}.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

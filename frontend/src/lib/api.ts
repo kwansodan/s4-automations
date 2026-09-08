@@ -940,23 +940,24 @@ export interface AccountingOAuthAuthorizeUrlResponse {
   authorize_url: string;
   client_id: string;
   redirect_uri: string;
+  app_client_id?: string;
   accounts_url?: string;
+  recommended_redirect_uris?: string[];
 }
 
 export interface AccountingOAuthStatusResponse {
-  client_id: string;
   platform: string;
   is_connected: boolean;
   org_id?: string;
   org_name?: string;
   connected_at?: string;
-  auth_type?: string;
+  details?: Record<string, any>;
 }
 
 export type ZohoOAuthAuthorizeUrlResponse = AccountingOAuthAuthorizeUrlResponse;
 export type ZohoOAuthStatusResponse = AccountingOAuthStatusResponse;
 
-function normalizePlatformPrefix(platform: string): 'zoho' | 'quickbooks' | 'xero' {
+function normalizePlatformPrefix(platform: string): string {
   if (platform.includes('quickbooks')) return 'quickbooks';
   if (platform.includes('xero')) return 'xero';
   return 'zoho';
@@ -964,10 +965,15 @@ function normalizePlatformPrefix(platform: string): 'zoho' | 'quickbooks' | 'xer
 
 export async function getAccountingOAuthAuthorizeUrl(
   platform: string,
-  clientId: string
+  clientId: string,
+  redirectUri?: string
 ): Promise<AccountingOAuthAuthorizeUrlResponse> {
   const prefix = normalizePlatformPrefix(platform);
-  const res = await resilientFetch(`/api/v1/oauth/${prefix}/authorize-url?client_id=${encodeURIComponent(clientId)}`, {
+  const query = new URLSearchParams({ client_id: clientId });
+  if (redirectUri && redirectUri.trim()) {
+    query.append('redirect_uri', redirectUri.trim());
+  }
+  const res = await resilientFetch(`/api/v1/oauth/${prefix}/authorize-url?${query.toString()}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<AccountingOAuthAuthorizeUrlResponse>(res, `Get ${platform} OAuth Authorize URL`);

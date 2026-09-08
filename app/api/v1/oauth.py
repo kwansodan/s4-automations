@@ -21,13 +21,19 @@ router = APIRouter(prefix="/oauth", tags=["OAuth Authentication"])
 def _resolve_base_url(request: Optional[Request]) -> str:
     """Dynamically resolves external base URL handling reverse proxies."""
     if not request:
-        return "http://localhost:8000"
-    base_url = str(request.base_url).rstrip("/")
+        return "https://autapi.service4gh.com"
     forwarded_proto = request.headers.get("x-forwarded-proto")
     forwarded_host = request.headers.get("x-forwarded-host")
     if forwarded_proto and forwarded_host:
-        base_url = f"{forwarded_proto}://{forwarded_host}"
-    return base_url
+        return f"{forwarded_proto}://{forwarded_host}"
+    host = request.headers.get("host")
+    if host:
+        proto = "https" if not ("localhost" in host or "127.0.0.1" in host) else "http"
+        return f"{proto}://{host}"
+    base_url = str(request.base_url).rstrip("/")
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        return "http://localhost:8000"
+    return base_url or "https://autapi.service4gh.com"
 
 
 def get_zoho_redirect_uri(request: Optional[Request]) -> str:
@@ -192,6 +198,7 @@ def _render_error_html(platform_name: str, error: str) -> HTMLResponse:
 @router.get("/zoho/authorize-url")
 async def get_zoho_authorize_url(
     client_id: str = Query(..., description="Client organization slug, e.g. anr_group or new_client_slug"),
+    redirect_uri: Optional[str] = Query(None, description="Custom redirect URI override"),
     request: Request = None,
 ) -> Dict[str, Any]:
     """Generates the Zoho OAuth2 authorization consent URL for 1-Click tenant connection."""
@@ -199,7 +206,7 @@ async def get_zoho_authorize_url(
         raise HTTPException(status_code=400, detail="client_id parameter is required.")
 
     app_client_id = settings.ZOHO_CLIENT_ID or "1000.MOCK_S4_APP_ID"
-    redirect_uri = get_zoho_redirect_uri(request)
+    final_redirect_uri = redirect_uri.strip() if (redirect_uri and redirect_uri.strip()) else get_zoho_redirect_uri(request)
     accounts_url = settings.ZOHO_ACCOUNTS_URL.rstrip("/")
     scope = "ZohoBooks.fullaccess.all"
 
@@ -210,7 +217,7 @@ async def get_zoho_authorize_url(
         f"response_type=code&"
         f"access_type=offline&"
         f"prompt=consent&"
-        f"redirect_uri={redirect_uri}&"
+        f"redirect_uri={final_redirect_uri}&"
         f"state={client_id}"
     )
 
@@ -218,18 +225,25 @@ async def get_zoho_authorize_url(
         "platform": "zoho_books",
         "authorize_url": auth_url,
         "client_id": client_id,
-        "redirect_uri": redirect_uri,
+        "redirect_uri": final_redirect_uri,
+        "app_client_id": app_client_id,
         "accounts_url": accounts_url,
+        "recommended_redirect_uris": [
+            "https://autapi.service4gh.com/api/v1/oauth/zoho/callback",
+            "https://service4gh.com/api/v1/oauth/zoho/callback",
+            f"{_resolve_base_url(request)}/api/v1/oauth/zoho/callback",
+        ],
     }
 
 
 @router.get("/zoho/connect")
 async def connect_zoho_direct(
     client_id: str = Query(..., description="Client organization slug"),
+    redirect_uri: Optional[str] = Query(None, description="Custom redirect URI override"),
     request: Request = None,
 ):
     """Direct HTTP 302 redirect to Zoho OAuth consent screen."""
-    data = await get_zoho_authorize_url(client_id=client_id, request=request)
+    data = await get_zoho_authorize_url(client_id=client_id, redirect_uri=redirect_uri, request=request)
     return RedirectResponse(url=data["authorize_url"], status_code=status.HTTP_302_FOUND)
 
 
