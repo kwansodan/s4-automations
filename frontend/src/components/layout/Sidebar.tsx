@@ -38,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     isIndividualBusiness,
     isAccountingFirm,
     activeOrganization,
+    activeSections,
   } = useClient();
   const {
     activeTab,
@@ -60,18 +61,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setIsMobileOpen(false);
   };
 
-  const clientOpsNavItems: Array<{
-    sub: WorkspaceSubTab;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-  }> = [
-    { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt },
-    { sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign },
-    { sub: 'bank', label: 'Bank Statements', icon: Landmark },
-    { sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck },
-  ];
+  const clientOpsNavItems = React.useMemo(() => {
+    const items: Array<{
+      sub: WorkspaceSubTab;
+      label: string;
+      icon: React.ComponentType<{ className?: string }>;
+      badge?: string;
+    }> = [
+      { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
+    ];
+    if (activeSections.hasAr) {
+      items.push({ sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt });
+    }
+    if (activeSections.hasAp) {
+      items.push({ sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign });
+    }
+    if (activeSections.hasBank) {
+      items.push({ sub: 'bank', label: 'Bank Statements', icon: Landmark });
+      items.push({ sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck });
+    }
+    return items;
+  }, [activeSections, isIndividualBusiness]);
 
   const clientConfigNavItems: Array<{
     sub: WorkspaceSubTab;

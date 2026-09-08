@@ -21,24 +21,44 @@ import {
 } from 'lucide-react';
 
 export const ClientWorkspace: React.FC = () => {
-  const { currentClient, setIsWizardOpen } = useClient();
+  const { currentClient, setIsWizardOpen, isIndividualBusiness, activeSections } = useClient();
   const { workspaceSubTab, setWorkspaceSubTab } = useAutomation();
 
   const currentPlatform =
     ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient.accounting_software) ||
     ACCOUNTING_PLATFORMS[0];
 
-  const operationsTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'ar', label: 'AR Revenue & Sheets', icon: Receipt },
-    { id: 'ap', label: 'AP Vendor Bills', icon: DollarSign },
-    { id: 'bank', label: 'Bank Statements', icon: Landmark },
-    { id: 'requests', label: 'Information Requests', icon: ShieldCheck },
-  ];
+  // Gracefully fallback to overview if currently viewing an accounting workflow whose active pipelines were removed
+  React.useEffect(() => {
+    if (workspaceSubTab === 'ar' && !activeSections.hasAr) {
+      setWorkspaceSubTab('overview');
+    } else if (workspaceSubTab === 'ap' && !activeSections.hasAp) {
+      setWorkspaceSubTab('overview');
+    } else if ((workspaceSubTab === 'bank' || workspaceSubTab === 'requests') && !activeSections.hasBank) {
+      setWorkspaceSubTab('overview');
+    }
+  }, [workspaceSubTab, activeSections, setWorkspaceSubTab]);
+
+  const operationsTabs = React.useMemo(() => {
+    const tabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+      { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    ];
+    if (activeSections.hasAr) {
+      tabs.push({ id: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt });
+    }
+    if (activeSections.hasAp) {
+      tabs.push({ id: 'ap', label: 'AP Vendor Bills', icon: DollarSign });
+    }
+    if (activeSections.hasBank) {
+      tabs.push({ id: 'bank', label: 'Bank Statements', icon: Landmark });
+      tabs.push({ id: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests', icon: ShieldCheck });
+    }
+    return tabs;
+  }, [activeSections, isIndividualBusiness]);
 
   const configTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'pipelines', label: 'Pipelines & Streams', icon: Layers },
-    { id: 'settings', label: 'Client Settings', icon: Settings2 },
+    { id: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
   ];
 
   return (

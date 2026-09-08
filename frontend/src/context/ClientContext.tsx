@@ -87,9 +87,18 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
   },
 ];
 
+export interface ActiveAccountingSections {
+  hasAr: boolean;
+  hasAp: boolean;
+  hasBank: boolean;
+  hasGl: boolean;
+  activeCount: number;
+}
+
 interface ClientContextType {
   currentClient: ClientProfile;
   clients: ClientProfile[];
+  activeSections: ActiveAccountingSections;
   setClient: (clientId: string) => void;
   addClient: (newClient: Omit<ClientProfile, 'id' | 'workflowsCount' | 'projectedMonthlyVolume' | 'activeIntegrations' | 'blueprints'>) => void;
   createClientFromWizard: (payload: any) => Promise<ClientProfile>;
@@ -243,6 +252,18 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [activeOrg?.id, isIndividualBusiness]);
 
   const currentClient = clients.find((c) => c.id === currentClientId) || clients[0];
+
+  const activeSections: ActiveAccountingSections = React.useMemo(() => {
+    const pipelines = currentClient?.pipelines || [];
+    const active = pipelines.filter((p: any) => p.is_active !== false && p.active !== false);
+    return {
+      hasAr: active.some((p: any) => p.section?.toUpperCase() === 'AR' || p.entity_type?.startsWith('ar_') || p.entity_type?.startsWith('pos_')),
+      hasAp: active.some((p: any) => p.section?.toUpperCase() === 'AP' || p.entity_type?.startsWith('ap_')),
+      hasBank: active.some((p: any) => p.section?.toUpperCase() === 'BANK' || p.entity_type?.includes('statement') || p.entity_type?.includes('bank') || p.entity_type === 'momo_statement'),
+      hasGl: active.some((p: any) => p.section?.toUpperCase() === 'GL' || p.entity_type?.startsWith('gl_')),
+      activeCount: active.length,
+    };
+  }, [currentClient]);
 
   const setClient = (clientId: string) => {
     setCurrentClientId(clientId);
@@ -457,6 +478,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       value={{
         currentClient,
         clients,
+        activeSections,
         setClient,
         addClient,
         createClientFromWizard,

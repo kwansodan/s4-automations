@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const ClientOverviewTab: React.FC = () => {
-  const { currentClient } = useClient();
+  const { currentClient, activeSections, setIsWizardOpen } = useClient();
   const { addLog, selectedMonth, selectedYear, navigateToClientSubTab } = useAutomation();
 
   const [isRunning, setIsRunning] = useState(false);
@@ -310,6 +310,32 @@ export const ClientOverviewTab: React.FC = () => {
         </div>
       )}
 
+      {/* Zero active pipelines alert banner */}
+      {activeSections.activeCount === 0 && (
+        <div className="glass-panel rounded-2xl p-5 border border-amber-500/30 bg-amber-950/15 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">No Active Ingestion Pipelines</h3>
+              <p className="text-xs text-slate-300 mt-0.5 max-w-2xl">
+                Accounting workflow sections (AR Revenue, AP Vendor Bills, Bank Statements) remain hidden until an active ingestion stream is configured.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => navigateToClientSubTab('pipelines')}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-md shadow-sky-500/20 transition cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Configure Streams</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 5. Compact KPI Metric Strip */}
       <div>
         <KpiCards />
@@ -332,7 +358,7 @@ export const ClientOverviewTab: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-sky-400" />
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Active Streams ({currentClient.pipelines?.length || 0})
+                  Active Streams ({activeSections.activeCount})
                 </h3>
               </div>
               <button
