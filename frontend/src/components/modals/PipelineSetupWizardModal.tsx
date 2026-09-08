@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult, ChartOfAccountItem } from '../../types/client';
+import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult, ChartOfAccountItem, FolderStructurePattern } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import { probeExternalConnection, simulatePipelineExtraction, fetchChartOfAccounts } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
@@ -9,9 +9,12 @@ import {
   Sparkles,
   Cloud,
   Folder,
+  FolderTree,
   Mail,
   Zap,
   Clock,
+  Calendar,
+  Building2,
   SlidersHorizontal,
   ChevronRight,
   ChevronLeft,
@@ -259,9 +262,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [oneDriveClientId, setOneDriveClientId] = useState<string>('');
   const [oneDriveSecret, setOneDriveSecret] = useState<string>('');
 
+  // Dynamic Month & Folder Hierarchy State
+  const [folderStructure, setFolderStructure] = useState<FolderStructurePattern>('auto_detect');
+  const [enableLookbackWindow, setEnableLookbackWindow] = useState<boolean>(true);
+  const [autoCreateMonthFolder, setAutoCreateMonthFolder] = useState<boolean>(false);
+
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
-  const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
+  const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any; detected_month_folders?: string[]; suggested_hierarchy?: string } | null>(null);
 
   // Load client-specific Chart of Accounts when modal opens or clientId changes
   useEffect(() => {
@@ -397,6 +405,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setOneDriveTenantId(initialPipeline.source_config?.tenant_id || '');
         setOneDriveClientId(initialPipeline.source_config?.client_id || '');
         setOneDriveSecret(initialPipeline.source_config?.secret || '');
+        setFolderStructure(initialPipeline.source_config?.folder_structure || 'auto_detect');
+        setEnableLookbackWindow(initialPipeline.source_config?.enable_lookback_window !== false);
+        setAutoCreateMonthFolder(!!initialPipeline.source_config?.auto_create_month_folder);
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -415,6 +426,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setOneDriveTenantId('');
         setOneDriveClientId('');
         setOneDriveSecret('');
+        setFolderStructure('auto_detect');
+        setEnableLookbackWindow(true);
+        setAutoCreateMonthFolder(false);
         setHumanInstructions('');
       }
       setStep(1);
@@ -448,10 +462,13 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           drive_id: sourceType === 'onedrive' ? sourceIdentifier : undefined,
         },
       });
+      const driveCheck = res.checks?.find((c: any) => c.target === 'Google Drive Folder');
       setProbeResult({
         success: res.success !== false,
-        message: res.summary || `Channel connectivity confirmed for ${sourceType}.`,
+        message: driveCheck?.message || res.summary || `Channel connectivity confirmed for ${sourceType}.`,
         details: res.checks,
+        detected_month_folders: driveCheck?.detected_month_folders,
+        suggested_hierarchy: driveCheck?.suggested_hierarchy,
       });
       addLog('success', `✅ [STREAM PROBE] Successfully probed ${sourceType} connection for stream "${name}".`);
     } catch (err: any) {
@@ -521,6 +538,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
         human_instructions: humanInstructions.trim() || undefined,
         source_config: {
+          folder_structure: folderStructure,
+          enable_lookback_window: enableLookbackWindow,
+          auto_create_month_folder: autoCreateMonthFolder,
           allowed_senders: allowedSenders.trim() || undefined,
           tenant_id: oneDriveTenantId.trim() || undefined,
           client_id: oneDriveClientId.trim() || undefined,
@@ -884,16 +904,156 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Google Drive Folder ID *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Google Drive Root Source Folder ID *
+                      </label>
+                      <span className="text-[10px] text-sky-400 font-medium">Static Parent Folder ID</span>
+                    </div>
                     <input
                       type="text"
-                      placeholder="e.g. 1A2b3C4d5E6f7G8h9I0jK (from drive URL)"
+                      placeholder="e.g. 1A2b3C4d5E6f7G8h9I0jK (from root drive folder URL)"
                       value={sourceIdentifier}
                       onChange={(e) => setSourceIdentifier(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-sky-500"
                     />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Provide the top-level root folder ID. The pipeline dynamically navigates into each month's subfolder at runtime without needing reconfiguration each month.
+                    </span>
+                  </div>
+
+                  {/* Dynamic Month & Folder Hierarchy Selector */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <FolderTree className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Dynamic Month &amp; Folder Hierarchy Pattern</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">Controls runtime periodic discovery</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        {
+                          id: 'auto_detect',
+                          title: '🌐 Auto-Detect Structure (Recommended)',
+                          desc: 'Scans month aliases (e.g. August 2026, 2026-08), customer subfolders, or flat files automatically.',
+                          badge: 'Multi-Convention',
+                        },
+                        {
+                          id: 'month_then_party',
+                          title: '📁 Root ➔ Month Year ➔ Customer/Vendor ➔ Files',
+                          desc: 'Party subfolders inside each month. Subfolder names are automatically tagged as customer/vendor names.',
+                          badge: 'Most Popular for AP & AR',
+                        },
+                        {
+                          id: 'month_direct',
+                          title: '📄 Root ➔ Month Year ➔ Invoices/Bills',
+                          desc: 'Direct PDF or image documents placed immediately inside each month’s folder.',
+                          badge: 'Direct Files',
+                        },
+                        {
+                          id: 'party_then_month',
+                          title: '🏢 Root ➔ Customer/Vendor ➔ Month Year ➔ Files',
+                          desc: 'Organized by customer/vendor at root, with nested month subfolders inside each.',
+                          badge: 'Client Portfolios',
+                        },
+                      ].map((item) => {
+                        const isSelected = folderStructure === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setFolderStructure(item.id as FolderStructurePattern)}
+                            className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-sky-950/60 border-sky-500 shadow-md shadow-sky-500/10'
+                                : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{item.title}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
+                            </div>
+                            <span className="text-[9px] font-semibold text-sky-400 mt-2">{item.badge}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Visual Drive Structure Preview */}
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5 font-mono text-[11px]">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider block">
+                      📁 Live Folder Hierarchy Preview:
+                    </span>
+                    <div className="text-slate-300 pl-1 leading-relaxed">
+                      {folderStructure === 'month_then_party' && (
+                        <>
+                          <div className="text-sky-400">📂 [Root Source Folder: {sourceIdentifier || '1A2b3C...'}]</div>
+                          <div className="pl-4 text-emerald-400">└── 📁 August 2026 / 2026-08 (Dynamically resolved by current period)</div>
+                          <div className="pl-8 text-amber-300">├── 📁 Luxwood Hotel / Supplier A (Auto-tagged as Contact Hint)</div>
+                          <div className="pl-12 text-slate-400">└── 📄 bill_001.pdf</div>
+                          <div className="pl-8 text-amber-300">└── 📁 Active 8 Spintex / Supplier B</div>
+                          <div className="pl-12 text-slate-400">└── 📄 slip_002.jpg</div>
+                        </>
+                      )}
+                      {folderStructure === 'month_direct' && (
+                        <>
+                          <div className="text-sky-400">📂 [Root Source Folder: {sourceIdentifier || '1A2b3C...'}]</div>
+                          <div className="pl-4 text-emerald-400">└── 📁 August 2026 / 2026-08 (Dynamically resolved by current period)</div>
+                          <div className="pl-8 text-slate-400">├── 📄 invoice_001.pdf</div>
+                          <div className="pl-8 text-slate-400">└── 📄 bill_002.pdf</div>
+                        </>
+                      )}
+                      {folderStructure === 'party_then_month' && (
+                        <>
+                          <div className="text-sky-400">📂 [Root Source Folder: {sourceIdentifier || '1A2b3C...'}]</div>
+                          <div className="pl-4 text-amber-300">├── 📁 Luxwood Hotel (Customer / Vendor)</div>
+                          <div className="pl-8 text-emerald-400">└── 📁 August 2026 / 2026-08</div>
+                          <div className="pl-12 text-slate-400">└── 📄 slip_001.jpg</div>
+                        </>
+                      )}
+                      {folderStructure === 'auto_detect' && (
+                        <>
+                          <div className="text-sky-400">📂 [Root Source Folder: {sourceIdentifier || '1A2b3C...'}]</div>
+                          <div className="pl-4 text-emerald-400">└── 📁 August 2026 / 2026-08 (Auto-matched by alias)</div>
+                          <div className="pl-8 text-amber-300">├── 📁 [Customer / Vendor Subfolders] (Auto-detects contact names)</div>
+                          <div className="pl-8 text-slate-400">└── 📄 [Direct Loose PDFs or Images]</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Runtime Execution Options */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <label className="flex items-start gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer text-xs text-slate-300 hover:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={enableLookbackWindow}
+                        onChange={(e) => setEnableLookbackWindow(e.target.checked)}
+                        className="rounded border-slate-700 text-sky-500 mt-0.5"
+                      />
+                      <div>
+                        <span className="font-semibold text-white block">Lookback Grace Window</span>
+                        <span className="text-[10px] text-slate-400">Scan prior month during days 1–7 to catch late-arriving bills.</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer text-xs text-slate-300 hover:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={autoCreateMonthFolder}
+                        onChange={(e) => setAutoCreateMonthFolder(e.target.checked)}
+                        className="rounded border-slate-700 text-sky-500 mt-0.5"
+                      />
+                      <div>
+                        <span className="font-semibold text-white block">Auto-Create Month Folder</span>
+                        <span className="text-[10px] text-slate-400">Automatically create month folder in Drive (e.g. "September 2026") if missing.</span>
+                      </div>
+                    </label>
                   </div>
                 </div>
               )}
@@ -1022,11 +1182,24 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                 </button>
 
                 {probeResult && (
-                  <div className={`mt-2 p-2.5 rounded-lg border text-xs flex items-center gap-2 ${
+                  <div className={`mt-2 p-3 rounded-xl border text-xs space-y-2 ${
                     probeResult.success ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' : 'bg-red-950/40 border-red-500/40 text-red-300'
                   }`}>
-                    {probeResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-red-400" />}
-                    <span>{probeResult.message}</span>
+                    <div className="flex items-center gap-2">
+                      {probeResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />}
+                      <span className="font-medium">{probeResult.message}</span>
+                    </div>
+
+                    {probeResult.detected_month_folders && probeResult.detected_month_folders.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-emerald-500/20 text-[11px]">
+                        <span className="text-emerald-400 font-semibold">Active Month Folders in Root:</span>
+                        {probeResult.detected_month_folders.map((mf, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded bg-emerald-900/60 border border-emerald-500/30 text-emerald-200 font-mono text-[10px]">
+                            📁 {mf}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

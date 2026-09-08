@@ -231,7 +231,7 @@ class GoogleDriveService:
         return True
 
     async def test_folder_access(self, folder_id: str) -> Dict[str, Any]:
-        """Tests whether a Google Drive folder exists and is accessible by the service account."""
+        """Tests whether a Google Drive folder exists, is accessible, and inspects child hierarchy."""
         if not folder_id or folder_id in ("root", "your_folder_id", "default") or settings.MOCK_MODE or not self.service:
             return {
                 "accessible": True,
@@ -239,18 +239,53 @@ class GoogleDriveService:
                 "folder_name": "S4 Ingestion Root Folder",
                 "permissions": "Editor",
                 "mock_mode": True,
+                "child_folders_count": 3,
+                "detected_subfolders": ["August 2026", "September 2026", "October 2026"],
+                "detected_month_folders": ["August 2026", "September 2026"],
+                "suggested_hierarchy": "month_then_party",
             }
         try:
             res = self.service.files().get(
                 fileId=folder_id,
                 fields="id, name, capabilities, owners, permissions"
             ).execute()
+
+            # Inspect immediate child items to identify structure
+            child_folders: List[str] = []
+            detected_months: List[str] = []
+            try:
+                c_res = self.service.files().list(
+                    q=f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                    spaces="drive",
+                    fields="files(id, name)",
+                    pageSize=30,
+                ).execute()
+                child_folders = [f.get("name", "").strip() for f in c_res.get("files", []) if f.get("name")]
+                
+                # Check for month keywords in child folders
+                month_keywords = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+                for cf in child_folders:
+                    if any(mk in cf.lower() for mk in month_keywords) or any(yr in cf for yr in ["2024", "2025", "2026", "2027"]):
+                        detected_months.append(cf)
+            except Exception as ce:
+                logger.warning(f"Could not list child folders of {folder_id}: {ce}")
+
+            suggested = "auto_detect"
+            if detected_months:
+                suggested = "month_then_party"
+            elif child_folders:
+                suggested = "party_then_month"
+
             return {
                 "accessible": True,
                 "folder_id": res.get("id"),
                 "folder_name": res.get("name"),
                 "can_edit": res.get("capabilities", {}).get("canEdit", True),
                 "mock_mode": False,
+                "child_folders_count": len(child_folders),
+                "detected_subfolders": child_folders[:10],
+                "detected_month_folders": detected_months[:5],
+                "suggested_hierarchy": suggested,
             }
         except Exception as e:
             logger.warning(f"Could not access Google Drive folder {folder_id}: {e}")
@@ -291,24 +326,81 @@ class GoogleDriveService:
         ]
         return list(dict.fromkeys(aliases))
 
-    async def list_control_slips(self, folder_id: str, month: str, year: int) -> List[Any]:
-        """Discovers source documents across Month-First, Customer-First, or Flat Drive layouts."""
-        return await self.discover_documents_multi_convention(folder_id, month, year)
+    @staticmethod
+    def get_previous_month(month_name: str, year: int) -> Tuple[str, int]:
+        """Calculates previous calendar month and year."""
+        month_names = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ]
+        m_cap = month_name.capitalize()
+        idx = month_names.index(m_cap) if m_cap in month_names else 0
+        if idx == 0:
+            return "December", year - 1
+        return month_names[idx - 1], year
+
+    async def list_control_slips(
+        self, 
+        folder_id: str, 
+        month: str, 
+        year: int,
+        structure_hint: Optional[str] = None,
+        lookback_window: bool = False,
+        auto_create_month_folder: bool = False,
+    ) -> List[Any]:
+        """Discovers source documents across Month-First, Customer-First, or Flat Drive layouts with optional lookback."""
+        docs = await self.discover_documents_multi_convention(
+            folder_id=folder_id,
+            month=month,
+            year=year,
+            structure_hint=structure_hint,
+            auto_create_month_folder=auto_create_month_folder,
+        )
+
+        # If lookback is enabled, or if day of month <= 7, also query prior month to catch late bills
+        from datetime import datetime
+        day = datetime.now().day
+        should_lookback = lookback_window or (day <= 7)
+        if should_lookback:
+            prev_m, prev_y = self.get_previous_month(month, year)
+            logger.info(f"📅 Lookback grace window active (day={day}): scanning previous month '{prev_m} {prev_y}'")
+            prev_docs = await self.discover_documents_multi_convention(
+                folder_id=folder_id,
+                month=prev_m,
+                year=prev_y,
+                structure_hint=structure_hint,
+                auto_create_month_folder=False,
+            )
+            for pd in prev_docs:
+                pd.metadata["is_lookback_period"] = True
+            
+            existing_ids = {d.source_identifier for d in docs}
+            for pd in prev_docs:
+                if pd.source_identifier not in existing_ids:
+                    docs.append(pd)
+                    existing_ids.add(pd.source_identifier)
+
+        return docs
 
     async def discover_documents_multi_convention(
-        self, folder_id: str, month: str, year: int
+        self, 
+        folder_id: str, 
+        month: str, 
+        year: int,
+        structure_hint: Optional[str] = None,
+        auto_create_month_folder: bool = False,
     ) -> List[Any]:
         """
         Resilient Multi-Convention Google Drive Discovery Engine:
         - Pass 1 (Month-First): Looks for matching Month folders in root -> scans customer subfolders / files.
         - Pass 2 (Customer-First): Looks for Customer folders in root -> scans matching Month subfolders.
         - Pass 3 (Flat): Scans direct image / PDF files in the target folder.
-        Automatically tags `customer_name_hint` and `customer_slug` in metadata.
+        Automatically tags `customer_name_hint` and `vendor_name_hint` in metadata.
         """
         from app.strategies.base import SourceDocument, SourceType
 
         if settings.MOCK_MODE or not self.service or not folder_id or folder_id.startswith("mock_"):
-            logger.info(f"[MOCK] Multi-convention document discovery for folder '{folder_id}' ({month} {year})")
+            logger.info(f"[MOCK] Multi-convention document discovery for folder '{folder_id}' ({month} {year}) [hint={structure_hint}]")
             return [
                 SourceDocument(
                     file_name=f"mock_slip_luxwood_{month.lower()}_{year}_01.jpg",
@@ -318,6 +410,7 @@ class GoogleDriveService:
                     metadata={
                         "folder_id": folder_id,
                         "customer_name_hint": "Luxwood Hotel",
+                        "vendor_name_hint": "Luxwood Hotel",
                         "customer_slug": "luxwood",
                         "month": month,
                         "year": year,
@@ -332,6 +425,7 @@ class GoogleDriveService:
                     metadata={
                         "folder_id": folder_id,
                         "customer_name_hint": "The Lennox",
+                        "vendor_name_hint": "The Lennox",
                         "customer_slug": "the_lennox",
                         "month": month,
                         "year": year,
@@ -360,13 +454,26 @@ class GoogleDriveService:
             child_files = [f for f in items if f.get("mimeType") != "application/vnd.google-apps.folder"]
 
             # -------------------------------------------------------------
-            # PASS 1: Check for Month-First Hierarchy (Root -> Month Folder -> Customer Folders / Files)
+            # PASS 1: Check for Month-First Hierarchy (Root -> Month Folder -> Customer/Vendor Folders or Direct Files)
             # -------------------------------------------------------------
             matching_month_folders = [
                 f for f in child_folders if f.get("name", "").strip().lower() in aliases_lower
             ]
 
-            if matching_month_folders:
+            # Auto-create canonical month folder if configured and missing
+            if not matching_month_folders and auto_create_month_folder and not settings.MOCK_MODE:
+                try:
+                    new_m_name = f"{month.capitalize()} {year}"
+                    created_id = self.find_or_create_folder(new_m_name, folder_id)
+                    logger.info(f"📁 Auto-created month folder '{new_m_name}' (ID: {created_id}) in root '{folder_id}'")
+                    matching_month_folders = [{"id": created_id, "name": new_m_name}]
+                except Exception as ce:
+                    logger.warning(f"Could not auto-create month folder: {ce}")
+
+            # If structure_hint is party_then_month, we skip Pass 1 initially to let Pass 2 check first
+            should_run_pass1 = structure_hint != "party_then_month" and structure_hint != "flat_root"
+
+            if matching_month_folders and should_run_pass1:
                 logger.info(f"📁 [Drive Pass 1: Month-First] Found {len(matching_month_folders)} month folder(s) for '{month} {year}'")
                 for mf in matching_month_folders:
                     m_id = mf["id"]
@@ -383,34 +490,37 @@ class GoogleDriveService:
                     m_subfolders = [f for f in m_items if f.get("mimeType") == "application/vnd.google-apps.folder"]
                     m_files = [f for f in m_items if f.get("mimeType") != "application/vnd.google-apps.folder"]
 
-                    # If customer subfolders exist inside the month folder (e.g. August 2026 / Luxwood Hotel)
-                    for cust_fld in m_subfolders:
-                        cust_name = cust_fld["name"].strip()
-                        if cust_name.lower() in ignored_names:
-                            continue
-                        cust_id = cust_fld["id"]
-                        cust_slug = cust_name.lower().replace(" ", "_").replace("-", "_")
+                    # If customer/vendor subfolders exist inside the month folder (e.g. August 2026 / Luxwood Hotel)
+                    if structure_hint != "month_direct":
+                        for cust_fld in m_subfolders:
+                            cust_name = cust_fld["name"].strip()
+                            if cust_name.lower() in ignored_names:
+                                continue
+                            cust_id = cust_fld["id"]
+                            cust_slug = cust_name.lower().replace(" ", "_").replace("-", "_")
 
-                        slips = self.list_unprocessed_slips(cust_id)
-                        for s in slips:
-                            discovered_docs.append(
-                                SourceDocument(
-                                    file_name=s.get("name", "slip.jpg"),
-                                    source_type=SourceType.GOOGLE_DRIVE,
-                                    source_identifier=s.get("id"),
-                                    mime_type=s.get("mimeType", "image/jpeg"),
-                                    metadata={
-                                        "folder_id": cust_id,
-                                        "month_folder_id": m_id,
-                                        "month_folder_name": m_name,
-                                        "customer_name_hint": cust_name,
-                                        "customer_slug": cust_slug,
-                                        "month": month,
-                                        "year": year,
-                                        "hierarchy_pattern": "month_first_customer_subfolder",
-                                    },
+                            slips = self.list_unprocessed_slips(cust_id)
+                            for s in slips:
+                                discovered_docs.append(
+                                    SourceDocument(
+                                        file_name=s.get("name", "slip.jpg"),
+                                        source_type=SourceType.GOOGLE_DRIVE,
+                                        source_identifier=s.get("id"),
+                                        mime_type=s.get("mimeType", "image/jpeg"),
+                                        metadata={
+                                            "folder_id": cust_id,
+                                            "month_folder_id": m_id,
+                                            "month_folder_name": m_name,
+                                            "customer_name_hint": cust_name,
+                                            "vendor_name_hint": cust_name,
+                                            "party_name_hint": cust_name,
+                                            "customer_slug": cust_slug,
+                                            "month": month,
+                                            "year": year,
+                                            "hierarchy_pattern": "month_first_customer_subfolder",
+                                        },
+                                    )
                                 )
-                            )
 
                     # Also pick up direct files placed in the Month folder root
                     for f in m_files:
@@ -433,10 +543,10 @@ class GoogleDriveService:
                             )
 
             # -------------------------------------------------------------
-            # PASS 2: Check for Customer-First Hierarchy (Root -> Customer Folders -> Month Subfolders)
+            # PASS 2: Check for Customer/Vendor-First Hierarchy (Root -> Customer/Vendor Folders -> Month Subfolders)
             # -------------------------------------------------------------
-            if not discovered_docs and child_folders:
-                logger.info("📁 [Drive Pass 2: Customer-First] Checking customer folders for nested month subfolders...")
+            if not discovered_docs and child_folders and structure_hint != "flat_root":
+                logger.info("📁 [Drive Pass 2: Customer/Vendor-First] Checking party folders for nested month subfolders...")
                 for cust_fld in child_folders:
                     cust_name = cust_fld["name"].strip()
                     if cust_name.lower() in ignored_names:
@@ -470,6 +580,8 @@ class GoogleDriveService:
                                         "folder_id": mf["id"],
                                         "parent_customer_id": cust_id,
                                         "customer_name_hint": cust_name,
+                                        "vendor_name_hint": cust_name,
+                                        "party_name_hint": cust_name,
                                         "customer_slug": cust_slug,
                                         "month": month,
                                         "year": year,

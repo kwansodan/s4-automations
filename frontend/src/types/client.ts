@@ -150,6 +150,13 @@ export const ACCOUNTING_PLATFORMS: AccountingPlatformInfo[] = [
 
 export type TriggerType = 'realtime_webhook' | 'scheduled_cron' | 'manual_only' | 'event_mesh';
 
+export type FolderStructurePattern =
+  | 'auto_detect'
+  | 'month_then_party'
+  | 'month_direct'
+  | 'party_then_month'
+  | 'flat_root';
+
 export interface IngestionPipeline {
   id: string;
   name: string;
@@ -162,6 +169,9 @@ export interface IngestionPipeline {
   source_email?: string;
   sourceEmail?: string;
   source_config?: {
+    folder_structure?: FolderStructurePattern;
+    enable_lookback_window?: boolean;
+    auto_create_month_folder?: boolean;
     allowed_senders?: string;
     tenant_id?: string;
     client_id?: string;

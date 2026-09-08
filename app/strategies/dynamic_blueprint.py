@@ -107,7 +107,18 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
         elif source_type == "google_drive":
             drive = GoogleDriveService()
-            return await drive.list_control_slips(source_identifier, month, year)
+            p_cfg = (pipeline.get("source_config") if isinstance(pipeline, dict) else {}) or {}
+            structure_hint = p_cfg.get("folder_structure", "auto_detect")
+            lookback_window = p_cfg.get("enable_lookback_window", True)
+            auto_create = p_cfg.get("auto_create_month_folder", False)
+            return await drive.list_control_slips(
+                source_identifier,
+                month,
+                year,
+                structure_hint=structure_hint,
+                lookback_window=lookback_window,
+                auto_create_month_folder=auto_create,
+            )
 
         else:
             # Manual upload / fallback

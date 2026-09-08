@@ -91,12 +91,27 @@ async def probe_external_connection(payload: ExternalProbePayload) -> Dict[str, 
         folder_id = payload.folder_id or ""
         probe = await drive.test_folder_access(folder_id) if hasattr(drive, "test_folder_access") else {"accessible": True}
         is_accessible = probe.get("accessible", True)
+        msg = "Google Drive folder verified with Service Account access."
+        if is_accessible:
+            f_name = probe.get("folder_name") or "Drive Root"
+            m_flds = probe.get("detected_month_folders", [])
+            sub_count = probe.get("child_folders_count", 0)
+            if m_flds:
+                msg = f"Connected to '{f_name}'. Detected active month folders: {', '.join(m_flds)}"
+            elif sub_count > 0:
+                msg = f"Connected to '{f_name}'. Discovered {sub_count} child subfolder(s)."
+            else:
+                msg = f"Connected to '{f_name}'. Service Account access confirmed."
+
         checks.append({
             "target": "Google Drive Folder",
             "identifier": folder_id or "Root / Service Account Folder",
             "status": "PASS" if is_accessible else "WARNING",
-            "message": "Google Drive folder verified with Service Account access." if is_accessible else "Drive folder ID not yet shared with Service Account.",
-            "service_account": "s4-vision-ingest@s4-automations.iam.gserviceaccount.com"
+            "message": msg if is_accessible else "Drive folder ID not yet shared with Service Account.",
+            "service_account": "s4-vision-ingest@s4-automations.iam.gserviceaccount.com",
+            "folder_name": probe.get("folder_name"),
+            "detected_month_folders": probe.get("detected_month_folders", []),
+            "suggested_hierarchy": probe.get("suggested_hierarchy"),
         })
         if not is_accessible:
             overall_success = False
