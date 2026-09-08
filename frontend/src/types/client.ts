@@ -157,6 +157,17 @@ export interface IngestionPipeline {
   entity_type: AccountingEntityType;
   source_type: 'google_drive' | 'onedrive' | 'email' | 'webhook' | 'manual' | 'whatsapp' | 'bank_feed';
   source_identifier: string;
+  folder_id?: string;
+  folderId?: string;
+  source_email?: string;
+  sourceEmail?: string;
+  source_config?: {
+    allowed_senders?: string;
+    tenant_id?: string;
+    client_id?: string;
+    secret?: string;
+    [key: string]: any;
+  };
   default_account_code?: string;
   default_account_id?: string;
   default_tax_rate?: string;
