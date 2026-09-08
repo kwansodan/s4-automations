@@ -23,7 +23,7 @@ export const LiveConsole: React.FC = () => {
   const { logs } = useAutomation();
   const { openDebugDrawer } = useErrors();
 
-  const [activeConsoleTab, setActiveConsoleTab] = useState<'telemetry' | 'server'>('telemetry');
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'telemetry' | 'server'>('server');
 
   // Telemetry Tab State
   const [telemetrySearch, setTelemetrySearch] = useState('');
@@ -57,12 +57,14 @@ export const LiveConsole: React.FC = () => {
     }
   }, [serverLevel, serverSearch]);
 
-  // Initial load and polling for server logs
+  // Always load server logs once on mount to populate tab counts
   useEffect(() => {
-    if (activeConsoleTab !== 'server') return;
     loadServerLogs();
+  }, [loadServerLogs]);
 
-    if (!isAutoRefreshing) return;
+  // Polling for server logs when server tab is active
+  useEffect(() => {
+    if (activeConsoleTab !== 'server' || !isAutoRefreshing) return;
     const interval = setInterval(loadServerLogs, 3000);
     return () => clearInterval(interval);
   }, [activeConsoleTab, isAutoRefreshing, loadServerLogs]);
@@ -125,6 +127,8 @@ export const LiveConsole: React.FC = () => {
     setCopiedServerIdx(idx);
     setTimeout(() => setCopiedServerIdx(null), 2000);
   };
+
+  const serverErrorsCount = serverLogs.filter((l) => l.level === 'ERROR' || l.level === 'CRITICAL').length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -199,6 +203,11 @@ export const LiveConsole: React.FC = () => {
           >
             <Server className="w-3.5 h-3.5" />
             <span>Backend Server Terminal Logs ({serverLogs.length})</span>
+            {serverErrorsCount > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold">
+                {serverErrorsCount} err
+              </span>
+            )}
           </button>
         </div>
 
@@ -301,6 +310,23 @@ export const LiveConsole: React.FC = () => {
       {/* VIEW 2: BACKEND SERVER TERMINAL LOGS (Python FastAPI stdout / stderr) */}
       {activeConsoleTab === 'server' && (
         <div className="space-y-4">
+          {serverErrorsCount > 0 && (
+            <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-rose-200">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>
+                  <strong className="font-semibold text-white">{serverErrorsCount} backend error{serverErrorsCount > 1 ? 's' : ''}</strong> recorded in server logs. Expand tracebacks below or inspect in the Debug Inspector.
+                </span>
+              </div>
+              <button
+                onClick={() => openDebugDrawer('errors')}
+                className="bg-rose-900/60 hover:bg-rose-900 border border-rose-700/50 text-rose-200 text-xs font-semibold px-3 py-1 rounded-lg transition shrink-0 cursor-pointer"
+              >
+                Inspect Errors
+              </button>
+            </div>
+          )}
+
           {/* Controls Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 overflow-x-auto">

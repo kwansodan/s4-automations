@@ -10,7 +10,8 @@ export type ErrorCategory =
   | 'react'
   | 'auth'
   | 'network'
-  | 'validation';
+  | 'validation'
+  | 'backend';
 
 export interface AppError {
   id: string;

@@ -1023,9 +1023,16 @@ export async function fetchServerLogsApi(
 }
 
 export async function fetchServerErrorsApi(
-  limit = 50
-): Promise<{ status: string; total_returned: number; errors: any[] }> {
-  const res = await resilientFetch(`/api/v1/system/errors?limit=${limit}`, {
+  limit = 50,
+  sinceSeq = 0,
+  includeWarnings = true
+): Promise<{ status: string; total_returned: number; errors: any[]; latest_seq?: number }> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    since_seq: String(sinceSeq),
+    include_warnings: String(includeWarnings),
+  });
+  const res = await resilientFetch(`/api/v1/system/errors?${params.toString()}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse(res, 'Fetch Server Errors');

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useClient } from '../../../context/ClientContext';
 import { useAutomation } from '../../../context/AutomationContext';
+import { useErrors } from '../../../context/ErrorContext';
 import { KpiCards } from '../../dashboard/KpiCards';
 import { ProgressTracker } from '../../dashboard/ProgressTracker';
 import { runClientStrategy, testClientIngestion, triggerClientPipeline } from '../../../lib/api';
@@ -26,6 +27,7 @@ import {
 export const ClientOverviewTab: React.FC = () => {
   const { currentClient, activeSections, setIsWizardOpen } = useClient();
   const { addLog, selectedMonth, selectedYear, navigateToClientSubTab } = useAutomation();
+  const { reportError, syncServerIssuesNow } = useErrors();
 
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<any | null>(null);
@@ -46,13 +48,37 @@ export const ClientOverviewTab: React.FC = () => {
     try {
       const res = await runClientStrategy(currentClient.id, false);
       setExecutionResult(res);
-      addLog('success', `[LIVE] ${res.message || 'Pipeline execution completed successfully.'}`);
+      if (res.status === 'FAILED') {
+        const errorMsg = res.message || 'Pipeline execution failed. Check backend logs.';
+        addLog('error', `❌ Pipeline execution failed: ${errorMsg}`);
+        reportError({
+          severity: 'error',
+          category: 'pipeline',
+          title: `Execution Failed: ${currentClient.name}`,
+          message: errorMsg,
+          endpoint: `/api/v1/clients/${currentClient.id}/run`,
+          responseData: res,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else {
+        addLog('success', `[LIVE] ${res.message || 'Pipeline execution completed successfully.'}`);
+      }
     } catch (err: any) {
       addLog('error', `Pipeline execution error for ${currentClient.name}: ${err.message}`);
       setExecutionResult({
         status: 'FAILED',
         message: err.message || 'Execution failed. Check backend logs.',
       });
+      reportError({
+        severity: 'error',
+        category: 'pipeline',
+        title: `Execution Error: ${currentClient.name}`,
+        message: err.message,
+        endpoint: `/api/v1/clients/${currentClient.id}/run`,
+        showToast: true,
+      });
+      await syncServerIssuesNow();
     } finally {
       setIsRunning(false);
     }
@@ -64,10 +90,33 @@ export const ClientOverviewTab: React.FC = () => {
     try {
       const res = await testClientIngestion(currentClient.id);
       setProbeResult(res);
-      addLog('info', `[PROBE] Ingestion test for ${currentClient.name}: ${res.message}`);
+      if (res.success === false || res.status === 'FAILED') {
+        addLog('error', `[PROBE] Ingestion test failed for ${currentClient.name}: ${res.message}`);
+        reportError({
+          severity: 'error',
+          category: 'pipeline',
+          title: `Probe Failed: ${currentClient.name}`,
+          message: res.message,
+          endpoint: `/api/v1/clients/${currentClient.id}/test-ingestion`,
+          responseData: res,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else {
+        addLog('info', `[PROBE] Ingestion test for ${currentClient.name}: ${res.message}`);
+      }
     } catch (err: any) {
       setProbeResult({ success: false, message: err.message });
       addLog('error', `Ingestion probe failed: ${err.message}`);
+      reportError({
+        severity: 'error',
+        category: 'pipeline',
+        title: `Probe Error: ${currentClient.name}`,
+        message: err.message,
+        endpoint: `/api/v1/clients/${currentClient.id}/test-ingestion`,
+        showToast: true,
+      });
+      await syncServerIssuesNow();
     } finally {
       setIsProbing(false);
     }
@@ -81,9 +130,45 @@ export const ClientOverviewTab: React.FC = () => {
         month: selectedMonth,
         year: selectedYear,
       });
-      addLog('success', `✅ Stream "${pipelineName}" completed: ${result.items_extracted || 0} items extracted.`);
+
+      if (result.status === 'FAILED' || (result.errors && result.errors.length > 0)) {
+        const errorMsg = result.error_message || result.errors?.[0] || 'Pipeline stream execution failed';
+        addLog('error', `❌ Stream "${pipelineName}" failed: ${errorMsg}`);
+        reportError({
+          severity: 'error',
+          category: 'pipeline',
+          title: `Stream Failed: ${pipelineName}`,
+          message: errorMsg,
+          endpoint: `/api/v1/clients/${currentClient.id}/pipelines/${pipelineId}/trigger`,
+          responseData: result,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else if (result.status === 'WARNING' || (result.warnings && result.warnings.length > 0)) {
+        addLog('warning', `⚠️ Stream "${pipelineName}" completed with warnings: ${result.warnings?.join('; ')}`);
+        reportError({
+          severity: 'warning',
+          category: 'pipeline',
+          title: `Stream Warnings: ${pipelineName}`,
+          message: result.warnings?.join('; ') || 'Pipeline completed with warnings.',
+          responseData: result,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else {
+        addLog('success', `✅ Stream "${pipelineName}" completed: ${result.items_extracted || 0} items extracted.`);
+      }
     } catch (err: any) {
       addLog('error', `❌ Stream "${pipelineName}" failed: ${err.message}`);
+      reportError({
+        severity: 'error',
+        category: 'pipeline',
+        title: `Stream Error: ${pipelineName}`,
+        message: err.message,
+        endpoint: `/api/v1/clients/${currentClient.id}/pipelines/${pipelineId}/trigger`,
+        showToast: true,
+      });
+      await syncServerIssuesNow();
     } finally {
       setTriggeringPipeId(null);
     }

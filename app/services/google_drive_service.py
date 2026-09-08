@@ -67,13 +67,21 @@ class GoogleDriveService:
             logger.info(f"Created new folder '{folder_name}' (ID: {folder_id})")
             return folder_id
         except HttpError as e:
-            if e.resp.status in (404, 403):
+            if settings.MOCK_MODE:
                 logger.warning(
                     f"Parent folder '{parent_id}' was not found or accessible in Google Drive (HTTP {e.resp.status}). "
-                    f"Please verify CONTROL_SHEETS_FOLDER_ID and share permissions with the Service Account email. "
                     f"Falling back to mock folder for '{folder_name}'."
                 )
                 return f"mock_folder_{folder_name.lower().replace(' ', '_')}"
+
+            error_msg = (
+                f"Google Drive parent folder '{parent_id}' was not found or accessible (HTTP {e.resp.status}). "
+                f"Please verify the Folder ID and ensure it is shared with edit permissions to the Google Service Account email."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg) from e
+        except Exception as e:
+            logger.error(f"Error in find_or_create_folder for '{folder_name}' in parent '{parent_id}': {e}")
             raise
 
     def get_month_folder(self, month_name: str, year: int) -> str:
@@ -633,9 +641,19 @@ class GoogleDriveService:
             )
             return discovered_docs
 
+        except HttpError as e:
+            status_code = getattr(e.resp, "status", 500)
+            if status_code == 404:
+                err_msg = f"Google Drive folder '{folder_id}' was not found (HTTP 404). Please verify that the Folder ID is correct."
+            elif status_code == 403:
+                err_msg = f"Google Drive access denied (HTTP 403) for folder '{folder_id}'. Ensure the folder is shared with the Service Account email."
+            else:
+                err_msg = f"Google Drive API error (HTTP {status_code}) accessing folder '{folder_id}': {e}"
+            logger.error(err_msg)
+            raise ValueError(err_msg) from e
         except Exception as e:
-            logger.error(f"Error executing multi-convention Google Drive discovery: {e}")
-            return []
+            logger.error(f"Error executing multi-convention Google Drive discovery in folder '{folder_id}': {e}")
+            raise
 
     def _is_supported_doc(self, file_dict: Dict[str, Any]) -> bool:
         """Helper to determine if a file is an image or PDF document."""

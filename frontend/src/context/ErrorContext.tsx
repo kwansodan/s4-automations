@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type {
   AppError,
   ErrorSeverity,
@@ -6,6 +6,7 @@ import type {
   NetworkRequestRecord,
   ToastNotification,
 } from '../types/errors';
+import { fetchServerErrorsApi } from '../lib/api';
 
 interface ErrorContextType {
   errors: AppError[];
@@ -17,6 +18,7 @@ interface ErrorContextType {
   selectedError: AppError | null;
 
   reportError: (err: {
+    id?: string;
     severity?: ErrorSeverity;
     category?: ErrorCategory;
     title: string;
@@ -40,6 +42,7 @@ interface ErrorContextType {
   closeDebugDrawer: () => void;
   dismissToast: (id: string) => void;
   generateDiagnosticReport: () => string;
+  syncServerIssuesNow: () => Promise<void>;
 }
 
 const ErrorContext = createContext<ErrorContextType | undefined>(undefined);
@@ -64,6 +67,7 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Main error reporting function
   const reportError = useCallback(
     ({
+      id,
       severity = 'error',
       category = 'api',
       title,
@@ -78,6 +82,7 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       troubleshootingHint,
       showToast = true,
     }: {
+      id?: string;
       severity?: ErrorSeverity;
       category?: ErrorCategory;
       title: string;
@@ -93,8 +98,9 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast?: boolean;
     }): AppError => {
       const now = new Date();
+      const newErrorId = id || `err_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       const newError: AppError = {
-        id: `err_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        id: newErrorId,
         timestamp: now.toISOString(),
         timeDisplay: now.toLocaleTimeString(),
         severity,
@@ -117,6 +123,10 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         endpoint?.includes('/progress') || endpoint?.includes('/status') || endpoint?.includes('/logs');
 
       setErrors((prev) => {
+        if (prev.some((e) => e.id === newErrorId)) {
+          return prev;
+        }
+
         if (isPollingEndpoint) {
           const existingIdx = prev.findIndex(
             (e) => e.endpoint === endpoint && e.status === status
@@ -140,7 +150,6 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return prev + 1;
       });
 
-
       if (showToast) {
         const toastId = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const newToast: ToastNotification = {
@@ -151,7 +160,13 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           errorRef: newError,
           durationMs: severity === 'critical' ? undefined : 7000,
         };
-        setToasts((prev) => [newToast, ...prev.slice(0, 4)]);
+        setToasts((prev) => {
+          // Avoid duplicate toast with identical title and message
+          if (prev.some((t) => t.title === title && t.message === message)) {
+            return prev;
+          }
+          return [newToast, ...prev.slice(0, 4)];
+        });
 
         if (severity !== 'critical') {
           setTimeout(() => {
@@ -251,15 +266,94 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [reportError, markErrorsAsRead]);
 
+  const lastSeqRef = useRef<number>(0);
+
+  // Sync backend server errors and warnings continuously into ErrorContext
+  const syncServerIssues = useCallback(
+    async (isInitial = false) => {
+      try {
+        const sinceSeq = isInitial ? 0 : lastSeqRef.current;
+        const res = await fetchServerErrorsApi(25, sinceSeq, true);
+        if (res && res.status === 'success' && Array.isArray(res.errors)) {
+          if (res.errors.length > 0) {
+            let maxSeq = lastSeqRef.current;
+            // The backend returns latest first; reverse so they are processed chronologically
+            const chronological = [...res.errors].reverse();
+
+            for (const rec of chronological) {
+              if (rec.seq && rec.seq > maxSeq) {
+                maxSeq = rec.seq;
+              }
+
+              const recSeverity: ErrorSeverity =
+                rec.level === 'CRITICAL' ? 'critical' : rec.level === 'WARNING' ? 'warning' : 'error';
+
+              let hint: string | undefined = undefined;
+              const msgLower = (rec.message || '').toLowerCase();
+              if (msgLower.includes('404') || msgLower.includes('not found')) {
+                hint = 'The target Google Drive folder or resource was not found. Please verify the folder ID and permissions.';
+              } else if (msgLower.includes('403') || msgLower.includes('permission')) {
+                hint = 'Google Drive access denied. Ensure the folder is shared with the service account email.';
+              } else if (msgLower.includes('contract') || msgLower.includes('zoho')) {
+                hint = 'Zoho Books contract schema validation error. Check customer name and tax rate configuration.';
+              }
+
+              // Show toast for newly arrived errors/warnings when polling (not on initial bulk load)
+              const shouldToast = !isInitial && recSeverity !== 'warning';
+
+              reportError({
+                id: rec.id ? `server_${rec.id}` : undefined,
+                severity: recSeverity,
+                category: 'backend',
+                title: `[Server ${rec.level}] ${rec.logger}`,
+                message: rec.message,
+                traceback: rec.traceback || undefined,
+                troubleshootingHint: hint,
+                showToast: shouldToast,
+              });
+            }
+
+            if (res.latest_seq && res.latest_seq > maxSeq) {
+              maxSeq = res.latest_seq;
+            }
+            lastSeqRef.current = Math.max(lastSeqRef.current, maxSeq);
+          } else if (res.latest_seq && res.latest_seq > lastSeqRef.current) {
+            lastSeqRef.current = res.latest_seq;
+          }
+        }
+      } catch (err) {
+        // Backend temporarily unreachable or offline; avoid cascading alerts
+      }
+    },
+    [reportError]
+  );
+
+  const syncServerIssuesNow = useCallback(async () => {
+    await syncServerIssues(false);
+  }, [syncServerIssues]);
+
+  // Periodic polling for backend server issues and unhandled exceptions
+  useEffect(() => {
+    syncServerIssues(true);
+
+    const interval = setInterval(() => {
+      syncServerIssues(false);
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [syncServerIssues]);
+
   // Expose global reporting function on window for non-React code (e.g. state.js)
   useEffect(() => {
     (window as any).__S4_REPORT_ERROR__ = reportError;
     (window as any).__S4_REPORT_NETWORK__ = reportNetworkRequest;
+    (window as any).__S4_SYNC_SERVER_ISSUES__ = syncServerIssuesNow;
     return () => {
       delete (window as any).__S4_REPORT_ERROR__;
       delete (window as any).__S4_REPORT_NETWORK__;
+      delete (window as any).__S4_SYNC_SERVER_ISSUES__;
     };
-  }, [reportError, reportNetworkRequest]);
+  }, [reportError, reportNetworkRequest, syncServerIssuesNow]);
 
   // Generates a copyable Markdown diagnostic report
   const generateDiagnosticReport = useCallback((): string => {
@@ -336,6 +430,7 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       closeDebugDrawer,
       dismissToast,
       generateDiagnosticReport,
+      syncServerIssuesNow,
     }),
     [
       errors,
@@ -354,6 +449,7 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       closeDebugDrawer,
       dismissToast,
       generateDiagnosticReport,
+      syncServerIssuesNow,
     ]
   );
 

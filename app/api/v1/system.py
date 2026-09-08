@@ -9,6 +9,7 @@ from app.utils.logging import (
     get_logger,
     get_recent_server_logs,
     get_recent_server_errors,
+    get_recent_server_issues,
     log_buffer,
 )
 from app.utils.progress_tracker import pipeline_tracker
@@ -33,16 +34,38 @@ async def get_server_logs(
     }
 
 
-@router.get("/errors", summary="Get Recent Backend Server Exceptions")
+@router.get("/errors", summary="Get Recent Backend Server Exceptions & Warnings")
 async def get_server_errors(
     limit: int = Query(default=50, ge=1, le=100, description="Max error records to return"),
+    include_warnings: bool = Query(default=True, description="Include WARNING level log records"),
+    since_seq: int = Query(default=0, ge=0, description="Return records with sequence number > since_seq"),
 ) -> Dict[str, Any]:
-    """Returns recent exception records with full Python tracebacks."""
-    errors = get_recent_server_errors(limit=limit)
+    """Returns recent exception and warning records with full Python tracebacks."""
+    if include_warnings:
+        records = get_recent_server_issues(limit=limit, since_seq=since_seq)
+    else:
+        records = get_recent_server_errors(limit=limit, since_seq=since_seq)
     return {
         "status": "success",
-        "total_returned": len(errors),
-        "errors": errors,
+        "total_returned": len(records),
+        "errors": records,
+        "latest_seq": records[0]["seq"] if records and "seq" in records[0] else since_seq,
+    }
+
+
+@router.get("/issues", summary="Get Recent Backend Server Issues (Errors + Warnings)")
+async def get_server_issues(
+    limit: int = Query(default=50, ge=1, le=100, description="Max issue records to return"),
+    since_seq: int = Query(default=0, ge=0, description="Only return issues after this sequence number"),
+) -> Dict[str, Any]:
+    """Returns recent server warning and error records for continuous UI notifications."""
+    issues = get_recent_server_issues(limit=limit, since_seq=since_seq)
+    latest_seq = issues[0]["seq"] if issues and "seq" in issues[0] else since_seq
+    return {
+        "status": "success",
+        "total_returned": len(issues),
+        "latest_seq": latest_seq,
+        "issues": issues,
     }
 
 

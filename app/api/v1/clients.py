@@ -728,6 +728,10 @@ async def trigger_pipeline_stream(
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
     pipeline = next((p for p in (client.pipelines or []) if p.get("id") == pipeline_id), None)
+    if not pipeline and (client.pipelines or []):
+        # Fallback to first available pipeline if pipeline_id was empty or missing
+        pipeline = client.pipelines[0]
+        pipeline_id = pipeline.get("id", "pipe_0")
     if not pipeline:
         raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found on client '{client_id}'.")
 
@@ -739,14 +743,38 @@ async def trigger_pipeline_stream(
     from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
     strategy = DynamicBlueprintStrategy(client)
 
-    # Discover and extract for this specific pipeline
-    sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
-    extracted = await strategy.extract_and_validate(sources)
-    sync_res = await strategy.sync_review_workspace(month, year, extracted)
+    try:
+        # Discover and extract for this specific pipeline
+        sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
+        extracted = await strategy.extract_and_validate(sources)
+        sync_res = await strategy.sync_review_workspace(month, year, extracted)
+    except Exception as e:
+        logger.error(f"Pipeline stream '{pipeline_id}' execution exception: {e}")
+        return {
+            "client_id": client_id,
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline.get("name"),
+            "status": "FAILED",
+            "month": month,
+            "year": year,
+            "sources_discovered": 0,
+            "items_extracted": 0,
+            "error_message": str(e),
+            "errors": [str(e)],
+            "warnings": getattr(strategy, "execution_warnings", []),
+            "sync_details": {"status": "FAILED", "error": str(e)},
+            "post_results": {"status": "SKIPPED", "invoices_created": 0},
+        }
 
     post_res = {"status": "SKIPPED", "invoices_created": 0}
     if auto_post:
         post_res = await strategy.post_to_accounting(month, year)
+
+    exec_errors = getattr(strategy, "execution_errors", [])
+    exec_warnings = getattr(strategy, "execution_warnings", [])
+    has_failed = len(exec_errors) > 0
+    status_str = "FAILED" if has_failed else ("WARNING" if exec_warnings and len(extracted) == 0 else "COMPLETED")
+    error_msg = exec_errors[0] if has_failed else (exec_warnings[0] if exec_warnings and len(extracted) == 0 else None)
 
     # Update pipeline run stats in database
     current_pipes = list(client.pipelines or [])
@@ -762,14 +790,23 @@ async def trigger_pipeline_stream(
     AuditService.log(
         client_id=client_id,
         action="PIPELINE_STREAM_TRIGGERED",
-        details={"pipeline_id": pipeline_id, "name": pipeline.get("name"), "extracted_count": len(extracted)},
+        details={
+            "pipeline_id": pipeline_id,
+            "name": pipeline.get("name"),
+            "extracted_count": len(extracted),
+            "status": status_str,
+            "error_message": error_msg,
+        },
     )
 
     return {
         "client_id": client_id,
         "pipeline_id": pipeline_id,
         "pipeline_name": pipeline.get("name"),
-        "status": "COMPLETED",
+        "status": status_str,
+        "error_message": error_msg,
+        "errors": exec_errors,
+        "warnings": exec_warnings,
         "month": month,
         "year": year,
         "sources_discovered": len(sources),
@@ -930,8 +967,30 @@ async def trigger_client_strategy(
     strategy = StrategyFactory.get(client_id)
     logger.info(f"Executing strategy {strategy.__class__.__name__} for client: {client_id} ({month} {year})")
 
-    result = await strategy.execute(month=month, year=year, auto_post=auto_post)
-    return result.model_dump()
+    try:
+        result = await strategy.execute(month=month, year=year, auto_post=auto_post)
+        res_data = result.model_dump()
+        exec_errs = getattr(strategy, "execution_errors", [])
+        exec_warns = getattr(strategy, "execution_warnings", [])
+        if exec_errs and res_data.get("status") != "FAILED":
+            res_data["status"] = "FAILED"
+            res_data["message"] = f"Execution failed: {exec_errs[0]}"
+        res_data["errors"] = exec_errs
+        res_data["warnings"] = exec_warns
+        return res_data
+    except Exception as e:
+        logger.error(f"Strategy execution failed for {client_id}: {e}")
+        return {
+            "client_id": client_id,
+            "status": "FAILED",
+            "month": month,
+            "year": year,
+            "message": str(e),
+            "errors": [str(e)],
+            "warnings": getattr(strategy, "execution_warnings", []),
+            "sources_discovered": 0,
+            "items_extracted": 0,
+        }
 
 
 @router.delete("/{client_id}", summary="Delete Client Organisation (Strict Guard)")

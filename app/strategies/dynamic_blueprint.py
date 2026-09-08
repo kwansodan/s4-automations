@@ -44,9 +44,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         self.client = client
         self.custom_config = client.custom_config or {}
         self.pipelines = client.pipelines or []
+        self.execution_errors: List[str] = []
+        self.execution_warnings: List[str] = []
 
     async def discover_sources(self, month: str, year: int, pipeline_id: Optional[str] = None) -> List[SourceDocument]:
         """Discovers files based on the client's configured pipelines or fallback root source."""
+        self.execution_errors = []
+        self.execution_warnings = []
         logger.info(f"[{self.client_name}] Stage 1: Discovering sources for {month} {year}")
         all_docs: List[SourceDocument] = []
 
@@ -111,14 +115,21 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             structure_hint = p_cfg.get("folder_structure", "auto_detect")
             lookback_window = p_cfg.get("enable_lookback_window", True)
             auto_create = p_cfg.get("auto_create_month_folder", False)
-            return await drive.list_control_slips(
-                source_identifier,
-                month,
-                year,
-                structure_hint=structure_hint,
-                lookback_window=lookback_window,
-                auto_create_month_folder=auto_create,
-            )
+            try:
+                return await drive.list_control_slips(
+                    source_identifier,
+                    month,
+                    year,
+                    structure_hint=structure_hint,
+                    lookback_window=lookback_window,
+                    auto_create_month_folder=auto_create,
+                )
+            except Exception as e:
+                p_name = pipeline.get("name", "Default Pipeline") if isinstance(pipeline, dict) else "Pipeline"
+                err_text = f"Google Drive discovery error for '{p_name}': {e}"
+                logger.error(err_text)
+                self.execution_errors.append(str(e))
+                return []
 
         else:
             # Manual upload / fallback
@@ -195,6 +206,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
             # Check if validation passed
             if not validation_result.is_valid:
+                issue_descs = [getattr(iss, "message", str(iss)) for iss in validation_result.issues]
+                self.execution_warnings.append(f"Validation flagged {len(issue_descs)} issues on '{doc.file_name}': {'; '.join(issue_descs[:2])}")
                 logger.error(
                     f"❌ [Zoho Contract Fail] {self.client_name} doc '{doc.file_name}' failed for '{entity_type}'. Placing on PENDING."
                 )

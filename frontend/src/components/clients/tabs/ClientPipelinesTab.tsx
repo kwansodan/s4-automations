@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useClient } from '../../../context/ClientContext';
 import { useAutomation } from '../../../context/AutomationContext';
+import { useErrors } from '../../../context/ErrorContext';
 import {
   saveClientPipeline,
   deleteClientPipeline,
@@ -29,6 +30,7 @@ import {
 export const ClientPipelinesTab: React.FC = () => {
   const { currentClient, deletePipeline, savePipeline } = useClient();
   const { selectedMonth, selectedYear, addLog } = useAutomation();
+  const { reportError, syncServerIssuesNow } = useErrors();
 
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<IngestionPipeline | null>(null);
@@ -67,9 +69,45 @@ export const ClientPipelinesTab: React.FC = () => {
         month: selectedMonth,
         year: selectedYear,
       });
-      addLog('success', `✅ Stream "${pipelineName}" executed successfully: ${result.items_extracted || 0} items extracted.`);
+
+      if (result.status === 'FAILED' || (result.errors && result.errors.length > 0)) {
+        const errorMsg = result.error_message || result.errors?.[0] || 'Pipeline stream execution failed';
+        addLog('error', `❌ Stream "${pipelineName}" failed: ${errorMsg}`);
+        reportError({
+          severity: 'error',
+          category: 'pipeline',
+          title: `Stream Failed: ${pipelineName}`,
+          message: errorMsg,
+          endpoint: `/api/v1/clients/${currentClient.id}/pipelines/${pipelineId}/trigger`,
+          responseData: result,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else if (result.status === 'WARNING' || (result.warnings && result.warnings.length > 0)) {
+        addLog('warning', `⚠️ Stream "${pipelineName}" completed with warnings: ${result.warnings?.join('; ')}`);
+        reportError({
+          severity: 'warning',
+          category: 'pipeline',
+          title: `Stream Warnings: ${pipelineName}`,
+          message: result.warnings?.join('; ') || 'Pipeline completed with warnings.',
+          responseData: result,
+          showToast: true,
+        });
+        await syncServerIssuesNow();
+      } else {
+        addLog('success', `✅ Stream "${pipelineName}" executed successfully: ${result.items_extracted || 0} items extracted.`);
+      }
     } catch (err: any) {
       addLog('error', `❌ Stream "${pipelineName}" execution failed: ${err.message}`);
+      reportError({
+        severity: 'error',
+        category: 'pipeline',
+        title: `Stream Error: ${pipelineName}`,
+        message: err.message,
+        endpoint: `/api/v1/clients/${currentClient.id}/pipelines/${pipelineId}/trigger`,
+        showToast: true,
+      });
+      await syncServerIssuesNow();
     } finally {
       setTriggeringPipeId(null);
     }
