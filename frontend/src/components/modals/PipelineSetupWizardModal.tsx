@@ -449,6 +449,13 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   };
 
   const handleTestChannel = async () => {
+    if (sourceType === 'google_drive' && !sourceIdentifier.trim()) {
+      setProbeResult({
+        success: false,
+        message: 'Please enter a Google Drive Root Folder ID first.',
+      });
+      return;
+    }
     setIsProbing(true);
     setProbeResult(null);
     try {
@@ -1198,6 +1205,24 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                             📁 {mf}
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {probeResult.suggested_hierarchy && probeResult.suggested_hierarchy !== 'auto_detect' && (
+                      <div className="flex items-center gap-1.5 pt-1 text-[11px] text-sky-300">
+                        <span className="font-semibold">Suggested Hierarchy:</span>
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-900/60 border border-sky-500/30">
+                          {probeResult.suggested_hierarchy.replace(/_/g, ' ')}
+                        </span>
+                        {folderStructure !== probeResult.suggested_hierarchy && (
+                          <button
+                            type="button"
+                            onClick={() => setFolderStructure(probeResult.suggested_hierarchy as FolderStructurePattern)}
+                            className="text-sky-400 hover:text-sky-200 underline cursor-pointer text-[10px] ml-1"
+                          >
+                            Apply suggestion
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

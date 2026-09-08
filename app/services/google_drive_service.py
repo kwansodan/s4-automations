@@ -254,8 +254,9 @@ class GoogleDriveService:
             child_folders: List[str] = []
             detected_months: List[str] = []
             try:
+                clean_fid = (folder_id or "").replace("'", "\\'")
                 c_res = self.service.files().list(
-                    q=f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                    q=f"'{clean_fid}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
                     spaces="drive",
                     fields="files(id, name)",
                     pageSize=30,
@@ -328,16 +329,30 @@ class GoogleDriveService:
 
     @staticmethod
     def get_previous_month(month_name: str, year: int) -> Tuple[str, int]:
-        """Calculates previous calendar month and year."""
+        """Calculates previous calendar month and year, supporting full names, 3-letter codes, or numbers."""
+        month_map = {
+            "january": 1, "jan": 1, "1": 1, "01": 1,
+            "february": 2, "feb": 2, "2": 2, "02": 2,
+            "march": 3, "mar": 3, "3": 3, "03": 3,
+            "april": 4, "apr": 4, "4": 4, "04": 4,
+            "may": 5, "05": 5, "5": 5,
+            "june": 6, "jun": 6, "6": 6, "06": 6,
+            "july": 7, "jul": 7, "7": 7, "07": 7,
+            "august": 8, "aug": 8, "8": 8, "08": 8,
+            "september": 9, "sep": 9, "9": 9, "09": 9,
+            "october": 10, "oct": 10, "10": 10,
+            "november": 11, "nov": 11, "11": 11,
+            "december": 12, "dec": 12, "12": 12,
+        }
         month_names = [
             "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December"
         ]
-        m_cap = month_name.capitalize()
-        idx = month_names.index(m_cap) if m_cap in month_names else 0
-        if idx == 0:
+        m_lower = str(month_name).lower().strip()
+        m_num = month_map.get(m_lower, 1)
+        if m_num == 1:
             return "December", year - 1
-        return month_names[idx - 1], year
+        return month_names[m_num - 2], year
 
     async def list_control_slips(
         self, 
@@ -357,10 +372,10 @@ class GoogleDriveService:
             auto_create_month_folder=auto_create_month_folder,
         )
 
-        # If lookback is enabled, or if day of month <= 7, also query prior month to catch late bills
+        # If lookback is enabled in pipeline config, scan prior month during days 1-7 to catch late bills
         from datetime import datetime
         day = datetime.now().day
-        should_lookback = lookback_window or (day <= 7)
+        should_lookback = bool(lookback_window and (day <= 7))
         if should_lookback:
             prev_m, prev_y = self.get_previous_month(month, year)
             logger.info(f"📅 Lookback grace window active (day={day}): scanning previous month '{prev_m} {prev_y}'")
@@ -441,7 +456,8 @@ class GoogleDriveService:
 
         try:
             # 1. Fetch child folders and loose files in the target root folder
-            query = f"'{folder_id}' in parents and trashed = false"
+            clean_fid = (folder_id or "").replace("'", "\\'")
+            query = f"'{clean_fid}' in parents and trashed = false"
             res = self.service.files().list(
                 q=query,
                 spaces="drive",
