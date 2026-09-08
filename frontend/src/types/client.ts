@@ -172,6 +172,8 @@ export interface IngestionPipeline {
     folder_structure?: FolderStructurePattern;
     enable_lookback_window?: boolean;
     auto_create_month_folder?: boolean;
+    move_processed_files?: boolean;
+    processed_folder_name?: string;
     allowed_senders?: string;
     tenant_id?: string;
     client_id?: string;

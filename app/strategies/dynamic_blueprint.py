@@ -272,6 +272,23 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     )
                     extracted_items.append(item)
 
+            # If pipeline is configured to move processed files to a "Processed" subfolder:
+            pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
+            p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
+            should_move = p_cfg.get("move_processed_files", False) or (pipe_obj.get("move_processed_files", False) if pipe_obj else False)
+
+            if should_move and doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
+                parent_fid = doc.metadata.get("folder_id")
+                if parent_fid:
+                    try:
+                        drive = GoogleDriveService()
+                        processed_name = p_cfg.get("processed_folder_name", "Processed")
+                        processed_fid = drive.find_or_create_folder(processed_name, parent_fid)
+                        drive.archive_file(doc.source_identifier, parent_fid, processed_fid)
+                        logger.info(f"📦 Archived processed file '{doc.file_name}' to '{processed_name}/' inside '{parent_fid}'")
+                    except Exception as arch_err:
+                        logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
+
         return extracted_items
 
     async def sync_review_workspace(

@@ -266,6 +266,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [folderStructure, setFolderStructure] = useState<FolderStructurePattern>('auto_detect');
   const [enableLookbackWindow, setEnableLookbackWindow] = useState<boolean>(true);
   const [autoCreateMonthFolder, setAutoCreateMonthFolder] = useState<boolean>(false);
+  const [moveProcessedFiles, setMoveProcessedFiles] = useState<boolean>(false);
 
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
@@ -408,6 +409,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setFolderStructure(initialPipeline.source_config?.folder_structure || 'auto_detect');
         setEnableLookbackWindow(initialPipeline.source_config?.enable_lookback_window !== false);
         setAutoCreateMonthFolder(!!initialPipeline.source_config?.auto_create_month_folder);
+        setMoveProcessedFiles(Boolean(initialPipeline.source_config?.move_processed_files));
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -429,6 +431,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setFolderStructure('auto_detect');
         setEnableLookbackWindow(true);
         setAutoCreateMonthFolder(false);
+        setMoveProcessedFiles(false);
         setHumanInstructions('');
       }
       setStep(1);
@@ -548,6 +551,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           folder_structure: folderStructure,
           enable_lookback_window: enableLookbackWindow,
           auto_create_month_folder: autoCreateMonthFolder,
+          move_processed_files: moveProcessedFiles,
           allowed_senders: allowedSenders.trim() || undefined,
           tenant_id: oneDriveTenantId.trim() || undefined,
           client_id: oneDriveClientId.trim() || undefined,
@@ -1059,6 +1063,21 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       <div>
                         <span className="font-semibold text-white block">Auto-Create Month Folder</span>
                         <span className="text-[10px] text-slate-400">Automatically create month folder in Drive (e.g. "September 2026") if missing.</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer text-xs text-slate-300 hover:border-slate-700 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={moveProcessedFiles}
+                        onChange={(e) => setMoveProcessedFiles(e.target.checked)}
+                        className="rounded border-slate-700 text-sky-500 mt-0.5"
+                      />
+                      <div>
+                        <span className="font-semibold text-white block">Move Processed Files to "Processed" Folder</span>
+                        <span className="text-[10px] text-slate-400">
+                          Automatically archives successfully extracted documents into a subfolder named "Processed" inside the source folder.
+                        </span>
                       </div>
                     </label>
                   </div>
