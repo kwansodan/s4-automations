@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, UploadFile, File, Form
 from sqlmodel import Session, select
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field
 
 from app.db.session import get_db_session
@@ -583,15 +584,17 @@ async def update_client_config(
         client.zoho_contact_id = payload.zoho_contact_id
     if payload.source_config is not None:
         client.source_config = payload.source_config
+        flag_modified(client, "source_config")
     if payload.custom_config is not None:
         client.custom_config = payload.custom_config
+        flag_modified(client, "custom_config")
     if payload.pipelines is not None:
         client.pipelines = payload.pipelines
+        flag_modified(client, "pipelines")
 
     client.updated_at = datetime.now(timezone.utc)
     db.add(client)
     db.commit()
-    db.refresh(client)
     db.refresh(client)
 
     AuditService.log(
@@ -612,6 +615,7 @@ async def get_client_pipelines(client_id: str, db: Session = Depends(get_db_sess
     if client.id == "anr_group" and client.pipelines is None:
         client.pipelines = DEFAULT_ANR_PIPELINES
         try:
+            flag_modified(client, "pipelines")
             db.add(client)
             db.commit()
             db.refresh(client)
@@ -644,6 +648,7 @@ async def add_or_update_pipeline(
 
     client.pipelines = current_pipes
     client.updated_at = datetime.now(timezone.utc)
+    flag_modified(client, "pipelines")
     db.add(client)
     db.commit()
     db.refresh(client)
@@ -670,6 +675,7 @@ async def delete_pipeline(
     current_pipes = [p for p in (client.pipelines or []) if p.get("id") != pipeline_id]
     client.pipelines = current_pipes
     client.updated_at = datetime.now(timezone.utc)
+    flag_modified(client, "pipelines")
     db.add(client)
     db.commit()
     db.refresh(client)

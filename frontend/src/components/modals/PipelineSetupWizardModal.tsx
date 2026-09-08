@@ -676,7 +676,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       <button
                         key={type.id}
                         type="button"
-                        onClick={() => setSourceType(type.id as any)}
+                        onClick={() => {
+                          const newType = type.id as any;
+                          setSourceType(newType);
+                          if (newType === 'google_drive' && sourceIdentifier.includes('@')) {
+                            setSourceIdentifier('');
+                          } else if (newType === 'email' && !sourceIdentifier.includes('@')) {
+                            setSourceIdentifier('');
+                          }
+                        }}
                         className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between space-y-1 ${
                           isSel
                             ? 'bg-sky-950/60 border-sky-500 text-white shadow-lg shadow-sky-500/10'
