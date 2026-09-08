@@ -46,11 +46,52 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         self.pipelines = client.pipelines or []
         self.execution_errors: List[str] = []
         self.execution_warnings: List[str] = []
+        self.discovered_documents: List[Dict[str, Any]] = []
+        self.skipped_documents: List[Dict[str, Any]] = []
+        self.extracted_documents: List[Dict[str, Any]] = []
+        self.archived_documents: List[Dict[str, Any]] = []
+        self.step_logs: List[Dict[str, Any]] = []
+
+    def log_step(self, stage: str, message: str, level: str = "info", details: Optional[Dict[str, Any]] = None):
+        """Records a timestamped telemetry step for user-facing execution transparency."""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "stage": stage,
+            "message": message,
+            "level": level,
+            "details": details or {},
+        }
+        self.step_logs.append(entry)
+
+    def _archive_file_if_needed(self, doc: SourceDocument, pipeline_id: Optional[str] = None):
+        """Archives document into 'Processed/' subfolder if configured on the pipeline."""
+        pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
+        p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
+        should_move = p_cfg.get("move_processed_files", False) or (pipe_obj.get("move_processed_files", False) if pipe_obj else False)
+
+        if should_move and doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
+            parent_fid = doc.metadata.get("folder_id")
+            if parent_fid:
+                try:
+                    drive = GoogleDriveService()
+                    processed_name = p_cfg.get("processed_folder_name", "Processed")
+                    processed_fid = drive.find_or_create_folder(processed_name, parent_fid)
+                    drive.archive_file(doc.source_identifier, parent_fid, processed_fid)
+                    self.archived_documents.append({"file_name": doc.file_name, "destination": f"{processed_name}/"})
+                    self.log_step("ARCHIVE", f"Archived '{doc.file_name}' to '{processed_name}/' subfolder.", "info")
+                    logger.info(f"📦 Archived file '{doc.file_name}' to '{processed_name}/' inside '{parent_fid}'")
+                except Exception as arch_err:
+                    logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
 
     async def discover_sources(self, month: str, year: int, pipeline_id: Optional[str] = None) -> List[SourceDocument]:
         """Discovers files based on the client's configured pipelines or fallback root source."""
         self.execution_errors = []
         self.execution_warnings = []
+        self.discovered_documents = []
+        self.skipped_documents = []
+        self.extracted_documents = []
+        self.archived_documents = []
+        self.step_logs = []
         logger.info(f"[{self.client_name}] Stage 1: Discovering sources for {month} {year}")
         all_docs: List[SourceDocument] = []
 
@@ -72,12 +113,28 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     doc.metadata["entity_type"] = entity_type
                     doc.metadata["human_instructions"] = pipe.get("human_instructions")
                 all_docs.extend(pipe_docs)
-            return all_docs
+        else:
+            # Fallback to root client configuration
+            source_type = self.client.source_type or "google_drive"
+            source_id = self.client.folder_id or self.custom_config.get("folder_id", "")
+            all_docs = await self._discover_channel_sources(source_type, source_id, month, year)
 
-        # Fallback to root client configuration
-        source_type = self.client.source_type or "google_drive"
-        source_id = self.client.folder_id or self.custom_config.get("folder_id", "")
-        return await self._discover_channel_sources(source_type, source_id, month, year)
+        for doc in all_docs:
+            self.discovered_documents.append({
+                "file_name": doc.file_name,
+                "source_type": doc.source_type.value if hasattr(doc.source_type, "value") else str(doc.source_type),
+                "source_identifier": doc.source_identifier,
+                "folder_id": doc.metadata.get("folder_id"),
+                "mime_type": doc.mime_type,
+            })
+
+        self.log_step(
+            "DISCOVERY",
+            f"Discovered {len(all_docs)} document(s) in source storage for '{month} {year}'.",
+            "info" if len(all_docs) > 0 else "warning",
+            {"count": len(all_docs), "files": [d.file_name for d in all_docs]},
+        )
+        return all_docs
 
     async def _discover_channel_sources(
         self, 
@@ -155,6 +212,11 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         # Pre-fetch Zoho Contacts & Catalog for validation
         contacts = await zoho.fetch_active_contacts()
         items_catalog = await zoho.fetch_item_catalog()
+        self.log_step(
+            "VALIDATION_SETUP",
+            f"Connected to Zoho Books ({len(contacts)} contacts, {len(items_catalog)} catalog items verified).",
+            "info",
+        )
 
         # Query existing processed checksums in DB to ensure idempotency
         existing_checksums = set()
@@ -168,9 +230,25 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             logger.warning(f"Error querying existing checksums: {e}")
 
         for doc in sources:
+            pipeline_id = doc.metadata.get("pipeline_id")
             checksum = doc.get_checksum()
             if checksum in existing_checksums:
+                reason = f"Document already processed in an earlier run (SHA-256 hash {checksum[:8]}... found in ledger)."
+                self.skipped_documents.append({
+                    "file_name": doc.file_name,
+                    "reason": reason,
+                    "checksum": checksum,
+                    "source_identifier": doc.source_identifier,
+                })
+                self.log_step(
+                    "DEDUPLICATION",
+                    f"Skipped duplicate '{doc.file_name}' — already processed and recorded in ledger.",
+                    "duplicate",
+                    {"file_name": doc.file_name, "checksum": checksum[:12]},
+                )
                 logger.info(f"⏭️ Skipping duplicate document '{doc.file_name}' (Checksum: {checksum[:8]}...)")
+                # Also archive lingering duplicate from source folder if move toggle is enabled
+                self._archive_file_if_needed(doc, pipeline_id)
                 continue
 
             entity_type = doc.metadata.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)
@@ -280,22 +358,21 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     )
                     extracted_items.append(item)
 
-            # If pipeline is configured to move processed files to a "Processed" subfolder:
-            pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
-            p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
-            should_move = p_cfg.get("move_processed_files", False) or (pipe_obj.get("move_processed_files", False) if pipe_obj else False)
+            self.extracted_documents.append({
+                "file_name": doc.file_name,
+                "items_count": len(items) if items else 1,
+                "validation_status": val_status,
+                "total_amount": extraction.get("total_amount", 0.0),
+            })
+            self.log_step(
+                "EXTRACTION",
+                f"Extracted {len(items) if items else 1} item(s) from '{doc.file_name}' ({val_status}).",
+                "success" if val_status == "VALID" else "warning",
+                {"file_name": doc.file_name, "items_count": len(items) if items else 1},
+            )
 
-            if should_move and doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
-                parent_fid = doc.metadata.get("folder_id")
-                if parent_fid:
-                    try:
-                        drive = GoogleDriveService()
-                        processed_name = p_cfg.get("processed_folder_name", "Processed")
-                        processed_fid = drive.find_or_create_folder(processed_name, parent_fid)
-                        drive.archive_file(doc.source_identifier, parent_fid, processed_fid)
-                        logger.info(f"📦 Archived processed file '{doc.file_name}' to '{processed_name}/' inside '{parent_fid}'")
-                    except Exception as arch_err:
-                        logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
+            # Move fresh processed file to Processed/ if enabled
+            self._archive_file_if_needed(doc, pipeline_id)
 
         return extracted_items
 
@@ -304,6 +381,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
     ) -> Dict[str, Any]:
         """Stages extracted transactions into PostgreSQL database ledger and Google Sheets with validation status."""
         logger.info(f"[{self.client_name}] Stage 3: Staging {len(items)} items in review ledger (auto_post={auto_post})...")
+        self.log_step(
+            "LEDGER_STAGING",
+            f"Staging {len(items)} item(s) into database review ledger (auto_post={auto_post}).",
+            "info",
+            {"count": len(items), "auto_post": auto_post},
+        )
         batch_id = f"batch_{self.client_id}_{month}_{year}_{int(datetime.now(timezone.utc).timestamp())}"
         staged_count = 0
         held_count = 0
@@ -425,9 +508,22 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     )
                 if summary_rows:
                     sheets.sync_monthly_summaries(sheet_id, summary_rows)
+                self.log_step(
+                    "SPREADSHEET_SYNC",
+                    f"Logged {len(detail_rows)} record(s) into Google Sheet '{sheet_id[:15]}...'.",
+                    "info",
+                    {"sheet_id": sheet_id, "sheet_url": sheet_url},
+                )
                 logger.info(f"📊 Logged {len(detail_rows)} file entries into Google Sheet '{sheet_id}' (auto_post={auto_post})")
         except Exception as gs_err:
             logger.warning(f"Google Sheets sync notice: {gs_err}")
+
+        self.log_step(
+            "LEDGER_COMPLETE",
+            f"Successfully staged {staged_count} transaction(s) into database ({held_count} held for validation review).",
+            "info",
+            {"staged": staged_count, "held": held_count},
+        )
 
         return {
             "status": "STAGED",
@@ -507,6 +603,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     session.add(t)
                 session.commit()
                 posted_results["invoices_created"] = 1
+                self.log_step(
+                    "ACCOUNTING_POST",
+                    f"Drafted/Posted Invoice '{doc_ref}' to {platform_id} (GHS {sum(t.total_amount for t in inv_items):,.2f}).",
+                    "success",
+                    {"doc_ref": doc_ref, "type": "INVOICE"},
+                )
 
                 # Update status in Google Sheets review workbook to INVOICED
                 try:
@@ -547,6 +649,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     session.add(t)
                 session.commit()
                 posted_results["bills_created"] = 1
+                self.log_step(
+                    "ACCOUNTING_POST",
+                    f"Drafted/Posted Vendor Bill '{doc_ref}' to {platform_id} (GHS {sum(t.total_amount for t in bill_items):,.2f}).",
+                    "success",
+                    {"doc_ref": doc_ref, "type": "BILL"},
+                )
 
                 # Update status in Google Sheets review workbook to BILLED
                 try:

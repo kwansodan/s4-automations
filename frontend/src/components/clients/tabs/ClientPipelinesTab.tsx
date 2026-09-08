@@ -7,8 +7,9 @@ import {
   deleteClientPipeline,
   triggerClientPipeline,
 } from '../../../lib/api';
-import type { IngestionPipeline } from '../../../types/client';
+import type { IngestionPipeline, PipelineRunSummary } from '../../../types/client';
 import { PipelineSetupWizardModal } from '../../modals/PipelineSetupWizardModal';
+import { StreamExecutionResultModal } from '../../modals/StreamExecutionResultModal';
 import {
   Layers,
   Plus,
@@ -35,6 +36,7 @@ export const ClientPipelinesTab: React.FC = () => {
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<IngestionPipeline | null>(null);
   const [triggeringPipeId, setTriggeringPipeId] = useState<string | null>(null);
+  const [activeRunSummary, setActiveRunSummary] = useState<PipelineRunSummary | null>(null);
 
   const handleOpenNewPipeline = () => {
     setEditingPipeline(null);
@@ -70,6 +72,29 @@ export const ClientPipelinesTab: React.FC = () => {
         year: selectedYear,
       });
 
+      const summary: PipelineRunSummary = result.last_run_summary || {
+        pipeline_id: pipelineId,
+        pipeline_name: pipelineName,
+        triggered_at: new Date().toISOString(),
+        month: selectedMonth,
+        year: selectedYear,
+        status: result.status,
+        summary_message: result.summary_message || result.message || 'Stream finished execution.',
+        sources_discovered: result.sources_discovered || 0,
+        duplicates_skipped: result.duplicates_skipped || 0,
+        items_extracted: result.items_extracted || 0,
+        auto_post: !!result.post_results && result.post_results.status !== 'SKIPPED',
+        spreadsheet_url: result.spreadsheet_url,
+        spreadsheet_id: result.spreadsheet_id,
+        documents: result.documents,
+        step_logs: result.step_logs,
+        errors: result.errors,
+        warnings: result.warnings,
+      };
+
+      // Automatically display the full execution summary modal to the user
+      setActiveRunSummary(summary);
+
       if (result.status === 'FAILED' || (result.errors && result.errors.length > 0)) {
         const errorMsg = result.error_message || result.errors?.[0] || 'Pipeline stream execution failed';
         addLog('error', `❌ Stream "${pipelineName}" failed: ${errorMsg}`);
@@ -83,6 +108,8 @@ export const ClientPipelinesTab: React.FC = () => {
           showToast: true,
         });
         await syncServerIssuesNow();
+      } else if (result.status === 'COMPLETED_DUPLICATES_SKIPPED') {
+        addLog('warning', `⏭️ Stream "${pipelineName}": All ${result.sources_discovered} file(s) were previously processed and skipped as duplicates.`);
       } else if (result.status === 'WARNING' || (result.warnings && result.warnings.length > 0)) {
         addLog('warning', `⚠️ Stream "${pipelineName}" completed with warnings: ${result.warnings?.join('; ')}`);
         reportError({
@@ -95,7 +122,7 @@ export const ClientPipelinesTab: React.FC = () => {
         });
         await syncServerIssuesNow();
       } else {
-        addLog('success', `✅ Stream "${pipelineName}" executed successfully: ${result.items_extracted || 0} items extracted.`);
+        addLog('success', `✅ Stream "${pipelineName}": ${result.items_extracted || 0} item(s) extracted & staged.`);
       }
     } catch (err: any) {
       addLog('error', `❌ Stream "${pipelineName}" execution failed: ${err.message}`);
@@ -233,6 +260,41 @@ export const ClientPipelinesTab: React.FC = () => {
                       </p>
                     )}
                   </div>
+
+                  {/* Last Run Summary Preview Card */}
+                  {pipe.last_run_summary && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveRunSummary(pipe.last_run_summary!)}
+                      className="w-full text-left bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-2.5 transition cursor-pointer mt-3 group/lastrun"
+                      title="Click to view detailed execution breakdown"
+                    >
+                      <div className="flex items-center justify-between text-[10px] mb-1">
+                        <span className="text-slate-400 flex items-center gap-1 font-medium">
+                          <Clock className="w-3 h-3 text-sky-400" />
+                          <span>Last Run: {new Date(pipe.last_run_summary.triggered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] ${
+                            pipe.last_run_summary.status === 'COMPLETED_DUPLICATES_SKIPPED'
+                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              : pipe.last_run_summary.items_extracted > 0
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {pipe.last_run_summary.status === 'COMPLETED_DUPLICATES_SKIPPED'
+                            ? 'Duplicates Skipped'
+                            : pipe.last_run_summary.items_extracted > 0
+                            ? `${pipe.last_run_summary.items_extracted} Staged`
+                            : 'Completed'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 line-clamp-1 group-hover/lastrun:text-white">
+                        {pipe.last_run_summary.summary_message}
+                      </p>
+                    </button>
+                  )}
                 </div>
 
                 {/* Footer Action */}
@@ -290,6 +352,17 @@ export const ClientPipelinesTab: React.FC = () => {
         targetAccountingSoftware={currentClient.accounting_software}
       />
 
+      {/* Stream Execution Result Modal */}
+      <StreamExecutionResultModal
+        isOpen={!!activeRunSummary}
+        onClose={() => setActiveRunSummary(null)}
+        runSummary={activeRunSummary}
+        onTriggerAgain={
+          activeRunSummary?.pipeline_id
+            ? () => handleTriggerStream(activeRunSummary.pipeline_id!, activeRunSummary.pipeline_name || 'Stream')
+            : undefined
+        }
+      />
     </div>
   );
 };

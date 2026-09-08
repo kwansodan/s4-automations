@@ -6,6 +6,8 @@ import { KpiCards } from '../../dashboard/KpiCards';
 import { ProgressTracker } from '../../dashboard/ProgressTracker';
 import { runClientStrategy, testClientIngestion, triggerClientPipeline } from '../../../lib/api';
 import { ACCOUNTING_PLATFORMS } from '../../../types/client';
+import type { PipelineRunSummary } from '../../../types/client';
+import { StreamExecutionResultModal } from '../../modals/StreamExecutionResultModal';
 import {
   PlayCircle,
   RefreshCw,
@@ -35,6 +37,7 @@ export const ClientOverviewTab: React.FC = () => {
   const [probeResult, setProbeResult] = useState<any | null>(null);
   const [triggeringPipeId, setTriggeringPipeId] = useState<string | null>(null);
   const [showBlueprint, setShowBlueprint] = useState(false);
+  const [activeRunSummary, setActiveRunSummary] = useState<PipelineRunSummary | null>(null);
 
   const currentPlatform =
     ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient.accounting_software) ||
@@ -131,6 +134,29 @@ export const ClientOverviewTab: React.FC = () => {
         year: selectedYear,
       });
 
+      const summary: PipelineRunSummary = result.last_run_summary || {
+        pipeline_id: pipelineId,
+        pipeline_name: pipelineName,
+        triggered_at: new Date().toISOString(),
+        month: selectedMonth,
+        year: selectedYear,
+        status: result.status,
+        summary_message: result.summary_message || result.message || 'Stream finished execution.',
+        sources_discovered: result.sources_discovered || 0,
+        duplicates_skipped: result.duplicates_skipped || 0,
+        items_extracted: result.items_extracted || 0,
+        auto_post: !!result.post_results && result.post_results.status !== 'SKIPPED',
+        spreadsheet_url: result.spreadsheet_url,
+        spreadsheet_id: result.spreadsheet_id,
+        documents: result.documents,
+        step_logs: result.step_logs,
+        errors: result.errors,
+        warnings: result.warnings,
+      };
+
+      // Automatically display the full execution summary modal to the user
+      setActiveRunSummary(summary);
+
       if (result.status === 'FAILED' || (result.errors && result.errors.length > 0)) {
         const errorMsg = result.error_message || result.errors?.[0] || 'Pipeline stream execution failed';
         addLog('error', `❌ Stream "${pipelineName}" failed: ${errorMsg}`);
@@ -144,6 +170,8 @@ export const ClientOverviewTab: React.FC = () => {
           showToast: true,
         });
         await syncServerIssuesNow();
+      } else if (result.status === 'COMPLETED_DUPLICATES_SKIPPED') {
+        addLog('warning', `⏭️ Stream "${pipelineName}": All ${result.sources_discovered} file(s) were previously processed and skipped as duplicates.`);
       } else if (result.status === 'WARNING' || (result.warnings && result.warnings.length > 0)) {
         addLog('warning', `⚠️ Stream "${pipelineName}" completed with warnings: ${result.warnings?.join('; ')}`);
         reportError({
@@ -156,7 +184,7 @@ export const ClientOverviewTab: React.FC = () => {
         });
         await syncServerIssuesNow();
       } else {
-        addLog('success', `✅ Stream "${pipelineName}" completed: ${result.items_extracted || 0} items extracted.`);
+        addLog('success', `✅ Stream "${pipelineName}": ${result.items_extracted || 0} item(s) extracted & staged.`);
       }
     } catch (err: any) {
       addLog('error', `❌ Stream "${pipelineName}" failed: ${err.message}`);
@@ -573,6 +601,17 @@ export const ClientOverviewTab: React.FC = () => {
 
       </div>
 
+      {/* Stream Execution Result Modal */}
+      <StreamExecutionResultModal
+        isOpen={!!activeRunSummary}
+        onClose={() => setActiveRunSummary(null)}
+        runSummary={activeRunSummary}
+        onTriggerAgain={
+          activeRunSummary?.pipeline_id
+            ? () => handleTriggerStream(activeRunSummary.pipeline_id!, activeRunSummary.pipeline_name || 'Stream')
+            : undefined
+        }
+      />
     </div>
   );
 };

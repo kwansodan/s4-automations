@@ -762,9 +762,13 @@ async def trigger_pipeline_stream(
             "year": year,
             "sources_discovered": 0,
             "items_extracted": 0,
+            "duplicates_skipped": 0,
+            "summary_message": f"Pipeline stream failed with an unexpected error: {str(e)}",
             "error_message": str(e),
             "errors": [str(e)],
             "warnings": getattr(strategy, "execution_warnings", []),
+            "documents": {"discovered": [], "skipped": [], "extracted": [], "archived": []},
+            "step_logs": getattr(strategy, "step_logs", []),
             "sync_details": {"status": "FAILED", "error": str(e)},
             "post_results": {"status": "SKIPPED", "invoices_created": 0},
         }
@@ -773,18 +777,78 @@ async def trigger_pipeline_stream(
     if auto_post:
         post_res = await strategy.post_to_accounting(month, year, pipeline_id=pipeline_id)
 
+    discovered_docs = getattr(strategy, "discovered_documents", [])
+    skipped_docs = getattr(strategy, "skipped_documents", [])
+    extracted_docs = getattr(strategy, "extracted_documents", [])
+    archived_docs = getattr(strategy, "archived_documents", [])
+    step_logs = getattr(strategy, "step_logs", [])
     exec_errors = getattr(strategy, "execution_errors", [])
     exec_warnings = getattr(strategy, "execution_warnings", [])
-    has_failed = len(exec_errors) > 0
-    status_str = "FAILED" if has_failed else ("WARNING" if exec_warnings and len(extracted) == 0 else "COMPLETED")
-    error_msg = exec_errors[0] if has_failed else (exec_warnings[0] if exec_warnings and len(extracted) == 0 else None)
 
-    # Update pipeline run stats in database
+    has_failed = len(exec_errors) > 0
+    if has_failed:
+        status_str = "FAILED"
+        summary_msg = f"Pipeline execution encountered errors: {exec_errors[0]}"
+        error_msg = exec_errors[0]
+    elif len(sources) > 0 and len(skipped_docs) == len(sources):
+        status_str = "COMPLETED_DUPLICATES_SKIPPED"
+        summary_msg = (
+            f"Discovered {len(sources)} document(s) in source storage, but all {len(sources)} "
+            f"were previously processed in earlier runs and skipped as duplicates to prevent double-billing. "
+            f"0 new transactions were staged."
+        )
+        error_msg = None
+    elif len(sources) == 0:
+        status_str = "COMPLETED_EMPTY"
+        summary_msg = f"No source documents found in storage for {month} {year}."
+        error_msg = None
+    elif len(extracted) > 0:
+        status_str = "COMPLETED"
+        summary_msg = f"Successfully extracted {len(extracted)} item(s) across {len(extracted_docs)} document(s)."
+        if auto_post:
+            summary_msg += " Pre-approved and drafted directly to accounting."
+        else:
+            summary_msg += " Staged into database ledger awaiting human review."
+        error_msg = None
+    else:
+        status_str = "COMPLETED"
+        summary_msg = "Pipeline stream executed successfully."
+        error_msg = None
+
+    last_run_summary = {
+        "pipeline_id": pipeline_id,
+        "pipeline_name": pipeline.get("name"),
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+        "month": month,
+        "year": year,
+        "status": status_str,
+        "summary_message": summary_msg,
+        "sources_discovered": len(sources),
+        "duplicates_skipped": len(skipped_docs),
+        "items_extracted": len(extracted),
+        "auto_post": auto_post,
+        "spreadsheet_id": sync_res.get("spreadsheet_id"),
+        "spreadsheet_url": sync_res.get("spreadsheet_url"),
+        "documents": {
+            "discovered": discovered_docs,
+            "skipped": skipped_docs,
+            "extracted": extracted_docs,
+            "archived": archived_docs,
+        },
+        "step_logs": step_logs,
+        "sync_details": sync_res,
+        "post_results": post_res,
+        "errors": exec_errors,
+        "warnings": exec_warnings,
+    }
+
+    # Update pipeline run stats and persist last run summary in database
     current_pipes = list(client.pipelines or [])
     for p in current_pipes:
         if p.get("id") == pipeline_id:
             p["last_triggered_at"] = datetime.now(timezone.utc).isoformat()
             p["total_runs_count"] = int(p.get("total_runs_count", 0)) + 1
+            p["last_run_summary"] = last_run_summary
     client.pipelines = current_pipes
     client.updated_at = datetime.now(timezone.utc)
     db.add(client)
@@ -797,6 +861,7 @@ async def trigger_pipeline_stream(
             "pipeline_id": pipeline_id,
             "name": pipeline.get("name"),
             "extracted_count": len(extracted),
+            "duplicates_skipped": len(skipped_docs),
             "status": status_str,
             "error_message": error_msg,
         },
@@ -807,6 +872,7 @@ async def trigger_pipeline_stream(
         "pipeline_id": pipeline_id,
         "pipeline_name": pipeline.get("name"),
         "status": status_str,
+        "summary_message": summary_msg,
         "error_message": error_msg,
         "errors": exec_errors,
         "warnings": exec_warnings,
@@ -814,8 +880,19 @@ async def trigger_pipeline_stream(
         "year": year,
         "sources_discovered": len(sources),
         "items_extracted": len(extracted),
+        "duplicates_skipped": len(skipped_docs),
+        "spreadsheet_id": sync_res.get("spreadsheet_id"),
+        "spreadsheet_url": sync_res.get("spreadsheet_url"),
+        "documents": {
+            "discovered": discovered_docs,
+            "skipped": skipped_docs,
+            "extracted": extracted_docs,
+            "archived": archived_docs,
+        },
+        "step_logs": step_logs,
         "sync_details": sync_res,
         "post_results": post_res,
+        "last_run_summary": last_run_summary,
     }
 
 

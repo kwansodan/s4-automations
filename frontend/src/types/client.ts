@@ -197,6 +197,41 @@ export interface IngestionPipeline {
   human_instructions?: string;
   sample_preview?: any;
   notes?: string;
+  last_run_summary?: PipelineRunSummary;
+}
+
+export interface PipelineRunSummary {
+  pipeline_id?: string;
+  pipeline_name?: string;
+  triggered_at: string;
+  month: string;
+  year: number;
+  status: 'COMPLETED' | 'COMPLETED_DUPLICATES_SKIPPED' | 'COMPLETED_EMPTY' | 'WARNING' | 'FAILED' | string;
+  summary_message: string;
+  sources_discovered: number;
+  duplicates_skipped: number;
+  items_extracted: number;
+  auto_post: boolean;
+  spreadsheet_id?: string;
+  spreadsheet_url?: string;
+  documents?: {
+    discovered?: Array<{ file_name: string; source_type?: string; folder_id?: string; mime_type?: string }>;
+    skipped?: Array<{ file_name: string; reason: string; checksum?: string }>;
+    extracted?: Array<{ file_name: string; items_count: number; validation_status?: string; total_amount?: number }>;
+    archived?: Array<{ file_name: string; destination: string }>;
+  };
+  step_logs?: Array<{
+    timestamp: string;
+    stage: string;
+    message: string;
+    level: string;
+    details?: any;
+  }>;
+  sync_details?: any;
+  post_results?: any;
+  errors?: string[];
+  warnings?: string[];
+  error_message?: string;
 }
 
 export interface PipelineSimulationResult {
