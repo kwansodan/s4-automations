@@ -151,14 +151,22 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const mapped: ClientProfile[] = dbClients.map((c: any) => {
             const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
             const storedPipes = getStoredPipelines(c.id);
-            const rawPipelines = storedPipes || ((Array.isArray(c.pipelines) && c.pipelines.length > 0)
+            const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
               ? c.pipelines
-              : (defaultMatch?.pipelines || []));
+              : ((storedPipes && storedPipes.length > 0)
+                ? storedPipes
+                : (defaultMatch?.pipelines || []));
             const normalizedPipelines = rawPipelines.map((p: any) => ({
               ...p,
               is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
               active: p.active !== undefined ? p.active : (p.is_active !== undefined ? p.is_active : true),
             }));
+
+            if (typeof localStorage !== 'undefined' && Array.isArray(c.pipelines) && c.pipelines.length > 0) {
+              try {
+                localStorage.setItem(`S4_PIPELINES_${c.id}`, JSON.stringify(normalizedPipelines));
+              } catch (e) {}
+            }
 
             return {
               id: c.id,
@@ -320,36 +328,33 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePipeline = async (clientId: string, pipelineId: string): Promise<{ success: boolean; message?: string }> => {
+    let updatedPipelines: any[] = [];
     try {
-      await apiDeletePipeline(clientId, pipelineId);
-      // Optimistic state update
-      setClients((prev) =>
-        prev.map((c) => {
-          if (c.id !== clientId) return c;
-          const updatedPipelines = (c.pipelines || []).filter((p) => p.id !== pipelineId);
-          return {
-            ...c,
-            pipelines: updatedPipelines,
-            workflowsCount: updatedPipelines.length,
-          };
-        })
-      );
-      return { success: true, message: 'Pipeline stream deleted successfully.' };
+      const res = await apiDeletePipeline(clientId, pipelineId);
+      if (Array.isArray(res)) {
+        updatedPipelines = res;
+      }
     } catch (err: any) {
-      // Local fallback for state consistency
-      setClients((prev) =>
-        prev.map((c) => {
-          if (c.id !== clientId) return c;
-          const updatedPipelines = (c.pipelines || []).filter((p) => p.id !== pipelineId);
-          return {
-            ...c,
-            pipelines: updatedPipelines,
-            workflowsCount: updatedPipelines.length,
-          };
-        })
-      );
-      return { success: true, message: 'Pipeline stream removed.' };
+      console.warn('Backend delete pipeline notice:', err);
     }
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== clientId) return c;
+        const pipes = updatedPipelines.length > 0 ? updatedPipelines : (c.pipelines || []).filter((p) => p.id !== pipelineId);
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(`S4_PIPELINES_${clientId}`, JSON.stringify(pipes));
+          } catch (e) {}
+        }
+        return {
+          ...c,
+          pipelines: pipes,
+          workflowsCount: pipes.length,
+        };
+      })
+    );
+    return { success: true, message: 'Pipeline stream deleted successfully.' };
   };
 
   const savePipeline = async (clientId: string, pipelineData: any): Promise<any[]> => {

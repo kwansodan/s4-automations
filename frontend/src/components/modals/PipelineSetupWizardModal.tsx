@@ -237,14 +237,32 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setSection(initialPipeline.section);
         setEntityType(initialPipeline.entity_type);
         setSourceType(initialPipeline.source_type as any || 'google_drive');
-        setSourceIdentifier(initialPipeline.source_identifier || '');
-        setDefaultAccountCode(initialPipeline.default_account_code || (initialPipeline.section === 'AR' ? '4000 - Sales Revenue' : initialPipeline.section === 'AP' ? '5000 - Operating Expenses' : '1001 - Main Operating Account'));
-        setAutoPostToZoho(!!initialPipeline.auto_post_to_zoho);
-        setIsActive(initialPipeline.is_active !== false);
+        setSourceIdentifier(
+          initialPipeline.source_identifier ||
+          initialPipeline.folder_id ||
+          (initialPipeline as any).folderId ||
+          initialPipeline.source_email ||
+          (initialPipeline as any).sourceEmail ||
+          ''
+        );
+        setDefaultAccountCode(
+          initialPipeline.default_account_code ||
+          (initialPipeline.section === 'AR'
+            ? '4000 - Commercial Sales Revenue'
+            : initialPipeline.section === 'AP'
+            ? '5000 - Operating Expenses'
+            : '1001 - Main Operating Account')
+        );
+        setAutoPostToZoho(!!(initialPipeline.auto_post_to_zoho ?? initialPipeline.auto_post_draft));
+        setIsActive(initialPipeline.is_active !== false && initialPipeline.active !== false);
         setTriggerType(initialPipeline.trigger_type || 'scheduled_cron');
         setCronExpression(initialPipeline.cron_expression || '0 20 * * *');
-        setCronScheduleHuman(initialPipeline.cron_schedule_human || 'Daily at 8:00 PM');
+        setCronScheduleHuman(initialPipeline.cron_schedule_human || initialPipeline.schedule || 'Daily at 8:00 PM');
         setHumanInstructions(initialPipeline.human_instructions || '');
+        setAllowedSenders(initialPipeline.source_config?.allowed_senders || '');
+        setOneDriveTenantId(initialPipeline.source_config?.tenant_id || '');
+        setOneDriveClientId(initialPipeline.source_config?.client_id || '');
+        setOneDriveSecret(initialPipeline.source_config?.secret || '');
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -355,6 +373,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         entity_type: entityType,
         source_type: sourceType,
         source_identifier: sourceIdentifier.trim(),
+        folder_id: sourceType === 'google_drive' ? sourceIdentifier.trim() : (initialPipeline?.folder_id || undefined),
+        source_email: sourceType === 'email' ? sourceIdentifier.trim() : (initialPipeline?.source_email || undefined),
         default_account_code: defaultAccountCode.trim(),
         auto_post_to_zoho: autoPostToZoho,
         auto_post_draft: autoPostToZoho,
@@ -363,8 +383,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         trigger_type: triggerType,
         cron_expression: triggerType === 'scheduled_cron' ? cronExpression : undefined,
         cron_schedule_human: triggerType === 'scheduled_cron' ? cronScheduleHuman : undefined,
+        schedule: triggerType === 'scheduled_cron' ? (cronScheduleHuman || 'Daily') : (triggerType === 'realtime_webhook' ? 'Realtime Webhook' : 'Manual Only'),
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
         human_instructions: humanInstructions.trim() || undefined,
+        source_config: {
+          allowed_senders: allowedSenders.trim() || undefined,
+          tenant_id: oneDriveTenantId.trim() || undefined,
+          client_id: oneDriveClientId.trim() || undefined,
+          secret: oneDriveSecret.trim() || undefined,
+        },
       };
 
       await onSave(pipelineData);
