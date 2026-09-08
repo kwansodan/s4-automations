@@ -121,8 +121,8 @@ export const InformationRequestsSection: React.FC = () => {
       (txRes.transactions || []).forEach((t: BankTransactionRecord) => {
         if (t.mapped_account_id) {
           initialRowAccounts[t.id] = t.mapped_account_id;
-        } else if (t.ai_suggested_account && loadedAccounts) {
-          const match = loadedAccounts.find(
+        } else if (t.ai_suggested_account && coaRes.accounts && coaRes.accounts.length > 0) {
+          const match = coaRes.accounts.find(
             (a: any) => a.account_name.toLowerCase() === t.ai_suggested_account?.toLowerCase()
           );
           if (match) initialRowAccounts[t.id] = match.account_id;
@@ -372,7 +372,7 @@ export const InformationRequestsSection: React.FC = () => {
                     className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
                   >
                     <option value="">Choose an account to watch...</option>
-                    {displayAccounts.map((acc) => {
+                    {accounts.map((acc: ChartOfAccountItem) => {
                       const code = acc.account_code || acc.account_id;
                       const isAlreadyWatched = watchedAccounts.includes(code) || watchedAccounts.includes(acc.account_id);
                       return (
@@ -495,8 +495,8 @@ export const InformationRequestsSection: React.FC = () => {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {watchedAccounts.map((code) => {
-                    const matchedAcc = displayAccounts.find(
-                      (a) => (a.account_code && a.account_code === code) || a.account_id === code
+                    const matchedAcc = accounts.find(
+                      (a: ChartOfAccountItem) => (a.account_code && a.account_code === code) || a.account_id === code
                     );
                     const label = matchedAcc ? matchedAcc.account_name : code;
 
