@@ -116,7 +116,18 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isIndividualBusiness = activeOrg?.org_type === 'INDIVIDUAL_BUSINESS';
   const isAccountingFirm = !isIndividualBusiness;
 
-  const [clients, setClients] = useState<ClientProfile[]>(DEFAULT_CLIENTS);
+  const [clients, setClients] = useState<ClientProfile[]>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('S4_CLIENTS_LIST');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {}
+      }
+    }
+    return DEFAULT_CLIENTS;
+  });
 
   const [currentClientId, setCurrentClientId] = useState<string>(() => {
     if (typeof localStorage !== 'undefined') {
@@ -146,7 +157,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     const loadBackendClients = async () => {
       try {
-        const dbClients = await fetchClients(activeOrg?.id);
+        const orgFilter = isIndividualBusiness ? activeOrg?.id : undefined;
+        const dbClients = await fetchClients(orgFilter);
         if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
           const mapped: ClientProfile[] = dbClients.map((c: any) => {
             const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
@@ -205,6 +217,11 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             };
           });
           setClients(mapped);
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(mapped));
+            } catch (e) {}
+          }
 
           // If in individual business mode, lock focus onto company client
           if (isIndividualBusiness) {
@@ -338,8 +355,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('Backend delete pipeline notice:', err);
     }
 
-    setClients((prev) =>
-      prev.map((c) => {
+    setClients((prev) => {
+      const next = prev.map((c) => {
         if (c.id !== clientId) return c;
         const pipes = updatedPipelines.length > 0 ? updatedPipelines : (c.pipelines || []).filter((p) => p.id !== pipelineId);
         if (typeof localStorage !== 'undefined') {
@@ -352,8 +369,14 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           pipelines: pipes,
           workflowsCount: pipes.length,
         };
-      })
-    );
+      });
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
     return { success: true, message: 'Pipeline stream deleted successfully.' };
   };
 
@@ -387,16 +410,22 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    setClients((prev) =>
-      prev.map((c) => {
+    setClients((prev) => {
+      const next = prev.map((c) => {
         if (c.id !== clientId) return c;
         return {
           ...c,
           pipelines: updatedPipelines,
           workflowsCount: updatedPipelines.length,
         };
-      })
-    );
+      });
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
 
     return updatedPipelines;
   };

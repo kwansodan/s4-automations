@@ -177,6 +177,13 @@ def run_schema_migrations(active_engine: Engine):
                         conn.commit()
                     except Exception:
                         conn.rollback()
+
+            # Step 3: Safe backfills for legacy rows with NULL organization_id
+            try:
+                conn.execute(text("UPDATE clients SET organization_id = 's4_advisory' WHERE organization_id IS NULL OR organization_id = ''"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
     except Exception as batch_err:
         logger.warning(f"Notice during schema migration batch: {batch_err}")
 

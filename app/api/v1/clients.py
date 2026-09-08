@@ -316,15 +316,21 @@ async def list_clients(
     """Returns all registered client organizations filtered by organization context (if provided) with self-healing schema repair."""
     try:
         query = select(ClientOrganization)
-        if organization_id:
+        if organization_id and organization_id not in ("s4_advisory", "all"):
             query = query.where(
                 (ClientOrganization.organization_id == organization_id) |
                 (ClientOrganization.id == organization_id) |
                 ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
             )
+        elif organization_id == "s4_advisory":
+            query = query.where(
+                (ClientOrganization.organization_id == "s4_advisory") |
+                (ClientOrganization.organization_id == None) |
+                (ClientOrganization.organization_id == "")
+            )
         clients = db.exec(query).all()
-        # Fallback if specific org filter returned empty: if firm, show all firm clients
-        if not clients and organization_id in ("s4_advisory", None):
+        # Fallback if specific org filter returned empty: show all registered clients
+        if not clients:
             clients = db.exec(select(ClientOrganization)).all()
 
         updated = False
@@ -348,14 +354,20 @@ async def list_clients(
             run_schema_migrations(get_engine())
             with Session(get_engine()) as retry_db:
                 retry_query = select(ClientOrganization)
-                if organization_id:
+                if organization_id and organization_id not in ("s4_advisory", "all"):
                     retry_query = retry_query.where(
                         (ClientOrganization.organization_id == organization_id) |
                         (ClientOrganization.id == organization_id) |
                         ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
                     )
+                elif organization_id == "s4_advisory":
+                    retry_query = retry_query.where(
+                        (ClientOrganization.organization_id == "s4_advisory") |
+                        (ClientOrganization.organization_id == None) |
+                        (ClientOrganization.organization_id == "")
+                    )
                 clients = retry_db.exec(retry_query).all()
-                if not clients and organization_id in ("s4_advisory", None):
+                if not clients:
                     clients = retry_db.exec(select(ClientOrganization)).all()
                 return [c.model_dump() for c in clients]
         except Exception as retry_err:

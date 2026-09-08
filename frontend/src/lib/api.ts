@@ -462,11 +462,28 @@ export async function runDiagnostics(): Promise<DiagnosticsResult> {
 // -------------------------------------------------------------------------
 
 export async function fetchClients(organizationId?: string): Promise<any[]> {
-  const query = organizationId ? `?organization_id=${encodeURIComponent(organizationId)}` : '';
+  const query = (organizationId && organizationId !== 's4_advisory')
+    ? `?organization_id=${encodeURIComponent(organizationId)}`
+    : '';
   const res = await resilientFetch(`/api/clients${query}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<any[]>(res, 'Fetch clients');
+  let data = await handleResponse<any[]>(res, 'Fetch clients');
+
+  // Fallback: if filtered query returned empty, fetch all clients
+  if ((!data || data.length === 0) && query) {
+    try {
+      const fallbackRes = await resilientFetch('/api/clients', { headers: getAuthHeaders() });
+      const fallbackData = await handleResponse<any[]>(fallbackRes, 'Fetch all clients fallback');
+      if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+        return fallbackData;
+      }
+    } catch (e) {
+      console.warn('Fallback fetching all clients failed:', e);
+    }
+  }
+
+  return data || [];
 }
 
 export async function createClient(payload: any): Promise<any> {
