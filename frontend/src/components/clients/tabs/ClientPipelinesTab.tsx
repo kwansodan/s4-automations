@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 
 export const ClientPipelinesTab: React.FC = () => {
-  const { currentClient, deletePipeline } = useClient();
+  const { currentClient, deletePipeline, savePipeline } = useClient();
   const { selectedMonth, selectedYear, addLog } = useAutomation();
 
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
@@ -45,10 +45,7 @@ export const ClientPipelinesTab: React.FC = () => {
   };
 
   const handleSavePipelineSubmit = async (pipelineData: IngestionPipeline) => {
-    const updatedPipelines = await saveClientPipeline(currentClient.id, pipelineData);
-    if (Array.isArray(updatedPipelines)) {
-      currentClient.pipelines = updatedPipelines;
-    }
+    await savePipeline(currentClient.id, pipelineData);
     addLog('success', `✅ Saved pipeline stream: "${pipelineData.name}"`);
   };
 

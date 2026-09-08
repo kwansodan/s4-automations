@@ -328,7 +328,7 @@ async def list_clients(
 
         updated = False
         for c in clients:
-            if c.id == "anr_group" and (not c.pipelines or len(c.pipelines) == 0):
+            if c.id == "anr_group" and c.pipelines is None:
                 c.pipelines = DEFAULT_ANR_PIPELINES
                 db.add(c)
                 updated = True
@@ -516,7 +516,7 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
-    if client.id == "anr_group" and (not client.pipelines or len(client.pipelines) == 0):
+    if client.id == "anr_group" and client.pipelines is None:
         client.pipelines = DEFAULT_ANR_PIPELINES
         try:
             db.add(client)
@@ -609,7 +609,7 @@ async def get_client_pipelines(client_id: str, db: Session = Depends(get_db_sess
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
-    if client.id == "anr_group" and (not client.pipelines or len(client.pipelines) == 0):
+    if client.id == "anr_group" and client.pipelines is None:
         client.pipelines = DEFAULT_ANR_PIPELINES
         try:
             db.add(client)

@@ -1,7 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ClientProfile, OrganizationTeamMember, Organization } from '../types/client';
-import { fetchClients, createClient, deleteClient as apiDeleteClient, deletePipeline as apiDeletePipeline } from '../lib/api';
+import { fetchClients, createClient, deleteClient as apiDeleteClient, deletePipeline as apiDeletePipeline, saveClientPipeline } from '../lib/api';
 import { useAuth } from './AuthContext';
+
+const getStoredPipelines = (clientId: string): any[] | null => {
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem(`S4_PIPELINES_${clientId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+  }
+  return null;
+};
 
 const DEFAULT_CLIENTS: ClientProfile[] = [
   {
@@ -82,6 +95,7 @@ interface ClientContextType {
   createClientFromWizard: (payload: any) => Promise<ClientProfile>;
   deleteClient: (clientId: string) => Promise<{ success: boolean; message?: string }>;
   deletePipeline: (clientId: string, pipelineId: string) => Promise<{ success: boolean; message?: string }>;
+  savePipeline: (clientId: string, pipelineData: any) => Promise<any[]>;
   isSwitcherOpen: boolean;
   setIsSwitcherOpen: (open: boolean) => void;
   isWizardOpen: boolean;
@@ -136,9 +150,10 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
           const mapped: ClientProfile[] = dbClients.map((c: any) => {
             const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
-            const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
+            const storedPipes = getStoredPipelines(c.id);
+            const rawPipelines = storedPipes || ((Array.isArray(c.pipelines) && c.pipelines.length > 0)
               ? c.pipelines
-              : (defaultMatch?.pipelines || []);
+              : (defaultMatch?.pipelines || []));
             const normalizedPipelines = rawPipelines.map((p: any) => ({
               ...p,
               is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
@@ -337,6 +352,50 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const savePipeline = async (clientId: string, pipelineData: any): Promise<any[]> => {
+    let updatedPipelines: any[] = [];
+    try {
+      const res = await saveClientPipeline(clientId, pipelineData);
+      if (Array.isArray(res) && res.length > 0) {
+        updatedPipelines = res;
+      }
+    } catch (err) {
+      console.warn('Backend save pipeline notice:', err);
+    }
+
+    if (!updatedPipelines || updatedPipelines.length === 0) {
+      const target = clients.find((c) => c.id === clientId);
+      const existing = [...(target?.pipelines || [])];
+      const pipeId = pipelineData.id || `pipe_${Date.now()}`;
+      const idx = existing.findIndex((p) => p.id === pipeId);
+      if (idx >= 0) {
+        existing[idx] = { ...pipelineData, id: pipeId };
+      } else {
+        existing.push({ ...pipelineData, id: pipeId });
+      }
+      updatedPipelines = existing;
+    }
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(`S4_PIPELINES_${clientId}`, JSON.stringify(updatedPipelines));
+      } catch (e) {}
+    }
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== clientId) return c;
+        return {
+          ...c,
+          pipelines: updatedPipelines,
+          workflowsCount: updatedPipelines.length,
+        };
+      })
+    );
+
+    return updatedPipelines;
+  };
+
   const deleteClient = async (clientId: string): Promise<{ success: boolean; message?: string }> => {
     const target = clients.find((c) => c.id === clientId);
     if (!target) return { success: false, message: 'Client not found.' };
@@ -369,6 +428,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createClientFromWizard,
         deleteClient,
         deletePipeline,
+        savePipeline,
         isSwitcherOpen,
         setIsSwitcherOpen,
         isWizardOpen,

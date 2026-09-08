@@ -253,7 +253,7 @@ def init_db():
 
             # Ensure ANR Group has default pipelines populated if empty
             anr_client = session.exec(select(ClientOrganization).where(ClientOrganization.id == "anr_group")).first()
-            if anr_client and (not anr_client.pipelines or len(anr_client.pipelines) == 0):
+            if anr_client and anr_client.pipelines is None:
                 logger.info("Auto-healing ANR Group pipelines in database...")
                 anr_client.pipelines = [
                     {
