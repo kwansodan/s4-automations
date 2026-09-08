@@ -46,24 +46,158 @@ interface PipelineSetupWizardModalProps {
 
 const SERVICE_ACCOUNT_EMAIL = 's4-vision-ingest@s4-automations.iam.gserviceaccount.com';
 
-const PROMPT_PRESETS = [
+const DOMAIN_TEMPLATES: {
+  id: string;
+  title: string;
+  badge: string;
+  entities: AccountingEntityType[];
+  template: string;
+}[] = [
   {
-    title: '🧺 Laundry Control Slips',
-    text: 'Column P is pickup count and Column D is delivery count. Calculate discrepancy = Pickup - Delivery. Map hotel name to client customer ID. Default item prices to catalog rate.',
+    id: 'ap_vendor_bill',
+    title: '🧾 Supplier Bills & AP',
+    badge: 'Accounts Payable',
+    entities: ['ap_vendor_bill', 'ap_direct_expense', 'ap_vendor_payment', 'ap_purchase_order', 'ap_vendor_credit'],
+    template: `[DOCUMENT IDENTITY]
+1. Document Type: Supplier Invoice / Vendor Bill
+2. Vendor Name: Extract supplier name from header. Map to existing contact.
+
+[KEY HEADERS]
+3. Reference Number: Extract Bill / Invoice Number from top header.
+4. Document Date: Extract Bill Date (YYYY-MM-DD). If Due Date is stated, extract it; else default Net 30.
+5. Currency: Default to GHS unless USD/EUR symbol is present.
+
+[LINE ITEMS & MATH RULES]
+6. Line Items: Extract each row with Description, Quantity, Unit Rate, and Total Amount.
+7. Math Check: Verify Total Amount = Quantity × Unit Rate.
+8. Ancillary Fees: Add shipping, handling, or delivery fees as separate line items.
+
+[CHART OF ACCOUNTS ROUTING]
+9. Default Expense Account: 50000 - Operating Expenses (or stream default account).
+10. Keyword Overrides:
+    - "Detergent / Bleach / Chemicals" -> Cleaning & Direct Supplies
+    - "Fuel / Diesel / Transportation" -> Motor Vehicle Expenses
+    - "Repairs / Spare Parts" -> Maintenance & Repairs
+
+[TAX & REVIEW FLAGS]
+11. Tax Handling: Extract VAT (15%), NHIL (2.5%), and GETFund (2.5%) if itemized.
+12. Flag for Review if: Calculated total differs from invoice total by > GHS 1.00, or supplier is unknown.`,
   },
   {
-    title: '🧾 Vendor Bills & Invoices',
-    text: 'Extract Vendor Name, Bill Number, and Date. Itemize all line items with quantity, unit rate, and tax if stated. Assign 50000 - Operating Expenses by default.',
+    id: 'laundry_control_slips',
+    title: '🧺 Control & Delivery Slips',
+    badge: 'Sales & Invoicing',
+    entities: ['ar_sales_invoice', 'ar_delivery_challan', 'ar_customer_payment', 'ar_credit_note'],
+    template: `[DOCUMENT IDENTITY]
+1. Document Type: Handwritten Pickup & Delivery Control Slip
+2. Customer Name: Map hotel or commercial client name to Customer ID.
+
+[KEY HEADERS]
+3. Reference Number: Extract Slip Number / Control Sheet Number.
+4. Document Date: Extract Delivery Date (YYYY-MM-DD).
+5. Slip Mode: Check if Marked Delivered (D) or Pickup (P).
+
+[LINE ITEMS & DISCREPANCY MATH]
+6. Column Mapping: Column P is Pickup Count, Column D is Delivery Count.
+7. Discrepancy Formula: Calculate Discrepancy = Pickup - Delivery.
+8. Invoicing Rule: Price line items based on Delivered count (Col D) × contracted catalog rate.
+9. Linen Loss Rule: If Discrepancy > 0, log as linen discrepancy count.
+
+[CHART OF ACCOUNTS ROUTING]
+10. Default Revenue Account: 4000 - Commercial Sales Revenue.
+11. Discrepancy Revenue: Map linen loss replacement charges to 4050 - Linen Loss Recovery.
+
+[TAX & REVIEW FLAGS]
+12. Flag for Review if: Discrepancy > 5 pieces, driver signature missing, or handwriting is illegible.`,
   },
   {
+    id: 'bank_momo_statement',
     title: '💳 Bank & MoMo Statements',
-    text: 'Extract date, debit amounts, and transaction descriptions. For mobile money transfers, parse the transaction ID from the description. Suggest appropriate GL chart of accounts.',
+    badge: 'Banking & Feeds',
+    entities: ['bank_statement', 'momo_statement'],
+    template: `[DOCUMENT IDENTITY]
+1. Document Type: Bank Account Statement / MTN / Telecel Mobile Money Statement.
+2. Account: Match to primary operating bank account or MoMo cash wallet.
+
+[KEY HEADERS]
+3. Statement Period: Extract opening statement date and closing statement date.
+4. Balances: Extract stated Opening Balance and Closing Balance.
+
+[TRANSACTION PARSING RULES]
+5. Transaction Rows: Extract Date, Narration/Description, Money Out (Debit), Money In (Credit), and Balance.
+6. MoMo Reference: Extract Transaction ID / Reference Code from transfer narration.
+7. Counterparty: Parse recipient/sender phone number or name from transfer description.
+
+[CHART OF ACCOUNTS ROUTING]
+8. Money Out (Debits): Default to 50000 - Operating Expenses or Suspense Clearing.
+9. Money In (Credits): Default to 40000 - Customer Collections & Revenue.
+10. Bank Charges: Route "E-Levy", "SMS Alert Fee", or "Service Charge" to 50900 - Bank & MoMo Charges.
+
+[TAX & REVIEW FLAGS]
+11. Flag for Review if: Calculated net transactions do not reconcile with closing balance.`,
   },
   {
-    title: '🏢 Tenant Rent Receipts',
-    text: 'Extract tenant name, unit number, amount paid, and payment reference code. Tag utility apportionment items separately.',
+    id: 'tenant_property_rent',
+    title: '🏢 Tenant Rent & Leases',
+    badge: 'Property & Real Estate',
+    entities: ['ar_retainer_invoice', 'gl_journal'],
+    template: `[DOCUMENT IDENTITY]
+1. Document Type: Property Tenant Rent Payment / Lease Slip.
+2. Tenant / Unit: Map Tenant Name and Unit/Apartment Number to customer ledger.
+
+[KEY HEADERS]
+3. Reference Number: Extract Rent Receipt / Payment Ref number.
+4. Rental Period: Extract rental period covered (e.g. Oct 2026 - Dec 2026).
+5. Payment Date: Extract Date Paid (YYYY-MM-DD).
+
+[LINE ITEMS & APPORTIONMENT]
+6. Base Rent: Apportion base monthly rental amount.
+7. Utilities & Common Fees: Separate electricity, water, and service charge fees into distinct line items.
+8. Withholding Tax: If rent withholding tax (8% / 10%) was deducted, record as Withholding Tax Receivable.
+
+[CHART OF ACCOUNTS ROUTING]
+9. Rental Income: Route base rent to 4100 - Rental Property Income.
+10. Utility Recoveries: Route service charges to 4150 - Tenant Utility Recoveries.
+11. Security Deposits: Route deposits to 2100 - Tenant Security Deposit Liability.
+
+[TAX & REVIEW FLAGS]
+12. Flag for Review if: Receipt does not specify unit number or covers an expired lease.`,
+  },
+  {
+    id: 'universal_questionnaire',
+    title: '📋 Universal Questionnaire Form',
+    badge: 'Fill-in-the-Blank',
+    entities: [],
+    template: `[DOCUMENT IDENTIFICATION]
+1. Document Type: [e.g. Supplier Invoice / Delivery Slip / Bank Statement / POS Receipt]
+2. Counterparty Name: [e.g. Extract name from top left; map to existing client contact]
+
+[HEADER & REFERENCE FIELDS]
+3. Reference Number: [e.g. Extract "Invoice No." or generate "REF-{Date}-{Row}"]
+4. Date Handling: [e.g. Extract "Date" in YYYY-MM-DD format. If missing, use today's date]
+5. Currency: [e.g. Default GHS unless USD / EUR symbol is present]
+
+[LINE ITEMS & MATH RULES]
+6. Table Structure: [e.g. Extract Description, Quantity, Unit Rate, and Total Amount]
+7. Formulas & Calculations: [e.g. Total = Qty × Rate. Calculate Net = Gross - Discount]
+8. Discrepancy Checks: [e.g. Discrepancy = Expected - Actual. Flag if difference > 0]
+
+[CHART OF ACCOUNTS ROUTING]
+9. Default Account: [e.g. 50000 - Operating Expenses or 4000 - Sales Revenue]
+10. Keyword Overrides:
+    - "[keyword 1]" -> [Account Code / Name]
+    - "[keyword 2]" -> [Account Code / Name]
+
+[TAX & REVIEW CRITERIA]
+11. Tax Handling: [e.g. Extract VAT / NHIL / GETFund if printed; otherwise treat as exempt]
+12. Review Thresholds: [e.g. Flag if total > GHS 5,000, signature missing, or handwriting is unclear]`,
   },
 ];
+
+const getTailoredTemplate = (entity: AccountingEntityType): string => {
+  const match = DOMAIN_TEMPLATES.find((t) => t.entities.includes(entity));
+  return match ? match.template : DOMAIN_TEMPLATES[DOMAIN_TEMPLATES.length - 1].template;
+};
 
 const formatAccountOptionValue = (acc: ChartOfAccountItem): string => {
   if (acc.account_code) {
@@ -913,36 +1047,72 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
               </div>
 
               {/* Natural Language Prompt Rules Box */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5">
                     <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Human Transposition Instructions (Plain-English Prompt)</span>
-                  </label>
-                  <span className="text-[10px] text-slate-400">Guides AI field transposition & calculations</span>
+                    <label className="text-xs font-semibold text-slate-300">
+                      Human Transposition Instructions (Guided Prompt)
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tailored = getTailoredTemplate(entityType);
+                      setHumanInstructions(tailored);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-2.5 py-1 rounded-lg shadow transition cursor-pointer"
+                    title="Insert structured questionnaire tailored to this entity type"
+                  >
+                    <Sparkles className="w-3 h-3 text-sky-400" />
+                    <span>Auto-Fill Questionnaire for {entityType.replace(/_/g, ' ')}</span>
+                  </button>
                 </div>
+
                 <textarea
-                  rows={3}
+                  rows={8}
                   value={humanInstructions}
                   onChange={(e) => setHumanInstructions(e.target.value)}
-                  placeholder="e.g. Column P is pickup count and Column D is delivery count. Calculate discrepancy = Pickup - Delivery. Map hotel name to client customer ID. Default item prices to catalog rate."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-sans"
+                  placeholder="Paste or fill in your transposition instructions here. You can also click any of the tailored templates below to get guided questions."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono leading-relaxed placeholder-slate-600 focus:outline-none focus:border-sky-500"
                 />
 
                 {/* Preset Prompt Buttons */}
-                <div className="space-y-1">
-                  <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">Quick Domain Instruction Presets:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PROMPT_PRESETS.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setHumanInstructions(preset.text)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60 hover:border-sky-500/50 transition cursor-pointer flex items-center gap-1"
-                      >
-                        <span>{preset.title}</span>
-                      </button>
-                    ))}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                      Tailored Pipeline Questionnaire Templates:
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      Click to insert template into editor
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                    {DOMAIN_TEMPLATES.map((tmpl) => {
+                      const isRecommended = tmpl.entities.includes(entityType);
+                      return (
+                        <button
+                          key={tmpl.id}
+                          type="button"
+                          onClick={() => setHumanInstructions(tmpl.template)}
+                          className={`text-left p-2 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                            isRecommended
+                              ? 'bg-sky-950/60 border-sky-500/60 hover:border-sky-400 shadow-sm'
+                              : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-white truncate">{tmpl.title}</span>
+                            {isRecommended && (
+                              <span className="text-[9px] font-bold text-sky-400 bg-sky-900/60 px-1.5 py-0.2 rounded border border-sky-500/30 shrink-0 ml-1">
+                                Recommended
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 mt-0.5">{tmpl.badge}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
