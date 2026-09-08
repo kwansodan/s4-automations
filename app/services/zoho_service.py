@@ -228,6 +228,69 @@ class ZohoBooksService:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
     )
+    async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
+        """Fetches active Chart of Accounts from Zoho Books REST API."""
+        if settings.MOCK_MODE:
+            logger.info("Using mock Zoho Chart of Accounts catalog.")
+            return [
+                {"account_id": "acc_6990", "account_code": "6990", "account_name": "Uncategorized Expenses", "account_type": "Expense", "is_suspense": True},
+                {"account_id": "acc_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
+                {"account_id": "acc_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Other Current Liability", "is_suspense": True},
+                {"account_id": "acc_2150", "account_code": "2150", "account_name": "Ask My Accountant / Clearing", "account_type": "Other Current Liability", "is_suspense": True},
+                {"account_id": "acc_5100", "account_code": "5100", "account_name": "Office Supplies & Stationery", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_5200", "account_code": "5200", "account_name": "Vehicle Fuel & Transport", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_5300", "account_code": "5300", "account_name": "Rent & Utilities", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_5400", "account_code": "5400", "account_name": "Internet & Communication (MoMo/Data)", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_5500", "account_code": "5500", "account_name": "Repairs & Maintenance", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_5600", "account_code": "5600", "account_name": "Professional & Legal Fees", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "acc_4100", "account_code": "4100", "account_name": "Sales Revenue", "account_type": "Income", "is_suspense": False},
+                {"account_id": "acc_1200", "account_code": "1200", "account_name": "Director's Loan Account", "account_type": "Equity", "is_suspense": False},
+            ]
+
+        if not self.org_id or not self.refresh_token:
+            logger.warning(f"No refresh token or org_id configured for Zoho Books (org: {self.org_id}). Returning empty chart of accounts.")
+            return []
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/chartofaccounts"
+        params = {"organization_id": self.org_id}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.get(url, headers=headers, params=params)
+
+            response.raise_for_status()
+            data = response.json()
+            raw_accounts = data.get("chartofaccounts", [])
+
+            accounts = []
+            for acc in raw_accounts:
+                acc_name = acc.get("account_name", "")
+                acc_type = acc.get("account_type", "")
+                accounts.append(
+                    {
+                        "account_id": str(acc.get("account_id", "")),
+                        "account_code": acc.get("account_code", "") or str(acc.get("account_id", "")),
+                        "account_name": acc_name,
+                        "account_type": acc_type,
+                        "is_suspense": acc_type.lower() in ["suspense", "other_current_liability"] or "uncategorized" in acc_name.lower(),
+                    }
+                )
+
+            logger.info(f"Fetched {len(accounts)} chart of accounts from Zoho Books for org {self.org_id}.")
+            return accounts
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
     async def create_vendor_contact(self, vendor_name: str) -> ZohoContact:
         """Creates a new Vendor contact in Zoho Books."""
         if settings.MOCK_MODE or not self.org_id:

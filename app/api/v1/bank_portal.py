@@ -394,25 +394,48 @@ async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
 
         watched = client.watched_accounts if (client.watched_accounts and len(client.watched_accounts) > 0) else ["6990", "850", "suspense", "uncategorized"]
         software = client.accounting_software or "zoho_books"
-        adapter = AccountingAdapterFactory.get(software, client.id)
-        accounts = await adapter.fetch_chart_of_accounts()
+        cfg = client.custom_config or {}
+
+        # Check OAuth status based on software platform
+        if software == "zoho_books":
+            has_token = bool(cfg.get("zoho_refresh_token") or settings.ZOHO_REFRESH_TOKEN)
+        elif software in ["quickbooks_online", "quickbooks"]:
+            has_token = bool(cfg.get("quickbooks_refresh_token") or settings.QUICKBOOKS_REFRESH_TOKEN)
+        elif software == "xero":
+            has_token = bool(cfg.get("xero_refresh_token") or settings.XERO_REFRESH_TOKEN)
+        else:
+            has_token = True
+
+        has_oauth = bool(has_token or settings.MOCK_MODE)
+
+        if not has_oauth:
+            return {
+                "client_id": client_id,
+                "accounting_software": software,
+                "oauth_pending": True,
+                "watched_accounts": watched,
+                "accounts": [],
+                "accounts_count": 0,
+                "message": f"OAuth connection pending for {software.replace('_', ' ').title()}. Please connect OAuth in Client Settings to flow live Chart of Accounts.",
+            }
+
+        try:
+            adapter = AccountingAdapterFactory.get(software, client.id)
+            accounts = await adapter.fetch_chart_of_accounts()
+        except Exception as err:
+            logger.warning(f"Failed to fetch live chart of accounts for client '{client_id}': {err}")
+            accounts = []
 
         if not accounts:
-            accounts = [
-                {"account_id": "acc_6990", "account_code": "6990", "account_name": "Uncategorized Expenses", "account_type": "Expense", "is_suspense": True},
-                {"account_id": "acc_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
-                {"account_id": "acc_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Other Current Liability", "is_suspense": True},
-                {"account_id": "acc_2150", "account_code": "2150", "account_name": "Ask My Accountant / Clearing", "account_type": "Other Current Liability", "is_suspense": True},
-                {"account_id": "acc_1095", "account_code": "1095", "account_name": "MTN MoMo Holding / Clearing", "account_type": "Current Asset", "is_suspense": True},
-                {"account_id": "acc_5100", "account_code": "5100", "account_name": "Office Supplies & Stationery", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5200", "account_code": "5200", "account_name": "Vehicle Fuel & Fleet Transport", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5300", "account_code": "5300", "account_name": "Rent & Leasehold Utilities", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5400", "account_code": "5400", "account_name": "Internet & Communication (MoMo/Data)", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5500", "account_code": "5500", "account_name": "Repairs & Maintenance", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5600", "account_code": "5600", "account_name": "Professional & Legal Retainer Fees", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_4100", "account_code": "4100", "account_name": "Direct Sales Revenue", "account_type": "Income", "is_suspense": False},
-                {"account_id": "acc_1200", "account_code": "1200", "account_name": "Director's Loan & Drawings", "account_type": "Equity", "is_suspense": False},
-            ]
+            return {
+                "client_id": client_id,
+                "accounting_software": software,
+                "oauth_pending": True,
+                "watched_accounts": watched,
+                "accounts": [],
+                "accounts_count": 0,
+                "message": f"OAuth connection pending or unauthorized for {software.replace('_', ' ').title()}. Please authorize in Client Settings to allow live Chart of Accounts to flow through.",
+            }
 
         # Mark watched flags
         for acc in accounts:
@@ -423,6 +446,7 @@ async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
         return {
             "client_id": client_id,
             "accounting_software": software,
+            "oauth_pending": False,
             "watched_accounts": watched,
             "accounts": accounts,
             "accounts_count": len(accounts),

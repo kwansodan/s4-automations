@@ -792,6 +792,8 @@ export async function fetchBankTransactions(
 export async function fetchChartOfAccounts(clientId: string): Promise<{
   client_id: string;
   accounting_software: string;
+  oauth_pending?: boolean;
+  message?: string;
   watched_accounts: string[];
   accounts: any[];
   accounts_count: number;

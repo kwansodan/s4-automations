@@ -33,19 +33,6 @@ import {
   Paperclip,
 } from 'lucide-react';
 
-const DEFAULT_FALLBACK_ACCOUNTS: ChartOfAccountItem[] = [
-  { account_id: 'acc_6990', account_code: '6990', account_name: 'Uncategorized Expenses', account_type: 'Expense', is_suspense: true },
-  { account_id: 'acc_4990', account_code: '4990', account_name: 'Uncategorized Income', account_type: 'Income', is_suspense: true },
-  { account_id: 'acc_850', account_code: '850', account_name: 'Suspense Account', account_type: 'Other Current Liability', is_suspense: true },
-  { account_id: 'acc_2150', account_code: '2150', account_name: 'Ask My Accountant / Clearing', account_type: 'Other Current Liability', is_suspense: true },
-  { account_id: 'acc_1095', account_code: '1095', account_name: 'MTN MoMo Holding / Clearing', account_type: 'Current Asset', is_suspense: true },
-  { account_id: 'acc_5100', account_code: '5100', account_name: 'Office Supplies & Stationery', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5200', account_code: '5200', account_name: 'Vehicle Fuel & Transport', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5300', account_code: '5300', account_name: 'Rent & Leasehold Utilities', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5400', account_code: '5400', account_name: 'Internet & Data Services', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_4100', account_code: '4100', account_name: 'Direct Sales Revenue', account_type: 'Income', is_suspense: false },
-];
-
 export const ClientBankTab: React.FC = () => {
   const { currentClient } = useClient();
   const { selectedMonth, selectedYear, addLog, setActiveTab } = useAutomation();
@@ -59,7 +46,8 @@ export const ClientBankTab: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Chart of Accounts & Watched Accounts
-  const [accounts, setAccounts] = useState<ChartOfAccountItem[]>(DEFAULT_FALLBACK_ACCOUNTS);
+  const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
+  const [isOauthPending, setIsOauthPending] = useState<boolean>(false);
   const [watchedAccounts, setWatchedAccounts] = useState<string[]>(['6990', '850', 'suspense', 'uncategorized']);
   const [isWatchedDrawerOpen, setIsWatchedDrawerOpen] = useState(false);
   const [isSavingWatched, setIsSavingWatched] = useState(false);
@@ -77,7 +65,11 @@ export const ClientBankTab: React.FC = () => {
         fetchChartOfAccounts(currentClient.id),
       ]);
       setTransactions(txRes.transactions || (Array.isArray(txRes) ? txRes : []));
-      if (coaRes.accounts && coaRes.accounts.length > 0) {
+      if (coaRes.oauth_pending || !coaRes.accounts || coaRes.accounts.length === 0) {
+        setIsOauthPending(true);
+        setAccounts([]);
+      } else {
+        setIsOauthPending(false);
         setAccounts(coaRes.accounts);
       }
       if (coaRes.watched_accounts && coaRes.watched_accounts.length > 0) {

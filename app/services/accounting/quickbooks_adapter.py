@@ -139,16 +139,18 @@ class QuickBooksAdapter(BaseAccountingAdapter):
 
     async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
         """Returns Chart of Accounts for QuickBooks Online."""
-        return [
-            {"account_id": "qbo_6990", "account_code": "6990", "account_name": "Uncategorized Expense", "account_type": "Expense", "is_suspense": True},
-            {"account_id": "qbo_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
-            {"account_id": "qbo_850", "account_code": "850", "account_name": "Ask My Accountant", "account_type": "Other Expense", "is_suspense": True},
-            {"account_id": "qbo_5100", "account_code": "5100", "account_name": "Office Expenses", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "qbo_5200", "account_code": "5200", "account_name": "Automobile & Fuel Expense", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "qbo_5300", "account_code": "5300", "account_name": "Rent & Lease", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "qbo_4100", "account_code": "4100", "account_name": "Sales Income", "account_type": "Income", "is_suspense": False},
-            {"account_id": "qbo_1200", "account_code": "1200", "account_name": "Shareholder Distributions / Draw", "account_type": "Equity", "is_suspense": False},
-        ]
+        if settings.MOCK_MODE:
+            return [
+                {"account_id": "qbo_6990", "account_code": "6990", "account_name": "Uncategorized Expense", "account_type": "Expense", "is_suspense": True},
+                {"account_id": "qbo_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
+                {"account_id": "qbo_850", "account_code": "850", "account_name": "Ask My Accountant", "account_type": "Other Expense", "is_suspense": True},
+                {"account_id": "qbo_5100", "account_code": "5100", "account_name": "Office Expenses", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "qbo_5200", "account_code": "5200", "account_name": "Automobile & Fuel Expense", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "qbo_5300", "account_code": "5300", "account_name": "Rent & Lease", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "qbo_4100", "account_code": "4100", "account_name": "Sales Income", "account_type": "Income", "is_suspense": False},
+                {"account_id": "qbo_1200", "account_code": "1200", "account_name": "Shareholder Distributions / Draw", "account_type": "Equity", "is_suspense": False},
+            ]
+        return []
 
     async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Discovers unmapped bank feeds residing in watched suspense accounts."""

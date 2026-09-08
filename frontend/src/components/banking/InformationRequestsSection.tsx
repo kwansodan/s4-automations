@@ -42,22 +42,6 @@ import {
   Trash2,
 } from 'lucide-react';
 
-const DEFAULT_FALLBACK_ACCOUNTS: ChartOfAccountItem[] = [
-  { account_id: 'acc_6990', account_code: '6990', account_name: 'Uncategorized Expenses', account_type: 'Expense', is_suspense: true },
-  { account_id: 'acc_4990', account_code: '4990', account_name: 'Uncategorized Income', account_type: 'Income', is_suspense: true },
-  { account_id: 'acc_850', account_code: '850', account_name: 'Suspense Account', account_type: 'Other Current Liability', is_suspense: true },
-  { account_id: 'acc_2150', account_code: '2150', account_name: 'Ask My Accountant / Clearing', account_type: 'Other Current Liability', is_suspense: true },
-  { account_id: 'acc_1095', account_code: '1095', account_name: 'MTN MoMo Holding / Clearing', account_type: 'Current Asset', is_suspense: true },
-  { account_id: 'acc_5100', account_code: '5100', account_name: 'Office Supplies & Stationery', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5200', account_code: '5200', account_name: 'Vehicle Fuel & Fleet Transport', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5300', account_code: '5300', account_name: 'Rent & Leasehold Utilities', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5400', account_code: '5400', account_name: 'Internet & Communication (MoMo/Data)', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5500', account_code: '5500', account_name: 'Repairs & Maintenance', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_5600', account_code: '5600', account_name: 'Professional & Legal Retainer Fees', account_type: 'Expense', is_suspense: false },
-  { account_id: 'acc_4100', account_code: '4100', account_name: 'Direct Sales Revenue', account_type: 'Income', is_suspense: false },
-  { account_id: 'acc_1200', account_code: '1200', account_name: "Director's Loan & Drawings", account_type: 'Equity', is_suspense: false },
-];
-
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient } = useClient();
   const { addLog, setActiveTab } = useAutomation();
@@ -78,6 +62,7 @@ export const InformationRequestsSection: React.FC = () => {
 
   // Chart of Accounts & Watched Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
+  const [isOauthPending, setIsOauthPending] = useState<boolean>(false);
   const [watchedAccounts, setWatchedAccounts] = useState<string[]>(['6990', '850', 'suspense', 'uncategorized']);
   const [isWatchedDrawerOpen, setIsWatchedDrawerOpen] = useState(false);
   const [isSavingWatched, setIsSavingWatched] = useState(false);
@@ -98,9 +83,6 @@ export const InformationRequestsSection: React.FC = () => {
   const [selectedTxForQuery, setSelectedTxForQuery] = useState<BankTransactionRecord | null>(null);
   const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
 
-  // Fallback merged accounts list
-  const displayAccounts = accounts && accounts.length > 0 ? accounts : DEFAULT_FALLBACK_ACCOUNTS;
-
   // Load Transactions & Accounts
   const loadData = useCallback(async () => {
     if (!currentClient) return;
@@ -120,8 +102,13 @@ export const InformationRequestsSection: React.FC = () => {
         total_mapped: 0,
       });
 
-      const loadedAccounts = coaRes.accounts && coaRes.accounts.length > 0 ? coaRes.accounts : DEFAULT_FALLBACK_ACCOUNTS;
-      setAccounts(loadedAccounts);
+      if (coaRes.oauth_pending || !coaRes.accounts || coaRes.accounts.length === 0) {
+        setIsOauthPending(true);
+        setAccounts([]);
+      } else {
+        setIsOauthPending(false);
+        setAccounts(coaRes.accounts);
+      }
 
       const loadedWatched = coaRes.watched_accounts && coaRes.watched_accounts.length > 0
         ? coaRes.watched_accounts

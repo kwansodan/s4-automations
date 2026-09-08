@@ -65,33 +65,6 @@ const PROMPT_PRESETS = [
   },
 ];
 
-const CLIENT_DEFAULT_ACCOUNTS: ChartOfAccountItem[] = [
-  // Income & Revenue
-  { account_id: 'acc_4000', account_code: '4000', account_name: 'Commercial Sales Revenue', account_type: 'Income' },
-  { account_id: 'acc_4100', account_code: '4100', account_name: 'Direct Sales Revenue', account_type: 'Income' },
-  { account_id: 'acc_4200', account_code: '4200', account_name: 'Service & Advisory Income', account_type: 'Income' },
-  { account_id: 'acc_4990', account_code: '4990', account_name: 'Uncategorized Income', account_type: 'Income', is_suspense: true },
-  // Cost of Goods & Expenses
-  { account_id: 'acc_5000', account_code: '5000', account_name: 'Operating Expenses', account_type: 'Expense' },
-  { account_id: 'acc_5050', account_code: '5050', account_name: 'Cost of Goods Sold (Inventory)', account_type: 'Expense' },
-  { account_id: 'acc_5100', account_code: '5100', account_name: 'Office Supplies & Stationery', account_type: 'Expense' },
-  { account_id: 'acc_5200', account_code: '5200', account_name: 'Vehicle Fuel & Fleet Transport', account_type: 'Expense' },
-  { account_id: 'acc_5300', account_code: '5300', account_name: 'Rent & Leasehold Utilities', account_type: 'Expense' },
-  { account_id: 'acc_5400', account_code: '5400', account_name: 'Internet & Communication (MoMo/Data)', account_type: 'Expense' },
-  { account_id: 'acc_5500', account_code: '5500', account_name: 'Repairs & Maintenance', account_type: 'Expense' },
-  { account_id: 'acc_5600', account_code: '5600', account_name: 'Professional & Legal Retainer Fees', account_type: 'Expense' },
-  { account_id: 'acc_6990', account_code: '6990', account_name: 'Uncategorized Expenses', account_type: 'Expense', is_suspense: true },
-  // Bank, Cash & Clearing Accounts
-  { account_id: 'acc_1001', account_code: '1001', account_name: 'Main Operating Bank Account', account_type: 'Bank' },
-  { account_id: 'acc_1095', account_code: '1095', account_name: 'MTN MoMo Holding / Clearing', account_type: 'Current Asset', is_suspense: true },
-  { account_id: 'acc_2150', account_code: '2150', account_name: 'Ask My Accountant / Clearing', account_type: 'Other Current Liability', is_suspense: true },
-  { account_id: 'acc_850', account_code: '850', account_name: 'Suspense Account', account_type: 'Other Current Liability', is_suspense: true },
-  // Liabilities & Equity
-  { account_id: 'acc_2000', account_code: '2000', account_name: 'Accounts Payable', account_type: 'Liability' },
-  { account_id: 'acc_1200', account_code: '1200', account_name: "Director's Loan & Drawings", account_type: 'Equity' },
-  { account_id: 'acc_9000', account_code: '9000', account_name: 'General Ledger Accruals', account_type: 'Equity' },
-];
-
 const formatAccountOptionValue = (acc: ChartOfAccountItem): string => {
   if (acc.account_code) {
     return `${acc.account_code} - ${acc.account_name}`;
@@ -122,12 +95,13 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [entityType, setEntityType] = useState<AccountingEntityType>('ar_sales_invoice');
   const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp' | 'manual'>('google_drive');
   const [sourceIdentifier, setSourceIdentifier] = useState<string>('');
-  const [defaultAccountCode, setDefaultAccountCode] = useState<string>('4000 - Commercial Sales Revenue');
+  const [defaultAccountCode, setDefaultAccountCode] = useState<string>('');
   const [autoPostToZoho, setAutoPostToZoho] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
 
   // Client-specific Chart of Accounts State
-  const [accounts, setAccounts] = useState<ChartOfAccountItem[]>(CLIENT_DEFAULT_ACCOUNTS);
+  const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
+  const [isOauthPending, setIsOauthPending] = useState<boolean>(false);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState<boolean>(false);
   const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
 
@@ -163,12 +137,24 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
 
     fetchChartOfAccounts(clientId)
       .then((data) => {
-        if (!isCancelled && data && Array.isArray(data.accounts) && data.accounts.length > 0) {
-          setAccounts(data.accounts);
+        if (!isCancelled && data) {
+          if (data.oauth_pending || !data.accounts || data.accounts.length === 0) {
+            setIsOauthPending(true);
+            setAccounts([]);
+            setIsCustomMode(true);
+          } else {
+            setIsOauthPending(false);
+            setAccounts(data.accounts);
+          }
         }
       })
       .catch((err) => {
         console.warn('Could not fetch client chart of accounts for pipeline wizard:', err);
+        if (!isCancelled) {
+          setIsOauthPending(true);
+          setAccounts([]);
+          setIsCustomMode(true);
+        }
       })
       .finally(() => {
         if (!isCancelled) {
@@ -580,6 +566,16 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     </button>
                   </div>
                 </div>
+
+                {isOauthPending && (
+                  <div className="mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-200">
+                      <span className="font-semibold block mb-0.5">⚠️ OAuth Authorization Pending</span>
+                      <span>OAuth connection for this client is pending. Complete OAuth authorization in Client Settings to flow your live Chart of Accounts. Manual code entry mode is enabled below.</span>
+                    </div>
+                  </div>
+                )}
 
                 {isCustomMode ? (
                   <div className="space-y-1.5">

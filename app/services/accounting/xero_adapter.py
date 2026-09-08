@@ -131,15 +131,17 @@ class XeroAdapter(BaseAccountingAdapter):
 
     async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
         """Returns Chart of Accounts for Xero."""
-        return [
-            {"account_id": "xero_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Current Liability", "is_suspense": True},
-            {"account_id": "xero_999", "account_code": "999", "account_name": "Unallocated Payments", "account_type": "Current Asset", "is_suspense": True},
-            {"account_id": "xero_400", "account_code": "400", "account_name": "Advertising & Marketing", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "xero_420", "account_code": "420", "account_name": "Consulting & Accounting", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "xero_429", "account_code": "429", "account_name": "General Expenses", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "xero_461", "account_code": "461", "account_name": "Printing & Stationery", "account_type": "Expense", "is_suspense": False},
-            {"account_id": "xero_200", "account_code": "200", "account_name": "Sales Revenue", "account_type": "Income", "is_suspense": False},
-        ]
+        if settings.MOCK_MODE:
+            return [
+                {"account_id": "xero_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Current Liability", "is_suspense": True},
+                {"account_id": "xero_999", "account_code": "999", "account_name": "Unallocated Payments", "account_type": "Current Asset", "is_suspense": True},
+                {"account_id": "xero_400", "account_code": "400", "account_name": "Advertising & Marketing", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "xero_420", "account_code": "420", "account_name": "Consulting & Accounting", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "xero_429", "account_code": "429", "account_name": "General Expenses", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "xero_461", "account_code": "461", "account_name": "Printing & Stationery", "account_type": "Expense", "is_suspense": False},
+                {"account_id": "xero_200", "account_code": "200", "account_name": "Sales Revenue", "account_type": "Income", "is_suspense": False},
+            ]
+        return []
 
     async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Discovers unmapped bank feeds residing in watched suspense accounts."""
