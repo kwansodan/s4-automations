@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export const ClientPipelinesTab: React.FC = () => {
-  const { currentClient, deletePipeline, savePipeline } = useClient();
+  const { currentClient, deletePipeline, savePipeline, updatePipelineLastRun } = useClient();
   const { selectedMonth, selectedYear, addLog } = useAutomation();
   const { reportError, syncServerIssuesNow } = useErrors();
 
@@ -94,6 +94,7 @@ export const ClientPipelinesTab: React.FC = () => {
 
       // Automatically display the full execution summary modal to the user
       setActiveRunSummary(summary);
+      updatePipelineLastRun(currentClient.id, pipelineId, summary);
 
       if (result.status === 'FAILED' || (result.errors && result.errors.length > 0)) {
         const errorMsg = result.error_message || result.errors?.[0] || 'Pipeline stream execution failed';

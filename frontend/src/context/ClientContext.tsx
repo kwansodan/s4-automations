@@ -112,6 +112,8 @@ interface ClientContextType {
   wizardDraft: any;
   saveWizardDraft: (draft: any) => void;
   clearWizardDraft: () => void;
+  updatePipelineLastRun: (clientId: string, pipelineId: string, summary: any) => void;
+  refreshClients: () => Promise<void>;
   isIndividualBusiness: boolean;
   isAccountingFirm: boolean;
   activeOrganization?: Organization;
@@ -163,93 +165,94 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   // Sync with backend PostgreSQL database on mount or when active organization changes
-  useEffect(() => {
-    const loadBackendClients = async () => {
-      try {
-        const orgFilter = isIndividualBusiness ? activeOrg?.id : undefined;
-        const dbClients = await fetchClients(orgFilter);
-        if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
-          const mapped: ClientProfile[] = dbClients.map((c: any) => {
-            const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
-            const storedPipes = getStoredPipelines(c.id);
-            const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
-              ? c.pipelines
-              : ((storedPipes && storedPipes.length > 0)
-                ? storedPipes
-                : (defaultMatch?.pipelines || []));
-            const normalizedPipelines = rawPipelines.map((p: any) => ({
-              ...p,
-              is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
-              active: p.active !== undefined ? p.active : (p.is_active !== undefined ? p.is_active : true),
-            }));
+  const refreshClients = React.useCallback(async () => {
+    try {
+      const orgFilter = isIndividualBusiness ? activeOrg?.id : undefined;
+      const dbClients = await fetchClients(orgFilter);
+      if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
+        const mapped: ClientProfile[] = dbClients.map((c: any) => {
+          const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
+          const storedPipes = getStoredPipelines(c.id);
+          const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
+            ? c.pipelines
+            : ((storedPipes && storedPipes.length > 0)
+              ? storedPipes
+              : (defaultMatch?.pipelines || []));
+          const normalizedPipelines = rawPipelines.map((p: any) => ({
+            ...p,
+            is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
+            active: p.active !== undefined ? p.active : (p.is_active !== undefined ? p.is_active : true),
+          }));
 
-            if (typeof localStorage !== 'undefined' && Array.isArray(c.pipelines) && c.pipelines.length > 0) {
-              try {
-                localStorage.setItem(`S4_PIPELINES_${c.id}`, JSON.stringify(normalizedPipelines));
-              } catch (e) {}
-            }
-
-            return {
-              id: c.id,
-              organization_id: c.organization_id || 's4_advisory',
-              name: c.name,
-              industry: c.industry,
-              icon: c.icon || defaultMatch?.icon || '🏢',
-              status: c.status || defaultMatch?.status || 'dev',
-              statusText: c.status_text || (c.status === 'live' ? 'Production Live' : 'In Development'),
-              desc: c.description || defaultMatch?.desc || '',
-              accounting_software: c.accounting_software || defaultMatch?.accounting_software || 'zoho_books',
-              folderId: c.folder_id || defaultMatch?.folderId,
-              folder_id: c.folder_id || defaultMatch?.folderId,
-              zohoOrg: c.zoho_org_id || defaultMatch?.zohoOrg,
-              zoho_org_id: c.zoho_org_id || defaultMatch?.zohoOrg,
-              zohoContactId: c.zoho_contact_id || defaultMatch?.zohoContactId,
-              sourceType: c.source_type || defaultMatch?.sourceType || 'google_drive',
-              sourceEmail: c.source_email || defaultMatch?.sourceEmail,
-              currency: c.custom_config?.currency || defaultMatch?.currency || 'GHS',
-              varianceTolerance: c.custom_config?.variance_tolerance || 5,
-              confidenceThreshold: c.custom_config?.confidence_threshold || 80,
-              workflowsCount: normalizedPipelines.length || (c.blueprints || []).length || 1,
-              projectedMonthlyVolume: c.custom_config?.volume || 'Active',
-              activeIntegrations: (c.active_integrations && c.active_integrations.length > 0)
-                ? c.active_integrations
-                : (defaultMatch?.activeIntegrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest']),
-              sourceConfig: c.source_config || {},
-              customConfig: c.custom_config || {},
-              pipelines: normalizedPipelines,
-              team_members: (c.team_members && c.team_members.length > 0) ? c.team_members : (defaultMatch?.team_members || []),
-              blueprints: (c.blueprints && c.blueprints.length > 0) ? c.blueprints : (defaultMatch?.blueprints || [
-                { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
-                { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
-                { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
-              ]),
-            };
-          });
-          setClients(mapped);
-          if (typeof localStorage !== 'undefined') {
+          if (typeof localStorage !== 'undefined' && Array.isArray(c.pipelines) && c.pipelines.length > 0) {
             try {
-              localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(mapped));
+              localStorage.setItem(`S4_PIPELINES_${c.id}`, JSON.stringify(normalizedPipelines));
             } catch (e) {}
           }
 
-          // If in individual business mode, lock focus onto company client
-          if (isIndividualBusiness) {
-            const matched = mapped.find(
-              (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id || c.id === 'anr_group'
-            );
-            if (matched) {
-              setCurrentClientId(matched.id);
-            } else if (mapped.length > 0) {
-              setCurrentClientId(mapped[0].id);
-            }
+          return {
+            id: c.id,
+            organization_id: c.organization_id || 's4_advisory',
+            name: c.name,
+            industry: c.industry,
+            icon: c.icon || defaultMatch?.icon || '🏢',
+            status: c.status || defaultMatch?.status || 'dev',
+            statusText: c.status_text || (c.status === 'live' ? 'Production Live' : 'In Development'),
+            desc: c.description || defaultMatch?.desc || '',
+            accounting_software: c.accounting_software || defaultMatch?.accounting_software || 'zoho_books',
+            folderId: c.folder_id || defaultMatch?.folderId,
+            folder_id: c.folder_id || defaultMatch?.folderId,
+            zohoOrg: c.zoho_org_id || defaultMatch?.zohoOrg,
+            zoho_org_id: c.zoho_org_id || defaultMatch?.zohoOrg,
+            zohoContactId: c.zoho_contact_id || defaultMatch?.zohoContactId,
+            sourceType: c.source_type || defaultMatch?.sourceType || 'google_drive',
+            sourceEmail: c.source_email || defaultMatch?.sourceEmail,
+            currency: c.custom_config?.currency || defaultMatch?.currency || 'GHS',
+            varianceTolerance: c.custom_config?.variance_tolerance || 5,
+            confidenceThreshold: c.custom_config?.confidence_threshold || 80,
+            workflowsCount: normalizedPipelines.length || (c.blueprints || []).length || 1,
+            projectedMonthlyVolume: c.custom_config?.volume || 'Active',
+            activeIntegrations: (c.active_integrations && c.active_integrations.length > 0)
+              ? c.active_integrations
+              : (defaultMatch?.activeIntegrations || ['Google Drive', 'Gemini Vision', 'Zoho Books', 'Inngest']),
+            sourceConfig: c.source_config || {},
+            customConfig: c.custom_config || {},
+            pipelines: normalizedPipelines,
+            team_members: (c.team_members && c.team_members.length > 0) ? c.team_members : (defaultMatch?.team_members || []),
+            blueprints: (c.blueprints && c.blueprints.length > 0) ? c.blueprints : (defaultMatch?.blueprints || [
+              { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
+              { title: 'AI Schema Extraction', desc: 'Custom vision models for document extraction', status: 'in_progress' },
+              { title: 'Accounting Posting Engine', desc: 'Sync approved transactions into accounting platform', status: 'queued' },
+            ]),
+          };
+        });
+        setClients(mapped);
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(mapped));
+          } catch (e) {}
+        }
+
+        // If in individual business mode, lock focus onto company client
+        if (isIndividualBusiness) {
+          const matched = mapped.find(
+            (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id || c.id === 'anr_group'
+          );
+          if (matched) {
+            setCurrentClientId(matched.id);
+          } else if (mapped.length > 0) {
+            setCurrentClientId(mapped[0].id);
           }
         }
-      } catch (err) {
-        console.warn('Using local client registry fallback:', err);
       }
-    };
-    loadBackendClients();
+    } catch (err) {
+      console.warn('Using local client registry fallback:', err);
+    }
   }, [activeOrg?.id, isIndividualBusiness]);
+
+  useEffect(() => {
+    refreshClients();
+  }, [refreshClients]);
 
   const currentClient = clients.find((c) => c.id === currentClientId) || clients[0];
 
@@ -473,6 +476,38 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { success: true, message: `Organisation '${target.name}' deleted successfully.` };
   };
 
+  const updatePipelineLastRun = (clientId: string, pipelineId: string, summary: any) => {
+    setClients((prev) => {
+      const next = prev.map((c) => {
+        if (c.id !== clientId) return c;
+        const pipes = (c.pipelines || []).map((p: any) => {
+          if (p.id !== pipelineId) return p;
+          return {
+            ...p,
+            last_triggered_at: summary.triggered_at || new Date().toISOString(),
+            total_runs_count: (Number(p.total_runs_count) || 0) + 1,
+            last_run_summary: summary,
+          };
+        });
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(`S4_PIPELINES_${clientId}`, JSON.stringify(pipes));
+          } catch (e) {}
+        }
+        return {
+          ...c,
+          pipelines: pipes,
+        };
+      });
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
+  };
+
   return (
     <ClientContext.Provider
       value={{
@@ -485,6 +520,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteClient,
         deletePipeline,
         savePipeline,
+        updatePipelineLastRun,
+        refreshClients,
         isSwitcherOpen,
         setIsSwitcherOpen,
         isWizardOpen,
