@@ -56,6 +56,27 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def ensure_json_content_type(request: Request, call_next):
+    """Automatically promotes requests with stringified JSON bodies to application/json if omitted."""
+    ct = request.headers.get("content-type", "").lower()
+    if request.method in ("POST", "PUT", "PATCH") and ("json" not in ct) and ("multipart" not in ct) and ("form" not in ct):
+        try:
+            body = await request.body()
+            stripped = body.strip()
+            if (stripped.startswith(b"{") and stripped.endswith(b"}")) or (stripped.startswith(b"[") and stripped.endswith(b"]")):
+                new_headers = []
+                for name, value in request.scope.get("headers", []):
+                    if name.lower() != b"content-type":
+                        new_headers.append((name, value))
+                new_headers.append((b"content-type", b"application/json"))
+                request.scope["headers"] = new_headers
+        except Exception:
+            pass
+    return await call_next(request)
+
+
 # Mount durable Inngest functions
 inngest.fast_api.serve(
     app,
@@ -98,17 +119,30 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     summary_msg = "; ".join(formatted_errors)
     logger.warning(f"422 Validation Error on {request.method} {request.url.path}: {summary_msg}")
 
+    # Safely convert errors to prevent "TypeError: Object of type bytes is not JSON serializable"
+    safe_errors = []
+    for err in exc.errors():
+        err_dict = dict(err)
+        if "input" in err_dict and isinstance(err_dict["input"], (bytes, bytearray)):
+            try:
+                err_dict["input"] = err_dict["input"].decode("utf-8", errors="replace")
+            except Exception:
+                err_dict["input"] = str(err_dict["input"])
+        safe_errors.append(err_dict)
+
+    from fastapi.encoders import jsonable_encoder
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
+        content=jsonable_encoder({
             "error": True,
             "error_type": "RequestValidationError",
             "message": f"Validation failed: {summary_msg}",
-            "detail": exc.errors(),
+            "detail": safe_errors,
             "formatted_errors": formatted_errors,
             "path": request.url.path,
             "method": request.method,
-        },
+        }),
     )
 
 

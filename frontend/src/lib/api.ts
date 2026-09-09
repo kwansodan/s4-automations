@@ -141,6 +141,38 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
   const candidates = buildCandidateUrls(path);
   const failedHosts: string[] = [];
 
+  // Normalize headers and guarantee Content-Type for JSON payloads
+  const headersRecord: Record<string, string> = {};
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      options.headers.forEach((v, k) => {
+        headersRecord[k] = v;
+      });
+    } else if (Array.isArray(options.headers)) {
+      options.headers.forEach(([k, v]) => {
+        headersRecord[k] = v;
+      });
+    } else {
+      Object.assign(headersRecord, options.headers);
+    }
+  }
+
+  const hasContentType = Object.keys(headersRecord).some(
+    (k) => k.toLowerCase() === 'content-type'
+  );
+  if (
+    !hasContentType &&
+    typeof options.body === 'string' &&
+    (options.body.trim().startsWith('{') || options.body.trim().startsWith('['))
+  ) {
+    headersRecord['Content-Type'] = 'application/json';
+  }
+
+  const effectiveOptions: RequestInit = {
+    ...options,
+    headers: headersRecord,
+  };
+
   let requestBodyParsed: any = undefined;
   if (options.body && typeof options.body === 'string') {
     try {
@@ -154,7 +186,7 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
     const url = candidates[i];
     const candidateStart = performance.now();
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, effectiveOptions);
       const durationMs = Math.round(performance.now() - candidateStart);
 
       // Report to in-app Network Inspector
@@ -1147,7 +1179,7 @@ export async function generateReleaseContent(payload: {
 }): Promise<GeneratedReleaseContent> {
   const res = await resilientFetch('/api/v1/social/generate', {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   return handleResponse<GeneratedReleaseContent>(res, 'Generate Multi-Channel Release Content');
@@ -1163,7 +1195,7 @@ export async function broadcastRelease(payload: BroadcastReleasePayload): Promis
 }> {
   const res = await resilientFetch('/api/v1/social/broadcast', {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   return handleResponse(res, 'Broadcast Release to Channels');
