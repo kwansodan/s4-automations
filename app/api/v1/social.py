@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, desc
 
-from app.db.session import get_db
+from app.db.session import get_db_session
 from app.models.db_models import FeatureRelease, get_utc_now
 from app.services.social_service import SocialBroadcasterService
 from app.utils.logging import get_logger
@@ -80,7 +80,7 @@ async def generate_channel_content(payload: GenerateReleaseRequest) -> Dict[str,
 @router.post("/broadcast")
 async def broadcast_release(
     payload: BroadcastReleaseRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ) -> Dict[str, Any]:
     """Dispatches the release communication across selected channels and records the release."""
     delivery_status: Dict[str, Any] = {}
@@ -152,7 +152,7 @@ async def broadcast_release(
 @router.get("/history")
 async def get_release_history(
     limit: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ) -> List[Dict[str, Any]]:
     """Returns past feature releases and their broadcast dispatch statuses."""
     try:
@@ -181,7 +181,7 @@ async def get_release_history(
 @router.get("/changelog")
 async def get_public_changelog(
     limit: int = 30,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ) -> List[Dict[str, Any]]:
     """Returns published in-app changelog entries for public or portal display."""
     try:

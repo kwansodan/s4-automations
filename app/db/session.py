@@ -368,3 +368,7 @@ def get_db_session() -> Generator[Session, None, None]:
     with Session(active_engine) as session:
         yield session
 
+
+# Alias for dependency injection compatibility
+get_db = get_db_session
+
