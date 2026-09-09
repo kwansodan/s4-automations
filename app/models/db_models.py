@@ -232,3 +232,31 @@ class BankTransaction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
 
+
+class FeatureRelease(SQLModel, table=True):
+    """Tracks new features built, social broadcasts, and in-app changelog entries."""
+    __tablename__ = "feature_releases"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    version: str = Field(default="1.0.0", index=True)
+    title: str = Field(index=True)
+    category: str = Field(default="ACCOUNTING_AUTOMATION", index=True)  # AP, AR, BANK, OCR, INTEGRATION, PLATFORM
+    summary: str
+    commit_hash: Optional[str] = Field(default=None, index=True)
+    
+    # Generated Channel Texts
+    linkedin_post: Optional[str] = Field(default=None)
+    twitter_post: Optional[str] = Field(default=None)
+    client_email_subject: Optional[str] = Field(default=None)
+    client_email_html: Optional[str] = Field(default=None)
+    changelog_entry: Optional[str] = Field(default=None)
+    
+    # Broadcast Dispatches & Delivery Logs
+    channels_broadcasted: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    broadcast_status: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    is_published_to_changelog: bool = Field(default=True, index=True)
+    
+    created_at: datetime = Field(default_factory=get_utc_now)
+    published_at: Optional[datetime] = Field(default=None)
+
+

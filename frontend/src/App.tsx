@@ -19,6 +19,7 @@ import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardMod
 import { ClientPortal } from './components/portal/ClientPortal';
 import { InformationRequestsSection } from './components/banking/InformationRequestsSection';
 import { SheetsViewer } from './components/sheets/SheetsViewer';
+import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
 import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -88,6 +89,8 @@ const MainLayout: React.FC = () => {
               )
             ) : activeTab === 'logs' ? (
               <LiveConsole />
+            ) : activeTab === 'social' || activeTab === 'changelog' ? (
+              <MultiChannelLaunchpad />
             ) : (
               <ClientWorkspace />
             )}

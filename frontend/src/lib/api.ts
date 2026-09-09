@@ -1059,5 +1059,130 @@ export async function fetchSystemDebugDumpApi(): Promise<any> {
   return handleResponse(res, 'Fetch System Debug Dump');
 }
 
+// -------------------------------------------------------------------------
+// Multi-Channel Social & Release Broadcaster API
+// -------------------------------------------------------------------------
+
+export interface GitCommitItem {
+  hash: string;
+  full_hash: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
+export interface GeneratedReleaseContent {
+  linkedin: {
+    hooks: string[];
+    body: string;
+    hashtags: string[];
+  };
+  twitter: {
+    tweet: string;
+    thread: string[];
+  };
+  client_email: {
+    subject: string;
+    preheader: string;
+    html: string;
+  };
+  changelog: {
+    version: string;
+    category: string;
+    markdown: string;
+  };
+}
+
+export interface BroadcastReleasePayload {
+  version: string;
+  title: string;
+  category: string;
+  summary: string;
+  commit_hash?: string;
+  linkedin_post?: string;
+  twitter_post?: string;
+  client_email_subject?: string;
+  client_email_html?: string;
+  changelog_entry?: string;
+  channels: ('linkedin' | 'twitter' | 'email' | 'changelog')[];
+  email_recipients?: string[];
+}
+
+export interface ReleaseHistoryItem {
+  id: number;
+  version: string;
+  title: string;
+  category: string;
+  summary: string;
+  commit_hash?: string;
+  channels_broadcasted: string[];
+  broadcast_status: Record<string, any>;
+  created_at?: string;
+  published_at?: string;
+}
+
+export interface ChangelogEntryItem {
+  id: number;
+  version: string;
+  title: string;
+  category: string;
+  summary: string;
+  changelog_entry: string;
+  published_at?: string;
+}
+
+export async function fetchRecentGitCommits(limit = 8): Promise<GitCommitItem[]> {
+  const res = await resilientFetch(`/api/v1/social/commits?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<GitCommitItem[]>(res, 'Fetch Recent Git Commits');
+}
+
+export async function generateReleaseContent(payload: {
+  title: string;
+  summary: string;
+  category?: string;
+  target_audience?: string;
+  commit_hash?: string;
+}): Promise<GeneratedReleaseContent> {
+  const res = await resilientFetch('/api/v1/social/generate', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<GeneratedReleaseContent>(res, 'Generate Multi-Channel Release Content');
+}
+
+export async function broadcastRelease(payload: BroadcastReleasePayload): Promise<{
+  success: boolean;
+  release_id?: number;
+  version: string;
+  title: string;
+  channels: string[];
+  delivery_status: Record<string, any>;
+}> {
+  const res = await resilientFetch('/api/v1/social/broadcast', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Broadcast Release to Channels');
+}
+
+export async function fetchReleaseHistory(limit = 20): Promise<ReleaseHistoryItem[]> {
+  const res = await resilientFetch(`/api/v1/social/history?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ReleaseHistoryItem[]>(res, 'Fetch Release History');
+}
+
+export async function fetchPublicChangelog(limit = 30): Promise<ChangelogEntryItem[]> {
+  const res = await resilientFetch(`/api/v1/social/changelog?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ChangelogEntryItem[]>(res, 'Fetch Public Changelog');
+}
+
+
 
 

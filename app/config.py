@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Password / Mailjet Secret Key")
     SMTP_FROM: str = Field(default="cdanso@service4gh.com", description="Sender Email Address")
 
+    # Social & Community Broadcaster (LinkedIn & X/Twitter)
+    LINKEDIN_ACCESS_TOKEN: Optional[str] = Field(default=None, description="LinkedIn OAuth2 User or Organization Access Token")
+    LINKEDIN_AUTHOR_URN: Optional[str] = Field(default=None, description="LinkedIn Author URN (e.g. urn:li:person:XXXX or urn:li:organization:YYYY)")
+    TWITTER_API_KEY: Optional[str] = Field(default=None, description="Twitter/X API Consumer Key")
+    TWITTER_API_SECRET: Optional[str] = Field(default=None, description="Twitter/X API Consumer Secret")
+    TWITTER_ACCESS_TOKEN: Optional[str] = Field(default=None, description="Twitter/X User Access Token")
+    TWITTER_ACCESS_SECRET: Optional[str] = Field(default=None, description="Twitter/X User Access Secret")
+
     # Database Configuration (PostgreSQL / SQLModel)
     DATABASE_URL: str = Field(
         default="postgresql://postgres:postgres@localhost:5432/s4_automations",
@@ -122,6 +130,12 @@ class Settings(BaseSettings):
             "AUTH_EMAIL": self.AUTH_EMAIL,
             "NOTIFICATION_EMAIL": self.NOTIFICATION_EMAIL,
             "DATABASE_URL": mask(self.DATABASE_URL),
+            "LINKEDIN_ACCESS_TOKEN": mask(self.LINKEDIN_ACCESS_TOKEN or ""),
+            "LINKEDIN_AUTHOR_URN": self.LINKEDIN_AUTHOR_URN or "",
+            "TWITTER_API_KEY": mask(self.TWITTER_API_KEY or ""),
+            "TWITTER_API_SECRET": mask(self.TWITTER_API_SECRET or ""),
+            "TWITTER_ACCESS_TOKEN": mask(self.TWITTER_ACCESS_TOKEN or ""),
+            "TWITTER_ACCESS_SECRET": mask(self.TWITTER_ACCESS_SECRET or ""),
             "PORT": self.PORT,
             "ENVIRONMENT": self.ENVIRONMENT,
             "LOG_LEVEL": self.LOG_LEVEL,

@@ -22,6 +22,8 @@ import {
   Sparkles,
   Building2,
   Check,
+  Share2,
+  BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -100,6 +102,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
+    { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
+    { tab: 'changelog', label: "What's New", icon: BookOpen },
     ...(user?.role === 'admin'
       ? [{ tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' }]
       : []),
