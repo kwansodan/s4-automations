@@ -2,9 +2,9 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, Any
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Request, status, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import inngest.fast_api
@@ -102,9 +102,6 @@ app.include_router(api_v1_router)
 # -------------------------------------------------------------------------
 
 import traceback
-from fastapi import Request, status, HTTPException
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 
 
 @app.exception_handler(RequestValidationError)
