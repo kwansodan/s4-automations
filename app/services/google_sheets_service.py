@@ -20,6 +20,7 @@ logger = get_logger("google_sheets")
 
 TAB_DAILY_DETAILS = "Daily_Slip_Details"
 TAB_MONTHLY_SUMMARY = "Monthly_Summary"
+TAB_AP_BILLS = "Vendor_Bills"
 
 DAILY_DETAILS_HEADERS = [
     "Date",
@@ -51,6 +52,21 @@ MONTHLY_SUMMARY_HEADERS = [
     "Reviewed?",
     "Approved?",
     "Status",
+]
+
+AP_BILLS_HEADERS = [
+    "Date",
+    "Vendor Name",
+    "Bill #",
+    "File Name",
+    "Item / Description",
+    "Quantity",
+    "Unit Rate (GHS)",
+    "Total Amount (GHS)",
+    "Currency",
+    "Status",
+    "Accounting Ref",
+    "Processed At",
 ]
 
 
@@ -166,6 +182,118 @@ class GoogleSheetsService:
                 mock_id = f"mock_sheet_{month_name.lower()}_{year}"
                 return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
             raise
+
+    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def find_or_create_ap_workbook(
+        self, month_name: str, year: int, month_folder_id: str, client_name: str = "ANR"
+    ) -> Tuple[str, str]:
+        """
+        Locates or creates a dedicated Google Sheet AP review workbook:
+        '{client_name}_AP_Bills_{Month}_{YYYY}' inside the Month Folder.
+        Returns (spreadsheet_id, spreadsheet_url).
+        """
+        safe_prefix = "".join(c for c in client_name if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
+        workbook_title = f"{safe_prefix}_AP_Bills_{month_name}_{year}"
+
+        if settings.MOCK_MODE or not self.sheets or not self.drive or not month_folder_id or month_folder_id.startswith("mock_"):
+            logger.info(f"[MOCK] Finding or creating AP workbook: {workbook_title}")
+            mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
+            return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+
+        try:
+            # 1. Search if already exists in folder
+            query = (
+                f"name = '{workbook_title}' and "
+                f"'{month_folder_id}' in parents and "
+                f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                f"trashed = false"
+            )
+            res = self.drive.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
+            files = res.get("files", [])
+            if files:
+                sheet_id = files[0]["id"]
+                sheet_url = files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                logger.info(f"Found existing AP review workbook '{workbook_title}' (ID: {sheet_id})")
+                return sheet_id, sheet_url
+
+            # 2. Create new spreadsheet with Vendor_Bills tab
+            spreadsheet_body = {
+                "properties": {"title": workbook_title},
+                "sheets": [
+                    {"properties": {"title": TAB_AP_BILLS, "index": 0}},
+                ],
+            }
+            created = self.sheets.spreadsheets().create(body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl").execute()
+            sheet_id = created["spreadsheetId"]
+            sheet_url = created["spreadsheetUrl"]
+
+            # Move to the Month folder if valid
+            if month_folder_id and month_folder_id != "root" and not month_folder_id.startswith("mock_"):
+                try:
+                    self.drive.files().update(
+                        fileId=sheet_id,
+                        addParents=month_folder_id,
+                        fields="id, parents"
+                    ).execute()
+                except Exception as move_err:
+                    logger.warning(f"Could not move AP sheet {sheet_id} to folder {month_folder_id}: {move_err}")
+
+            # Initialize AP headers
+            self.sheets.spreadsheets().values().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={
+                    "valueInputOption": "RAW",
+                    "data": [
+                        {
+                            "range": f"'{TAB_AP_BILLS}'!A1:L1",
+                            "values": [AP_BILLS_HEADERS],
+                        },
+                    ],
+                },
+            ).execute()
+            logger.info(f"Created and initialized new AP review workbook '{workbook_title}' (ID: {sheet_id})")
+            return sheet_id, sheet_url
+        except HttpError as e:
+            if e.resp.status in (404, 403):
+                mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
+                return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+            raise
+
+    def append_ap_vendor_bills(self, spreadsheet_id: str, items: List[Any], auto_post: bool = False):
+        """Appends extracted AP vendor bills to the Vendor_Bills sheet."""
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            return
+
+        rows = []
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for it in items:
+            raw = getattr(it, "raw_extracted_data", {}) or {}
+            d = raw.get("date") or raw.get("bill_date") or ""
+            v_name = raw.get("vendor") or raw.get("vendor_name") or ""
+            b_num = raw.get("bill_number") or ""
+            f_name = raw.get("file_name") or ""
+            desc = getattr(it, "item_or_description", "")
+            qty = getattr(it, "quantity_or_debit", 1.0)
+            rate = getattr(it, "unit_price", 0.0)
+            tot = getattr(it, "total_amount", 0.0)
+            curr = raw.get("currency", "GHS")
+            st = "BILLED" if auto_post else "PENDING"
+            doc_ref = raw.get("accounting_ref_id", "")
+
+            rows.append([d, v_name, b_num, f_name, desc, qty, rate, tot, curr, st, doc_ref, now_str])
+
+        if rows:
+            try:
+                self.sheets.spreadsheets().values().append(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'{TAB_AP_BILLS}'!A2:L",
+                    valueInputOption="USER_ENTERED",
+                    insertDataOption="INSERT_ROWS",
+                    body={"values": rows},
+                ).execute()
+                logger.info(f"Appended {len(rows)} AP bill rows to Google Sheet '{spreadsheet_id}'")
+            except Exception as e:
+                logger.warning(f"Could not append AP bills to Google Sheet: {e}")
 
     def _initialize_tabs(self, spreadsheet_id: str):
         """Initializes headers, column formats, frozen rows, and conditional formatting."""

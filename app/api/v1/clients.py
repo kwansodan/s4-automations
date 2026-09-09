@@ -743,6 +743,16 @@ async def trigger_pipeline_stream(
     else:
         auto_post = bool(pipeline.get("auto_post_to_zoho", False) or pipeline.get("auto_post_draft", False))
 
+    pipe_type = pipeline.get("pipeline_type") or (
+        "AP"
+        if any(
+            k in str(pipeline.get("entity_type", "")).lower()
+            or k in str(pipeline.get("name", "")).lower()
+            for k in ["ap", "payable", "bill", "vendor", "expense"]
+        )
+        else "AR"
+    )
+
     from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
     strategy = DynamicBlueprintStrategy(client)
 
@@ -750,13 +760,16 @@ async def trigger_pipeline_stream(
         # Discover and extract for this specific pipeline
         sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
         extracted = await strategy.extract_and_validate(sources)
-        sync_res = await strategy.sync_review_workspace(month, year, extracted, auto_post=auto_post)
+        sync_res = await strategy.sync_review_workspace(
+            month, year, extracted, auto_post=auto_post, pipeline_id=pipeline_id
+        )
     except Exception as e:
         logger.error(f"Pipeline stream '{pipeline_id}' execution exception: {e}")
         return {
             "client_id": client_id,
             "pipeline_id": pipeline_id,
             "pipeline_name": pipeline.get("name"),
+            "pipeline_type": pipe_type,
             "status": "FAILED",
             "month": month,
             "year": year,
@@ -818,6 +831,7 @@ async def trigger_pipeline_stream(
     last_run_summary = {
         "pipeline_id": pipeline_id,
         "pipeline_name": pipeline.get("name"),
+        "pipeline_type": pipe_type,
         "triggered_at": datetime.now(timezone.utc).isoformat(),
         "month": month,
         "year": year,
@@ -871,6 +885,7 @@ async def trigger_pipeline_stream(
         "client_id": client_id,
         "pipeline_id": pipeline_id,
         "pipeline_name": pipeline.get("name"),
+        "pipeline_type": pipe_type,
         "status": status_str,
         "summary_message": summary_msg,
         "error_message": error_msg,

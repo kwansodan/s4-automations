@@ -48,6 +48,13 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
     runSummary.status === 'FAILED' ||
     (runSummary.errors && runSummary.errors.length > 0);
 
+  const isAp =
+    runSummary.pipeline_type === 'AP' ||
+    runSummary.pipeline_name?.toLowerCase().includes('ap') ||
+    runSummary.pipeline_name?.toLowerCase().includes('bill') ||
+    runSummary.pipeline_name?.toLowerCase().includes('vendor') ||
+    runSummary.pipeline_name?.toLowerCase().includes('payable');
+
   // Compile combined document list from documents metadata
   const discoveredDocs = runSummary.documents?.discovered || [];
   const skippedDocs = runSummary.documents?.skipped || [];
@@ -89,12 +96,12 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
                     isFailed
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                       : isDuplicateSkipOnly
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                       : isEmptyRun
-                      ? 'bg-slate-800 text-slate-300 border-slate-700'
-                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      ? 'bg-slate-800 text-slate-400 border-slate-700'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                   }`}
                 >
                   {isFailed
@@ -106,12 +113,21 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
                     : 'Staged Successfully'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {runSummary.pipeline_name || 'Ingestion Stream'} •{' '}
+              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span
+                  className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                    isAp ? 'bg-amber-500/20 text-amber-300' : 'bg-sky-500/20 text-sky-300'
+                  }`}
+                >
+                  {isAp ? 'AP BILLS' : 'AR INVOICING'}
+                </span>
+                <span>{runSummary.pipeline_name || (isAp ? 'AP Vendor Bills Stream' : 'AR Ingestion Stream')}</span>
+                <span>•</span>
                 <span className="font-semibold text-slate-300">
                   {runSummary.month} {runSummary.year}
-                </span>{' '}
-                • {new Date(runSummary.triggered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                <span>•</span>
+                <span>{new Date(runSummary.triggered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               </p>
             </div>
           </div>
@@ -371,12 +387,12 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition"
               >
-                <span>Open Google Sheet Review Workbook</span>
+                <span>{isAp ? 'Open AP Bills Google Sheet' : 'Open AR Review Workbook (Google Sheets)'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             ) : (
               <span className="text-[11px] text-slate-500 font-mono">
-                Ledger ID: {runSummary.month}_{runSummary.year}
+                Ledger: {isAp ? 'AP Vendor Bills' : 'AR Invoicing'} ({runSummary.month} {runSummary.year})
               </span>
             )}
           </div>

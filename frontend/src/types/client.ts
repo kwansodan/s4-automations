@@ -203,6 +203,7 @@ export interface IngestionPipeline {
 export interface PipelineRunSummary {
   pipeline_id?: string;
   pipeline_name?: string;
+  pipeline_type?: 'AP' | 'AR' | 'BANK' | string;
   triggered_at: string;
   month: string;
   year: number;

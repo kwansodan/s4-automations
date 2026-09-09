@@ -111,6 +111,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     doc.metadata["pipeline_id"] = pipe_id
                     doc.metadata["pipeline_name"] = pipe_name
                     doc.metadata["entity_type"] = entity_type
+                    doc.metadata["pipeline_type"] = pipe.get("pipeline_type") or ("AP" if "ap" in str(entity_type).lower() or "bill" in pipe_name.lower() or "payable" in pipe_name.lower() else "AR")
                     doc.metadata["human_instructions"] = pipe.get("human_instructions")
                 all_docs.extend(pipe_docs)
         else:
@@ -255,17 +256,60 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             pipeline_name = doc.metadata.get("pipeline_name", "Default Ingestion Pipeline")
             pipeline_id = doc.metadata.get("pipeline_id")
 
+            is_ap = (
+                entity_type.startswith("ap_")
+                or doc.metadata.get("pipeline_type") == "AP"
+                or "bill" in pipeline_name.lower()
+                or "payable" in pipeline_name.lower()
+                or "vendor" in pipeline_name.lower()
+            )
+
             # Run extraction
             if doc.file_bytes:
                 try:
-                    extraction_obj = await ocr.extract_slip_data(
-                        file_bytes=doc.file_bytes,
-                        mime_type=doc.mime_type,
-                        file_name=doc.file_name,
-                        client_name=self.client_name,
-                        item_catalog=[],
-                    )
-                    extraction = extraction_obj.model_dump()
+                    if is_ap:
+                        bill_extraction = await ocr.extract_vendor_bill(
+                            file_bytes=doc.file_bytes,
+                            mime_type=doc.mime_type,
+                            file_name=doc.file_name,
+                        )
+                        v_name = bill_extraction.vendor_name or self.client_name
+                        extraction = {
+                            "vendor": v_name,
+                            "vendor_name": v_name,
+                            "bill_number": bill_extraction.bill_number or f"BILL-{doc.file_name[:8]}",
+                            "date": bill_extraction.bill_date or doc.metadata.get("date"),
+                            "total_amount": float(bill_extraction.total_amount or 0.0),
+                            "currency": bill_extraction.currency or "GHS",
+                            "confidence_score": 0.95,
+                            "items": [
+                                {
+                                    "item_name": it.item_description or "Vendor Bill Item",
+                                    "description": it.item_description,
+                                    "quantity": float(it.quantity or 1.0),
+                                    "unit_price": float(it.unit_rate or it.amount or 0.0),
+                                    "total_amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
+                                }
+                                for it in bill_extraction.items
+                            ] if bill_extraction.items else [
+                                {
+                                    "item_name": f"Vendor Bill: {v_name}",
+                                    "description": f"Vendor Bill from {v_name}",
+                                    "quantity": 1.0,
+                                    "unit_price": float(bill_extraction.total_amount or 100.0),
+                                    "total_amount": float(bill_extraction.total_amount or 100.0),
+                                }
+                            ],
+                        }
+                    else:
+                        extraction_obj = await ocr.extract_slip_data(
+                            file_bytes=doc.file_bytes,
+                            mime_type=doc.mime_type,
+                            file_name=doc.file_name,
+                            client_name=self.client_name,
+                            item_catalog=[],
+                        )
+                        extraction = extraction_obj.model_dump()
                 except Exception as e:
                     logger.warning(f"Vision OCR fallback for {doc.file_name}: {e}")
                     extraction = {"items": [], "vendor": self.client_name, "total_amount": 150.0}
@@ -377,7 +421,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         return extracted_items
 
     async def sync_review_workspace(
-        self, month: str, year: int, items: List[ExtractedLineItem], auto_post: bool = False
+        self,
+        month: str,
+        year: int,
+        items: List[ExtractedLineItem],
+        auto_post: bool = False,
+        pipeline_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Stages extracted transactions into PostgreSQL database ledger and Google Sheets with validation status."""
         logger.info(f"[{self.client_name}] Stage 3: Staging {len(items)} items in review ledger (auto_post={auto_post})...")
@@ -391,14 +440,28 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         staged_count = 0
         held_count = 0
 
+        pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
+        pipe_type_hint = pipe_obj.get("pipeline_type") if pipe_obj else None
+        entity_type_hint = pipe_obj.get("entity_type", "") if pipe_obj else ""
+        pipe_name_hint = pipe_obj.get("name", "") if pipe_obj else ""
+
+        is_ap = (
+            pipe_type_hint == "AP"
+            or entity_type_hint.startswith("ap_")
+            or "bill" in pipe_name_hint.lower()
+            or "payable" in pipe_name_hint.lower()
+            or any((it.raw_extracted_data or {}).get("entity_type", "").startswith("ap_") for it in items)
+        )
+        determined_pipe_type = "AP" if is_ap else ("BANK" if entity_type_hint.startswith("bank_") else "AR")
+
         with Session(get_engine()) as session:
             for it in items:
                 raw_meta = it.raw_extracted_data or {}
                 val_status = raw_meta.get("validation_status", "VALID")
                 val_errors = raw_meta.get("validation_errors", [])
-                entity_type = raw_meta.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)
-                pipeline_id = raw_meta.get("pipeline_id")
-                pipeline_name = raw_meta.get("pipeline_name")
+                entity_type = raw_meta.get("entity_type", AccountingEntityType.AP_VENDOR_BILL.value if is_ap else AccountingEntityType.AR_SALES_INVOICE.value)
+                item_pipe_id = raw_meta.get("pipeline_id") or pipeline_id
+                pipeline_name = raw_meta.get("pipeline_name") or pipe_name_hint
                 file_name = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
                 source_identifier = raw_meta.get("source_identifier")
                 tx_date = raw_meta.get("date") or f"{year}-{month}-01"
@@ -413,8 +476,9 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 staged = StagedTransaction(
                     client_id=self.client_id,
                     batch_id=batch_id,
-                    pipeline_id=pipeline_id,
+                    pipeline_id=item_pipe_id,
                     pipeline_name=pipeline_name,
+                    pipeline_type=determined_pipe_type,
                     entity_type=entity_type,
                     transaction_date=str(tx_date),
                     source_type=self.client.source_type or "google_drive",
@@ -446,8 +510,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         sheet_id = None
         try:
             from app.services.google_sheets_service import GoogleSheetsService
-            from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
-
             drive = GoogleDriveService()
             sheets = GoogleSheetsService()
             month_folder_id = self.client.folder_id or "root"
@@ -458,63 +520,80 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             except Exception:
                 pass
 
-            sheet_id, sheet_url = sheets.find_or_create_workbook(month, year, month_folder_id)
-            if sheet_id and not sheet_id.startswith("mock_"):
-                detail_rows = []
-                for it in items:
-                    raw_meta = it.raw_extracted_data or {}
-                    fn = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
-                    c_name = raw_meta.get("vendor") or raw_meta.get("hotel_name") or raw_meta.get("client_name") or self.client_name
-                    slip_d = raw_meta.get("date") or f"{year}-{month}-01"
-                    detail_rows.append(
-                        DailySlipDetailRow(
-                            slip_date=str(slip_d),
-                            file_name=str(fn),
-                            client_name=str(c_name),
-                            raw_item_name=it.item_or_description,
-                            standard_item_name=it.item_or_description,
-                            pickup_qty=int(it.credit_amount or 0),
-                            delivery_qty=int(it.quantity_or_debit or 1),
-                            loss_qty=int(it.discrepancy or 0),
-                            confidence_score=ConfidenceLevel.HIGH,
-                            drive_file_url="",
-                            processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        )
-                    )
-                if detail_rows:
-                    sheets.append_daily_slip_details(sheet_id, detail_rows)
-
-                summary_status = SlipStatus.APPROVED if auto_post else SlipStatus.PENDING
-                summary_rows = []
-                for it in items:
-                    raw_meta = it.raw_extracted_data or {}
-                    c_name = raw_meta.get("vendor") or raw_meta.get("client_name") or self.client_name
-                    summary_rows.append(
-                        MonthlySummaryRow(
-                            client_name=str(c_name),
-                            zoho_contact_id=str(self.client.zoho_contact_id or ""),
-                            zoho_item_id="",
-                            standard_item_name=it.item_or_description,
-                            raw_names_seen=it.item_or_description,
-                            confidence_score=ConfidenceLevel.HIGH,
-                            unit_rate=it.unit_price or 0.0,
-                            total_picked_up=int(it.credit_amount or 0),
-                            total_delivered=int(it.quantity_or_debit or 1),
-                            linen_discrepancy=int(it.discrepancy or 0),
-                            total_billed=it.total_amount or 0.0,
-                            audit_notes="Auto-Posted Live" if auto_post else "Pending Human Review",
-                            status=summary_status,
-                        )
-                    )
-                if summary_rows:
-                    sheets.sync_monthly_summaries(sheet_id, summary_rows)
-                self.log_step(
-                    "SPREADSHEET_SYNC",
-                    f"Logged {len(detail_rows)} record(s) into Google Sheet '{sheet_id[:15]}...'.",
-                    "info",
-                    {"sheet_id": sheet_id, "sheet_url": sheet_url},
+            if is_ap:
+                # Dedicated AP Vendor Bills Review Workbook (Never touches the AR laundry sheet)
+                sheet_id, sheet_url = sheets.find_or_create_ap_workbook(
+                    month, year, month_folder_id, client_name=self.client_name
                 )
-                logger.info(f"📊 Logged {len(detail_rows)} file entries into Google Sheet '{sheet_id}' (auto_post={auto_post})")
+                if sheet_id and not sheet_id.startswith("mock_"):
+                    sheets.append_ap_vendor_bills(sheet_id, items, auto_post=auto_post)
+                    self.log_step(
+                        "SPREADSHEET_SYNC",
+                        f"Logged {len(items)} AP bill(s) into dedicated AP Review Sheet '{sheet_id[:15]}...'.",
+                        "info",
+                        {"sheet_id": sheet_id, "sheet_url": sheet_url},
+                    )
+                    logger.info(f"📊 Logged {len(items)} AP bills into AP Google Sheet '{sheet_id}' (auto_post={auto_post})")
+            else:
+                # AR Customer Control Slips & Billing Review Workbook
+                from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
+                sheet_id, sheet_url = sheets.find_or_create_workbook(month, year, month_folder_id)
+                if sheet_id and not sheet_id.startswith("mock_"):
+                    detail_rows = []
+                    for it in items:
+                        raw_meta = it.raw_extracted_data or {}
+                        fn = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
+                        c_name = raw_meta.get("vendor") or raw_meta.get("hotel_name") or raw_meta.get("client_name") or self.client_name
+                        slip_d = raw_meta.get("date") or f"{year}-{month}-01"
+                        detail_rows.append(
+                            DailySlipDetailRow(
+                                slip_date=str(slip_d),
+                                file_name=str(fn),
+                                client_name=str(c_name),
+                                raw_item_name=it.item_or_description,
+                                standard_item_name=it.item_or_description,
+                                pickup_qty=int(it.credit_amount or 0),
+                                delivery_qty=int(it.quantity_or_debit or 1),
+                                loss_qty=int(it.discrepancy or 0),
+                                confidence_score=ConfidenceLevel.HIGH,
+                                drive_file_url="",
+                                processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            )
+                        )
+                    if detail_rows:
+                        sheets.append_daily_slip_details(sheet_id, detail_rows)
+
+                    summary_status = SlipStatus.APPROVED if auto_post else SlipStatus.PENDING
+                    summary_rows = []
+                    for it in items:
+                        raw_meta = it.raw_extracted_data or {}
+                        c_name = raw_meta.get("vendor") or raw_meta.get("client_name") or self.client_name
+                        summary_rows.append(
+                            MonthlySummaryRow(
+                                client_name=str(c_name),
+                                zoho_contact_id=str(self.client.zoho_contact_id or ""),
+                                zoho_item_id="",
+                                standard_item_name=it.item_or_description,
+                                raw_names_seen=it.item_or_description,
+                                confidence_score=ConfidenceLevel.HIGH,
+                                unit_rate=it.unit_price or 0.0,
+                                total_picked_up=int(it.credit_amount or 0),
+                                total_delivered=int(it.quantity_or_debit or 1),
+                                linen_discrepancy=int(it.discrepancy or 0),
+                                total_billed=it.total_amount or 0.0,
+                                audit_notes="Auto-Posted Live" if auto_post else "Pending Human Review",
+                                status=summary_status,
+                            )
+                        )
+                    if summary_rows:
+                        sheets.sync_monthly_summaries(sheet_id, summary_rows)
+                    self.log_step(
+                        "SPREADSHEET_SYNC",
+                        f"Logged {len(detail_rows)} record(s) into AR Google Sheet '{sheet_id[:15]}...'.",
+                        "info",
+                        {"sheet_id": sheet_id, "sheet_url": sheet_url},
+                    )
+                    logger.info(f"📊 Logged {len(detail_rows)} file entries into AR Google Sheet '{sheet_id}' (auto_post={auto_post})")
         except Exception as gs_err:
             logger.warning(f"Google Sheets sync notice: {gs_err}")
 
