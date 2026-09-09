@@ -1,6 +1,7 @@
 """FastAPI Application Entrypoint for S4 Automations Engine."""
 
 import os
+from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
