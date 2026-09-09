@@ -380,7 +380,9 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-800 bg-slate-950/80 flex flex-wrap items-center justify-between gap-3">
           <div>
-            {runSummary.spreadsheet_url ? (
+            {runSummary.spreadsheet_url &&
+            !runSummary.spreadsheet_url.includes('mock_sheet') &&
+            !runSummary.spreadsheet_id?.startsWith('mock_') ? (
               <a
                 href={runSummary.spreadsheet_url}
                 target="_blank"
@@ -391,9 +393,15 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             ) : (
-              <span className="text-[11px] text-slate-500 font-mono">
-                Ledger: {isAp ? 'AP Vendor Bills' : 'AR Invoicing'} ({runSummary.month} {runSummary.year})
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="text-[11.5px] text-slate-300 font-medium">
+                  {isAp ? 'Staged in AP Vendor Bills Ledger' : 'Staged in AR Invoicing Ledger'}
+                </span>
+                <span className="text-[10.5px] text-slate-500 font-mono">
+                  ({runSummary.month} {runSummary.year})
+                </span>
+              </div>
             )}
           </div>
 

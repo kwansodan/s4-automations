@@ -513,12 +513,21 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             drive = GoogleDriveService()
             sheets = GoogleSheetsService()
             month_folder_id = self.client.folder_id or "root"
-            try:
-                m_fid = drive.get_month_folder(month, year)
-                if m_fid:
-                    month_folder_id = m_fid
-            except Exception:
-                pass
+            pipe_folder = (
+                pipe_obj.get("source_identifier")
+                or (pipe_obj.get("source_config") or {}).get("folder_id")
+                if pipe_obj
+                else None
+            )
+            if pipe_folder and not str(pipe_folder).startswith("mock_"):
+                month_folder_id = str(pipe_folder)
+            else:
+                try:
+                    m_fid = drive.get_month_folder(month, year)
+                    if m_fid and not str(m_fid).startswith("mock_"):
+                        month_folder_id = m_fid
+                except Exception:
+                    pass
 
             if is_ap:
                 # Dedicated AP Vendor Bills Review Workbook (Never touches the AR laundry sheet)
@@ -529,11 +538,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     sheets.append_ap_vendor_bills(sheet_id, items, auto_post=auto_post)
                     self.log_step(
                         "SPREADSHEET_SYNC",
-                        f"Logged {len(items)} AP bill(s) into dedicated AP Review Sheet '{sheet_id[:15]}...'.",
+                        f"Logged {len(items)} AP bill(s) into AP Review Sheet '{sheet_id[:15]}...'.",
                         "info",
                         {"sheet_id": sheet_id, "sheet_url": sheet_url},
                     )
                     logger.info(f"📊 Logged {len(items)} AP bills into AP Google Sheet '{sheet_id}' (auto_post={auto_post})")
+                else:
+                    sheet_url = None
             else:
                 # AR Customer Control Slips & Billing Review Workbook
                 from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
@@ -594,6 +605,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         {"sheet_id": sheet_id, "sheet_url": sheet_url},
                     )
                     logger.info(f"📊 Logged {len(detail_rows)} file entries into AR Google Sheet '{sheet_id}' (auto_post={auto_post})")
+                else:
+                    sheet_url = None
         except Exception as gs_err:
             logger.warning(f"Google Sheets sync notice: {gs_err}")
 

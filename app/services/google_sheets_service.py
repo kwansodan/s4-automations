@@ -129,7 +129,7 @@ class GoogleSheetsService:
         if settings.MOCK_MODE or not self.sheets or not self.drive or not month_folder_id or month_folder_id.startswith("mock_"):
             logger.info(f"[MOCK] Finding or creating review workbook: {workbook_title}")
             mock_id = f"mock_sheet_{month_name.lower()}_{year}"
-            return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+            return mock_id, None
 
         try:
             # 1. Search if already exists in folder
@@ -139,7 +139,13 @@ class GoogleSheetsService:
                 f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
                 f"trashed = false"
             )
-            res = self.drive.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
+            res = self.drive.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name, webViewLink)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
             files = res.get("files", [])
             if files:
                 sheet_id = files[0]["id"]
@@ -165,7 +171,8 @@ class GoogleSheetsService:
                     self.drive.files().update(
                         fileId=sheet_id,
                         addParents=month_folder_id,
-                        fields="id, parents"
+                        fields="id, parents",
+                        supportsAllDrives=True,
                     ).execute()
                 except Exception as move_err:
                     logger.warning(f"Could not move sheet {sheet_id} to folder {month_folder_id}: {move_err}")
@@ -180,35 +187,48 @@ class GoogleSheetsService:
                     f"Google API returned HTTP {e.resp.status} when locating/creating workbook. Falling back to mock sheet."
                 )
                 mock_id = f"mock_sheet_{month_name.lower()}_{year}"
-                return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+                return mock_id, None
             raise
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def find_or_create_ap_workbook(
         self, month_name: str, year: int, month_folder_id: str, client_name: str = "ANR"
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, Optional[str]]:
         """
         Locates or creates a dedicated Google Sheet AP review workbook:
         '{client_name}_AP_Bills_{Month}_{YYYY}' inside the Month Folder.
+        Falls back to attaching a 'Vendor_Bills' tab to an existing review workbook in the folder
+        if creating a separate spreadsheet is restricted by Google Drive quota/permissions.
         Returns (spreadsheet_id, spreadsheet_url).
         """
         safe_prefix = "".join(c for c in client_name if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
         workbook_title = f"{safe_prefix}_AP_Bills_{month_name}_{year}"
 
-        if settings.MOCK_MODE or not self.sheets or not self.drive or not month_folder_id or month_folder_id.startswith("mock_"):
-            logger.info(f"[MOCK] Finding or creating AP workbook: {workbook_title}")
+        if settings.MOCK_MODE or not self.sheets or not self.drive:
+            logger.info(f"[MOCK] Mock mode active: finding or creating AP workbook '{workbook_title}'")
             mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
-            return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
+            return mock_id, None
+
+        parent_folder = month_folder_id if (month_folder_id and not month_folder_id.startswith("mock_")) else None
 
         try:
-            # 1. Search if already exists in folder
+            # 1. Search if dedicated AP workbook already exists in folder or drive
             query = (
                 f"name = '{workbook_title}' and "
-                f"'{month_folder_id}' in parents and "
                 f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
                 f"trashed = false"
             )
-            res = self.drive.files().list(q=query, spaces="drive", fields="files(id, name, webViewLink)").execute()
+            if parent_folder and parent_folder != "root":
+                query += f" and '{parent_folder}' in parents"
+
+            res = self.drive.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name, webViewLink)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=10,
+            ).execute()
             files = res.get("files", [])
             if files:
                 sheet_id = files[0]["id"]
@@ -216,48 +236,127 @@ class GoogleSheetsService:
                 logger.info(f"Found existing AP review workbook '{workbook_title}' (ID: {sheet_id})")
                 return sheet_id, sheet_url
 
-            # 2. Create new spreadsheet with Vendor_Bills tab
-            spreadsheet_body = {
-                "properties": {"title": workbook_title},
-                "sheets": [
-                    {"properties": {"title": TAB_AP_BILLS, "index": 0}},
-                ],
+            # 2. Try creating new dedicated AP spreadsheet inside parent folder
+            file_metadata = {
+                "name": workbook_title,
+                "mimeType": "application/vnd.google-apps.spreadsheet",
             }
-            created = self.sheets.spreadsheets().create(body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl").execute()
-            sheet_id = created["spreadsheetId"]
-            sheet_url = created["spreadsheetUrl"]
+            if parent_folder and parent_folder != "root":
+                file_metadata["parents"] = [parent_folder]
 
-            # Move to the Month folder if valid
-            if month_folder_id and month_folder_id != "root" and not month_folder_id.startswith("mock_"):
+            try:
+                created = self.drive.files().create(
+                    body=file_metadata,
+                    fields="id, webViewLink",
+                    supportsAllDrives=True,
+                ).execute()
+                sheet_id = created["id"]
+                sheet_url = created.get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+
+                # Rename default Sheet1 to TAB_AP_BILLS
                 try:
-                    self.drive.files().update(
-                        fileId=sheet_id,
-                        addParents=month_folder_id,
-                        fields="id, parents"
-                    ).execute()
-                except Exception as move_err:
-                    logger.warning(f"Could not move AP sheet {sheet_id} to folder {month_folder_id}: {move_err}")
-
-            # Initialize AP headers
-            self.sheets.spreadsheets().values().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={
-                    "valueInputOption": "RAW",
-                    "data": [
-                        {
-                            "range": f"'{TAB_AP_BILLS}'!A1:L1",
-                            "values": [AP_BILLS_HEADERS],
+                    sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                    first_sheet_id = sheet_meta["sheets"][0]["properties"]["sheetId"]
+                    self.sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "updateSheetProperties": {
+                                        "properties": {
+                                            "sheetId": first_sheet_id,
+                                            "title": TAB_AP_BILLS,
+                                        },
+                                        "fields": "title",
+                                    }
+                                }
+                            ]
                         },
-                    ],
-                },
-            ).execute()
-            logger.info(f"Created and initialized new AP review workbook '{workbook_title}' (ID: {sheet_id})")
-            return sheet_id, sheet_url
-        except HttpError as e:
-            if e.resp.status in (404, 403):
-                mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
-                return mock_id, f"https://docs.google.com/spreadsheets/d/{mock_id}/edit"
-            raise
+                    ).execute()
+                except Exception as rename_err:
+                    logger.warning(f"Notice setting initial tab title: {rename_err}")
+
+                # Initialize AP headers
+                self.sheets.spreadsheets().values().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={
+                        "valueInputOption": "RAW",
+                        "data": [
+                            {
+                                "range": f"'{TAB_AP_BILLS}'!A1:L1",
+                                "values": [AP_BILLS_HEADERS],
+                            },
+                        ],
+                    },
+                ).execute()
+                logger.info(f"Created and initialized dedicated AP review workbook '{workbook_title}' (ID: {sheet_id})")
+                return sheet_id, sheet_url
+
+            except Exception as create_err:
+                logger.warning(f"Could not create standalone AP spreadsheet in folder: {create_err}. Checking for existing shared workbook...")
+
+            # 3. Fallback: If creating a standalone sheet is restricted, check if an existing
+            # review workbook is shared in this folder (e.g. ANR_Billing_Review_<Month>_<Year>)
+            # and attach a dedicated 'Vendor_Bills' tab to it.
+            if parent_folder and parent_folder != "root":
+                try:
+                    q_existing = (
+                        f"'{parent_folder}' in parents and "
+                        f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                        f"trashed = false"
+                    )
+                    existing_res = self.drive.files().list(
+                        q=q_existing,
+                        spaces="drive",
+                        fields="files(id, name, webViewLink)",
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    ).execute()
+                    ext_files = existing_res.get("files", [])
+                    if ext_files:
+                        existing_sheet_id = ext_files[0]["id"]
+                        existing_sheet_url = ext_files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{existing_sheet_id}/edit")
+                        # Inspect sheets to see if Vendor_Bills already exists
+                        sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=existing_sheet_id).execute()
+                        sheets_list = sheet_meta.get("sheets", [])
+                        tab_id = None
+                        for s in sheets_list:
+                            if s["properties"]["title"] == TAB_AP_BILLS:
+                                tab_id = s["properties"]["sheetId"]
+                                break
+                        if tab_id is None:
+                            # Add dedicated Vendor_Bills tab
+                            add_resp = self.sheets.spreadsheets().batchUpdate(
+                                spreadsheetId=existing_sheet_id,
+                                body={
+                                    "requests": [
+                                        {"addSheet": {"properties": {"title": TAB_AP_BILLS}}}
+                                    ]
+                                }
+                            ).execute()
+                            tab_id = add_resp.get("replies", [{}])[0].get("addSheet", {}).get("properties", {}).get("sheetId")
+                            self.sheets.spreadsheets().values().batchUpdate(
+                                spreadsheetId=existing_sheet_id,
+                                body={
+                                    "valueInputOption": "RAW",
+                                    "data": [
+                                        {"range": f"'{TAB_AP_BILLS}'!A1:L1", "values": [AP_BILLS_HEADERS]},
+                                    ],
+                                },
+                            ).execute()
+                        final_url = f"{existing_sheet_url}#gid={tab_id}" if tab_id is not None else existing_sheet_url
+                        logger.info(f"Attached '{TAB_AP_BILLS}' tab to existing shared review sheet '{ext_files[0]['name']}' (ID: {existing_sheet_id})")
+                        return existing_sheet_id, final_url
+                except Exception as fb_err:
+                    logger.warning(f"Attaching tab to existing review sheet fallback notice: {fb_err}")
+
+            mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
+            return mock_id, None
+
+        except Exception as e:
+            logger.error(f"Error finding or creating AP workbook: {e}")
+            mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
+            return mock_id, None
 
     def append_ap_vendor_bills(self, spreadsheet_id: str, items: List[Any], auto_post: bool = False):
         """Appends extracted AP vendor bills to the Vendor_Bills sheet."""
@@ -284,6 +383,25 @@ class GoogleSheetsService:
 
         if rows:
             try:
+                # Ensure Vendor_Bills tab exists in target sheet
+                try:
+                    sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+                    titles = [s["properties"]["title"] for s in sheet_meta.get("sheets", [])]
+                    if TAB_AP_BILLS not in titles:
+                        self.sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=spreadsheet_id,
+                            body={"requests": [{"addSheet": {"properties": {"title": TAB_AP_BILLS}}}]}
+                        ).execute()
+                        self.sheets.spreadsheets().values().batchUpdate(
+                            spreadsheetId=spreadsheet_id,
+                            body={
+                                "valueInputOption": "RAW",
+                                "data": [{"range": f"'{TAB_AP_BILLS}'!A1:L1", "values": [AP_BILLS_HEADERS]}],
+                            }
+                        ).execute()
+                except Exception as meta_err:
+                    logger.debug(f"Sheet tab check notice: {meta_err}")
+
                 self.sheets.spreadsheets().values().append(
                     spreadsheetId=spreadsheet_id,
                     range=f"'{TAB_AP_BILLS}'!A2:L",
