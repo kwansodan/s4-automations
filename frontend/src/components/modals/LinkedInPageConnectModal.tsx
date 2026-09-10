@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import {
   LinkedInConfig,
+  LinkedInTestResult,
   fetchLinkedInConfig,
   updateLinkedInConfig,
   testLinkedInConnection,
@@ -37,13 +38,7 @@ export const LinkedInPageConnectModal: React.FC<LinkedInPageConnectModalProps> =
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    message: string;
-    mode?: string;
-    organization_name?: string;
-    authenticated_user?: string;
-  } | null>(null);
+  const [testResult, setTestResult] = useState<LinkedInTestResult | null>(null);
 
   // Form Fields
   const [postingMode, setPostingMode] = useState<'organization' | 'person'>('organization');

@@ -1254,24 +1254,26 @@ export async function updateLinkedInConfig(payload: {
   return handleResponse<LinkedInConfig>(res, 'Update LinkedIn Configuration');
 }
 
-export async function testLinkedInConnection(payload?: {
-  access_token?: string;
-  author_urn?: string;
-  organization_id?: string;
-}): Promise<{
+export interface LinkedInTestResult {
   success: boolean;
-  mode: string;
+  mode?: string;
   message: string;
   organization_name?: string;
   authenticated_user?: string;
   company_admin_url?: string;
-}> {
+}
+
+export async function testLinkedInConnection(payload?: {
+  access_token?: string;
+  author_urn?: string;
+  organization_id?: string;
+}): Promise<LinkedInTestResult> {
   const res = await resilientFetch('/api/v1/social/linkedin/test', {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload || {}),
   });
-  return handleResponse(res, 'Test LinkedIn Connection');
+  return handleResponse<LinkedInTestResult>(res, 'Test LinkedIn Connection');
 }
 
 
