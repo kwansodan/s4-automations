@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { queryBankTransaction } from '../../lib/api';
+import { queryBankTransaction, fetchClientContacts } from '../../lib/api';
 import type { BankTransactionRecord } from '../../types/client';
+import type { ClientContact } from '../../types/contacts';
 import {
   X,
   Send,
@@ -50,7 +51,26 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
     }
     return currentClient?.sourceEmail || 'cfo@clientorg.com';
   });
+  const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && currentClient?.id) {
+      fetchClientContacts(currentClient.id)
+        .then((res) => {
+          if (res.contacts && res.contacts.length > 0) {
+            setContacts(res.contacts);
+            const cfo = res.contacts.find((c) => c.role === 'CFO' || c.role === 'Financial_Controller');
+            if (cfo) {
+              setRecipientEmail(cfo.email);
+            } else if (res.contacts[0]) {
+              setRecipientEmail(res.contacts[0].email);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, currentClient?.id]);
 
   if (!isOpen || !transaction) return null;
 
@@ -182,19 +202,26 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
               placeholder="cfo@clientorg.com"
               className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
             />
-            {currentClient?.team_members && currentClient.team_members.length > 0 && (
+            {(contacts.length > 0 || (currentClient?.team_members && currentClient.team_members.length > 0)) && (
               <select
+                value={recipientEmail}
                 onChange={(e) => {
                   if (e.target.value) setRecipientEmail(e.target.value);
                 }}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer"
+                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer max-w-[200px] truncate"
               >
-                <option value="">Choose Team Member...</option>
-                {currentClient.team_members.map((m) => (
-                  <option key={m.id} value={m.email}>
-                    {m.name} ({m.role.replace('_', ' ')})
-                  </option>
-                ))}
+                <option value="">Select Stakeholder...</option>
+                {contacts.length > 0
+                  ? contacts.map((c) => (
+                      <option key={c.id} value={c.email}>
+                        {c.name} ({c.role.replace('_', ' ')})
+                      </option>
+                    ))
+                  : currentClient?.team_members?.map((m) => (
+                      <option key={m.id} value={m.email}>
+                        {m.name} ({m.role.replace('_', ' ')})
+                      </option>
+                    ))}
               </select>
             )}
           </div>

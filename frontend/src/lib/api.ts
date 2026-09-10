@@ -9,6 +9,13 @@ import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, DiagnosticsResult } from '../types/config';
 import type { PipelineSimulationResult } from '../types/client';
+import type {
+  ClientContact,
+  FirmTeamMember,
+  ContactStats,
+  InviteClientContactPayload,
+  InviteTeamMemberPayload,
+} from '../types/contacts';
 
 const DIRECT_BACKEND_URL = 'https://autapi.service4gh.com';
 
@@ -1437,6 +1444,136 @@ export async function fetchMarketingLeads(statusFilter?: string): Promise<{
   });
   return handleResponse(res, 'Fetch Marketing Leads');
 }
+
+// ---------------------------------------------------------------------------
+// Comprehensive Contact & Team Management
+// ---------------------------------------------------------------------------
+
+export async function fetchContactStats(organizationId: string = 's4_advisory'): Promise<ContactStats> {
+  const res = await resilientFetch(`/api/v1/contacts/stats?organization_id=${encodeURIComponent(organizationId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Contact Stats');
+}
+
+export async function fetchClientContacts(
+  clientId?: string,
+  status?: string,
+  search?: string,
+  organizationId: string = 's4_advisory'
+): Promise<{ success: boolean; count: number; contacts: ClientContact[] }> {
+  const params = new URLSearchParams({ organization_id: organizationId });
+  if (clientId && clientId !== 'ALL') params.append('client_id', clientId);
+  if (status && status !== 'ALL') params.append('status', status);
+  if (search) params.append('search', search);
+
+  const res = await resilientFetch(`/api/v1/contacts/client-contacts?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Client Contacts');
+}
+
+export async function inviteClientContact(
+  payload: InviteClientContactPayload,
+  organizationId: string = 's4_advisory'
+): Promise<{ success: boolean; contact: ClientContact; client_name: string; magic_url: string; email_sent: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/client-contacts?organization_id=${encodeURIComponent(organizationId)}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Invite Client Contact');
+}
+
+export async function resendClientContactInvite(
+  contactId: number
+): Promise<{ success: boolean; contact: ClientContact; magic_url: string; email_sent: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/client-contacts/${contactId}/resend-invite`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Resend Client Contact Invite');
+}
+
+export async function updateClientContact(
+  contactId: number,
+  payload: Partial<InviteClientContactPayload> & { portal_status?: string }
+): Promise<{ success: boolean; contact: ClientContact; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/client-contacts/${contactId}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update Client Contact');
+}
+
+export async function deleteClientContact(
+  contactId: number
+): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/client-contacts/${contactId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Delete Client Contact');
+}
+
+export async function fetchFirmTeamMembers(
+  search?: string,
+  organizationId: string = 's4_advisory'
+): Promise<{ success: boolean; count: number; team_members: FirmTeamMember[] }> {
+  const params = new URLSearchParams({ organization_id: organizationId });
+  if (search) params.append('search', search);
+
+  const res = await resilientFetch(`/api/v1/contacts/team-members?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Firm Team Members');
+}
+
+export async function inviteFirmTeamMember(
+  payload: InviteTeamMemberPayload,
+  organizationId: string = 's4_advisory'
+): Promise<{ success: boolean; team_member: FirmTeamMember; email_sent: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/team-members?organization_id=${encodeURIComponent(organizationId)}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Invite Firm Team Member');
+}
+
+export async function resendFirmTeamMemberInvite(
+  memberId: number
+): Promise<{ success: boolean; team_member: FirmTeamMember; email_sent: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/team-members/${memberId}/resend-invite`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Resend Firm Team Member Invite');
+}
+
+export async function updateFirmTeamMember(
+  memberId: number,
+  payload: Partial<InviteTeamMemberPayload> & { status?: string }
+): Promise<{ success: boolean; team_member: FirmTeamMember; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/team-members/${memberId}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update Firm Team Member');
+}
+
+export async function deleteFirmTeamMember(
+  memberId: number
+): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/contacts/team-members/${memberId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Delete Firm Team Member');
+}
+
 
 
 

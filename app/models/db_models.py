@@ -298,4 +298,54 @@ class MarketingLead(SQLModel, table=True):
     created_at: datetime = Field(default_factory=get_utc_now)
 
 
+class ClientContact(SQLModel, table=True):
+    """Tracks client stakeholders invited for information request purposes (clarifications, invoice uploads)."""
+    __tablename__ = "client_contacts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: str = Field(index=True, description="Client organization slug, e.g. anr_group")
+    organization_id: str = Field(default="s4_advisory", index=True, description="Managing accounting firm ID")
+    name: str = Field(index=True, description="Full name of contact, e.g. Kwame Mensah")
+    email: str = Field(index=True, description="Contact email address")
+    phone: Optional[str] = Field(default=None, description="Phone / WhatsApp number with country code")
+    role: str = Field(default="CFO", description="CFO, Financial_Controller, Managing_Director, Operations_Lead, Internal_Accountant")
+    portal_status: str = Field(default="INVITED", index=True, description="ACTIVE, INVITED, INACTIVE")
+    magic_token: Optional[str] = Field(default=None, description="Current active 72-hour magic portal token")
+    invite_sent_at: Optional[datetime] = Field(default=None)
+    last_active_at: Optional[datetime] = Field(default=None)
+    notification_channel: str = Field(default="both", description="email, whatsapp, both")
+    notes: Optional[str] = Field(default=None, description="Internal notes regarding this contact")
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class FirmTeamMember(SQLModel, table=True):
+    """Tracks accounting firm staff participating in client portfolio management."""
+    __tablename__ = "firm_team_members"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    organization_id: str = Field(default="s4_advisory", index=True, description="Accounting firm slug ID")
+    name: str = Field(index=True, description="Full staff name, e.g. Charles Danso")
+    email: str = Field(index=True, description="Staff corporate email address")
+    phone: Optional[str] = Field(default=None, description="Phone number")
+    role: str = Field(default="SENIOR_ACCOUNTANT", index=True, description="PARTNER, SENIOR_ACCOUNTANT, STAFF_ACCOUNTANT, AUDITOR")
+    status: str = Field(default="ACTIVE", index=True, description="ACTIVE, INVITED, INACTIVE")
+    assigned_client_ids: List[str] = Field(default_factory=lambda: ["*"], sa_column=Column(JSON), description="List of client IDs managed or ['*'] for all")
+    permissions: Dict[str, bool] = Field(
+        default_factory=lambda: {
+            "can_query_clients": True,
+            "can_categorize": True,
+            "can_sync_accounting": True,
+            "can_manage_clients": False,
+        },
+        sa_column=Column(JSON),
+        description="Fine-grained feature permissions",
+    )
+    invite_sent_at: Optional[datetime] = Field(default=None)
+    last_login_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+
 

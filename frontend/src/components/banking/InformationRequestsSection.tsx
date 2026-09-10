@@ -42,6 +42,7 @@ import {
   Trash2,
   Calendar,
   Filter,
+  Users,
 } from 'lucide-react';
 
 const MONTH_OPTIONS = [
@@ -373,6 +374,15 @@ export const InformationRequestsSection: React.FC = () => {
                   ? `Sync Watched (${selectedMonth.slice(0, 3)})`
                   : 'Sync Watched Accounts'}
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('contacts')}
+              className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
+              title="Manage client contacts and firm team members"
+            >
+              <Users className="w-3.5 h-3.5 text-sky-400" />
+              <span>Contacts &amp; Team</span>
             </button>
 
             <button

@@ -17,7 +17,7 @@ import {
 } from '../lib/api';
 import { useAuth } from './AuthContext';
 
-export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy';
+export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts';
 
 export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'settings';
 

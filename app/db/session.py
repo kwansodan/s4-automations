@@ -347,6 +347,104 @@ def init_db():
                 )
                 session.commit()
                 logger.info("Successfully seeded dual-mode SaaS organizations and memberships.")
+
+            # Seed default Client Contacts & Firm Team Members
+            from app.models.db_models import ClientContact, FirmTeamMember
+            existing_contact = session.exec(select(ClientContact)).first()
+            if not existing_contact:
+                logger.info("Seeding initial client contacts for information requests...")
+                contacts = [
+                    ClientContact(
+                        client_id="anr_group",
+                        organization_id="s4_advisory",
+                        name="Kwame Mensah",
+                        email="kwame@anrgroup.com",
+                        phone="+233 24 412 3456",
+                        role="CFO",
+                        portal_status="ACTIVE",
+                        notification_channel="both",
+                        notes="Primary financial executive for monthly reconciliations and clarification requests.",
+                    ),
+                    ClientContact(
+                        client_id="anr_group",
+                        organization_id="s4_advisory",
+                        name="Akua Darko",
+                        email="adarko@anrgroup.com",
+                        phone="+233 20 891 2345",
+                        role="Financial_Controller",
+                        portal_status="INVITED",
+                        notification_channel="email",
+                        notes="Handles weekly AP vendor inquiries and operational disbursements.",
+                    ),
+                    ClientContact(
+                        client_id="apex_logistics",
+                        organization_id="s4_advisory",
+                        name="Kofi Antwi",
+                        email="kofi@apexlogistics.gh",
+                        phone="+233 50 123 4567",
+                        role="Managing_Director",
+                        portal_status="INVITED",
+                        notification_channel="both",
+                        notes="Company principal for high-value bank transaction queries.",
+                    ),
+                ]
+                for c in contacts:
+                    session.add(c)
+                session.commit()
+
+            existing_firm_member = session.exec(select(FirmTeamMember)).first()
+            if not existing_firm_member:
+                logger.info("Seeding accounting firm team members...")
+                team = [
+                    FirmTeamMember(
+                        organization_id="s4_advisory",
+                        name="Charles Danso",
+                        email=settings.AUTH_EMAIL or "cdanso@service4gh.com",
+                        phone="+233 24 400 1122",
+                        role="PARTNER",
+                        status="ACTIVE",
+                        assigned_client_ids=["*"],
+                        permissions={
+                            "can_query_clients": True,
+                            "can_categorize": True,
+                            "can_sync_accounting": True,
+                            "can_manage_clients": True,
+                        },
+                    ),
+                    FirmTeamMember(
+                        organization_id="s4_advisory",
+                        name="Abena Boateng",
+                        email="aboateng@service4gh.com",
+                        phone="+233 20 555 7890",
+                        role="SENIOR_ACCOUNTANT",
+                        status="ACTIVE",
+                        assigned_client_ids=["anr_group", "apex_logistics"],
+                        permissions={
+                            "can_query_clients": True,
+                            "can_categorize": True,
+                            "can_sync_accounting": True,
+                            "can_manage_clients": False,
+                        },
+                    ),
+                    FirmTeamMember(
+                        organization_id="s4_advisory",
+                        name="Emmanuel Osei",
+                        email="eosei@service4gh.com",
+                        phone="+233 55 999 1234",
+                        role="STAFF_ACCOUNTANT",
+                        status="INVITED",
+                        assigned_client_ids=["anr_group"],
+                        permissions={
+                            "can_query_clients": True,
+                            "can_categorize": True,
+                            "can_sync_accounting": False,
+                            "can_manage_clients": False,
+                        },
+                    ),
+                ]
+                for m in team:
+                    session.add(m)
+                session.commit()
     except Exception as e:
         logger.warning(f"Database seed notice: {e}")
 

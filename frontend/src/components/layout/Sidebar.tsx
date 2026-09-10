@@ -24,6 +24,7 @@ import {
   Check,
   Share2,
   BookOpen,
+  Users,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -102,6 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { tab: 'queries', label: 'Client Info Requests', icon: ShieldCheck, badge: 'Portal' },
+    { tab: 'contacts', label: 'Contacts & Team', icon: Users, badge: 'Invite' },
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     { tab: 'changelog', label: "What's New", icon: BookOpen },
