@@ -837,7 +837,7 @@ export async function fetchBankTransactions(
   if (status) params.append('status', status);
   if (search) params.append('search', search);
   if (month && month !== 'ALL') params.append('month', month);
-  if (year) params.append('year', year.toString());
+  if (year && year !== 'ALL') params.append('year', year.toString());
 
   const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions?${params.toString()}`, {
     headers: getAuthHeaders(),
@@ -934,11 +934,11 @@ export async function bulkQueryBankTransactions(payload: {
 export async function syncBankFeedsFromAccounting(
   clientId: string,
   month?: string,
-  year?: number
+  year?: number | string
 ): Promise<{ success: boolean; synced_new_count: number; message: string }> {
   const params = new URLSearchParams();
   if (month && month !== 'ALL') params.append('month', month);
-  if (year) params.append('year', year.toString());
+  if (year && year !== 'ALL') params.append('year', year.toString());
   const queryStr = params.toString() ? `?${params.toString()}` : '';
 
   const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/sync-accounting${queryStr}`, {

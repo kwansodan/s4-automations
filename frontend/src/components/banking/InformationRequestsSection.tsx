@@ -60,7 +60,13 @@ const MONTH_OPTIONS = [
   { id: 'December', label: 'December' },
 ];
 
-const YEAR_OPTIONS = [2027, 2026, 2025, 2024];
+const YEAR_OPTIONS = [
+  { id: 'ALL', label: 'All Years' },
+  { id: '2027', label: '2027' },
+  { id: '2026', label: '2026' },
+  { id: '2025', label: '2025' },
+  { id: '2024', label: '2024' },
+];
 
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient, clients, setClient } = useClient();
@@ -80,9 +86,9 @@ export const InformationRequestsSection: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Month & Year Filter State
+  // Month & Year Filter State (Defaults to 'ALL' to show full queue until filtered)
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<string>('ALL');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
   // Chart of Accounts & Watched Accounts State
@@ -701,23 +707,26 @@ export const InformationRequestsSection: React.FC = () => {
 
               <select
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                onChange={(e) => setSelectedYear(e.target.value)}
                 className="bg-transparent text-xs font-bold text-slate-300 focus:outline-none cursor-pointer"
                 title="Filter transactions by year"
               >
                 {YEAR_OPTIONS.map((y) => (
-                  <option key={y} value={y} className="bg-slate-900 text-white">
-                    {y}
+                  <option key={y.id} value={y.id} className="bg-slate-900 text-white">
+                    {y.label}
                   </option>
                 ))}
               </select>
 
-              {selectedMonth !== 'ALL' && (
+              {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
                 <button
                   type="button"
-                  onClick={() => setSelectedMonth('ALL')}
+                  onClick={() => {
+                    setSelectedMonth('ALL');
+                    setSelectedYear('ALL');
+                  }}
                   className="ml-1 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 p-0.5 rounded transition cursor-pointer"
-                  title="Clear month filter (Show all months)"
+                  title="Clear month & year filters (Show all)"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -738,20 +747,28 @@ export const InformationRequestsSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Active Month Indicator Banner */}
-        {selectedMonth !== 'ALL' && (
+        {/* Active Month & Year Indicator Banner */}
+        {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
           <div className="flex items-center justify-between text-xs bg-sky-950/50 border border-sky-500/30 rounded-xl px-3 py-1.5 animate-in fade-in">
             <div className="flex items-center gap-2">
               <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
               <span className="text-sky-200 font-medium">
-                Showing transactions for <strong className="text-white">{selectedMonth} {selectedYear}</strong> ({metrics.total_count} records in watched accounts)
+                Showing transactions for{' '}
+                <strong className="text-white">
+                  {selectedMonth !== 'ALL' ? selectedMonth : 'All Months'}
+                  {selectedYear !== 'ALL' ? ` ${selectedYear}` : ' (All Years)'}
+                </strong>{' '}
+                ({metrics.total_count} records in watched accounts)
               </span>
             </div>
             <button
-              onClick={() => setSelectedMonth('ALL')}
+              onClick={() => {
+                setSelectedMonth('ALL');
+                setSelectedYear('ALL');
+              }}
               className="text-[11px] text-sky-400 hover:text-white underline cursor-pointer"
             >
-              Reset to All Months
+              Reset Date Filters
             </button>
           </div>
         )}

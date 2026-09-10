@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form, Depends, Query
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_, and_
 
 from app.config import settings
 from app.db.session import get_engine
@@ -489,20 +489,37 @@ async def accountant_update_watched_accounts(client_id: str, payload: WatchedAcc
         }
 
 
-def _matches_month_and_year(date_str: str, target_month: Optional[str], target_year: Optional[int]) -> bool:
-    """Matches a 'YYYY-MM-DD' date string against optional target_month and target_year."""
+def _matches_month_and_year(date_str: str, target_month: Optional[str], target_year: Optional[Any]) -> bool:
+    """Matches a date string (YYYY-MM-DD or DD/MM/YYYY) against optional target_month and target_year."""
     if not date_str:
         return False
-    parts = date_str.strip().split("-")
+
+    clean_date = date_str.strip().replace("/", "-")
+    parts = clean_date.split("-")
     if len(parts) < 2:
-        return True
+        has_month_filter = bool(target_month and str(target_month).upper() != "ALL")
+        has_year_filter = bool(target_year is not None and str(target_year).upper() != "ALL")
+        return not (has_month_filter or has_year_filter)
 
-    tx_year = int(parts[0]) if parts[0].isdigit() else None
-    tx_month = int(parts[1]) if parts[1].isdigit() else None
+    # Identify tx_year and tx_month
+    if len(parts[0]) == 4 and parts[0].isdigit():
+        tx_year = int(parts[0])
+        tx_month = int(parts[1]) if parts[1].isdigit() else None
+    elif len(parts) >= 3 and len(parts[2]) >= 4 and parts[2][:4].isdigit():
+        tx_year = int(parts[2][:4])
+        tx_month = int(parts[1]) if parts[1].isdigit() else None
+    else:
+        tx_year = None
+        tx_month = int(parts[1]) if parts[1].isdigit() else None
 
-    # Check year filter
-    if target_year is not None and tx_year is not None and tx_year != target_year:
-        return False
+    # Parse and check year filter
+    if target_year is not None and str(target_year).upper() != "ALL":
+        try:
+            expected_y = int(str(target_year).strip())
+            if tx_year is None or tx_year != expected_y:
+                return False
+        except ValueError:
+            pass
 
     # Check month filter
     if not target_month or target_month.upper() == "ALL":
@@ -530,10 +547,24 @@ def _matches_month_and_year(date_str: str, target_month: Optional[str], target_y
             except ValueError:
                 continue
 
-    if target_m_num is not None and tx_month is not None:
-        return tx_month == target_m_num
+    if target_m_num is not None:
+        return tx_month == target_m_num if tx_month is not None else False
 
-    return True
+    return False
+
+
+def _extract_year_month(date_str: Optional[str]) -> Optional[str]:
+    """Extracts a normalized 'YYYY-MM' period from a date string."""
+    if not date_str:
+        return None
+    clean = date_str.strip().replace("/", "-")
+    parts = clean.split("-")
+    if len(parts) >= 2:
+        if len(parts[0]) == 4 and parts[0].isdigit() and parts[1].isdigit():
+            return f"{parts[0]}-{int(parts[1]):02d}"
+        if len(parts) >= 3 and len(parts[2]) >= 4 and parts[2][:4].isdigit() and parts[1].isdigit():
+            return f"{parts[2][:4]}-{int(parts[1]):02d}"
+    return None
 
 
 @router.get("/bank/clients/{client_id}/transactions", summary="Accountant: List & Filter Bank Transactions in Watched Accounts")
@@ -542,7 +573,7 @@ async def accountant_list_bank_transactions(
     status: Optional[str] = Query("ALL", description="ALL, UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED"),
     search: Optional[str] = Query(None, description="Search description, payee, or amount"),
     month: Optional[str] = Query("ALL", description="ALL, month name ('September'), month number ('09'), or 'YYYY-MM'"),
-    year: Optional[int] = Query(None, description="Filter by year e.g. 2026"),
+    year: Optional[str] = Query(None, description="Filter by year e.g. 2026 or ALL"),
 ) -> Dict[str, Any]:
     """Returns transactions in watched accounts with summary metrics for the Information Requests dashboard."""
     with Session(get_engine()) as session:
@@ -558,102 +589,58 @@ async def accountant_list_bank_transactions(
             prev_y = now_dt.year if now_dt.month > 1 else now_dt.year - 1
             prev_str = f"{prev_y}-{prev_m:02d}"
 
-            seed_items = [
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{now_str}-28",
-                    description="MOMO CASH OUT 0244910291 - AGENT COMMISSION [Watched: 6990]",
-                    amount=450.0,
-                    transaction_type="DEBIT",
-                    bank_account_name="Stanbic Bank Operating (USD/GHS)" if "polaris" in client_id else "Ecobank Ghana GHS Operating",
-                    status="UNMAPPED",
-                    ai_suggested_account="Internet & Communication (MoMo/Data)" if "polaris" not in client_id else "General Expenses",
-                    category_confidence=0.92,
-                    metadata_json={"watched_account": "6990"},
-                ),
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{now_str}-27",
-                    description="TOTAL ENERGIES ACCRA CENTRAL - FLEET REFUELLING [Watched: 850]",
-                    amount=1850.0,
-                    transaction_type="DEBIT",
-                    bank_account_name="Stanbic Bank Corporate",
-                    status="UNMAPPED",
-                    ai_suggested_account="Vehicle Fuel & Transport",
-                    category_confidence=0.95,
-                    metadata_json={"watched_account": "850"},
-                ),
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{now_str}-25",
-                    description="WIRE TRANSFER TO KWAME MENSAH - REF 492010 [Watched: suspense]",
-                    amount=14500.0,
-                    transaction_type="DEBIT",
-                    bank_account_name="Stanbic Bank Corporate",
-                    status="CLARIFICATION_REQUESTED",
-                    accountant_query="Kwame, what was the business purpose of this withdrawal? Please attach invoice.",
-                    query_date=datetime.now(timezone.utc) - timedelta(days=1),
-                    ai_suggested_account="Director's Loan Account",
-                    category_confidence=0.65,
-                    metadata_json={"watched_account": "suspense"},
-                ),
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{now_str}-22",
-                    description="DIRECT CREDIT VODAFONE GHANA FIBRE BROADBAND [Watched: uncategorized]",
-                    amount=820.0,
-                    transaction_type="DEBIT",
-                    bank_account_name="Ecobank Ghana GHS Operating",
-                    status="CLIENT_ANSWERED",
-                    accountant_query="Is this for the main office or warehouse connection?",
-                    client_explanation="This is for the annual corporate high-speed fibre connection.",
-                    response_date=datetime.now(timezone.utc) - timedelta(hours=3),
-                    ai_suggested_account="Internet & Communication (MoMo/Data)",
-                    category_confidence=0.94,
-                    metadata_json={"watched_account": "uncategorized"},
-                ),
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{prev_str}-28",
-                    description="ACCRA FUEL DEPOT DIESEL DELIVERY [Watched: 850]",
-                    amount=3400.0,
-                    transaction_type="DEBIT",
-                    bank_account_name="Stanbic Bank Corporate",
-                    status="UNMAPPED",
-                    ai_suggested_account="Vehicle Fuel & Transport",
-                    category_confidence=0.91,
-                    metadata_json={"watched_account": "850"},
-                ),
-                BankTransaction(
-                    client_id=client_id,
-                    transaction_date=f"{prev_str}-20",
-                    description="DIRECT SETTLEMENT MOMO MERCHANT CLEARING [Watched: 6990]",
-                    amount=5800.0,
-                    transaction_type="CREDIT",
-                    bank_account_name="Ecobank Ghana GHS Operating",
-                    status="MAPPED",
-                    mapped_account_id="acc_4000",
-                    mapped_account_name="Commercial Sales Revenue",
-                    payee_name="MTN Mobile Money",
-                    tax_rate="Standard VAT (15%)",
-                    metadata_json={"watched_account": "6990"},
-                ),
+            seed_data = [
+                (f"{now_str}-28", "MOMO CASH OUT 0244910291 - AGENT COMMISSION [Watched: 6990]", 450.0, "DEBIT", "UNMAPPED", "Internet & Communication (MoMo/Data)", 0.92, "6990"),
+                (f"{now_str}-27", "TOTAL ENERGIES ACCRA CENTRAL - FLEET REFUELLING [Watched: 850]", 1850.0, "DEBIT", "UNMAPPED", "Vehicle Fuel & Transport", 0.95, "850"),
+                (f"{now_str}-25", "WIRE TRANSFER TO KWAME MENSAH - REF 492010 [Watched: suspense]", 14500.0, "DEBIT", "CLARIFICATION_REQUESTED", "Director's Loan Account", 0.65, "suspense"),
+                (f"{now_str}-22", "DIRECT CREDIT VODAFONE GHANA FIBRE BROADBAND [Watched: uncategorized]", 820.0, "DEBIT", "CLIENT_ANSWERED", "Internet & Communication (MoMo/Data)", 0.94, "uncategorized"),
+                (f"{prev_str}-28", "ACCRA FUEL DEPOT DIESEL DELIVERY [Watched: 850]", 3400.0, "DEBIT", "UNMAPPED", "Vehicle Fuel & Transport", 0.91, "850"),
+                (f"{prev_str}-20", "DIRECT SETTLEMENT MOMO MERCHANT CLEARING [Watched: 6990]", 5800.0, "CREDIT", "MAPPED", "Commercial Sales Revenue", 0.89, "6990"),
             ]
+
+            seed_items = []
+            for dt_val, desc, amt, tx_t, st, ai_acc, conf, w_acc in seed_data:
+                chk_str = f"{client_id}:{dt_val}:{amt}:{desc}"
+                chk_hash = hashlib.sha256(chk_str.encode()).hexdigest()[:16]
+                seed_items.append(
+                    BankTransaction(
+                        client_id=client_id,
+                        transaction_date=dt_val,
+                        description=desc,
+                        amount=amt,
+                        transaction_type=tx_t,
+                        bank_account_name="Stanbic Bank Corporate" if "TOTAL" in desc or "WIRE" in desc or "DEPOT" in desc else "Ecobank Ghana GHS Operating",
+                        status=st,
+                        ai_suggested_account=ai_acc,
+                        category_confidence=conf,
+                        checksum=chk_hash,
+                        metadata_json={"watched_account": w_acc},
+                        accountant_query="Kwame, what was the business purpose of this withdrawal? Please attach invoice." if st == "CLARIFICATION_REQUESTED" else None,
+                        query_date=datetime.now(timezone.utc) - timedelta(days=1) if st == "CLARIFICATION_REQUESTED" else None,
+                        client_explanation="This is for the annual corporate high-speed fibre connection." if st == "CLIENT_ANSWERED" else None,
+                        response_date=datetime.now(timezone.utc) - timedelta(hours=3) if st == "CLIENT_ANSWERED" else None,
+                        mapped_account_id="acc_4000" if st == "MAPPED" else None,
+                        mapped_account_name="Commercial Sales Revenue" if st == "MAPPED" else None,
+                    )
+                )
+
             for s in seed_items:
                 session.add(s)
             session.commit()
             all_txs = session.exec(query.order_by(BankTransaction.transaction_date.desc())).all()
 
-        # Compute all distinct available months present in transaction dates
+        # Compute distinct available months in YYYY-MM format
         available_months = sorted(
-            list({t.transaction_date[:7] for t in all_txs if t.transaction_date and len(t.transaction_date) >= 7}),
+            list({ym for t in all_txs if (ym := _extract_year_month(t.transaction_date))}),
             reverse=True,
         )
+
+        target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
 
         # Filter by month and year first to scope metrics to the selected period
         month_scoped_txs = [
             t for t in all_txs
-            if _matches_month_and_year(t.transaction_date, month, year)
+            if _matches_month_and_year(t.transaction_date, month, target_year_int)
         ]
 
         # Compute summary metrics based on the scoped period
@@ -926,7 +913,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
 async def accountant_sync_bank_feeds(
     client_id: str,
     month: Optional[str] = Query(None, description="Filter sync by target month (e.g. September, 09, YYYY-MM)"),
-    year: Optional[int] = Query(None, description="Filter sync by target year (e.g. 2026)"),
+    year: Optional[str] = Query(None, description="Filter sync by target year (e.g. 2026 or ALL)"),
 ) -> Dict[str, Any]:
     """Pulls unmapped transactions residing in watched accounts from connected accounting platform into the Information Requests queue."""
     with Session(get_engine()) as session:
@@ -934,12 +921,13 @@ async def accountant_sync_bank_feeds(
         if not client:
             raise HTTPException(status_code=404, detail="Client organisation not found.")
 
+        target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
         watched = client.watched_accounts if (client.watched_accounts and len(client.watched_accounts) > 0) else ["6990", "850", "suspense", "uncategorized"]
         adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
         feeds = await adapter.fetch_uncategorized_bank_transactions(
             watched_accounts=watched,
             month=month,
-            year=year,
+            year=target_year_int,
         )
 
         synced_count = 0
@@ -947,7 +935,19 @@ async def accountant_sync_bank_feeds(
             # Checksum idempotency
             checksum_str = f"{client_id}:{f.get('transaction_date')}:{f.get('amount')}:{f.get('description')}"
             c_hash = hashlib.sha256(checksum_str.encode()).hexdigest()[:16]
-            existing = session.exec(select(BankTransaction).where(BankTransaction.checksum == c_hash)).first()
+            existing = session.exec(
+                select(BankTransaction).where(
+                    or_(
+                        BankTransaction.checksum == c_hash,
+                        and_(
+                            BankTransaction.client_id == client_id,
+                            BankTransaction.transaction_date == f.get("transaction_date"),
+                            BankTransaction.amount == float(f.get("amount", 0.0)),
+                            BankTransaction.description == f.get("description"),
+                        ),
+                    )
+                )
+            ).first()
             if not existing:
                 meta = {}
                 if f.get("watched_account"):
