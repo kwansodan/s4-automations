@@ -370,6 +370,8 @@ export interface BankTransactionRecord {
   query_date?: string;
   response_date?: string;
   source_platform?: string;
+  checksum?: string;
+  metadata_json?: Record<string, any>;
 }
 
 export interface TransactionCategorizePayload {

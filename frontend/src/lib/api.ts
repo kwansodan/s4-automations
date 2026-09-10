@@ -825,11 +825,11 @@ export async function fetchBankTransactions(
   status: string = 'ALL',
   search?: string,
   month?: string,
-  year?: number
+  year?: number | string
 ): Promise<{
   client_id: string;
   month?: string;
-  year?: number;
+  year?: number | string;
   available_months?: string[];
   metrics: {
     total_count: number;
