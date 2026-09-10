@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Zap, ShieldCheck, Mail, Lock, AlertTriangle, CheckCircle2, ArrowLeft, RefreshCw } from 'lucide-react';
 
-export const LoginCard: React.FC = () => {
+interface LoginCardProps {
+  onBackToLanding?: () => void;
+}
+
+export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
   const { requestOtp, verifyOtp } = useAuth();
 
   const [step, setStep] = useState<'request' | 'verify'>('request');
@@ -103,6 +107,20 @@ export const LoginCard: React.FC = () => {
     <div className="min-h-[85vh] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900/90 border border-sky-500/30 rounded-2xl p-8 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
         
+        {/* Back to Homepage button */}
+        {onBackToLanding && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition cursor-pointer font-medium"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+              <span>Back to Homepage &amp; Live Demo</span>
+            </button>
+          </div>
+        )}
+
         {/* Brand Header */}
         <div className="text-center mb-6">
           <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-sky-500/30 to-indigo-500/30 border border-sky-400/40 flex items-center justify-center text-sky-400 shadow-lg shadow-sky-500/20">

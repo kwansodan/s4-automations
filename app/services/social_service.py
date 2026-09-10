@@ -447,7 +447,27 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
     @staticmethod
     async def broadcast_client_emails(subject: str, html_content: str, recipients: Optional[List[str]] = None) -> Dict[str, Any]:
         """Broadcasts the release note email to client finance contacts using Mailjet."""
-        target_recipients = recipients or [settings.NOTIFICATION_EMAIL, settings.AUTH_EMAIL]
+        target_recipients = recipients or []
+        
+        # If no explicit recipients provided, attempt pulling from EmailSubscriber table
+        if not target_recipients:
+            try:
+                from sqlmodel import select
+                from app.db.session import engine
+                from app.models.db_models import EmailSubscriber
+                from sqlmodel import Session
+
+                with Session(engine) as db:
+                    subs = db.exec(select(EmailSubscriber).where(EmailSubscriber.is_active == True)).all()
+                    if subs:
+                        target_recipients = [s.email for s in subs]
+            except Exception as e:
+                logger.warning(f"Failed to query active subscribers: {e}")
+
+        # Fallback to configured admin notification emails
+        if not target_recipients:
+            target_recipients = [settings.NOTIFICATION_EMAIL, settings.AUTH_EMAIL]
+
         target_recipients = list(set([r.strip() for r in target_recipients if r and "@" in r]))
         
         dispatched_count = 0
@@ -465,6 +485,23 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
                     dispatched_count += 1
             except Exception as e:
                 errors.append(f"{email}: {str(e)}")
+
+        # Update last_emailed_at in database for subscribers
+        try:
+            from sqlmodel import select
+            from app.db.session import engine
+            from app.models.db_models import EmailSubscriber, get_utc_now
+            from sqlmodel import Session
+
+            with Session(engine) as db:
+                for email in target_recipients:
+                    sub = db.exec(select(EmailSubscriber).where(EmailSubscriber.email == email)).first()
+                    if sub:
+                        sub.last_emailed_at = get_utc_now()
+                        db.add(sub)
+                db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to update subscriber last_emailed_at: {e}")
 
         return {
             "status": "SUCCESS" if dispatched_count > 0 else "PARTIAL",

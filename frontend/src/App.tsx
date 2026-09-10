@@ -20,12 +20,14 @@ import { ClientPortal } from './components/portal/ClientPortal';
 import { InformationRequestsSection } from './components/banking/InformationRequestsSection';
 import { SheetsViewer } from './components/sheets/SheetsViewer';
 import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
+import { LandingPage } from './components/landing/LandingPage';
 import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { activeTab, setActiveTab } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   // If user navigated directly to the Client Portal
   if (activeTab === 'portal') {
@@ -37,9 +39,16 @@ const MainLayout: React.FC = () => {
   }
 
   if (!isAuthenticated) {
+    if (showLogin) {
+      return (
+        <ErrorBoundary componentName="Login View">
+          <LoginCard onBackToLanding={() => setShowLogin(false)} />
+        </ErrorBoundary>
+      );
+    }
     return (
-      <ErrorBoundary componentName="Login View">
-        <LoginCard />
+      <ErrorBoundary componentName="Public Landing Page">
+        <LandingPage onGoToLogin={() => setShowLogin(true)} />
       </ErrorBoundary>
     );
   }

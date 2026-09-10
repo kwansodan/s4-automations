@@ -21,6 +21,8 @@ import {
   AlertCircle,
   FileText,
   Building2,
+  Users,
+  UserPlus,
 } from 'lucide-react';
 import {
   fetchRecentGitCommits,
@@ -29,13 +31,16 @@ import {
   fetchReleaseHistory,
   fetchPublicChangelog,
   fetchLinkedInConfig,
+  fetchAudienceSubscribers,
   GitCommitItem,
   GeneratedReleaseContent,
   ReleaseHistoryItem,
   ChangelogEntryItem,
   LinkedInConfig,
+  EmailSubscriber,
 } from '../../lib/api';
 import { LinkedInPageConnectModal } from '../modals/LinkedInPageConnectModal';
+import { AudienceManagerModal } from '../modals/AudienceManagerModal';
 
 export const MultiChannelLaunchpad: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'composer' | 'changelog' | 'history'>('composer');
@@ -92,12 +97,29 @@ export const MultiChannelLaunchpad: React.FC = () => {
   const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
   const [isLoadingLinkedInConfig, setIsLoadingLinkedInConfig] = useState(false);
 
+  // Marketing Audience & Subscriber state
+  const [isAudienceModalOpen, setIsAudienceModalOpen] = useState(false);
+  const [audienceCount, setAudienceCount] = useState(0);
+  const [subscribersList, setSubscribersList] = useState<EmailSubscriber[]>([]);
+  const [targetAudienceTier, setTargetAudienceTier] = useState<string>('all');
+
   // Load commits on mount
   useEffect(() => {
     loadCommits();
     loadChangelog();
     loadLinkedInConfig();
+    loadAudienceInfo();
   }, []);
+
+  const loadAudienceInfo = async () => {
+    try {
+      const res = await fetchAudienceSubscribers({ active_only: true, limit: 300 });
+      setSubscribersList(res.subscribers || []);
+      setAudienceCount(res.active_count || 0);
+    } catch (err) {
+      console.warn('Failed to load audience info:', err);
+    }
+  };
 
   const loadLinkedInConfig = async () => {
     setIsLoadingLinkedInConfig(true);
@@ -222,6 +244,17 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
     setIsBroadcasting(true);
     try {
+      // Filter audience emails based on selected tier
+      let targetedEmails: string[] | undefined = undefined;
+      if (broadcastChannels.email) {
+        const filteredSubs = targetAudienceTier === 'all'
+          ? subscribersList
+          : subscribersList.filter((s) => s.tier === targetAudienceTier);
+        if (filteredSubs.length > 0) {
+          targetedEmails = filteredSubs.map((s) => s.email);
+        }
+      }
+
       const res = await broadcastRelease({
         version,
         title: title || 'S4 Automation Update',
@@ -234,6 +267,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
         client_email_html: broadcastChannels.email ? emailHtml : undefined,
         changelog_entry: broadcastChannels.changelog ? changelogMarkdown : undefined,
         channels: selectedChannels,
+        email_recipients: targetedEmails,
       });
 
       setBroadcastResult(res);
@@ -717,6 +751,64 @@ export const MultiChannelLaunchpad: React.FC = () => {
               {/* Tab 3: Client Email Broadcast */}
               {selectedChannelTab === 'email' && (
                 <div className="space-y-4">
+                  {/* Audience & Subscriber Target Strip */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl border bg-amber-950/60 border-amber-500/40 text-amber-400 shrink-0">
+                          <Users className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white">Email Audience &amp; Recipients</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                              {audienceCount} Active Contacts
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Manage partner firms, client contacts, and leads for release broadcasts &amp; email updates.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsAudienceModalOpen(true)}
+                          className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Users className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Manage Email List (CRUD)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-850 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-[11px] font-semibold text-slate-400">Target Audience:</span>
+                      <div className="flex items-center gap-1.5">
+                        {[
+                          { id: 'all', label: `All Active (${audienceCount})` },
+                          { id: 'firm_partner', label: 'Accounting Firms' },
+                          { id: 'client', label: 'Active Clients' },
+                          { id: 'lead', label: 'Prospect Leads' },
+                        ].map((seg) => (
+                          <button
+                            key={seg.id}
+                            type="button"
+                            onClick={() => setTargetAudienceTier(seg.id)}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition cursor-pointer ${
+                              targetAudienceTier === seg.id
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {seg.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[11px] font-bold text-slate-300 mb-1">Email Subject Line</label>
                     <input
@@ -1037,6 +1129,13 @@ export const MultiChannelLaunchpad: React.FC = () => {
         isOpen={isLinkedInModalOpen}
         onClose={() => setIsLinkedInModalOpen(false)}
         onConnected={(cfg) => setLinkedInConfig(cfg)}
+      />
+
+      {/* Marketing Audience & Subscriber Manager Modal */}
+      <AudienceManagerModal
+        isOpen={isAudienceModalOpen}
+        onClose={() => setIsAudienceModalOpen(false)}
+        onAudienceUpdated={() => loadAudienceInfo()}
       />
     </div>
   );

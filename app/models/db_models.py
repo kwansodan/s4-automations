@@ -260,3 +260,42 @@ class FeatureRelease(SQLModel, table=True):
     published_at: Optional[datetime] = Field(default=None)
 
 
+class EmailSubscriber(SQLModel, table=True):
+    """Tracks email recipients, newsletter subscribers, and outreach contacts for the release broadcaster and marketing."""
+    __tablename__ = "email_subscribers"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True, description="Subscriber email address")
+    name: Optional[str] = Field(default=None, description="Contact name")
+    company: Optional[str] = Field(default=None, description="Company or firm name")
+    role_or_title: Optional[str] = Field(default="Finance Lead", description="Job title")
+    tier: str = Field(default="lead", description="lead, client, firm_partner, subscriber")
+    tags: List[str] = Field(default_factory=lambda: ["general"], sa_column=Column(JSON), description="Audience segment tags")
+    is_active: bool = Field(default=True, index=True)
+    source: str = Field(default="manual", description="manual, csv_import, client_sync, landing_page, referral")
+    notes: Optional[str] = Field(default=None)
+    last_emailed_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class MarketingLead(SQLModel, table=True):
+    """Tracks inbound public landing page demo bookings and pilot inquiries."""
+    __tablename__ = "marketing_leads"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    full_name: str = Field(index=True)
+    email: str = Field(index=True)
+    phone_or_whatsapp: Optional[str] = Field(default=None)
+    company_name: str
+    accounting_firm: bool = Field(default=False, description="True if accounting/audit firm, False if single business")
+    client_count_estimate: Optional[str] = Field(default=None, description="e.g. 1-5, 6-20, 20+")
+    primary_accounting_software: Optional[str] = Field(default="zoho_books")
+    biggest_headache: Optional[str] = Field(default=None, description="paper receipts, bank reconciliation, manual entry, client delays")
+    status: str = Field(default="NEW", index=True)  # NEW, CONTACTED, DEMO_SCHEDULED, PILOT_ACTIVE, CONVERTED, CLOSED
+    source: str = Field(default="landing_page_demo")
+    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=get_utc_now)
+
+
+

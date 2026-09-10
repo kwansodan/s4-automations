@@ -1276,6 +1276,153 @@ export async function testLinkedInConnection(payload?: {
   return handleResponse<LinkedInTestResult>(res, 'Test LinkedIn Connection');
 }
 
+// -------------------------------------------------------------------------
+// Marketing & Audience CRM (Email Subscriber List CRUD & Leads)
+// -------------------------------------------------------------------------
+
+export interface EmailSubscriber {
+  id: number;
+  email: string;
+  name?: string;
+  company?: string;
+  role_or_title?: string;
+  tier: 'lead' | 'client' | 'firm_partner' | 'subscriber' | string;
+  tags: string[];
+  is_active: boolean;
+  source: string;
+  notes?: string;
+  last_emailed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AudienceResponse {
+  subscribers: EmailSubscriber[];
+  total_count: number;
+  active_count: number;
+  tier_counts: Record<string, number>;
+  available_tags: string[];
+}
+
+export interface MarketingLead {
+  id: number;
+  full_name: string;
+  email: string;
+  phone_or_whatsapp?: string;
+  company_name: string;
+  accounting_firm: boolean;
+  client_count_estimate?: string;
+  primary_accounting_software?: string;
+  biggest_headache?: string;
+  status: string;
+  source: string;
+  created_at: string;
+}
+
+export async function fetchAudienceSubscribers(params?: {
+  search?: string;
+  tag?: string;
+  tier?: string;
+  active_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<AudienceResponse> {
+  const query = new URLSearchParams();
+  if (params?.search) query.append('search', params.search);
+  if (params?.tag) query.append('tag', params.tag);
+  if (params?.tier) query.append('tier', params.tier);
+  if (params?.active_only) query.append('active_only', 'true');
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
+
+  const res = await resilientFetch(`/api/v1/marketing/audience?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<AudienceResponse>(res, 'Fetch Audience Subscribers');
+}
+
+export async function createOrBulkImportSubscribers(payload: {
+  email?: string;
+  name?: string;
+  company?: string;
+  role_or_title?: string;
+  tier?: string;
+  tags?: string[];
+  notes?: string;
+  bulk_emails?: string;
+}): Promise<{ success: boolean; created_count: number; skipped_count: number; message: string }> {
+  const res = await resilientFetch('/api/v1/marketing/audience', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Add or Bulk Import Subscribers');
+}
+
+export async function updateAudienceSubscriber(
+  id: number,
+  payload: Partial<EmailSubscriber>
+): Promise<{ success: boolean; subscriber: EmailSubscriber }> {
+  const res = await resilientFetch(`/api/v1/marketing/audience/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update Subscriber');
+}
+
+export async function deleteAudienceSubscriber(id: number): Promise<{ success: boolean; message: string }> {
+  const res = await resilientFetch(`/api/v1/marketing/audience/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Delete Subscriber');
+}
+
+export async function syncClientContactsToAudience(): Promise<{
+  success: boolean;
+  synced_count: number;
+  new_count: number;
+  total_processed: number;
+  message: string;
+}> {
+  const res = await resilientFetch('/api/v1/marketing/audience/sync-clients', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Sync Client Contacts');
+}
+
+export async function capturePublicLead(payload: {
+  full_name: string;
+  email: string;
+  company_name: string;
+  phone_or_whatsapp?: string;
+  accounting_firm?: boolean;
+  client_count_estimate?: string;
+  primary_accounting_software?: string;
+  biggest_headache?: string;
+}): Promise<{ success: boolean; lead_id: number; message: string }> {
+  const res = await resilientFetch('/api/v1/marketing/lead-capture', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Capture Lead Inquiry');
+}
+
+export async function fetchMarketingLeads(statusFilter?: string): Promise<{
+  leads: MarketingLead[];
+  total_count: number;
+}> {
+  const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : '';
+  const res = await resilientFetch(`/api/v1/marketing/leads${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Marketing Leads');
+}
+
+
 
 
 

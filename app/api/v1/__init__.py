@@ -14,6 +14,7 @@ from app.api.v1.bank_portal import router as bank_portal_router
 from app.api.v1.oauth import router as oauth_router
 from app.api.v1.system import router as system_router
 from app.api.v1.social import router as social_router
+from app.api.v1.marketing import router as marketing_router
 
 api_sub_router = APIRouter()
 
@@ -29,6 +30,7 @@ api_sub_router.include_router(bank_portal_router)
 api_sub_router.include_router(oauth_router)
 api_sub_router.include_router(system_router)
 api_sub_router.include_router(social_router)
+api_sub_router.include_router(marketing_router)
 
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(api_sub_router)
