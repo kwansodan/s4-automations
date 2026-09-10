@@ -40,7 +40,27 @@ import {
   CheckCheck,
   Plus,
   Trash2,
+  Calendar,
+  Filter,
 } from 'lucide-react';
+
+const MONTH_OPTIONS = [
+  { id: 'ALL', label: 'All Months' },
+  { id: 'January', label: 'January' },
+  { id: 'February', label: 'February' },
+  { id: 'March', label: 'March' },
+  { id: 'April', label: 'April' },
+  { id: 'May', label: 'May' },
+  { id: 'June', label: 'June' },
+  { id: 'July', label: 'July' },
+  { id: 'August', label: 'August' },
+  { id: 'September', label: 'September' },
+  { id: 'October', label: 'October' },
+  { id: 'November', label: 'November' },
+  { id: 'December', label: 'December' },
+];
+
+const YEAR_OPTIONS = [2027, 2026, 2025, 2024];
 
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient, clients, setClient } = useClient();
@@ -59,6 +79,11 @@ export const InformationRequestsSection: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Month & Year Filter State
+  const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
   // Chart of Accounts & Watched Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
@@ -89,11 +114,14 @@ export const InformationRequestsSection: React.FC = () => {
     setIsLoading(true);
     try {
       const [txRes, coaRes] = await Promise.all([
-        fetchBankTransactions(currentClient.id, statusFilter, searchQuery),
+        fetchBankTransactions(currentClient.id, statusFilter, searchQuery, selectedMonth, selectedYear),
         fetchChartOfAccounts(currentClient.id),
       ]);
 
       setTransactions(txRes.transactions || []);
+      if (txRes.available_months) {
+        setAvailableMonths(txRes.available_months);
+      }
       setMetrics(txRes.metrics || {
         total_count: 0,
         total_uncategorized: 0,
@@ -136,18 +164,18 @@ export const InformationRequestsSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentClient, statusFilter, searchQuery, addLog]);
+  }, [currentClient, statusFilter, searchQuery, selectedMonth, selectedYear, addLog]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Sync Bank Feeds from Accounting Platform
+  // Sync Watched Accounts from Accounting Platform
   const handleSyncFeeds = async () => {
     if (!currentClient) return;
     setIsSyncing(true);
     try {
-      const res = await syncBankFeedsFromAccounting(currentClient.id);
+      const res = await syncBankFeedsFromAccounting(currentClient.id, selectedMonth, selectedYear);
       addLog('success', `🏦 ${res.message}`);
       await loadData();
     } catch (err: any) {
@@ -304,7 +332,7 @@ export const InformationRequestsSection: React.FC = () => {
                   )}
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
-                  Review uncategorized bank feeds, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
+                  Review transactions in watched accounts, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
                 </p>
               </div>
             </div>
@@ -329,9 +357,16 @@ export const InformationRequestsSection: React.FC = () => {
               onClick={handleSyncFeeds}
               disabled={isSyncing}
               className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
+              title="Pull transactions in watched accounts from connected accounting software"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Syncing Feeds...' : 'Sync Live Feeds'}</span>
+              <span>
+                {isSyncing
+                  ? 'Syncing Watched...'
+                  : selectedMonth !== 'ALL'
+                  ? `Sync Watched (${selectedMonth.slice(0, 3)})`
+                  : 'Sync Watched Accounts'}
+              </span>
             </button>
 
             <button
@@ -619,7 +654,7 @@ export const InformationRequestsSection: React.FC = () => {
 
       {/* Filter Toolbar & Bulk Actions */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Status Filter Tabs */}
           <div className="flex items-center gap-1.5 flex-wrap bg-slate-950/80 p-1 rounded-xl border border-slate-800">
@@ -644,18 +679,82 @@ export const InformationRequestsSection: React.FC = () => {
             ))}
           </div>
 
-          {/* Search Box */}
-          <div className="relative min-w-[220px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search reference, description, amount..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-sans"
-            />
+          {/* Controls: Month & Year Selector + Search Box */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Month & Year Dropdown */}
+            <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
+              <Calendar className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer pr-1"
+                title="Filter transactions by month"
+              >
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+
+              <span className="text-slate-600 text-xs">/</span>
+
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-transparent text-xs font-bold text-slate-300 focus:outline-none cursor-pointer"
+                title="Filter transactions by year"
+              >
+                {YEAR_OPTIONS.map((y) => (
+                  <option key={y} value={y} className="bg-slate-900 text-white">
+                    {y}
+                  </option>
+                ))}
+              </select>
+
+              {selectedMonth !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth('ALL')}
+                  className="ml-1 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 p-0.5 rounded transition cursor-pointer"
+                  title="Clear month filter (Show all months)"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Search Box */}
+            <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search description, payee, amount..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-sans"
+              />
+            </div>
           </div>
         </div>
+
+        {/* Active Month Indicator Banner */}
+        {selectedMonth !== 'ALL' && (
+          <div className="flex items-center justify-between text-xs bg-sky-950/50 border border-sky-500/30 rounded-xl px-3 py-1.5 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+              <span className="text-sky-200 font-medium">
+                Showing transactions for <strong className="text-white">{selectedMonth} {selectedYear}</strong> ({metrics.total_count} records in watched accounts)
+              </span>
+            </div>
+            <button
+              onClick={() => setSelectedMonth('ALL')}
+              className="text-[11px] text-sky-400 hover:text-white underline cursor-pointer"
+            >
+              Reset to All Months
+            </button>
+          </div>
+        )}
 
         {/* Bulk Action Bar (when rows are selected) */}
         {selectedTxIds.length > 0 && (
@@ -779,8 +878,13 @@ export const InformationRequestsSection: React.FC = () => {
                       <td className="py-3.5 px-3 whitespace-nowrap">
                         <span className="font-mono font-bold text-white block">{tx.transaction_date}</span>
                         <span className="text-[10px] text-slate-400 font-mono block truncate max-w-[150px]">
-                          {tx.bank_account_name || 'Bank Operating'}
+                          {tx.bank_account_name || 'Operating Account'}
                         </span>
+                        {tx.metadata_json?.watched_account && (
+                          <span className="inline-block mt-0.5 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-300 border border-sky-500/40">
+                            Watched: {tx.metadata_json.watched_account}
+                          </span>
+                        )}
                       </td>
 
                       {/* Raw Description */}

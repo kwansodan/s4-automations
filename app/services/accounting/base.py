@@ -95,8 +95,13 @@ class BaseAccountingAdapter(ABC):
         pass
 
     @abstractmethod
-    async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Fetches uncategorized/unreconciled bank transactions from accounting software or bank feed."""
+    async def fetch_uncategorized_bank_transactions(
+        self,
+        watched_accounts: Optional[List[str]] = None,
+        month: Optional[str] = None,
+        year: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetches transactions in watched suspense/uncategorized accounts from accounting software."""
         pass
 
     @abstractmethod

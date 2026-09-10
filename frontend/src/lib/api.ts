@@ -816,9 +816,14 @@ export async function deletePipeline(clientId: string, pipelineId: string): Prom
 export async function fetchBankTransactions(
   clientId: string,
   status: string = 'ALL',
-  search?: string
+  search?: string,
+  month?: string,
+  year?: number
 ): Promise<{
   client_id: string;
+  month?: string;
+  year?: number;
+  available_months?: string[];
   metrics: {
     total_count: number;
     total_uncategorized: number;
@@ -831,11 +836,13 @@ export async function fetchBankTransactions(
   const params = new URLSearchParams();
   if (status) params.append('status', status);
   if (search) params.append('search', search);
+  if (month && month !== 'ALL') params.append('month', month);
+  if (year) params.append('year', year.toString());
 
   const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions?${params.toString()}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse(res, 'Fetch bank transactions');
+  return handleResponse(res, 'Fetch transactions in watched accounts');
 }
 
 export async function fetchChartOfAccounts(clientId: string): Promise<{
@@ -924,12 +931,21 @@ export async function bulkQueryBankTransactions(payload: {
   return handleResponse(res, 'Bulk query transactions');
 }
 
-export async function syncBankFeedsFromAccounting(clientId: string): Promise<{ success: boolean; synced_new_count: number; message: string }> {
-  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/sync-accounting`, {
+export async function syncBankFeedsFromAccounting(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<{ success: boolean; synced_new_count: number; message: string }> {
+  const params = new URLSearchParams();
+  if (month && month !== 'ALL') params.append('month', month);
+  if (year) params.append('year', year.toString());
+  const queryStr = params.toString() ? `?${params.toString()}` : '';
+
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/sync-accounting${queryStr}`, {
     method: 'POST',
     headers: getAuthHeaders(),
   });
-  return handleResponse(res, 'Sync bank feeds from accounting platform');
+  return handleResponse(res, 'Sync transactions in watched accounts');
 }
 
 export async function verifyPortalMagicToken(token: string): Promise<{

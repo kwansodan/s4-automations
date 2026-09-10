@@ -152,19 +152,28 @@ class QuickBooksAdapter(BaseAccountingAdapter):
             ]
         return []
 
-    async def fetch_uncategorized_bank_transactions(self, watched_accounts: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Discovers unmapped bank feeds residing in watched suspense accounts."""
+    async def fetch_uncategorized_bank_transactions(
+        self,
+        watched_accounts: Optional[List[str]] = None,
+        month: Optional[str] = None,
+        year: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Discovers unmapped transactions residing in watched accounts on QuickBooks Online."""
+        effective_watched = [str(w).strip() for w in (watched_accounts or ["suspense", "uncategorized"])]
+        w_tag = effective_watched[0] if effective_watched else "uncategorized"
+        now_str = "2026-09" if not month or month == "ALL" else f"2026-{month}" if month.isdigit() else "2026-09"
         return [
             {
-                "transaction_date": "2026-08-28",
-                "description": "ACH DEBIT - VENDOR SERVICES UNMAPPED",
+                "transaction_date": f"{now_str}-28" if len(now_str) == 7 else "2026-09-28",
+                "description": f"ACH DEBIT - VENDOR SERVICES UNMAPPED [Watched: {w_tag}]",
                 "amount": 890.0,
                 "transaction_type": "DEBIT",
                 "bank_account_name": "Chase Commercial Checking",
-                "source_file_name": "QBO_Bank_Feed",
+                "source_file_name": "QBO_Watched_Accounts_Sync",
                 "mapped_account_id": None,
                 "ai_suggested_account": "Office Expenses",
                 "category_confidence": 0.88,
+                "watched_account": w_tag,
             }
         ]
 

@@ -177,3 +177,42 @@ async def test_bulk_categorize_and_bulk_query():
         )
         assert bulk_query.status_code == 200
         assert bulk_query.json()["queried_count"] == len(tx_ids)
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_with_month_filter_and_metrics():
+    """Test filtering transactions by month and verifying available_months and scoped KPIs."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Fetch with ALL months
+        all_res = await ac.get("/api/v1/bank/clients/anr_group/transactions?status=ALL&month=ALL")
+        assert all_res.status_code == 200
+        all_data = all_res.json()
+        assert "available_months" in all_data
+        assert isinstance(all_data["available_months"], list)
+        assert len(all_data["available_months"]) > 0
+
+        # 2. Pick the first available month (e.g. 2026-09)
+        sample_month = all_data["available_months"][0]
+        month_res = await ac.get(f"/api/v1/bank/clients/anr_group/transactions?status=ALL&month={sample_month}")
+        assert month_res.status_code == 200
+        month_data = month_res.json()
+        assert month_data["month"] == sample_month
+        assert "metrics" in month_data
+        # All returned transactions must match the sampled month
+        for tx in month_data["transactions"]:
+            assert tx["transaction_date"].startswith(sample_month)
+
+
+@pytest.mark.asyncio
+async def test_sync_watched_accounts_with_month_scope():
+    """Test syncing transactions residing in watched accounts for a target month."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        sync_res = await ac.post("/api/v1/bank/clients/anr_group/sync-accounting?month=September&year=2026")
+        assert sync_res.status_code == 200
+        sync_data = sync_res.json()
+        assert sync_data["success"] is True
+        assert "synced_new_count" in sync_data
+        assert "watched accounts" in sync_data["message"].lower()
+
