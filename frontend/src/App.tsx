@@ -48,7 +48,10 @@ const MainLayout: React.FC = () => {
     }
     return (
       <ErrorBoundary componentName="Public Landing Page">
-        <LandingPage onGoToLogin={() => setShowLogin(true)} />
+        <LandingPage
+          onGoToLogin={() => setShowLogin(true)}
+          onOpenPortal={() => setActiveTab('portal')}
+        />
       </ErrorBoundary>
     );
   }

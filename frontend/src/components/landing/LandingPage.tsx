@@ -108,7 +108,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPor
             <div>
               <span className="text-base font-black tracking-tight text-white flex items-center gap-1.5">
                 S4 Automations
-                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-sky-950 text-sky-400 border border-sky-800/60 rounded">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-sky-950 text-sky-400 border border-sky-800/60 rounded">
                   AI OCR
                 </span>
               </span>
@@ -131,6 +131,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPor
           </nav>
 
           <div className="flex items-center gap-3">
+            {onOpenPortal && (
+              <button
+                onClick={onOpenPortal}
+                className="hidden sm:inline-block text-xs font-semibold text-slate-400 hover:text-sky-400 px-2 py-1.5 rounded-xl transition cursor-pointer"
+              >
+                Client Portal
+              </button>
+            )}
             <button
               onClick={onGoToLogin}
               className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-xl transition cursor-pointer"

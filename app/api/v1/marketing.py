@@ -447,12 +447,14 @@ async def list_marketing_leads(
 ) -> Dict[str, Any]:
     """Admin view for pipeline of inbound landing page leads."""
     query = select(MarketingLead)
+    count_query = select(func.count(MarketingLead.id))
     if status_filter:
         query = query.where(MarketingLead.status == status_filter)
+        count_query = count_query.where(MarketingLead.status == status_filter)
     query = query.order_by(desc(MarketingLead.created_at)).offset(offset).limit(limit)
 
     leads = db.exec(query).all()
-    total = db.exec(select(func.count(MarketingLead.id))).one()
+    total = db.exec(count_query).one()
 
     return {
         "leads": leads,
