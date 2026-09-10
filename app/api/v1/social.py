@@ -139,7 +139,7 @@ async def test_linkedin_connection_endpoint(payload: Optional[TestLinkedInConfig
 
 
 @router.get("/commits")
-async def get_recent_commits(limit: int = 8) -> List[Dict[str, Any]]:
+async def get_recent_commits(limit: int = 100) -> List[Dict[str, Any]]:
     """Returns recent git commits from the repository for 1-click feature selection."""
     return SocialBroadcasterService.get_recent_git_commits(limit=limit)
 

@@ -18,11 +18,57 @@ logger = get_logger("social_service")
 class SocialBroadcasterService:
     """Orchestrates multi-channel feature announcements across LinkedIn, X, Email, and Changelog."""
 
-    @staticmethod
-    def get_recent_git_commits(limit: int = 8) -> List[Dict[str, Any]]:
-        """Reads recent git commits from the local repository."""
+    @classmethod
+    def _fetch_github_commits(cls, limit: int = 100) -> List[Dict[str, Any]]:
+        """Fetches commit history from GitHub REST API when local git is unavailable (e.g. in Docker containers)."""
         try:
-            cmd = ["git", "log", f"-n {limit}", "--pretty=format:%H|%an|%ad|%s", "--date=short"]
+            repo = getattr(settings, "GITHUB_REPO", None) or "kwansodan/s4-automations"
+            count = min(limit, 100) if limit > 0 else 100
+            url = f"https://api.github.com/repos/{repo}/commits?per_page={count}"
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "S4-Automations-Broadcaster",
+            }
+            github_token = getattr(settings, "GITHUB_TOKEN", None)
+            if github_token:
+                headers["Authorization"] = f"token {github_token}"
+
+            with httpx.Client(timeout=8.0) as client:
+                resp = client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    raw_commits = resp.json()
+                    commits = []
+                    for item in raw_commits:
+                        sha = item.get("sha", "")
+                        commit_data = item.get("commit", {})
+                        author_data = commit_data.get("author", {})
+                        author_name = author_data.get("name") or (item.get("author") or {}).get("login") or "Engineer"
+                        date_str = (author_data.get("date") or "")[:10]
+                        message = (commit_data.get("message") or "").split("\n")[0]
+                        commits.append({
+                            "hash": sha[:7],
+                            "full_hash": sha,
+                            "author": author_name,
+                            "date": date_str,
+                            "message": message,
+                        })
+                    if commits:
+                        logger.info(f"Loaded {len(commits)} commits from GitHub REST API ({repo}).")
+                        return commits
+                else:
+                    logger.warning(f"GitHub API commits returned status {resp.status_code}: {resp.text[:120]}")
+        except Exception as err:
+            logger.warning(f"Could not fetch commits from GitHub API: {err}")
+        return []
+
+    @classmethod
+    def get_recent_git_commits(cls, limit: int = 100) -> List[Dict[str, Any]]:
+        """Reads recent git commits from the local repository, falling back to GitHub API, then static fallback."""
+        max_commits = limit if (limit and limit > 0) else 100
+
+        # 1. Try local git subprocess
+        try:
+            cmd = ["git", "log", f"-n {max_commits}", "--pretty=format:%H|%an|%ad|%s", "--date=short"]
             res = subprocess.run(
                 " ".join(cmd),
                 shell=True,
@@ -30,25 +76,31 @@ class SocialBroadcasterService:
                 text=True,
                 timeout=5,
             )
-            if res.returncode != 0 or not res.stdout.strip():
-                return SocialBroadcasterService._get_fallback_commits()
-
-            commits = []
-            for line in res.stdout.strip().split("\n"):
-                parts = line.strip().split("|")
-                if len(parts) >= 4:
-                    full_hash, author, date, message = parts[0], parts[1], parts[2], "|".join(parts[3:])
-                    commits.append({
-                        "hash": full_hash[:7],
-                        "full_hash": full_hash,
-                        "author": author,
-                        "date": date,
-                        "message": message,
-                    })
-            return commits or SocialBroadcasterService._get_fallback_commits()
+            if res.returncode == 0 and res.stdout.strip():
+                commits = []
+                for line in res.stdout.strip().split("\n"):
+                    parts = line.strip().split("|")
+                    if len(parts) >= 4:
+                        full_hash, author, date, message = parts[0], parts[1], parts[2], "|".join(parts[3:])
+                        commits.append({
+                            "hash": full_hash[:7],
+                            "full_hash": full_hash,
+                            "author": author,
+                            "date": date,
+                            "message": message,
+                        })
+                if commits:
+                    return commits
         except Exception as e:
-            logger.warning(f"Could not read git log: {e}. Returning fallback commits.")
-            return SocialBroadcasterService._get_fallback_commits()
+            logger.info(f"Local git log unavailable ({e}). Attempting remote repository fetch...")
+
+        # 2. Try GitHub REST API (especially useful for Docker containers where .git is excluded)
+        remote_commits = cls._fetch_github_commits(limit=max_commits)
+        if remote_commits:
+            return remote_commits
+
+        # 3. Last-resort fallback commits
+        return cls._get_fallback_commits()
 
     @staticmethod
     def _get_fallback_commits() -> List[Dict[str, Any]]:

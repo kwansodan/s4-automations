@@ -1163,7 +1163,7 @@ export interface ChangelogEntryItem {
   published_at?: string;
 }
 
-export async function fetchRecentGitCommits(limit = 8): Promise<GitCommitItem[]> {
+export async function fetchRecentGitCommits(limit = 100): Promise<GitCommitItem[]> {
   const res = await resilientFetch(`/api/v1/social/commits?limit=${limit}`, {
     headers: getAuthHeaders(),
   });

@@ -23,6 +23,7 @@ import {
   Building2,
   Users,
   UserPlus,
+  Search,
 } from 'lucide-react';
 import {
   fetchRecentGitCommits,
@@ -50,6 +51,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
   const [commits, setCommits] = useState<GitCommitItem[]>([]);
   const [isLoadingCommits, setIsLoadingCommits] = useState(false);
   const [selectedCommitHash, setSelectedCommitHash] = useState<string>('');
+  const [commitSearchQuery, setCommitSearchQuery] = useState('');
   
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -136,7 +138,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
   const loadCommits = async () => {
     setIsLoadingCommits(true);
     try {
-      const data = await fetchRecentGitCommits(8);
+      const data = await fetchRecentGitCommits(100);
       setCommits(data || []);
       if (data && data.length > 0 && !title) {
         handleSelectCommit(data[0]);
@@ -183,6 +185,16 @@ export const MultiChannelLaunchpad: React.FC = () => {
       setCategory('PLATFORM');
     }
   };
+
+  const filteredCommits = commits.filter((c) => {
+    if (!commitSearchQuery.trim()) return true;
+    const q = commitSearchQuery.toLowerCase();
+    return (
+      (c.message && c.message.toLowerCase().includes(q)) ||
+      (c.hash && c.hash.toLowerCase().includes(q)) ||
+      (c.author && c.author.toLowerCase().includes(q))
+    );
+  });
 
   const handleGenerate = async () => {
     if (!title && !summary) {
@@ -345,43 +357,73 @@ export const MultiChannelLaunchpad: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-white">
                   <GitCommit className="w-4 h-4 text-emerald-400" />
-                  <span>1. Pick From Recent Commits</span>
+                  <span>1. Pick From Commits</span>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/50">
+                    {commits.length} commits
+                  </span>
                 </div>
                 <button
                   type="button"
                   onClick={loadCommits}
                   disabled={isLoadingCommits}
-                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition"
-                  title="Refresh git commits"
+                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                  title="Refresh commits from repository"
                 >
                   <RefreshCw className={`w-3 h-3 ${isLoadingCommits ? 'animate-spin' : ''}`} />
                   <span>Refresh</span>
                 </button>
               </div>
 
-              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                {commits.map((c) => {
-                  const isSelected = selectedCommitHash === c.hash;
-                  return (
-                    <div
-                      key={c.hash}
-                      onClick={() => handleSelectCommit(c)}
-                      className={`p-2 rounded-xl text-xs cursor-pointer border transition ${
-                        isSelected
-                          ? 'bg-sky-950/60 border-sky-500/60 text-white shadow-sm'
-                          : 'bg-slate-950/60 border-slate-850 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1 text-[10px] text-slate-400 mb-1">
-                        <span className="font-mono text-sky-400 bg-sky-950 px-1.5 py-0.5 rounded border border-sky-800/40">
-                          {c.hash}
-                        </span>
-                        <span>{c.date}</span>
+              {/* Instant Search Bar */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search commits by message, hash, or author..."
+                  value={commitSearchQuery}
+                  onChange={(e) => setCommitSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-8 pr-12 py-1.5 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+                />
+                {commitSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setCommitSearchQuery('')}
+                    className="absolute right-2 top-1.5 text-[10px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded cursor-pointer transition"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                {filteredCommits.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                    {commits.length === 0 ? 'No commits loaded.' : `No commits found matching "${commitSearchQuery}".`}
+                  </div>
+                ) : (
+                  filteredCommits.map((c) => {
+                    const isSelected = selectedCommitHash === c.hash;
+                    return (
+                      <div
+                        key={c.hash}
+                        onClick={() => handleSelectCommit(c)}
+                        className={`p-2 rounded-xl text-xs cursor-pointer border transition ${
+                          isSelected
+                            ? 'bg-sky-950/60 border-sky-500/60 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : 'bg-slate-950/60 border-slate-850 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 text-[10px] text-slate-400 mb-1">
+                          <span className="font-mono text-sky-400 bg-sky-950 px-1.5 py-0.5 rounded border border-sky-800/40 font-semibold">
+                            {c.hash}
+                          </span>
+                          <span className="text-[10px] text-slate-500">{c.author ? `${c.author} • ` : ''}{c.date}</span>
+                        </div>
+                        <p className="font-medium line-clamp-2 leading-relaxed">{c.message}</p>
                       </div>
-                      <p className="font-medium line-clamp-1">{c.message}</p>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
