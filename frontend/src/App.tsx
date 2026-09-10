@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ClientProvider } from './context/ClientContext';
 import { AutomationProvider, useAutomation } from './context/AutomationContext';
@@ -21,6 +21,7 @@ import { InformationRequestsSection } from './components/banking/InformationRequ
 import { SheetsViewer } from './components/sheets/SheetsViewer';
 import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
 import { LandingPage } from './components/landing/LandingPage';
+import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -28,6 +29,29 @@ const MainLayout: React.FC = () => {
   const { activeTab, setActiveTab } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+
+  // Detect direct URL navigation to /privacy or /portal on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = (window.location.pathname || '').toLowerCase();
+      const hash = (window.location.hash || '').toLowerCase();
+      const search = (window.location.search || '').toLowerCase();
+      if (path.includes('privacy') || hash.includes('privacy') || search.includes('privacy')) {
+        setActiveTab('privacy');
+      } else if (path.includes('portal') || hash.includes('portal') || search.includes('portal')) {
+        setActiveTab('portal');
+      }
+    }
+  }, [setActiveTab]);
+
+  // Public Privacy Policy view accessible without authentication
+  if (activeTab === 'privacy') {
+    return (
+      <ErrorBoundary componentName="Privacy Policy">
+        <PrivacyPolicy onBack={() => setActiveTab(isAuthenticated ? 'workspace' : 'dashboard')} />
+      </ErrorBoundary>
+    );
+  }
 
   // If user navigated directly to the Client Portal
   if (activeTab === 'portal') {
@@ -51,6 +75,7 @@ const MainLayout: React.FC = () => {
         <LandingPage
           onGoToLogin={() => setShowLogin(true)}
           onOpenPortal={() => setActiveTab('portal')}
+          onOpenPrivacy={() => setActiveTab('privacy')}
         />
       </ErrorBoundary>
     );

@@ -26,9 +26,10 @@ import { capturePublicLead } from '../../lib/api';
 interface LandingPageProps {
   onGoToLogin: () => void;
   onOpenPortal?: () => void;
+  onOpenPrivacy?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPortal }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPortal, onOpenPrivacy }) => {
   // Demo Booking Modal State
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
@@ -641,8 +642,43 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPor
       </section>
 
       {/* 8. Footer */}
-      <footer className="py-8 border-t border-slate-800 bg-slate-950 text-slate-500 text-xs text-center">
-        <p>© 2026 S4 Automations Inc. All rights reserved. Bank-Grade Security &amp; TLS 1.3 Certified.</p>
+      <footer className="py-8 border-t border-slate-800 bg-slate-950 text-slate-500 text-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <p>© 2026 S4 Automations Inc. All rights reserved. Bank-Grade Security &amp; TLS 1.3 Certified.</p>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-slate-400 text-xs font-medium">
+            <a
+              href="/privacy.html"
+              onClick={(e) => {
+                if (onOpenPrivacy) {
+                  e.preventDefault();
+                  onOpenPrivacy();
+                }
+              }}
+              className="hover:text-sky-400 transition"
+            >
+              Privacy Policy
+            </a>
+            <span>•</span>
+            <a href="#ocr-sandbox" className="hover:text-slate-200 transition">
+              Live OCR Sandbox
+            </a>
+            <span>•</span>
+            <a href="#roi-calculator" className="hover:text-slate-200 transition">
+              ROI Calculator
+            </a>
+            {onOpenPortal && (
+              <>
+                <span>•</span>
+                <button
+                  onClick={onOpenPortal}
+                  className="hover:text-sky-400 transition cursor-pointer"
+                >
+                  Client Portal
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </footer>
 
       {/* 9. Demo Booking Modal */}
