@@ -1,9 +1,43 @@
-"""Comprehensive Automated Tests for Bank Transactions, Information Requests & Client Portal."""
-
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlmodel import Session, select
 from app.main import app
+from app.db.session import get_engine
+from app.models.db_models import BankTransaction
 from app.api.v1.bank_portal import generate_magic_link_token, validate_magic_link_token, generate_portal_token
+
+
+@pytest.fixture(autouse=True)
+def setup_test_bank_transactions():
+    """Sets up isolated test transactions for test suite execution."""
+    with Session(get_engine()) as session:
+        existing = session.exec(select(BankTransaction).where(BankTransaction.client_id == "anr_group")).first()
+        if not existing:
+            tx1 = BankTransaction(
+                id=1,
+                client_id="anr_group",
+                transaction_date="2026-09-28",
+                description="Fleet Fuel Refueling Expense",
+                amount=1850.0,
+                transaction_type="DEBIT",
+                bank_account_name="Main Operating Account",
+                status="UNMAPPED",
+                source_file_name="test_upload.pdf",
+            )
+            tx2 = BankTransaction(
+                id=2,
+                client_id="anr_group",
+                transaction_date="2026-09-25",
+                description="Office Stationeries Supply",
+                amount=450.0,
+                transaction_type="DEBIT",
+                bank_account_name="Main Operating Account",
+                status="UNMAPPED",
+                source_file_name="test_upload.pdf",
+            )
+            session.add(tx1)
+            session.add(tx2)
+            session.commit()
 
 
 @pytest.mark.asyncio

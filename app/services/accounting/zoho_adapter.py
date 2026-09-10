@@ -1,6 +1,8 @@
+import calendar
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.config import settings
+from app.utils.logging import get_logger
 from app.services.accounting.base import BaseAccountingAdapter, AccountingContact, AccountingItem, AccountingPostResult
 from app.services.zoho_service import ZohoBooksService
 from app.models.schemas import (
@@ -11,6 +13,8 @@ from app.models.schemas import (
     ZohoBankTransactionRequest,
     ZohoJournalRequest,
 )
+
+logger = get_logger("zoho_adapter")
 
 
 class ZohoBooksAdapter(BaseAccountingAdapter):
@@ -146,15 +150,23 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Pulls unmapped transactions residing in watched accounts from Zoho Books."""
-        effective_watched = [str(w).strip() for w in (watched_accounts or ["6990", "850", "suspense", "uncategorized"])]
+        """Pulls real unmapped transactions residing in watched accounts from Zoho Books.
+        
+        If no transactions exist or the adapter is not connected, returns an empty list.
+        Never falls back to mock or simulated records.
+        """
+        if not self.is_live or settings.MOCK_MODE or not self.zoho.org_id:
+            logger.info("Zoho Books live integration not active or in mock mode; returning empty transaction list.")
+            return []
+
+        effective_watched = [str(w).strip() for w in (watched_accounts or ["6990", "850", "suspense", "uncategorized"]) if str(w).strip()]
         now = datetime.now()
         target_year = year or now.year
 
         # Resolve numeric month if passed
         target_m_num = None
-        if month and month.upper() != "ALL":
-            m_clean = month.strip()
+        if month and str(month).upper() != "ALL":
+            m_clean = str(month).strip()
             if "-" in m_clean:
                 parts = m_clean.split("-")
                 if len(parts) >= 2 and parts[1].isdigit():
@@ -169,121 +181,150 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     except ValueError:
                         pass
 
-        # If live credentials and not in mock mode, attempt live API fetch
-        if self.is_live and not settings.MOCK_MODE and self.zoho.org_id:
+        # Calculate ISO date bounds if specified
+        date_start = None
+        date_end = None
+        if target_m_num:
+            days_in_m = calendar.monthrange(target_year, target_m_num)[1]
+            date_start = f"{target_year}-{target_m_num:02d}-01"
+            date_end = f"{target_year}-{target_m_num:02d}-{days_in_m:02d}"
+        elif year:
+            date_start = f"{target_year}-01-01"
+            date_end = f"{target_year}-12-31"
+
+        results: List[Dict[str, Any]] = []
+        seen_keys = set()
+
+        try:
+            # 1. Fetch Chart of Accounts and Bank Accounts from Zoho
+            chart_accounts = await self.zoho.fetch_chart_of_accounts()
             try:
-                date_start = f"{target_year}-{target_m_num:02d}-01" if target_m_num else None
-                date_end = f"{target_year}-{target_m_num:02d}-28" if target_m_num else None
-                raw_txs = await self.zoho.fetch_bank_transactions(
-                    status="uncategorized",
-                    date_start=date_start,
-                    date_end=date_end,
-                )
-                if raw_txs:
-                    results = []
-                    for tx in raw_txs:
-                        tx_date = str(tx.get("date") or f"{target_year}-01-01")
-                        results.append({
-                            "transaction_date": tx_date,
-                            "description": tx.get("description") or tx.get("payee") or "Zoho Watched Account Transaction",
-                            "amount": float(tx.get("amount", 0.0)),
-                            "transaction_type": str(tx.get("transaction_type", "DEBIT")).upper(),
-                            "bank_account_name": tx.get("from_account_name") or "Main Operating Bank Account",
-                            "source_file_name": "Zoho_Live_Sync",
-                            "mapped_account_id": None,
-                            "ai_suggested_account": tx.get("account_name") or "Operating Expenses",
-                            "category_confidence": 0.88,
-                            "watched_account": effective_watched[0] if effective_watched else "uncategorized",
-                        })
-                    return results
-            except Exception:
-                pass
+                bank_accounts = await self.zoho.fetch_bank_accounts()
+            except Exception as b_err:
+                logger.warning(f"Could not fetch bank accounts from Zoho: {b_err}")
+                bank_accounts = []
 
-        # Fallback / simulated records dynamically mapped across watched accounts and months
-        months_to_gen = [target_m_num] if target_m_num else [9, 8, 7]
-        sample_templates = [
-            {
-                "account_tag": "6990",
-                "desc": "MOMO CASH OUT 0244910291 - AGENT COMMISSION",
-                "amount": 450.0,
-                "type": "DEBIT",
-                "bank": "Ecobank Ghana GHS Operating",
-                "ai_acc": "Internet & Communication (MoMo/Data)",
-                "conf": 0.92,
-                "day": "28",
-            },
-            {
-                "account_tag": "850",
-                "desc": "TOTAL ENERGIES ACCRA CENTRAL - FLEET REFUELLING",
-                "amount": 1850.0,
-                "type": "DEBIT",
-                "bank": "Stanbic Bank Corporate",
-                "ai_acc": "Vehicle Fuel & Transport",
-                "conf": 0.95,
-                "day": "27",
-            },
-            {
-                "account_tag": "suspense",
-                "desc": "WIRE TRANSFER TO KWAME MENSAH - REF 492010",
-                "amount": 14500.0,
-                "type": "DEBIT",
-                "bank": "Stanbic Bank Corporate",
-                "ai_acc": "Director's Loan Account",
-                "conf": 0.65,
-                "day": "25",
-            },
-            {
-                "account_tag": "uncategorized",
-                "desc": "DIRECT CREDIT VODAFONE GHANA FIBRE BROADBAND",
-                "amount": 820.0,
-                "type": "DEBIT",
-                "bank": "Ecobank Ghana GHS Operating",
-                "ai_acc": "Internet & Communication (MoMo/Data)",
-                "conf": 0.94,
-                "day": "22",
-            },
-            {
-                "account_tag": "6990",
-                "desc": "CLEARING TRANSFER - UNALLOCATED MOMO MERCHANT SETTLEMENT",
-                "amount": 3200.0,
-                "type": "CREDIT",
-                "bank": "Ecobank Ghana GHS Operating",
-                "ai_acc": "Commercial Sales Revenue",
-                "conf": 0.89,
-                "day": "18",
-            },
-            {
-                "account_tag": "850",
-                "desc": "OFFICE WORKSHOP REPAIRS & AIR CONDITIONING SERVICE",
-                "amount": 1150.0,
-                "type": "DEBIT",
-                "bank": "Stanbic Bank Corporate",
-                "ai_acc": "Repairs & Maintenance",
-                "conf": 0.91,
-                "day": "14",
-            },
-        ]
-
-        generated: List[Dict[str, Any]] = []
-        for m in months_to_gen:
-            m_str = f"{m:02d}"
-            for item in sample_templates:
-                # Match to client's watched accounts if any match tag, or distribute among watched accounts
-                matched_watched = next((w for w in effective_watched if item["account_tag"] in w.lower()), effective_watched[0])
-                generated.append({
-                    "transaction_date": f"{target_year}-{m_str}-{item['day']}",
-                    "description": f"{item['desc']} [Watched: {matched_watched}]",
-                    "amount": item["amount"],
-                    "transaction_type": item["type"],
-                    "bank_account_name": item["bank"],
-                    "source_file_name": "Zoho_Watched_Accounts_Sync",
-                    "mapped_account_id": None,
-                    "ai_suggested_account": item["ai_acc"],
-                    "category_confidence": item["conf"],
-                    "watched_account": matched_watched,
+            # Index accounts by id, code, and normalized name
+            all_known_accounts = []
+            for acc in (chart_accounts or []):
+                all_known_accounts.append({
+                    "account_id": str(acc.get("account_id", "")),
+                    "account_code": str(acc.get("account_code", "")),
+                    "account_name": str(acc.get("account_name", "")),
+                    "account_type": str(acc.get("account_type", "")).lower(),
+                    "source": "chart",
                 })
+            for bacc in (bank_accounts or []):
+                b_id = str(bacc.get("account_id", ""))
+                if not any(a["account_id"] == b_id for a in all_known_accounts):
+                    all_known_accounts.append({
+                        "account_id": b_id,
+                        "account_code": str(bacc.get("account_code", "")),
+                        "account_name": str(bacc.get("account_name", "")),
+                        "account_type": "bank",
+                        "source": "bank",
+                    })
 
-        return generated
+            # 2. Match watched accounts
+            matched_targets = []
+            for w in effective_watched:
+                w_norm = w.lower()
+                for acc in all_known_accounts:
+                    if (
+                        acc["account_id"].lower() == w_norm
+                        or (acc["account_code"] and acc["account_code"].lower() == w_norm)
+                        or (w_norm in acc["account_name"].lower())
+                    ):
+                        matched_targets.append((w, acc))
+
+            # If no direct match on watched names/codes, check bank accounts
+            if not matched_targets:
+                for acc in all_known_accounts:
+                    if acc["account_type"] in ["bank", "credit_card"] or acc["source"] == "bank":
+                        matched_targets.append((effective_watched[0] if effective_watched else "Bank", acc))
+
+            # 3. Query transactions from Zoho for each matched account
+            for w_label, acc in matched_targets:
+                acc_id = acc["account_id"]
+                acc_type = acc["account_type"]
+                acc_name = acc["account_name"]
+
+                # Case A: Bank / Credit Card account -> use /banktransactions
+                if acc_type in ["bank", "credit_card"] or acc["source"] == "bank":
+                    try:
+                        raw_txs = await self.zoho.fetch_bank_transactions(
+                            account_id=acc_id,
+                            status=None,
+                            date_start=date_start,
+                            date_end=date_end,
+                        )
+                        for tx in (raw_txs or []):
+                            tx_id = str(tx.get("transaction_id", ""))
+                            tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
+                            amt = abs(float(tx.get("amount", 0.0)))
+                            desc = tx.get("description") or tx.get("payee") or tx.get("reference_number") or f"Transaction in {acc_name}"
+                            tx_t = str(tx.get("transaction_type") or "DEBIT").upper()
+                            if tx_t not in ["DEBIT", "CREDIT"]:
+                                tx_t = "DEBIT" if float(tx.get("amount", 0.0)) < 0 else "CREDIT"
+
+                            u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
+                            if u_key not in seen_keys:
+                                seen_keys.add(u_key)
+                                results.append({
+                                    "transaction_date": tx_date,
+                                    "description": desc,
+                                    "amount": amt,
+                                    "transaction_type": tx_t,
+                                    "bank_account_name": tx.get("from_account_name") or acc_name or "Operating Bank Account",
+                                    "source_file_name": "Zoho_Live_Sync",
+                                    "mapped_account_id": None,
+                                    "ai_suggested_account": tx.get("account_name"),
+                                    "category_confidence": 0.90,
+                                    "watched_account": w_label,
+                                })
+                    except Exception as tx_err:
+                        logger.warning(f"Error fetching bank transactions for account {acc_id} ({acc_name}): {tx_err}")
+
+                # Case B: General Ledger account -> use /chartofaccounts/accounttransactions
+                else:
+                    try:
+                        raw_acc_txs = await self.zoho.fetch_account_transactions(
+                            account_id=acc_id,
+                            date_start=date_start,
+                            date_end=date_end,
+                        )
+                        for tx in (raw_acc_txs or []):
+                            tx_id = str(tx.get("transaction_id", ""))
+                            tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
+                            debit = float(tx.get("debit_amount", 0.0) or 0.0)
+                            credit = float(tx.get("credit_amount", 0.0) or 0.0)
+                            amt = debit if debit > 0 else credit
+                            tx_t = "DEBIT" if debit > 0 else "CREDIT"
+                            desc = tx.get("description") or tx.get("payee") or tx.get("reference_number") or f"Entry in {acc_name}"
+
+                            u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
+                            if u_key not in seen_keys:
+                                seen_keys.add(u_key)
+                                results.append({
+                                    "transaction_date": tx_date,
+                                    "description": desc,
+                                    "amount": amt,
+                                    "transaction_type": tx_t,
+                                    "bank_account_name": acc_name or "Zoho General Ledger",
+                                    "source_file_name": "Zoho_Live_Sync",
+                                    "mapped_account_id": None,
+                                    "ai_suggested_account": None,
+                                    "category_confidence": 0.85,
+                                    "watched_account": w_label,
+                                })
+                    except Exception as acc_err:
+                        logger.warning(f"Error fetching account transactions for account {acc_id} ({acc_name}): {acc_err}")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch live transactions from Zoho Books: {e}", exc_info=True)
+            return []
+
+        return results
 
     async def categorize_bank_transaction(
         self,

@@ -1064,16 +1064,43 @@ class ZohoBooksService:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
     )
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Fetches bank accounts registered in Zoho Books API (/bankaccounts)."""
+        if settings.MOCK_MODE or not self.org_id:
+            return []
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/bankaccounts"
+        params: Dict[str, Any] = {"organization_id": self.org_id}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.get(url, headers=headers, params=params)
+
+            response.raise_for_status()
+            data = response.json()
+            return data.get("bankaccounts", [])
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
     async def fetch_bank_transactions(
         self,
         account_id: Optional[str] = None,
-        status: Optional[str] = "uncategorized",
+        status: Optional[str] = None,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Fetches bank transactions from Zoho Books API (/banktransactions)."""
         if settings.MOCK_MODE or not self.org_id:
-            logger.info("[MOCK] Fetching bank transactions from Zoho Books mock store")
+            logger.info("[MOCK] Bank transactions requested in mock mode; returning empty list.")
             return []
 
         access_token = await self.get_access_token()
@@ -1082,7 +1109,7 @@ class ZohoBooksService:
         params: Dict[str, Any] = {"organization_id": self.org_id}
         if account_id:
             params["account_id"] = account_id
-        if status:
+        if status and str(status).upper() != "ALL":
             params["filter_by"] = f"Status.{status.capitalize()}"
         if date_start:
             params["date_start"] = date_start
@@ -1099,6 +1126,45 @@ class ZohoBooksService:
             response.raise_for_status()
             data = response.json()
             return data.get("banktransactions", [])
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def fetch_account_transactions(
+        self,
+        account_id: str,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetches transactions for a specific chart of accounts account from Zoho Books API (/chartofaccounts/accounttransactions)."""
+        if settings.MOCK_MODE or not self.org_id:
+            return []
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/chartofaccounts/accounttransactions"
+        params: Dict[str, Any] = {
+            "organization_id": self.org_id,
+            "account_id": account_id,
+        }
+        if date_start:
+            params["date_start"] = date_start
+        if date_end:
+            params["date_end"] = date_end
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.get(url, headers=headers, params=params)
+
+            response.raise_for_status()
+            data = response.json()
+            return data.get("account_transactions", [])
 
     @retry(
         reraise=True,

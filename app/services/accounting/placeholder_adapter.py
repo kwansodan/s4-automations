@@ -113,24 +113,10 @@ class InProgressAccountingAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Discovers unmapped transactions residing in watched accounts."""
-        effective_watched = [str(w).strip() for w in (watched_accounts or ["suspense", "uncategorized"])]
-        w_tag = effective_watched[0] if effective_watched else "suspense"
-        now_str = "2026-09" if not month or month == "ALL" else f"2026-{month}" if month.isdigit() else "2026-09"
-        return [
-            {
-                "transaction_date": f"{now_str}-28" if len(now_str) == 7 else "2026-09-28",
-                "description": f"[{self.platform_name}] UNCLASSIFIED TRANSACTION [Watched: {w_tag}]",
-                "amount": 750.0,
-                "transaction_type": "DEBIT",
-                "bank_account_name": "Generic Operating Account",
-                "source_file_name": f"{self.platform_name}_Watched_Sync",
-                "mapped_account_id": None,
-                "ai_suggested_account": "Office Supplies",
-                "category_confidence": 0.85,
-                "watched_account": w_tag,
-            }
-        ]
+        """Discovers unmapped transactions residing in watched accounts.
+        Returns empty list when live sync is not yet configured or no live records exist.
+        """
+        return []
 
     async def categorize_bank_transaction(
         self,

@@ -567,6 +567,62 @@ def _extract_year_month(date_str: Optional[str]) -> Optional[str]:
     return None
 
 
+def purge_legacy_mock_bank_transactions(session: Session, client_id: Optional[str] = None) -> int:
+    """Purges any legacy synthetic mock bank transactions from the database."""
+    mock_banks = [
+        "Stanbic Bank Corporate",
+        "Ecobank Ghana GHS Operating",
+        "Chase Commercial Checking",
+        "Standard Chartered Main",
+        "Generic Operating Account",
+    ]
+    query = select(BankTransaction).where(
+        or_(
+            BankTransaction.bank_account_name.in_(mock_banks),
+            BankTransaction.description.like("%MOMO CASH OUT 0244910291%"),
+            BankTransaction.description.like("%TOTAL ENERGIES ACCRA CENTRAL%"),
+            BankTransaction.description.like("%WIRE TRANSFER TO KWAME MENSAH%"),
+            BankTransaction.description.like("%DIRECT CREDIT VODAFONE GHANA%"),
+            BankTransaction.description.like("%ACCRA FUEL DEPOT%"),
+            BankTransaction.description.like("%DIRECT SETTLEMENT MOMO%"),
+            BankTransaction.description.like("%CLEARING TRANSFER - UNALLOCATED MOMO%"),
+            BankTransaction.description.like("%OFFICE WORKSHOP REPAIRS%"),
+            BankTransaction.description.like("%ACH DEBIT - VENDOR SERVICES UNMAPPED%"),
+            BankTransaction.description.like("%DIRECT DEBIT - UTILITY PAYMENT UNRECONCILED%"),
+            BankTransaction.description.like("%UNCLASSIFIED TRANSACTION [Watched:%"),
+            BankTransaction.description.like("%[Watched: 6990]%"),
+            BankTransaction.description.like("%[Watched: 850]%"),
+            BankTransaction.description.like("%[Watched: suspense]%"),
+            BankTransaction.description.like("%[Watched: uncategorized]%"),
+        )
+    )
+    if client_id:
+        query = query.where(BankTransaction.client_id == client_id)
+
+    legacy_txs = session.exec(query).all()
+    if legacy_txs:
+        purged_count = len(legacy_txs)
+        for tx in legacy_txs:
+            session.delete(tx)
+        session.commit()
+        logger.info(f"Purged {purged_count} legacy synthetic mock bank transactions for client {client_id or 'all'}.")
+        return purged_count
+    return 0
+
+
+@router.post("/bank/clients/{client_id}/purge-test-transactions", summary="Accountant: Purge Legacy Test / Simulated Bank Transactions")
+async def accountant_purge_test_transactions(client_id: str) -> Dict[str, Any]:
+    """Explicitly deletes any legacy mock/synthetic transactions for this client from the database."""
+    with Session(get_engine()) as session:
+        purged = purge_legacy_mock_bank_transactions(session, client_id=client_id)
+        return {
+            "success": True,
+            "client_id": client_id,
+            "purged_count": purged,
+            "message": f"Successfully purged {purged} test transactions." if purged > 0 else "No test transactions found.",
+        }
+
+
 @router.get("/bank/clients/{client_id}/transactions", summary="Accountant: List & Filter Bank Transactions in Watched Accounts")
 async def accountant_list_bank_transactions(
     client_id: str,
@@ -577,57 +633,11 @@ async def accountant_list_bank_transactions(
 ) -> Dict[str, Any]:
     """Returns transactions in watched accounts with summary metrics for the Information Requests dashboard."""
     with Session(get_engine()) as session:
+        # Guarantee no legacy test transactions exist
+        purge_legacy_mock_bank_transactions(session, client_id=client_id)
+
         query = select(BankTransaction).where(BankTransaction.client_id == client_id)
-
         all_txs = session.exec(query.order_by(BankTransaction.transaction_date.desc())).all()
-
-        # Seed mock transactions if empty for demo/dev clients
-        if not all_txs:
-            now_dt = datetime.now()
-            now_str = now_dt.strftime("%Y-%m")
-            prev_m = now_dt.month - 1 if now_dt.month > 1 else 12
-            prev_y = now_dt.year if now_dt.month > 1 else now_dt.year - 1
-            prev_str = f"{prev_y}-{prev_m:02d}"
-
-            seed_data = [
-                (f"{now_str}-28", "MOMO CASH OUT 0244910291 - AGENT COMMISSION [Watched: 6990]", 450.0, "DEBIT", "UNMAPPED", "Internet & Communication (MoMo/Data)", 0.92, "6990"),
-                (f"{now_str}-27", "TOTAL ENERGIES ACCRA CENTRAL - FLEET REFUELLING [Watched: 850]", 1850.0, "DEBIT", "UNMAPPED", "Vehicle Fuel & Transport", 0.95, "850"),
-                (f"{now_str}-25", "WIRE TRANSFER TO KWAME MENSAH - REF 492010 [Watched: suspense]", 14500.0, "DEBIT", "CLARIFICATION_REQUESTED", "Director's Loan Account", 0.65, "suspense"),
-                (f"{now_str}-22", "DIRECT CREDIT VODAFONE GHANA FIBRE BROADBAND [Watched: uncategorized]", 820.0, "DEBIT", "CLIENT_ANSWERED", "Internet & Communication (MoMo/Data)", 0.94, "uncategorized"),
-                (f"{prev_str}-28", "ACCRA FUEL DEPOT DIESEL DELIVERY [Watched: 850]", 3400.0, "DEBIT", "UNMAPPED", "Vehicle Fuel & Transport", 0.91, "850"),
-                (f"{prev_str}-20", "DIRECT SETTLEMENT MOMO MERCHANT CLEARING [Watched: 6990]", 5800.0, "CREDIT", "MAPPED", "Commercial Sales Revenue", 0.89, "6990"),
-            ]
-
-            seed_items = []
-            for dt_val, desc, amt, tx_t, st, ai_acc, conf, w_acc in seed_data:
-                chk_str = f"{client_id}:{dt_val}:{amt}:{desc}"
-                chk_hash = hashlib.sha256(chk_str.encode()).hexdigest()[:16]
-                seed_items.append(
-                    BankTransaction(
-                        client_id=client_id,
-                        transaction_date=dt_val,
-                        description=desc,
-                        amount=amt,
-                        transaction_type=tx_t,
-                        bank_account_name="Stanbic Bank Corporate" if "TOTAL" in desc or "WIRE" in desc or "DEPOT" in desc else "Ecobank Ghana GHS Operating",
-                        status=st,
-                        ai_suggested_account=ai_acc,
-                        category_confidence=conf,
-                        checksum=chk_hash,
-                        metadata_json={"watched_account": w_acc},
-                        accountant_query="Kwame, what was the business purpose of this withdrawal? Please attach invoice." if st == "CLARIFICATION_REQUESTED" else None,
-                        query_date=datetime.now(timezone.utc) - timedelta(days=1) if st == "CLARIFICATION_REQUESTED" else None,
-                        client_explanation="This is for the annual corporate high-speed fibre connection." if st == "CLIENT_ANSWERED" else None,
-                        response_date=datetime.now(timezone.utc) - timedelta(hours=3) if st == "CLIENT_ANSWERED" else None,
-                        mapped_account_id="acc_4000" if st == "MAPPED" else None,
-                        mapped_account_name="Commercial Sales Revenue" if st == "MAPPED" else None,
-                    )
-                )
-
-            for s in seed_items:
-                session.add(s)
-            session.commit()
-            all_txs = session.exec(query.order_by(BankTransaction.transaction_date.desc())).all()
 
         # Compute distinct available months in YYYY-MM format
         available_months = sorted(
@@ -921,6 +931,9 @@ async def accountant_sync_bank_feeds(
         if not client:
             raise HTTPException(status_code=404, detail="Client organisation not found.")
 
+        # Ensure any legacy mock transactions are wiped out
+        purge_legacy_mock_bank_transactions(session, client_id=client_id)
+
         target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
         watched = client.watched_accounts if (client.watched_accounts and len(client.watched_accounts) > 0) else ["6990", "850", "suspense", "uncategorized"]
         adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
@@ -929,6 +942,16 @@ async def accountant_sync_bank_feeds(
             month=month,
             year=target_year_int,
         )
+
+        period_label = f" for {month} {year}".strip() if (month or year) else ""
+
+        if not feeds:
+            return {
+                "success": True,
+                "client_id": client_id,
+                "synced_new_count": 0,
+                "message": f"No transactions found in watched accounts on {adapter.platform_name}{period_label}.",
+            }
 
         synced_count = 0
         for f in feeds:
@@ -960,7 +983,7 @@ async def accountant_sync_bank_feeds(
                     amount=float(f.get("amount", 0.0)),
                     transaction_type=f.get("transaction_type", "DEBIT"),
                     bank_account_name=f.get("bank_account_name", "Main Operating Account"),
-                    source_file_name=f.get("source_file_name", "Watched_Accounts_Sync"),
+                    source_file_name=f.get("source_file_name", "Live_Watched_Accounts_Sync"),
                     checksum=c_hash,
                     status="UNMAPPED",
                     ai_suggested_account=f.get("ai_suggested_account"),
@@ -972,7 +995,6 @@ async def accountant_sync_bank_feeds(
 
         session.commit()
 
-        period_label = f" for {month} {year}".strip() if (month or year) else ""
         return {
             "success": True,
             "client_id": client_id,

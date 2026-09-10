@@ -445,6 +445,26 @@ def init_db():
                 for m in team:
                     session.add(m)
                 session.commit()
+
+            # Ensure any legacy synthetic mock bank transactions are purged
+            from app.models.db_models import BankTransaction
+            mock_banks = [
+                "Stanbic Bank Corporate",
+                "Ecobank Ghana GHS Operating",
+                "Chase Commercial Checking",
+                "Standard Chartered Main",
+                "Generic Operating Account",
+            ]
+            del_txs = session.exec(
+                select(BankTransaction).where(
+                    BankTransaction.bank_account_name.in_(mock_banks)
+                )
+            ).all()
+            if del_txs:
+                for dtx in del_txs:
+                    session.delete(dtx)
+                session.commit()
+                logger.info(f"Purged {len(del_txs)} legacy synthetic bank transactions on database init.")
     except Exception as e:
         logger.warning(f"Database seed notice: {e}")
 
