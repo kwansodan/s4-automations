@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   AlertCircle,
   FileText,
+  Building2,
 } from 'lucide-react';
 import {
   fetchRecentGitCommits,
@@ -27,11 +28,14 @@ import {
   broadcastRelease,
   fetchReleaseHistory,
   fetchPublicChangelog,
+  fetchLinkedInConfig,
   GitCommitItem,
   GeneratedReleaseContent,
   ReleaseHistoryItem,
   ChangelogEntryItem,
+  LinkedInConfig,
 } from '../../lib/api';
+import { LinkedInPageConnectModal } from '../modals/LinkedInPageConnectModal';
 
 export const MultiChannelLaunchpad: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'composer' | 'changelog' | 'history'>('composer');
@@ -83,11 +87,29 @@ export const MultiChannelLaunchpad: React.FC = () => {
   const [changelogItems, setChangelogItems] = useState<ChangelogEntryItem[]>([]);
   const [isLoadingChangelog, setIsLoadingChangelog] = useState(false);
 
+  // LinkedIn Business Page Config state
+  const [linkedInConfig, setLinkedInConfig] = useState<LinkedInConfig | null>(null);
+  const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
+  const [isLoadingLinkedInConfig, setIsLoadingLinkedInConfig] = useState(false);
+
   // Load commits on mount
   useEffect(() => {
     loadCommits();
     loadChangelog();
+    loadLinkedInConfig();
   }, []);
+
+  const loadLinkedInConfig = async () => {
+    setIsLoadingLinkedInConfig(true);
+    try {
+      const cfg = await fetchLinkedInConfig();
+      setLinkedInConfig(cfg);
+    } catch (err) {
+      console.warn('Failed to load LinkedIn config:', err);
+    } finally {
+      setIsLoadingLinkedInConfig(false);
+    }
+  };
 
   const loadCommits = async () => {
     setIsLoadingCommits(true);
@@ -473,6 +495,93 @@ export const MultiChannelLaunchpad: React.FC = () => {
               {/* Tab 1: LinkedIn View & Live Preview */}
               {selectedChannelTab === 'linkedin' && (
                 <div className="space-y-4">
+                  {/* LinkedIn Target & Business Page Connection Card */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`p-2.5 rounded-xl border shrink-0 ${
+                            linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                              ? 'bg-blue-950/60 border-blue-500/50 text-blue-400'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white">
+                              {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                                ? (linkedInConfig.organization_name || linkedInConfig.organization_id)
+                                : 'Personal Profile (Default)'}
+                            </span>
+                            <span
+                              className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                                linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                                  ? linkedInConfig.has_access_token
+                                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                                    : 'bg-blue-950/60 text-blue-300 border-blue-800'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}
+                            >
+                              {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                                ? linkedInConfig.has_access_token
+                                  ? 'API Automated'
+                                  : '1-Click Admin Mode'
+                                : 'Personal Feed'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                              ? 'Feature announcements will broadcast directly under this LinkedIn Business Page.'
+                              : 'Want to broadcast updates directly under your Company / Business Page?'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsLinkedInModalOpen(true)}
+                          className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                          <span>
+                            {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
+                              ? 'Manage Page'
+                              : 'Connect Business Page'}
+                          </span>
+                        </button>
+
+                        {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (linkedinBody) {
+                                navigator.clipboard.writeText(linkedinBody);
+                                setCopiedChannel('linkedin-admin');
+                                setTimeout(() => setCopiedChannel(null), 2500);
+                              }
+                              const adminUrl =
+                                linkedInConfig.company_admin_url ||
+                                `https://www.linkedin.com/company/${encodeURIComponent(
+                                  linkedInConfig.organization_id
+                                )}/admin/feed/posts/`;
+                              window.open(adminUrl, '_blank', 'noreferrer');
+                            }}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                            title="Copies post copy to clipboard and opens your Company Admin Feed"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                            <span>
+                              {copiedChannel === 'linkedin-admin' ? 'Copied & Opening...' : 'Open Page Composer'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Alternative Hooks Selector */}
                   {generatedContent?.linkedin?.hooks && generatedContent.linkedin.hooks.length > 0 && (
                     <div className="space-y-2 bg-slate-950/80 p-3 rounded-xl border border-slate-850">
@@ -511,15 +620,38 @@ export const MultiChannelLaunchpad: React.FC = () => {
                           <Copy className="w-3 h-3" />
                           <span>{copiedChannel === 'linkedin' ? 'Copied!' : 'Copy'}</span>
                         </button>
-                        <a
-                          href={`https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(linkedinBody)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          <span>Open Composer</span>
-                        </a>
+                        {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (linkedinBody) {
+                                navigator.clipboard.writeText(linkedinBody);
+                                setCopiedChannel('linkedin-admin');
+                                setTimeout(() => setCopiedChannel(null), 2500);
+                              }
+                              const adminUrl =
+                                linkedInConfig.company_admin_url ||
+                                `https://www.linkedin.com/company/${encodeURIComponent(
+                                  linkedInConfig.organization_id
+                                )}/admin/feed/posts/`;
+                              window.open(adminUrl, '_blank', 'noreferrer');
+                            }}
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Open Company Composer</span>
+                          </button>
+                        ) : (
+                          <a
+                            href={`https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(linkedinBody)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Open Personal Composer</span>
+                          </a>
+                        )}
                       </div>
                     </div>
 
@@ -712,8 +844,37 @@ export const MultiChannelLaunchpad: React.FC = () => {
                             <Linkedin className="w-3 h-3" /> LinkedIn
                           </p>
                           <p className="text-[10px] text-slate-300 mt-0.5">
-                            {broadcastResult.delivery_status.linkedin.mode === 'api' ? 'Posted via API ✅' : 'Composer Ready 🚀'}
+                            {broadcastResult.delivery_status.linkedin.mode === 'api'
+                              ? `Posted to ${
+                                  broadcastResult.delivery_status.linkedin.target === 'organization'
+                                    ? broadcastResult.delivery_status.linkedin.organization_name || 'Business Page'
+                                    : 'Profile'
+                                } ✅`
+                              : `Composer Ready (${
+                                  broadcastResult.delivery_status.linkedin.target === 'organization'
+                                    ? broadcastResult.delivery_status.linkedin.organization_name || 'Business Page'
+                                    : 'Personal'
+                                }) 🚀`}
                           </p>
+                          {(broadcastResult.delivery_status.linkedin.company_admin_url ||
+                            broadcastResult.delivery_status.linkedin.web_intent_url) && (
+                            <a
+                              href={
+                                broadcastResult.delivery_status.linkedin.company_admin_url ||
+                                broadcastResult.delivery_status.linkedin.web_intent_url
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold mt-1"
+                            >
+                              <ExternalLink className="w-2.5 h-2.5" />
+                              <span>
+                                {broadcastResult.delivery_status.linkedin.target === 'organization'
+                                  ? 'Open Company Feed'
+                                  : 'Open Feed'}
+                              </span>
+                            </a>
+                          )}
                         </div>
                       )}
                       {broadcastResult.delivery_status?.twitter && (
@@ -870,6 +1031,13 @@ export const MultiChannelLaunchpad: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* LinkedIn Business Page Connection Modal */}
+      <LinkedInPageConnectModal
+        isOpen={isLinkedInModalOpen}
+        onClose={() => setIsLinkedInModalOpen(false)}
+        onConnected={(cfg) => setLinkedInConfig(cfg)}
+      />
     </div>
   );
 };

@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # Social & Community Broadcaster (LinkedIn & X/Twitter)
     LINKEDIN_ACCESS_TOKEN: Optional[str] = Field(default=None, description="LinkedIn OAuth2 User or Organization Access Token")
     LINKEDIN_AUTHOR_URN: Optional[str] = Field(default=None, description="LinkedIn Author URN (e.g. urn:li:person:XXXX or urn:li:organization:YYYY)")
+    LINKEDIN_ORGANIZATION_ID: Optional[str] = Field(default=None, description="LinkedIn Organization/Company ID or Vanity Slug for Business Page")
+    LINKEDIN_PAGE_NAME: Optional[str] = Field(default=None, description="LinkedIn Business Page Display Name")
+    LINKEDIN_POSTING_MODE: str = Field(default="organization", description="'organization' for Business Page or 'person' for Personal Profile")
+    LINKEDIN_CLIENT_ID: Optional[str] = Field(default=None, description="LinkedIn OAuth Client ID")
+    LINKEDIN_CLIENT_SECRET: Optional[str] = Field(default=None, description="LinkedIn OAuth Client Secret")
+    LINKEDIN_REDIRECT_URI: Optional[str] = Field(default=None, description="Custom LinkedIn OAuth Redirect URI")
     TWITTER_API_KEY: Optional[str] = Field(default=None, description="Twitter/X API Consumer Key")
     TWITTER_API_SECRET: Optional[str] = Field(default=None, description="Twitter/X API Consumer Secret")
     TWITTER_ACCESS_TOKEN: Optional[str] = Field(default=None, description="Twitter/X User Access Token")
@@ -132,6 +138,12 @@ class Settings(BaseSettings):
             "DATABASE_URL": mask(self.DATABASE_URL),
             "LINKEDIN_ACCESS_TOKEN": mask(self.LINKEDIN_ACCESS_TOKEN or ""),
             "LINKEDIN_AUTHOR_URN": self.LINKEDIN_AUTHOR_URN or "",
+            "LINKEDIN_ORGANIZATION_ID": self.LINKEDIN_ORGANIZATION_ID or "",
+            "LINKEDIN_PAGE_NAME": self.LINKEDIN_PAGE_NAME or "",
+            "LINKEDIN_POSTING_MODE": self.LINKEDIN_POSTING_MODE or "organization",
+            "LINKEDIN_CLIENT_ID": self.LINKEDIN_CLIENT_ID or "",
+            "LINKEDIN_CLIENT_SECRET": mask(self.LINKEDIN_CLIENT_SECRET or ""),
+            "LINKEDIN_REDIRECT_URI": self.LINKEDIN_REDIRECT_URI or "",
             "TWITTER_API_KEY": mask(self.TWITTER_API_KEY or ""),
             "TWITTER_API_SECRET": mask(self.TWITTER_API_SECRET or ""),
             "TWITTER_ACCESS_TOKEN": mask(self.TWITTER_ACCESS_TOKEN or ""),
@@ -185,6 +197,17 @@ class Settings(BaseSettings):
             f"SMTP_PASSWORD={self.SMTP_PASSWORD or ''}",
             f"SMTP_FROM={self.SMTP_FROM}",
             f"NOTIFICATION_EMAIL={self.NOTIFICATION_EMAIL}",
+            f"DATABASE_URL={self.DATABASE_URL}",
+            "",
+            f"LINKEDIN_ACCESS_TOKEN={self.LINKEDIN_ACCESS_TOKEN or ''}",
+            f"LINKEDIN_AUTHOR_URN={self.LINKEDIN_AUTHOR_URN or ''}",
+            f"LINKEDIN_ORGANIZATION_ID={self.LINKEDIN_ORGANIZATION_ID or ''}",
+            f"LINKEDIN_PAGE_NAME={self.LINKEDIN_PAGE_NAME or ''}",
+            f"LINKEDIN_POSTING_MODE={self.LINKEDIN_POSTING_MODE or 'organization'}",
+            f"LINKEDIN_CLIENT_ID={self.LINKEDIN_CLIENT_ID or ''}",
+            f"LINKEDIN_CLIENT_SECRET={self.LINKEDIN_CLIENT_SECRET or ''}",
+            f"LINKEDIN_REDIRECT_URI={self.LINKEDIN_REDIRECT_URI or ''}",
+            "",
             f"PORT={self.PORT}",
             f"ENVIRONMENT={self.ENVIRONMENT}",
             f"LOG_LEVEL={self.LOG_LEVEL}",

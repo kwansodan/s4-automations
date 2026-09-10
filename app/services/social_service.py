@@ -239,22 +239,71 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
         }
 
     @staticmethod
-    async def publish_to_linkedin(text: str) -> Dict[str, Any]:
-        """Publishes post to LinkedIn via REST API if configured, otherwise returns 1-click web composer intent."""
-        encoded_text = urllib.parse.quote(text)
-        web_intent_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_text}"
+    def resolve_linkedin_target() -> Dict[str, Any]:
+        """Resolves target posting URN, organization ID, and direct admin URLs."""
+        posting_mode = getattr(settings, "LINKEDIN_POSTING_MODE", "organization") or "organization"
+        page_name = getattr(settings, "LINKEDIN_PAGE_NAME", "") or "LinkedIn Business Page"
+        org_id = getattr(settings, "LINKEDIN_ORGANIZATION_ID", "") or ""
+
+        # Clean org_id if full URL was pasted
+        if org_id:
+            org_id = org_id.strip()
+            if "linkedin.com/company/" in org_id:
+                parts = org_id.split("linkedin.com/company/")[1].strip("/").split("/")
+                org_id = parts[0]
+            if org_id.startswith("urn:li:organization:"):
+                org_id = org_id.replace("urn:li:organization:", "")
+
+        author_urn = getattr(settings, "LINKEDIN_AUTHOR_URN", "") or ""
         
-        # If API token is configured, attempt direct background dispatch
-        if settings.LINKEDIN_ACCESS_TOKEN and settings.LINKEDIN_AUTHOR_URN and not settings.MOCK_MODE:
+        if posting_mode == "organization" or org_id:
+            if not author_urn and org_id:
+                author_urn = f"urn:li:organization:{org_id}"
+            company_admin_url = f"https://www.linkedin.com/company/{org_id}/admin/feed/posts/" if org_id else None
+            is_organization = True
+        else:
+            company_admin_url = None
+            is_organization = False
+
+        return {
+            "posting_mode": posting_mode,
+            "is_organization": is_organization,
+            "organization_id": org_id,
+            "page_name": page_name,
+            "author_urn": author_urn,
+            "company_admin_url": company_admin_url,
+            "has_access_token": bool(getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)),
+        }
+
+    @staticmethod
+    async def publish_to_linkedin(text: str) -> Dict[str, Any]:
+        """Publishes post to LinkedIn (Company Page or Personal) via REST API if configured, otherwise returns 1-click web composer intent."""
+        encoded_text = urllib.parse.quote(text)
+        personal_intent_url = f"https://www.linkedin.com/feed/?shareActive=true&text={encoded_text}"
+        
+        target = SocialBroadcasterService.resolve_linkedin_target()
+        org_id = target["organization_id"]
+        author_urn = target["author_urn"]
+        page_name = target["page_name"]
+        company_admin_url = target["company_admin_url"]
+        is_org = target["is_organization"]
+
+        # Default web intent
+        web_intent_url = company_admin_url if (is_org and company_admin_url) else personal_intent_url
+
+        access_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+        
+        # If API token and author URN are configured, attempt direct background dispatch
+        if access_token and author_urn and not settings.MOCK_MODE:
             try:
                 headers = {
-                    "Authorization": f"Bearer {settings.LINKEDIN_ACCESS_TOKEN}",
+                    "Authorization": f"Bearer {access_token}",
                     "X-Restli-Protocol-Version": "2.0.0",
                     "Content-Type": "application/json",
                     "LinkedIn-Version": "202401",
                 }
                 payload = {
-                    "author": settings.LINKEDIN_AUTHOR_URN,
+                    "author": author_urn,
                     "commentary": text,
                     "visibility": "PUBLIC",
                     "distribution": {
@@ -265,15 +314,19 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
                     "lifecycleState": "PUBLISHED",
                     "isReshareDisabledByAuthor": False,
                 }
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=12.0) as client:
                     resp = await client.post("https://api.linkedin.com/rest/posts", headers=headers, json=payload)
                     if resp.status_code in (200, 201):
                         return {
                             "status": "SUCCESS",
                             "mode": "api",
-                            "message": "Published directly to LinkedIn feed via API.",
+                            "target": "organization" if is_org else "person",
+                            "organization_name": page_name,
+                            "message": f"Published directly to {page_name} via LinkedIn REST API." if is_org else "Published directly to LinkedIn feed via API.",
                             "post_id": resp.headers.get("x-restli-id", ""),
                             "web_intent_url": web_intent_url,
+                            "company_admin_url": company_admin_url,
+                            "personal_intent_url": personal_intent_url,
                         }
                     else:
                         logger.warning(f"LinkedIn API returned {resp.status_code}: {resp.text}. Falling back to web intent.")
@@ -283,9 +336,97 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
         return {
             "status": "READY_FOR_SHARE",
             "mode": "web_intent",
-            "message": "Direct API token not set or in mock mode. 1-Click web composer ready.",
+            "target": "organization" if is_org else "person",
+            "organization_name": page_name,
+            "organization_id": org_id,
+            "message": f"Ready to publish on {page_name}. 1-Click Company Admin Composer ready." if is_org else "Direct API token not set or in mock mode. 1-Click web composer ready.",
             "web_intent_url": web_intent_url,
+            "company_admin_url": company_admin_url,
+            "personal_intent_url": personal_intent_url,
         }
+
+    @staticmethod
+    async def test_linkedin_connection(
+        access_token: Optional[str] = None,
+        author_urn: Optional[str] = None,
+        organization_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Tests validity of LinkedIn credentials and organization access."""
+        token = access_token or getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+        org = organization_id or getattr(settings, "LINKEDIN_ORGANIZATION_ID", None)
+        urn = author_urn or getattr(settings, "LINKEDIN_AUTHOR_URN", None)
+
+        if not token:
+            if org:
+                clean_org = org.strip()
+                if "linkedin.com/company/" in clean_org:
+                    clean_org = clean_org.split("linkedin.com/company/")[1].strip("/").split("/")[0]
+                return {
+                    "success": True,
+                    "mode": "web_intent",
+                    "message": f"LinkedIn Business Page '{clean_org}' connected for 1-Click Admin Web Posting. (Direct API token optional).",
+                    "organization_id": clean_org,
+                    "company_admin_url": f"https://www.linkedin.com/company/{clean_org}/admin/feed/posts/",
+                }
+            return {
+                "success": False,
+                "mode": "none",
+                "message": "Neither direct access token nor business page ID is configured.",
+            }
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202401",
+        }
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            authenticated_user = None
+            try:
+                user_res = await client.get("https://api.linkedin.com/v2/userinfo", headers={"Authorization": f"Bearer {token}"})
+                if user_res.status_code == 200:
+                    user_data = user_res.json()
+                    authenticated_user = user_data.get("name") or user_data.get("email") or "Authorized User"
+            except Exception:
+                pass
+
+            if urn and "organization" in urn:
+                try:
+                    org_urn_id = urn.split(":")[-1]
+                    org_res = await client.get(f"https://api.linkedin.com/rest/organizations/{org_urn_id}", headers=headers)
+                    if org_res.status_code in (200, 201):
+                        org_data = org_res.json()
+                        org_name = org_data.get("localizedName") or org_data.get("vanityName") or org or "Business Page"
+                        return {
+                            "success": True,
+                            "mode": "api",
+                            "message": f"Successfully connected to LinkedIn Business Page: {org_name} (URN: {urn})",
+                            "organization_name": org_name,
+                            "authenticated_user": authenticated_user,
+                        }
+                    elif org_res.status_code in (401, 403):
+                        return {
+                            "success": False,
+                            "mode": "api_error",
+                            "message": f"Token authenticated for {authenticated_user or 'user'}, but lacks permissions for organization {org_urn_id}. Ensure your LinkedIn App has 'w_organization_social' permission.",
+                            "status_code": org_res.status_code,
+                        }
+                except Exception as e:
+                    logger.warning(f"Organization check notice: {e}")
+
+            if authenticated_user:
+                return {
+                    "success": True,
+                    "mode": "api",
+                    "message": f"Connected to LinkedIn as {authenticated_user}. Direct API ready.",
+                    "authenticated_user": authenticated_user,
+                }
+
+            return {
+                "success": False,
+                "mode": "api_error",
+                "message": "LinkedIn API returned invalid or expired token. Check your access token or use 1-Click Page Admin mode.",
+            }
 
     @staticmethod
     async def publish_to_twitter(text: str) -> Dict[str, Any]:

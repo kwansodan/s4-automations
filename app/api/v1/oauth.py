@@ -54,6 +54,12 @@ def get_xero_redirect_uri(request: Optional[Request]) -> str:
     return f"{_resolve_base_url(request)}/api/v1/oauth/xero/callback"
 
 
+def get_linkedin_redirect_uri(request: Optional[Request]) -> str:
+    if settings.LINKEDIN_REDIRECT_URI:
+        return settings.LINKEDIN_REDIRECT_URI
+    return f"{_resolve_base_url(request)}/api/v1/oauth/linkedin/callback"
+
+
 def _render_success_html(
     platform_name: str,
     platform_icon: str,
@@ -869,3 +875,94 @@ async def disconnect_xero(
             "client_id": client_id,
             "message": f"Xero disconnected for organization '{client_obj.name}'.",
         }
+
+
+# -------------------------------------------------------------------------
+# LinkedIn OAuth2
+# -------------------------------------------------------------------------
+
+@router.get("/linkedin/authorize", summary="Initiate LinkedIn OAuth2 Authorization")
+async def linkedin_authorize(
+    request: Request,
+    state: Optional[str] = Query(default="social_broadcaster"),
+):
+    """Initiates OAuth2 code flow with LinkedIn."""
+    client_id = settings.LINKEDIN_CLIENT_ID
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="LinkedIn Client ID not configured. Please set LINKEDIN_CLIENT_ID in settings or enter access token manually.",
+        )
+    redirect_uri = get_linkedin_redirect_uri(request)
+    scope = "openid profile email w_member_social w_organization_social r_organization_social"
+    auth_url = (
+        f"https://www.linkedin.com/oauth/v2/authorization?"
+        f"response_type=code&client_id={client_id}&redirect_uri={httpx.URL(redirect_uri)}&scope={scope}&state={state}"
+    )
+    return RedirectResponse(auth_url)
+
+
+@router.get("/linkedin/callback", summary="LinkedIn OAuth2 Callback", response_class=HTMLResponse)
+async def linkedin_callback(
+    request: Request,
+    code: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    error_description: Optional[str] = Query(default=None),
+    state: Optional[str] = Query(default=None),
+):
+    """Handles OAuth2 callback from LinkedIn, exchanges code for access token, and saves it."""
+    if error:
+        return _render_error_html("LinkedIn", "🔗", "#0A66C2", error, error_description or "User cancelled or denied authorization.")
+    if not code:
+        return _render_error_html("LinkedIn", "🔗", "#0A66C2", "Missing Code", "No authorization code received from LinkedIn.")
+
+    client_id = settings.LINKEDIN_CLIENT_ID
+    client_secret = settings.LINKEDIN_CLIENT_SECRET
+    redirect_uri = get_linkedin_redirect_uri(request)
+
+    if not client_id or not client_secret:
+        return _render_error_html("LinkedIn", "🔗", "#0A66C2", "Configuration Missing", "LINKEDIN_CLIENT_ID or LINKEDIN_CLIENT_SECRET is missing.")
+
+    try:
+        token_url = "https://www.linkedin.com/oauth/v2/accessToken"
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            token_res = await http_client.post(token_url, data=data)
+            if token_res.status_code not in (200, 201):
+                return _render_error_html("LinkedIn", "🔗", "#0A66C2", "Token Exchange Failed", f"LinkedIn returned HTTP {token_res.status_code}: {token_res.text}")
+            token_data = token_res.json()
+            access_token = token_data.get("access_token")
+
+            user_name = "Authorized User"
+            try:
+                user_res = await http_client.get("https://api.linkedin.com/v2/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+                if user_res.status_code == 200:
+                    user_info = user_res.json()
+                    user_name = user_info.get("name") or user_info.get("email") or "Authorized User"
+            except Exception:
+                pass
+
+            settings.update_values({
+                "LINKEDIN_ACCESS_TOKEN": access_token,
+            })
+            settings.save_to_env_file()
+
+            return _render_success_html(
+                platform_name="LinkedIn",
+                platform_icon="🔗",
+                accent_color="#0A66C2",
+                title="LinkedIn Connected Successfully",
+                organization_name=user_name,
+                message=f"Connected as {user_name}. Your LinkedIn access token is now saved and ready for feature broadcasts.",
+                auto_close_seconds=4,
+            )
+    except Exception as e:
+        logger.error(f"LinkedIn OAuth callback error: {e}")
+        return _render_error_html("LinkedIn", "🔗", "#0A66C2", "Exception", str(e))
+

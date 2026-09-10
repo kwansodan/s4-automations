@@ -1215,6 +1215,66 @@ export async function fetchPublicChangelog(limit = 30): Promise<ChangelogEntryIt
   return handleResponse<ChangelogEntryItem[]>(res, 'Fetch Public Changelog');
 }
 
+export interface LinkedInConfig {
+  status: string;
+  posting_mode: 'organization' | 'person';
+  organization_id: string;
+  organization_name: string;
+  author_urn: string;
+  company_admin_url?: string;
+  has_access_token: boolean;
+  masked_token: string;
+  client_id: string;
+  has_client_secret: boolean;
+  is_connected: boolean;
+}
+
+export async function fetchLinkedInConfig(): Promise<LinkedInConfig> {
+  const res = await resilientFetch('/api/v1/social/linkedin/config', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<LinkedInConfig>(res, 'Fetch LinkedIn Configuration');
+}
+
+export async function updateLinkedInConfig(payload: {
+  posting_mode?: 'organization' | 'person';
+  organization_id?: string;
+  organization_name?: string;
+  author_urn?: string;
+  access_token?: string;
+  client_id?: string;
+  client_secret?: string;
+  redirect_uri?: string;
+}): Promise<LinkedInConfig> {
+  const res = await resilientFetch('/api/v1/social/linkedin/config', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<LinkedInConfig>(res, 'Update LinkedIn Configuration');
+}
+
+export async function testLinkedInConnection(payload?: {
+  access_token?: string;
+  author_urn?: string;
+  organization_id?: string;
+}): Promise<{
+  success: boolean;
+  mode: string;
+  message: string;
+  organization_name?: string;
+  authenticated_user?: string;
+  company_admin_url?: string;
+}> {
+  const res = await resilientFetch('/api/v1/social/linkedin/test', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload || {}),
+  });
+  return handleResponse(res, 'Test LinkedIn Connection');
+}
+
+
 
 
 

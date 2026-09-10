@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, desc
 
+from app.config import settings
 from app.db.session import get_db_session
 from app.models.db_models import FeatureRelease, get_utc_now
 from app.services.social_service import SocialBroadcasterService
@@ -19,6 +20,23 @@ router = APIRouter(prefix="/social", tags=["Feature Release & Social Broadcaster
 # -------------------------------------------------------------------------
 # Request / Response Schemas
 # -------------------------------------------------------------------------
+
+class UpdateLinkedInConfigRequest(BaseModel):
+    posting_mode: Optional[str] = Field(default="organization", description="'organization' or 'person'")
+    organization_id: Optional[str] = Field(default=None, description="LinkedIn Organization ID or Vanity Slug")
+    organization_name: Optional[str] = Field(default=None, description="LinkedIn Company/Page Display Name")
+    author_urn: Optional[str] = Field(default=None, description="LinkedIn Author URN")
+    access_token: Optional[str] = Field(default=None, description="LinkedIn OAuth Bearer Token")
+    client_id: Optional[str] = Field(default=None, description="LinkedIn App Client ID")
+    client_secret: Optional[str] = Field(default=None, description="LinkedIn App Client Secret")
+    redirect_uri: Optional[str] = Field(default=None, description="Custom OAuth Redirect URI")
+
+
+class TestLinkedInConfigRequest(BaseModel):
+    access_token: Optional[str] = None
+    author_urn: Optional[str] = None
+    organization_id: Optional[str] = None
+
 
 class GenerateReleaseRequest(BaseModel):
     title: str = Field(..., description="Short feature or release headline")
@@ -51,6 +69,74 @@ class BroadcastReleaseRequest(BaseModel):
 # -------------------------------------------------------------------------
 # API Endpoints
 # -------------------------------------------------------------------------
+
+@router.get("/linkedin/config")
+async def get_linkedin_config() -> Dict[str, Any]:
+    """Returns current LinkedIn integration configuration and target business page details."""
+    target = SocialBroadcasterService.resolve_linkedin_target()
+    clean_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+    masked_token = (clean_token[:4] + "..." + clean_token[-4:]) if clean_token and len(clean_token) > 8 else ("******" if clean_token else "")
+    
+    return {
+        "status": "success",
+        "posting_mode": getattr(settings, "LINKEDIN_POSTING_MODE", "organization") or "organization",
+        "organization_id": getattr(settings, "LINKEDIN_ORGANIZATION_ID", "") or "",
+        "organization_name": getattr(settings, "LINKEDIN_PAGE_NAME", "") or "",
+        "author_urn": getattr(settings, "LINKEDIN_AUTHOR_URN", "") or target.get("author_urn", ""),
+        "company_admin_url": target.get("company_admin_url"),
+        "has_access_token": bool(clean_token),
+        "masked_token": masked_token,
+        "client_id": getattr(settings, "LINKEDIN_CLIENT_ID", "") or "",
+        "has_client_secret": bool(getattr(settings, "LINKEDIN_CLIENT_SECRET", None)),
+        "is_connected": bool(getattr(settings, "LINKEDIN_ORGANIZATION_ID", None) or clean_token),
+    }
+
+
+@router.post("/linkedin/config")
+async def update_linkedin_config(payload: UpdateLinkedInConfigRequest) -> Dict[str, Any]:
+    """Updates and persists LinkedIn integration settings for company pages and direct publishing."""
+    update_data = {}
+    if payload.posting_mode is not None:
+        update_data["LINKEDIN_POSTING_MODE"] = payload.posting_mode
+    if payload.organization_id is not None:
+        clean_org = payload.organization_id.strip()
+        if "linkedin.com/company/" in clean_org:
+            clean_org = clean_org.split("linkedin.com/company/")[1].strip("/").split("/")[0]
+        if clean_org.startswith("urn:li:organization:"):
+            clean_org = clean_org.replace("urn:li:organization:", "")
+        update_data["LINKEDIN_ORGANIZATION_ID"] = clean_org
+        if clean_org and not payload.author_urn:
+            update_data["LINKEDIN_AUTHOR_URN"] = f"urn:li:organization:{clean_org}"
+    if payload.organization_name is not None:
+        update_data["LINKEDIN_PAGE_NAME"] = payload.organization_name
+    if payload.author_urn is not None:
+        update_data["LINKEDIN_AUTHOR_URN"] = payload.author_urn
+    if payload.access_token is not None and not payload.access_token.startswith("***"):
+        update_data["LINKEDIN_ACCESS_TOKEN"] = payload.access_token.strip()
+    if payload.client_id is not None:
+        update_data["LINKEDIN_CLIENT_ID"] = payload.client_id.strip()
+    if payload.client_secret is not None and not payload.client_secret.startswith("***"):
+        update_data["LINKEDIN_CLIENT_SECRET"] = payload.client_secret.strip()
+    if payload.redirect_uri is not None:
+        update_data["LINKEDIN_REDIRECT_URI"] = payload.redirect_uri.strip()
+
+    settings.update_values(update_data)
+    settings.save_to_env_file()
+    logger.info(f"Updated LinkedIn configuration: organization_id={settings.LINKEDIN_ORGANIZATION_ID}")
+
+    return await get_linkedin_config()
+
+
+@router.post("/linkedin/test")
+async def test_linkedin_connection_endpoint(payload: Optional[TestLinkedInConfigRequest] = None) -> Dict[str, Any]:
+    """Tests live connection to LinkedIn API or verifies business page configuration."""
+    res = await SocialBroadcasterService.test_linkedin_connection(
+        access_token=payload.access_token if payload else None,
+        author_urn=payload.author_urn if payload else None,
+        organization_id=payload.organization_id if payload else None,
+    )
+    return res
+
 
 @router.get("/commits")
 async def get_recent_commits(limit: int = 8) -> List[Dict[str, Any]]:
