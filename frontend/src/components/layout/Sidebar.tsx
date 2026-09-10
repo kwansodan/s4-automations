@@ -80,8 +80,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     }
     if (activeSections.hasBank) {
       items.push({ sub: 'bank', label: 'Bank Statements', icon: Landmark });
-      items.push({ sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck });
     }
+    items.push({ sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck });
     return items;
   }, [activeSections, isIndividualBusiness]);
 
@@ -101,6 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
+    { tab: 'queries', label: 'Client Info Requests', icon: ShieldCheck, badge: 'Portal' },
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     { tab: 'changelog', label: "What's New", icon: BookOpen },

@@ -34,7 +34,7 @@ export const ClientWorkspace: React.FC = () => {
       setWorkspaceSubTab('overview');
     } else if (workspaceSubTab === 'ap' && !activeSections.hasAp) {
       setWorkspaceSubTab('overview');
-    } else if ((workspaceSubTab === 'bank' || workspaceSubTab === 'requests') && !activeSections.hasBank) {
+    } else if (workspaceSubTab === 'bank' && !activeSections.hasBank) {
       setWorkspaceSubTab('overview');
     }
   }, [workspaceSubTab, activeSections, setWorkspaceSubTab]);
@@ -51,8 +51,8 @@ export const ClientWorkspace: React.FC = () => {
     }
     if (activeSections.hasBank) {
       tabs.push({ id: 'bank', label: 'Bank Statements', icon: Landmark });
-      tabs.push({ id: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests', icon: ShieldCheck });
     }
+    tabs.push({ id: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests', icon: ShieldCheck });
     return tabs;
   }, [activeSections, isIndividualBusiness]);
 

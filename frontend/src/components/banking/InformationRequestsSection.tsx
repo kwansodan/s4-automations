@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 
 export const InformationRequestsSection: React.FC = () => {
-  const { currentClient } = useClient();
+  const { currentClient, clients, setClient } = useClient();
   const { addLog, setActiveTab } = useAutomation();
 
   const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
@@ -278,12 +278,31 @@ export const InformationRequestsSection: React.FC = () => {
                 <Landmark className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                  <span>Information Requests &amp; Bank Classification</span>
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30">
-                    {currentClient?.name || 'All Clients'}
-                  </span>
-                </h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-extrabold text-white tracking-tight">
+                    Information Requests &amp; Bank Classification
+                  </h1>
+                  {clients && clients.length > 1 ? (
+                    <div className="flex items-center gap-1.5 bg-sky-950/90 border border-sky-500/40 rounded-xl px-2.5 py-1 shadow-sm">
+                      <span className="text-[10px] uppercase font-bold text-sky-400">Client:</span>
+                      <select
+                        value={currentClient?.id || ''}
+                        onChange={(e) => setClient(e.target.value)}
+                        className="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer"
+                      >
+                        {clients.map((c) => (
+                          <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30">
+                      {currentClient?.name || 'Active Client'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
                   Review uncategorized bank feeds, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
                 </p>
