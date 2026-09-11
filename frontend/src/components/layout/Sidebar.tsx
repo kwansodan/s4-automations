@@ -122,7 +122,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { tab: 'queries', label: 'Info Requests (Watched)', icon: ShieldCheck, badge: 'Portal' },
     { tab: 'contacts', label: 'Contacts & Team', icon: Users, badge: 'Invite' },
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },

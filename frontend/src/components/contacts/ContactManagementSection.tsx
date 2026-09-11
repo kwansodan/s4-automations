@@ -37,7 +37,7 @@ import { InviteTeamMemberModal } from './InviteTeamMemberModal';
 
 export const ContactManagementSection: React.FC = () => {
   const { clients, currentClient } = useClient();
-  const { addLog, setActiveTab } = useAutomation();
+  const { addLog, setActiveTab, setWorkspaceSubTab } = useAutomation();
 
   const [activeTab, setActiveContactTab] = useState<'clients' | 'firm'>('clients');
   const [stats, setStats] = useState<ContactStats>({
@@ -291,7 +291,10 @@ export const ContactManagementSection: React.FC = () => {
           {activeTab === 'clients' && (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setActiveTab('queries')}
+                onClick={() => {
+                  setActiveTab('workspace');
+                  setWorkspaceSubTab('requests');
+                }}
                 className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 hover:underline cursor-pointer font-bold"
               >
                 <span>Go to Information Requests Queue</span>
