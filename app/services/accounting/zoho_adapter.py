@@ -317,58 +317,58 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     raw_acc_txs = await self.zoho.fetch_account_transactions(
                         account_id=acc_id,
                         account_name=acc_name,
-                            date_start=date_start,
-                            date_end=date_end,
+                        date_start=date_start,
+                        date_end=date_end,
+                    )
+                    for tx in (raw_acc_txs or []):
+                        tx_id = str(tx.get("transaction_id") or tx.get("expense_id") or tx.get("journal_id") or "")
+                        tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
+                        debit = float(tx.get("debit_amount", 0.0) or 0.0)
+                        credit = float(tx.get("credit_amount", 0.0) or 0.0)
+                        raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or tx.get("bcy_total", 0.0) or 0.0)
+                        amt = debit if debit > 0 else (credit if credit > 0 else abs(raw_amt))
+
+                        tx_t_raw = str(tx.get("transaction_type") or tx.get("debit_or_credit") or "").upper()
+                        if debit > 0:
+                            tx_t = "DEBIT"
+                        elif credit > 0:
+                            tx_t = "CREDIT"
+                        elif "DEBIT" in tx_t_raw or "OUT" in tx_t_raw or "EXPENSE" in tx_t_raw or "PAYMENT" in tx_t_raw:
+                            tx_t = "DEBIT"
+                        elif "CREDIT" in tx_t_raw or "IN" in tx_t_raw or "INCOME" in tx_t_raw or "RECEIPT" in tx_t_raw:
+                            tx_t = "CREDIT"
+                        else:
+                            tx_t = "DEBIT" if raw_amt < 0 else "CREDIT"
+
+                        desc = (
+                            tx.get("description")
+                            or tx.get("notes")
+                            or tx.get("payee")
+                            or tx.get("customer_name")
+                            or tx.get("vendor_name")
+                            or tx.get("reference_number")
+                            or tx.get("entry_number")
+                            or f"Entry in {acc_name}"
                         )
-                        for tx in (raw_acc_txs or []):
-                            tx_id = str(tx.get("transaction_id") or tx.get("expense_id") or tx.get("journal_id") or "")
-                            tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
-                            debit = float(tx.get("debit_amount", 0.0) or 0.0)
-                            credit = float(tx.get("credit_amount", 0.0) or 0.0)
-                            raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or tx.get("bcy_total", 0.0) or 0.0)
-                            amt = debit if debit > 0 else (credit if credit > 0 else abs(raw_amt))
 
-                            tx_t_raw = str(tx.get("transaction_type") or tx.get("debit_or_credit") or "").upper()
-                            if debit > 0:
-                                tx_t = "DEBIT"
-                            elif credit > 0:
-                                tx_t = "CREDIT"
-                            elif "DEBIT" in tx_t_raw or "OUT" in tx_t_raw or "EXPENSE" in tx_t_raw or "PAYMENT" in tx_t_raw:
-                                tx_t = "DEBIT"
-                            elif "CREDIT" in tx_t_raw or "IN" in tx_t_raw or "INCOME" in tx_t_raw or "RECEIPT" in tx_t_raw:
-                                tx_t = "CREDIT"
-                            else:
-                                tx_t = "DEBIT" if raw_amt < 0 else "CREDIT"
-
-                            desc = (
-                                tx.get("description")
-                                or tx.get("notes")
-                                or tx.get("payee")
-                                or tx.get("customer_name")
-                                or tx.get("vendor_name")
-                                or tx.get("reference_number")
-                                or tx.get("entry_number")
-                                or f"Entry in {acc_name}"
-                            )
-
-                            u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
-                            if u_key not in seen_keys:
-                                seen_keys.add(u_key)
-                                results.append({
-                                    "transaction_date": tx_date,
-                                    "description": desc,
-                                    "amount": amt,
-                                    "transaction_type": tx_t,
-                                    "bank_account_name": acc_name or "Watched Account",
-                                    "account_name": acc_name or "Watched Account",
-                                    "source_file_name": "Zoho_Live_Sync",
-                                    "mapped_account_id": None,
-                                    "ai_suggested_account": None,
-                                    "category_confidence": 0.85,
-                                    "watched_account": w_label,
-                                })
-                    except Exception as acc_err:
-                        logger.warning(f"Error fetching account transactions for account {acc_id} ({acc_name}): {acc_err}")
+                        u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
+                        if u_key not in seen_keys:
+                            seen_keys.add(u_key)
+                            results.append({
+                                "transaction_date": tx_date,
+                                "description": desc,
+                                "amount": amt,
+                                "transaction_type": tx_t,
+                                "bank_account_name": acc_name or "Watched Account",
+                                "account_name": acc_name or "Watched Account",
+                                "source_file_name": "Zoho_Live_Sync",
+                                "mapped_account_id": None,
+                                "ai_suggested_account": None,
+                                "category_confidence": 0.85,
+                                "watched_account": w_label,
+                            })
+                except Exception as acc_err:
+                    logger.warning(f"Error fetching account transactions for account {acc_id} ({acc_name}): {acc_err}")
 
         except Exception as e:
             logger.error(f"Failed to fetch live transactions from Zoho Books: {e}", exc_info=True)
