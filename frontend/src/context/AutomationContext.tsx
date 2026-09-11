@@ -16,6 +16,7 @@ import {
   updateConfig,
 } from '../lib/api';
 import { useAuth } from './AuthContext';
+import { parseCurrentRoute, syncUrlWithRoute, initRouteListener } from '../lib/router';
 
 export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts';
 
@@ -62,30 +63,46 @@ const AutomationContext = createContext<AutomationContextType | undefined>(undef
 export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('workspace');
-  const [workspaceSubTab, setWorkspaceSubTab] = useState<WorkspaceSubTab>('overview');
+  const [activeTab, setActiveTabState] = useState<ActiveTab>(() => parseCurrentRoute().tab);
+  const [workspaceSubTab, setWorkspaceSubTabState] = useState<WorkspaceSubTab>(() => parseCurrentRoute().subTab || 'requests');
   const [selectedMonth, setSelectedMonth] = useState<string>('August');
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [sheetsSubTab, setSheetsSubTab] = useState<'monthly' | 'daily'>('monthly');
 
-  const [health, setHealth] = useState<{ status: string; service: string; mock_mode: boolean } | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [config, setConfig] = useState<SystemConfig | null>(null);
-  const [sheetsData, setSheetsData] = useState<SheetsReviewData | null>(null);
-  const [catalog, setCatalog] = useState<ZohoCatalogData | null>(null);
-  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>([
-    { time: new Date().toLocaleTimeString(), type: 'info', message: 'S4 Accounting Automation Engine v2.0 (React 19) initialized.' },
-  ]);
+  const setActiveTab = useCallback((tab: ActiveTab) => {
+    setActiveTabState(tab);
+    syncUrlWithRoute(tab, workspaceSubTab);
+  }, [workspaceSubTab]);
 
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
+  const setWorkspaceSubTab = useCallback((sub: WorkspaceSubTab) => {
+    setWorkspaceSubTabState(sub);
+    setActiveTabState('workspace');
+    syncUrlWithRoute('workspace', sub);
+  }, []);
 
   const navigateToClientSubTab = useCallback((sub: WorkspaceSubTab) => {
-    setWorkspaceSubTab(sub);
-    setActiveTab('workspace');
+    setWorkspaceSubTabState(sub);
+    setActiveTabState('workspace');
+    syncUrlWithRoute('workspace', sub);
   }, []);
+
+  // Listen to browser Back/Forward (popstate)
+  useEffect(() => {
+    const unbind = initRouteListener((route) => {
+      setActiveTabState(route.tab);
+      if (route.subTab) {
+        setWorkspaceSubTabState(route.subTab);
+      }
+    });
+    return unbind;
+  }, []);
+
+  // Synchronize and clean initial URL on authentication or state change
+  useEffect(() => {
+    if (isAuthenticated && activeTab !== 'portal' && activeTab !== 'privacy') {
+      syncUrlWithRoute(activeTab, workspaceSubTab, true);
+    }
+  }, [isAuthenticated, activeTab, workspaceSubTab]);
 
   const addLog = useCallback((type: 'info' | 'success' | 'warning' | 'error', message: string) => {
     setLogs((prev) => [

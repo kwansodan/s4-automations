@@ -117,18 +117,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPor
           </div>
 
           <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
-            <a href="#ocr-sandbox" className="hover:text-white transition">
+            <button
+              type="button"
+              onClick={() => document.getElementById('ocr-sandbox')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-white transition cursor-pointer"
+            >
               Live OCR Sandbox
-            </a>
-            <a href="#roi-calculator" className="hover:text-white transition">
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('roi-calculator')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-white transition cursor-pointer"
+            >
               ROI Calculator
-            </a>
-            <a href="#integrations" className="hover:text-white transition">
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('integrations')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-white transition cursor-pointer"
+            >
               ERP Integrations
-            </a>
-            <a href="#features" className="hover:text-white transition">
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-white transition cursor-pointer"
+            >
               Workflow Engine
-            </a>
+            </button>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -659,13 +675,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onOpenPor
               Privacy Policy
             </a>
             <span>•</span>
-            <a href="#ocr-sandbox" className="hover:text-slate-200 transition">
+            <button
+              type="button"
+              onClick={() => document.getElementById('ocr-sandbox')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-slate-200 transition cursor-pointer"
+            >
               Live OCR Sandbox
-            </a>
+            </button>
             <span>•</span>
-            <a href="#roi-calculator" className="hover:text-slate-200 transition">
+            <button
+              type="button"
+              onClick={() => document.getElementById('roi-calculator')?.scrollIntoView({ behavior: 'smooth' })}
+              className="hover:text-slate-200 transition cursor-pointer"
+            >
               ROI Calculator
-            </a>
+            </button>
             {onOpenPortal && (
               <>
                 <span>•</span>

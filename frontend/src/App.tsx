@@ -29,21 +29,14 @@ const MainLayout: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { activeTab, setActiveTab } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
-
-  // Detect direct URL navigation to /privacy or /portal on mount
-  useEffect(() => {
+  const [showLogin, setShowLogin] = useState(() => {
     if (typeof window !== 'undefined') {
-      const path = (window.location.pathname || '').toLowerCase();
-      const hash = (window.location.hash || '').toLowerCase();
-      const search = (window.location.search || '').toLowerCase();
-      if (path.includes('privacy') || hash.includes('privacy') || search.includes('privacy')) {
-        setActiveTab('privacy');
-      } else if (path.includes('portal') || hash.includes('portal') || search.includes('portal')) {
-        setActiveTab('portal');
-      }
+      const p = (window.location.pathname || '').toLowerCase();
+      const h = (window.location.hash || '').toLowerCase();
+      return p.includes('login') || h.includes('login');
     }
-  }, [setActiveTab]);
+    return false;
+  });
 
   // Public Privacy Policy view accessible without authentication
   if (activeTab === 'privacy') {
@@ -67,14 +60,26 @@ const MainLayout: React.FC = () => {
     if (showLogin) {
       return (
         <ErrorBoundary componentName="Login View">
-          <LoginCard onBackToLanding={() => setShowLogin(false)} />
+          <LoginCard
+            onBackToLanding={() => {
+              setShowLogin(false);
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, '', '/');
+              }
+            }}
+          />
         </ErrorBoundary>
       );
     }
     return (
       <ErrorBoundary componentName="Public Landing Page">
         <LandingPage
-          onGoToLogin={() => setShowLogin(true)}
+          onGoToLogin={() => {
+            setShowLogin(true);
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/login');
+            }
+          }}
           onOpenPortal={() => setActiveTab('portal')}
           onOpenPrivacy={() => setActiveTab('privacy')}
         />

@@ -49,9 +49,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
   const handleNav = (tab: ActiveTab, sub?: WorkspaceSubTab) => {
-    setActiveTab(tab);
-    if (sub) {
+    if (tab === 'workspace' && sub) {
       setWorkspaceSubTab(sub);
+    } else {
+      setActiveTab(tab);
+      if (sub) {
+        setWorkspaceSubTab(sub);
+      }
     }
     setIsMobileOpen(false);
   };
