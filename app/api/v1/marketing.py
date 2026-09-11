@@ -4,6 +4,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, func, or_, desc
 
@@ -587,7 +588,7 @@ async def get_landing_config(
         db.commit()
         db.refresh(cfg)
 
-    cfg_dict = cfg.model_dump()
+    cfg_dict = jsonable_encoder(cfg)
 
     with _LANDING_LOCK:
         _LANDING_CACHE = cfg_dict
@@ -614,13 +615,13 @@ async def update_landing_config(
         db.commit()
         db.refresh(cfg)
 
-    # 1. Snapshot previous state into version_history
-    prev_snapshot = cfg.model_dump(exclude={"version_history"})
+    # 1. Snapshot previous state into version_history (JSON-serializable)
+    prev_snapshot = jsonable_encoder(cfg.model_dump(exclude={"version_history"}))
     prev_snapshot["snapshot_timestamp"] = get_utc_now().isoformat()
     history = list(cfg.version_history or [])
     history.insert(0, prev_snapshot)
-    # Keep up to 20 historical versions
-    cfg.version_history = history[:20]
+    # Keep up to 20 historical versions, ensuring all items are JSON-serializable
+    cfg.version_history = jsonable_encoder(history[:20])
     cfg.version = (cfg.version or 1) + 1
 
     # 2. Apply updates
@@ -634,7 +635,7 @@ async def update_landing_config(
     db.commit()
     db.refresh(cfg)
 
-    cfg_dict = cfg.model_dump()
+    cfg_dict = jsonable_encoder(cfg)
 
     # 3. Invalidate / update in-memory cache
     with _LANDING_LOCK:
@@ -664,13 +665,13 @@ async def rollback_landing_config(
     if not target_snapshot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Version {version_id} not found in history.")
 
-    # Record current state as a snapshot before rolling back
-    current_snapshot = cfg.model_dump(exclude={"version_history"})
+    # Record current state as a snapshot before rolling back (JSON-serializable)
+    current_snapshot = jsonable_encoder(cfg.model_dump(exclude={"version_history"}))
     current_snapshot["snapshot_timestamp"] = get_utc_now().isoformat()
     current_snapshot["note"] = f"Pre-rollback snapshot before restoring v{version_id}"
     history = list(cfg.version_history or [])
     history.insert(0, current_snapshot)
-    cfg.version_history = history[:20]
+    cfg.version_history = jsonable_encoder(history[:20])
 
     # Restore fields from target_snapshot
     for field_name, value in target_snapshot.items():
@@ -686,7 +687,7 @@ async def rollback_landing_config(
     db.commit()
     db.refresh(cfg)
 
-    cfg_dict = cfg.model_dump()
+    cfg_dict = jsonable_encoder(cfg)
     with _LANDING_LOCK:
         _LANDING_CACHE = cfg_dict
 
