@@ -17,7 +17,6 @@ import { PipelineModal } from './components/modals/PipelineModal';
 import { InvoiceModal } from './components/modals/InvoiceModal';
 import { ClientSetupWizardModal } from './components/modals/ClientSetupWizardModal';
 import { ClientPortal } from './components/portal/ClientPortal';
-import { InformationRequestsSection } from './components/banking/InformationRequestsSection';
 import { ContactManagementSection } from './components/contacts/ContactManagementSection';
 import { SheetsViewer } from './components/sheets/SheetsViewer';
 import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
@@ -100,8 +99,6 @@ const MainLayout: React.FC = () => {
           <ErrorBoundary componentName={`Tab: ${activeTab}`}>
             {activeTab === 'sheets' || activeTab === 'invoicing' ? (
               <SheetsViewer />
-            ) : activeTab === 'queries' ? (
-              <InformationRequestsSection />
             ) : activeTab === 'contacts' ? (
               <ContactManagementSection />
             ) : activeTab === 'catalog' ? (

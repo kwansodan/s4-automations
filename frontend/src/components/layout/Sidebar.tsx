@@ -116,16 +116,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     { sub: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
   ];
 
-  const globalNavItems: Array<{
+  const accountingSuiteNavItems: Array<{
     tab: ActiveTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
     { tab: 'contacts', label: 'Contacts & Team', icon: Users, badge: 'Invite' },
-    { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
-    { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
+    { tab: 'catalog', label: 'Master Item Catalog', icon: Package },
+  ];
+
+  const platformNavItems: Array<{
+    tab: ActiveTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
     { tab: 'changelog', label: "What's New", icon: BookOpen },
+    { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     ...(user?.role === 'admin'
       ? [{ tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' }]
       : []),
@@ -477,7 +485,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             })}
           </div>
 
-          {/* GROUP 2: GLOBAL SUITE MANAGEMENT */}
+          {/* GROUP 5: ACCOUNTING SUITE (FIRM & PRACTICE TOOLS) */}
           <div className="space-y-1">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
@@ -485,7 +493,48 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               </span>
             )}
 
-            {globalNavItems.map((item) => {
+            {accountingSuiteNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.tab;
+
+              return (
+                <button
+                  key={item.tab}
+                  onClick={() => handleNav(item.tab)}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  {!isCollapsed && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* GROUP 6: PLATFORM & SYSTEM MANAGEMENT */}
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
+                Platform &amp; System
+              </span>
+            )}
+
+            {platformNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.tab;
 
