@@ -21,6 +21,7 @@ import { InformationRequestsSection } from './components/banking/InformationRequ
 import { ContactManagementSection } from './components/contacts/ContactManagementSection';
 import { SheetsViewer } from './components/sheets/SheetsViewer';
 import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
+import { ChangelogSection } from './components/changelog/ChangelogSection';
 import { LandingPage } from './components/landing/LandingPage';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { ShieldAlert } from 'lucide-react';
@@ -129,8 +130,10 @@ const MainLayout: React.FC = () => {
               )
             ) : activeTab === 'logs' ? (
               <LiveConsole />
-            ) : activeTab === 'social' || activeTab === 'changelog' ? (
+            ) : activeTab === 'social' ? (
               <MultiChannelLaunchpad />
+            ) : activeTab === 'changelog' ? (
+              <ChangelogSection />
             ) : (
               <ClientWorkspace />
             )}

@@ -282,6 +282,24 @@ async def get_public_changelog(
             # Return seeded defaults if empty
             return [
                 {
+                    "id": 101,
+                    "version": "2.0.0",
+                    "title": "Watched Accounts Information Requests & Live Accounting Clarifications",
+                    "category": "WATCHED_ACCOUNTS",
+                    "summary": "Direct monitoring and reconciliation of transactions residing in watched accounts (suspense, clearing, uncategorized expenses) with 1-click client clarification queries, monthly filters, and pipeline decoupling.",
+                    "changelog_entry": "### Watched Accounts & Client Clarification Suite\n\n- Decoupled Information Requests from ingestion pipelines into dedicated Watched Accounts section.\n- Directly monitors GL suspense and clearing accounts from Zoho Books.\n- Added monthly and annual filtering for watched account transactions.\n- Instant 1-click magic link clarification queries sent to client stakeholders.",
+                    "published_at": "2026-09-11T00:00:00Z",
+                },
+                {
+                    "id": 102,
+                    "version": "1.9.0",
+                    "title": "Comprehensive Contact Management & Firm Team Collaborations",
+                    "category": "CONTACT_MANAGEMENT",
+                    "summary": "Full contact hub allowing accounting firms to invite client stakeholders for queries and staff team members with role-based permissions.",
+                    "changelog_entry": "### Contact Hub & Team Invites\n\n- Dedicated Contacts & Team view with instant invitation modals.\n- Direct email dispatch for client magic access tokens.\n- Granular staff permission tiers (Lead Partner, Senior Accountant, Staff Preparer).",
+                    "published_at": "2026-09-10T20:00:00Z",
+                },
+                {
                     "id": 1,
                     "version": "1.3.2",
                     "title": "Zoho Books 1-Click OAuth & Callback Configuration",
