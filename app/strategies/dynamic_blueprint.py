@@ -785,10 +785,11 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             # 1. Post Customer Invoices (AR)
             if AccountingEntityType.AR_SALES_INVOICE.value in grouped:
                 inv_items = grouped[AccountingEntityType.AR_SALES_INVOICE.value]
+                include_desc = (self.custom_config or {}).get("include_line_item_description", True)
                 line_items = [
                     {
                         "name": t.item_or_description,
-                        "description": f"Auto-processed ({t.transaction_date})",
+                        "description": f"Auto-processed ({t.transaction_date})" if include_desc else "",
                         "rate": t.rate_or_price or t.total_amount,
                         "quantity": int(t.quantity_or_debit) or 1,
                     }

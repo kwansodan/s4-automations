@@ -33,6 +33,7 @@ async def trigger_invoice_generation(
     target_year = int(event_data.get("year") or now.year)
     explicit_sheet_id = event_data.get("spreadsheet_id")
     filter_client_name = event_data.get("client_name")
+    include_line_item_description = event_data.get("include_line_item_description")
 
     # 1. Execute immediately in a dedicated background daemon thread with its own event loop
     # This prevents heavy synchronous Google Sheets/Zoho API calls from blocking the main FastAPI loop
@@ -49,6 +50,7 @@ async def trigger_invoice_generation(
                     target_year=target_year,
                     explicit_sheet_id=explicit_sheet_id,
                     filter_client_name=filter_client_name,
+                    include_line_item_description=include_line_item_description,
                 )
             )
         except Exception as err:

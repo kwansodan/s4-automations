@@ -26,6 +26,7 @@ async def run_zoho_invoices_core(
     target_year: Optional[int] = None,
     explicit_sheet_id: Optional[str] = None,
     filter_client_name: Optional[str] = None,
+    include_line_item_description: Optional[bool] = None,
     step_runner=None,
     month: Optional[str] = None,
     year: Optional[int] = None,
@@ -206,6 +207,13 @@ async def run_zoho_invoices_core(
                         pipeline_tracker.add_log("warning", f"Skipping {client_name}: Contact ID not matched in Zoho Books.")
                         continue
 
+                # Determine whether to include descriptions for this client's line items
+                should_include_desc = include_line_item_description
+                if should_include_desc is None and client_obj:
+                    should_include_desc = (client_obj.custom_config or {}).get("include_line_item_description", True)
+                if should_include_desc is None:
+                    should_include_desc = True
+
                 zoho_line_items: List[ZohoInvoiceLineItem] = []
                 row_indices: List[int] = []
 
@@ -214,10 +222,12 @@ async def run_zoho_invoices_core(
                     total_qty = item.get("total_picked_up", 0) or item.get("total_delivered", 0)
                     loss_qty = item.get("linen_discrepancy", 0)
                     
-                    desc = f"Linen service: {item.get('raw_names_seen', item.get('standard_item_name'))}. "
-                    desc += f"Pickups: {item.get('total_picked_up', 0)}, Deliveries: {item.get('total_delivered', 0)}."
-                    if loss_qty > 0:
-                        desc += f" (Unreturned loss discrepancy: {loss_qty} pcs)"
+                    desc = ""
+                    if should_include_desc:
+                        desc = f"Linen service: {item.get('raw_names_seen', item.get('standard_item_name'))}. "
+                        desc += f"Pickups: {item.get('total_picked_up', 0)}, Deliveries: {item.get('total_delivered', 0)}."
+                        if loss_qty > 0:
+                            desc += f" (Unreturned loss discrepancy: {loss_qty} pcs)"
 
                     zoho_line_items.append(
                         ZohoInvoiceLineItem(

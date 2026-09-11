@@ -17,6 +17,7 @@ export const InvoiceModal: React.FC = () => {
   const { openDebugDrawer } = useErrors();
 
   const [clientFilter, setClientFilter] = useState('');
+  const [includeDescriptions, setIncludeDescriptions] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState<{
     message: string;
@@ -49,6 +50,7 @@ export const InvoiceModal: React.FC = () => {
         year: selectedYear,
         spreadsheet_id: sheetsData?.spreadsheet_id,
         client_name: clientFilter || null,
+        include_line_item_description: includeDescriptions,
       });
       // runInvoicing closes modal on success
     } catch (err: any) {
@@ -169,6 +171,23 @@ export const InvoiceModal: React.FC = () => {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="include-descriptions"
+              checked={includeDescriptions}
+              onChange={(e) => setIncludeDescriptions(e.target.checked)}
+              disabled={isSubmitting}
+              className="mt-0.5 w-4 h-4 text-emerald-500 rounded border-slate-700 bg-slate-900 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
+            />
+            <label htmlFor="include-descriptions" className="text-xs text-slate-300 cursor-pointer select-none">
+              <span className="font-semibold block text-white">Include Line Item Descriptions</span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                When enabled, detailed operational summaries (pickups, deliveries, and discrepancies) are added to each invoice line item. When unchecked, line descriptions remain blank.
+              </span>
+            </label>
           </div>
 
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1.5">

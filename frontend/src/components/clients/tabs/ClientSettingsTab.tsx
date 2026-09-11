@@ -459,6 +459,33 @@ export const ClientSettingsTab: React.FC = () => {
               />
             </div>
 
+            <div className="pt-2 border-t border-slate-800">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={clientConfig.custom_config?.include_line_item_description !== false}
+                  onChange={(e) =>
+                    setClientConfig({
+                      ...clientConfig,
+                      custom_config: {
+                        ...clientConfig.custom_config,
+                        include_line_item_description: e.target.checked,
+                      },
+                    })
+                  }
+                  className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">
+                    Include Line Item Descriptions on Invoices
+                  </span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    Automatically inject operational notes (pickups, deliveries, discrepancy quantities) into invoice line items. Uncheck to leave line item descriptions blank.
+                  </span>
+                </div>
+              </label>
+            </div>
+
             {/* Collapsible Advanced Manual App Keys */}
             <div className="pt-2 border-t border-slate-800">
               <button
