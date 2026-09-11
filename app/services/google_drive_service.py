@@ -23,16 +23,15 @@ class GoogleDriveService:
 
     @property
     def service(self):
-        if self._service is None and not settings.MOCK_MODE:
+        if self._service is None:
             self._service = get_google_drive_service()
         return self._service
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def find_or_create_folder(self, folder_name: str, parent_id: str) -> str:
         """Finds an existing folder by name inside parent_id or creates a new one."""
-        if settings.MOCK_MODE or not self.service or parent_id.startswith("mock_"):
-            logger.info(f"[MOCK] Finding or creating folder '{folder_name}' in parent '{parent_id}'")
-            return f"mock_folder_{folder_name.lower().replace(' ', '_')}"
+        if not self.service:
+            raise ValueError("Google Drive service is not connected.")
 
         try:
             query = (
@@ -67,13 +66,6 @@ class GoogleDriveService:
             logger.info(f"Created new folder '{folder_name}' (ID: {folder_id})")
             return folder_id
         except HttpError as e:
-            if settings.MOCK_MODE:
-                logger.warning(
-                    f"Parent folder '{parent_id}' was not found or accessible in Google Drive (HTTP {e.resp.status}). "
-                    f"Falling back to mock folder for '{folder_name}'."
-                )
-                return f"mock_folder_{folder_name.lower().replace(' ', '_')}"
-
             error_msg = (
                 f"Google Drive parent folder '{parent_id}' was not found or accessible (HTTP {e.resp.status}). "
                 f"Please verify the Folder ID and ensure it is shared with edit permissions to the Google Service Account email."
@@ -90,8 +82,8 @@ class GoogleDriveService:
         if not root_id or root_id in ("your_google_drive_folder_id", "your_folder_id", "1aB2cD3eF4gH..."):
             root_id = "root"
 
-        if settings.MOCK_MODE or not self.service or root_id.startswith("mock_"):
-            return f"mock_folder_{month_name.lower()}_{year}"
+        if not self.service:
+            raise ValueError("Google Drive service is not connected.")
 
         # First check if any existing folder matches any month aliases (e.g. Aug 2026, August 2026, 2026-08)
         aliases = self.get_month_aliases(month_name, year)
@@ -113,15 +105,8 @@ class GoogleDriveService:
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def list_client_folders(self, month_folder_id: str) -> List[ClientFolderInfo]:
         """Discovers all client subfolders inside the month folder."""
-        if settings.MOCK_MODE or not self.service:
-            logger.info(f"[MOCK] Listing client folders for month folder {month_folder_id}")
-            return [
-                ClientFolderInfo(folder_id="mock_fld_luxwood", client_name="Luxwood", client_slug="luxwood", unprocessed_file_count=2),
-                ClientFolderInfo(folder_id="mock_fld_the_bantree", client_name="The Bantree", client_slug="the_bantree", unprocessed_file_count=1),
-                ClientFolderInfo(folder_id="mock_fld_the_lennox", client_name="The Lennox", client_slug="the_lennox", unprocessed_file_count=2),
-                ClientFolderInfo(folder_id="mock_fld_active_8", client_name="Active 8 Spintex", client_slug="active_8_spintex", unprocessed_file_count=1),
-                ClientFolderInfo(folder_id="mock_fld_maharaja", client_name="Maharaja", client_slug="maharaja", unprocessed_file_count=1),
-            ]
+        if not self.service:
+            return []
 
         query = (
             f"'{month_folder_id}' in parents and "
@@ -160,22 +145,8 @@ class GoogleDriveService:
         Lists all unarchived loose image or PDF files in client folder root.
         Excludes subfolders like 'Processed'.
         """
-        if settings.MOCK_MODE or not self.service:
-            logger.info(f"[MOCK] Listing unarchived slips in client folder {client_folder_id}")
-            return [
-                {
-                    "id": f"mock_file_{client_folder_id}_1",
-                    "name": "slip_20260815_01.jpg",
-                    "mimeType": "image/jpeg",
-                    "webViewLink": f"https://drive.google.com/file/d/mock_file_{client_folder_id}_1/view",
-                },
-                {
-                    "id": f"mock_file_{client_folder_id}_2",
-                    "name": "slip_20260816_02.png",
-                    "mimeType": "image/png",
-                    "webViewLink": f"https://drive.google.com/file/d/mock_file_{client_folder_id}_2/view",
-                },
-            ]
+        if not self.service:
+            return []
 
         query = (
             f"'{client_folder_id}' in parents and "
@@ -203,9 +174,8 @@ class GoogleDriveService:
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def download_file_bytes(self, file_id: str) -> Tuple[bytes, str]:
         """Downloads raw bytes of a file from Google Drive."""
-        if settings.MOCK_MODE or not self.service:
-            logger.info(f"[MOCK] Downloading mock bytes for file {file_id}")
-            return b"mock-slip-binary-content", "image/jpeg"
+        if not self.service:
+            raise ValueError("Google Drive service is not connected.")
 
         file_metadata = self.service.files().get(
             fileId=file_id, fields="id, name, mimeType"
@@ -225,9 +195,8 @@ class GoogleDriveService:
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def archive_file(self, file_id: str, client_folder_id: str, processed_folder_id: str) -> bool:
         """Moves a processed file from the client folder root into client_folder/Processed/."""
-        if settings.MOCK_MODE or not self.service:
-            logger.info(f"[MOCK] Moving file {file_id} to processed folder {processed_folder_id}")
-            return True
+        if not self.service:
+            raise ValueError("Google Drive service is not connected.")
 
         self.service.files().update(
             fileId=file_id,
@@ -240,16 +209,15 @@ class GoogleDriveService:
 
     async def test_folder_access(self, folder_id: str) -> Dict[str, Any]:
         """Tests whether a Google Drive folder exists, is accessible, and inspects child hierarchy."""
-        if not folder_id or folder_id in ("root", "your_folder_id", "default") or settings.MOCK_MODE or not self.service:
+        if not folder_id or folder_id in ("root", "your_folder_id", "default") or not self.service:
             return {
-                "accessible": True,
-                "folder_id": folder_id or "root",
-                "folder_name": "S4 Ingestion Root Folder",
-                "permissions": "Editor",
-                "mock_mode": True,
-                "child_folders_count": 3,
-                "detected_subfolders": ["August 2026", "September 2026", "October 2026"],
-                "detected_month_folders": ["August 2026", "September 2026"],
+                "accessible": False,
+                "folder_id": folder_id or "",
+                "error": "Google Drive folder ID not configured or service not connected.",
+                "mock_mode": False,
+                "child_folders_count": 0,
+                "detected_subfolders": [],
+                "detected_month_folders": [],
                 "suggested_hierarchy": "month_then_party",
             }
         try:
@@ -422,40 +390,8 @@ class GoogleDriveService:
         """
         from app.strategies.base import SourceDocument, SourceType
 
-        if settings.MOCK_MODE or not self.service or not folder_id or folder_id.startswith("mock_"):
-            logger.info(f"[MOCK] Multi-convention document discovery for folder '{folder_id}' ({month} {year}) [hint={structure_hint}]")
-            return [
-                SourceDocument(
-                    file_name=f"mock_slip_luxwood_{month.lower()}_{year}_01.jpg",
-                    source_type=SourceType.GOOGLE_DRIVE,
-                    source_identifier=f"mock_doc_{folder_id}_01",
-                    mime_type="image/jpeg",
-                    metadata={
-                        "folder_id": folder_id,
-                        "customer_name_hint": "Luxwood Hotel",
-                        "vendor_name_hint": "Luxwood Hotel",
-                        "customer_slug": "luxwood",
-                        "month": month,
-                        "year": year,
-                        "hierarchy_pattern": "month_first",
-                    },
-                ),
-                SourceDocument(
-                    file_name=f"mock_slip_lennox_{month.lower()}_{year}_02.png",
-                    source_type=SourceType.GOOGLE_DRIVE,
-                    source_identifier=f"mock_doc_{folder_id}_02",
-                    mime_type="image/png",
-                    metadata={
-                        "folder_id": folder_id,
-                        "customer_name_hint": "The Lennox",
-                        "vendor_name_hint": "The Lennox",
-                        "customer_slug": "the_lennox",
-                        "month": month,
-                        "year": year,
-                        "hierarchy_pattern": "customer_first",
-                    },
-                ),
-            ]
+        if not self.service or not folder_id or folder_id.startswith("mock_"):
+            return []
 
         month_aliases = self.get_month_aliases(month, year)
         aliases_lower = {a.lower() for a in month_aliases}
@@ -485,7 +421,7 @@ class GoogleDriveService:
             ]
 
             # Auto-create canonical month folder if configured and missing
-            if not matching_month_folders and auto_create_month_folder and not settings.MOCK_MODE:
+            if not matching_month_folders and auto_create_month_folder:
                 try:
                     new_m_name = f"{month.capitalize()} {year}"
                     created_id = self.find_or_create_folder(new_m_name, folder_id)

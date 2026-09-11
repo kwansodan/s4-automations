@@ -101,9 +101,8 @@ class ZohoBooksService:
 
     async def get_access_token(self, force_refresh: bool = False) -> str:
         """Retrieves a valid OAuth2 access token, refreshing if expired."""
-        if settings.MOCK_MODE or not self.refresh_token:
-            logger.info(f"Operating in Mock Mode for Zoho authentication (client org: {self.org_id or 'default'}).")
-            return "mock-zoho-access-token"
+        if not self.refresh_token or not self.client_id or not self.client_secret:
+            raise ValueError(f"Zoho Books credentials (refresh token, client ID, secret) are not configured for org '{self.org_id}'.")
 
         current_time = time.time()
         tenant_cache = ZohoBooksService._tenant_tokens.get(self._tenant_key, {})
@@ -172,16 +171,9 @@ class ZohoBooksService:
     )
     async def fetch_active_contacts(self) -> List[ZohoContact]:
         """Fetches all active customer contacts from Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            logger.info("Using mock Zoho contacts catalog.")
-            self._cached_contacts = [
-                ZohoContact(contact_id="cnt_luxwood_001", contact_name="Luxwood", company_name="Luxwood Hotel & Suites"),
-                ZohoContact(contact_id="cnt_the_bantree_002", contact_name="The Bantree", company_name="The Bantree Residences"),
-                ZohoContact(contact_id="cnt_the_lennox_003", contact_name="The Lennox", company_name="The Lennox Luxury Apartments"),
-                ZohoContact(contact_id="cnt_active8_004", contact_name="Active 8 Spintex", company_name="Active 8 Spintex"),
-                ZohoContact(contact_id="cnt_maharaja_005", contact_name="Maharaja", company_name="Maharaja Restaurant & Suites"),
-            ]
-            return self._cached_contacts
+        if not self.org_id:
+            logger.info("No live Zoho credentials/org_id; returning empty contacts list.")
+            return []
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -230,23 +222,6 @@ class ZohoBooksService:
     )
     async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
         """Fetches active Chart of Accounts from Zoho Books REST API."""
-        if settings.MOCK_MODE:
-            logger.info("Using mock Zoho Chart of Accounts catalog.")
-            return [
-                {"account_id": "acc_6990", "account_code": "6990", "account_name": "Uncategorized Expenses", "account_type": "Expense", "is_suspense": True},
-                {"account_id": "acc_4990", "account_code": "4990", "account_name": "Uncategorized Income", "account_type": "Income", "is_suspense": True},
-                {"account_id": "acc_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Other Current Liability", "is_suspense": True},
-                {"account_id": "acc_2150", "account_code": "2150", "account_name": "Ask My Accountant / Clearing", "account_type": "Other Current Liability", "is_suspense": True},
-                {"account_id": "acc_5100", "account_code": "5100", "account_name": "Office Supplies & Stationery", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5200", "account_code": "5200", "account_name": "Vehicle Fuel & Transport", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5300", "account_code": "5300", "account_name": "Rent & Utilities", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5400", "account_code": "5400", "account_name": "Internet & Communication (MoMo/Data)", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5500", "account_code": "5500", "account_name": "Repairs & Maintenance", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_5600", "account_code": "5600", "account_name": "Professional & Legal Fees", "account_type": "Expense", "is_suspense": False},
-                {"account_id": "acc_4100", "account_code": "4100", "account_name": "Sales Revenue", "account_type": "Income", "is_suspense": False},
-                {"account_id": "acc_1200", "account_code": "1200", "account_name": "Director's Loan Account", "account_type": "Equity", "is_suspense": False},
-            ]
-
         if not self.org_id or not self.refresh_token:
             logger.warning(f"No refresh token or org_id configured for Zoho Books (org: {self.org_id}). Returning empty chart of accounts.")
             return []
@@ -293,11 +268,8 @@ class ZohoBooksService:
     )
     async def create_vendor_contact(self, vendor_name: str) -> ZohoContact:
         """Creates a new Vendor contact in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            logger.info(f"Mock: Created vendor {vendor_name}")
-            new_vendor = ZohoContact(contact_id=f"cnt_mock_{int(time.time())}", contact_name=vendor_name, company_name=vendor_name)
-            self._cached_contacts.append(new_vendor)
-            return new_vendor
+        if not self.org_id:
+            raise ValueError("Cannot create vendor contact: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -338,22 +310,9 @@ class ZohoBooksService:
     )
     async def fetch_item_catalog(self) -> List[ZohoItem]:
         """Fetches active linen/laundry items catalog from Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            logger.info("Using mock Zoho item catalog.")
-            self._cached_items = [
-                ZohoItem(item_id="item_bed_sheet_dbl", name="Bed Sheet (Double / King)", rate=18.50, description="Commercial laundered double bed sheet"),
-                ZohoItem(item_id="item_bed_sheet_sgl", name="Bed Sheet (Single)", rate=14.00, description="Commercial laundered single bed sheet"),
-                ZohoItem(item_id="item_duvet_cover_king", name="Duvet Cover (King)", rate=25.00, description="Laundered king size duvet cover"),
-                ZohoItem(item_id="item_pillow_case", name="Pillow Case", rate=6.50, description="Laundered standard pillow case"),
-                ZohoItem(item_id="item_bath_towel", name="Bath Towel", rate=12.00, description="Heavyweight plush bath towel"),
-                ZohoItem(item_id="item_hand_towel", name="Hand Towel", rate=7.00, description="Cotton hand towel"),
-                ZohoItem(item_id="item_face_towel", name="Face Towel", rate=4.50, description="Small face towel / washcloth"),
-                ZohoItem(item_id="item_bath_mat", name="Bath Mat", rate=9.00, description="Hotel floor bath mat"),
-                ZohoItem(item_id="item_pool_towel", name="Pool Towel (Stripe)", rate=15.00, description="Large striped pool towel"),
-                ZohoItem(item_id="item_table_cloth", name="Table Cloth (Banquet)", rate=22.00, description="Pressed banquet table cloth"),
-                ZohoItem(item_id="item_napkin", name="Napkin / Serviet", rate=3.50, description="Pressed cloth napkin"),
-            ]
-            return self._cached_items
+        if not self.org_id:
+            logger.info("No live Zoho credentials/org_id; returning empty item catalog.")
+            return []
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -432,8 +391,6 @@ class ZohoBooksService:
 
         return None
 
-    _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
-
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
@@ -446,9 +403,8 @@ class ZohoBooksService:
         Finds an existing draft invoice for this customer and billing month in Zoho Books.
         Returns the full invoice dict with line items if found, else None.
         """
-        key = f"{customer_id}_{month}_{year}".lower()
-        if settings.MOCK_MODE or not self.org_id:
-            return ZohoBooksService._global_mock_draft_invoices.get(key)
+        if not self.org_id:
+            return None
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -512,23 +468,8 @@ class ZohoBooksService:
         self, request: ZohoDraftInvoiceRequest
     ) -> ZohoDraftInvoiceResponse:
         """Creates a Draft Invoice in Zoho Books for approved monthly billing rows."""
-        if settings.MOCK_MODE or not self.org_id:
-            logger.info(f"[MOCK] Creating draft invoice for customer {request.customer_id}")
-            total = sum(li.rate * li.quantity for li in request.line_items)
-            mock_id = f"inv_mock_{int(time.time())}"
-            mock_num = f"INV-ANR-{int(time.time()) % 100000:05d}"
-            mock_res = ZohoDraftInvoiceResponse(
-                code=0,
-                message="Invoice created successfully (Mock)",
-                invoice_id=mock_id,
-                invoice_number=mock_num,
-                customer_id=request.customer_id,
-                customer_name="Client",
-                total=total,
-                status="draft",
-                invoice_url=f"https://books.zoho.com/app#/invoices/{mock_id}",
-            )
-            return mock_res
+        if not self.org_id:
+            raise ValueError("Cannot create draft invoice: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -589,23 +530,13 @@ class ZohoBooksService:
         If found: appends/merges new line items into the existing invoice.
         If not found: creates a fresh draft invoice.
         """
+        if not self.org_id:
+            raise ValueError("Cannot append draft invoice: Zoho Organization ID is not configured.")
+
         existing = await self.find_existing_draft_invoice(request.customer_id, month, year)
-        key = f"{request.customer_id}_{month}_{year}".lower()
 
         if not existing:
-            created = await self.create_draft_invoice(request)
-            if settings.MOCK_MODE or not self.org_id:
-                ZohoBooksService._global_mock_draft_invoices[key] = {
-                    "invoice_id": created.invoice_id,
-                    "invoice_number": created.invoice_number,
-                    "customer_id": request.customer_id,
-                    "customer_name": created.customer_name,
-                    "total": created.total,
-                    "status": "draft",
-                    "notes": request.notes,
-                    "line_items": [li.model_dump() for li in request.line_items],
-                }
-            return created
+            return await self.create_draft_invoice(request)
 
         # Append new items to existing invoice
         invoice_id = existing.get("invoice_id", "")
@@ -631,23 +562,6 @@ class ZohoBooksService:
                 "rate": new_li.rate,
                 "quantity": new_li.quantity,
             })
-
-        if settings.MOCK_MODE or not self.org_id:
-            new_total = sum(i["rate"] * i["quantity"] for i in combined_items)
-            ZohoBooksService._global_mock_draft_invoices[key]["line_items"] = combined_items
-            ZohoBooksService._global_mock_draft_invoices[key]["total"] = new_total
-            logger.info(f"[MOCK] Appended {len(request.line_items)} items to existing Draft Invoice {invoice_num} (Total: GHS {new_total:.2f})")
-            return ZohoDraftInvoiceResponse(
-                code=0,
-                message=f"Appended items to existing draft invoice {invoice_num} (Mock)",
-                invoice_id=invoice_id,
-                invoice_number=invoice_num,
-                customer_id=request.customer_id,
-                customer_name=existing.get("customer_name", "Client"),
-                total=new_total,
-                status="draft",
-                invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
-            )
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -697,22 +611,8 @@ class ZohoBooksService:
     )
     async def create_draft_bill(self, request: ZohoDraftBillRequest) -> ZohoDraftBillResponse:
         """Creates a new Draft Vendor Bill in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"bill_mock_{int(time.time())}"
-            mock_num = request.bill_number or f"BILL-MOCK-{int(time.time()) % 10000:04d}"
-            total = sum(float(item.get("rate", 0)) * float(item.get("quantity", 1)) for item in request.line_items)
-            logger.info(f"[MOCK] Created Draft Bill {mock_num} for vendor {request.vendor_id} (Total: GHS {total:.2f})")
-            return ZohoDraftBillResponse(
-                code=0,
-                message="Bill created successfully (Mock)",
-                bill_id=mock_id,
-                bill_number=mock_num,
-                vendor_id=request.vendor_id,
-                vendor_name="Vendor",
-                total=total,
-                status="draft",
-                bill_url=f"https://books.zoho.com/app#/bills/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create draft bill: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -766,20 +666,8 @@ class ZohoBooksService:
         self, request: ZohoCustomerPaymentRequest
     ) -> ZohoCustomerPaymentResponse:
         """Records a Customer Payment in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"pay_mock_{int(time.time())}"
-            mock_num = f"PAY-{int(time.time()) % 100000:05d}"
-            logger.info(f"[MOCK] Created Customer Payment {mock_num} of GHS {request.amount:.2f} for customer {request.customer_id}")
-            return ZohoCustomerPaymentResponse(
-                code=0,
-                message="Customer payment recorded successfully (Mock)",
-                payment_id=mock_id,
-                payment_number=mock_num,
-                customer_id=request.customer_id,
-                customer_name="Client",
-                amount=request.amount,
-                payment_url=f"https://books.zoho.com/app#/customerpayments/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create customer payment: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -837,20 +725,8 @@ class ZohoBooksService:
         self, request: ZohoVendorPaymentRequest
     ) -> ZohoVendorPaymentResponse:
         """Records a Vendor Payment in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"vpay_mock_{int(time.time())}"
-            mock_num = f"VPAY-{int(time.time()) % 100000:05d}"
-            logger.info(f"[MOCK] Created Vendor Payment {mock_num} of GHS {request.amount:.2f} for vendor {request.vendor_id}")
-            return ZohoVendorPaymentResponse(
-                code=0,
-                message="Vendor payment recorded successfully (Mock)",
-                payment_id=mock_id,
-                payment_number=mock_num,
-                vendor_id=request.vendor_id,
-                vendor_name="Vendor",
-                amount=request.amount,
-                payment_url=f"https://books.zoho.com/app#/vendorpayments/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create vendor payment: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -899,17 +775,8 @@ class ZohoBooksService:
     )
     async def create_direct_expense(self, request: ZohoExpenseRequest) -> ZohoExpenseResponse:
         """Records a direct expense / petty cash disbursement in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"exp_mock_{int(time.time())}"
-            logger.info(f"[MOCK] Created Direct Expense of GHS {request.amount:.2f} for account {request.account_id}")
-            return ZohoExpenseResponse(
-                code=0,
-                message="Expense created successfully (Mock)",
-                expense_id=mock_id,
-                account_name="Operating Expense",
-                amount=request.amount,
-                expense_url=f"https://books.zoho.com/app#/expenses/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create direct expense: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -954,19 +821,8 @@ class ZohoBooksService:
     )
     async def create_credit_note(self, request: ZohoCreditNoteRequest) -> ZohoCreditNoteResponse:
         """Creates a Credit Note in Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"cn_mock_{int(time.time())}"
-            mock_num = request.creditnote_number or f"CN-{int(time.time()) % 10000:04d}"
-            tot = sum(float(it.get("rate", 0)) * float(it.get("quantity", 1)) for it in request.line_items)
-            logger.info(f"[MOCK] Created Credit Note {mock_num} (Total: GHS {tot:.2f})")
-            return ZohoCreditNoteResponse(
-                code=0,
-                message="Credit Note created (Mock)",
-                creditnote_id=mock_id,
-                creditnote_number=mock_num,
-                total=tot,
-                creditnote_url=f"https://books.zoho.com/app#/creditnotes/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create credit note: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -1012,17 +868,8 @@ class ZohoBooksService:
         self, request: ZohoBankTransactionRequest
     ) -> ZohoBankTransactionResponse:
         """Feeds a bank statement transaction line into Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"btx_mock_{int(time.time())}"
-            logger.info(f"[MOCK] Staged Bank Transaction {mock_id} ({request.transaction_type}: GHS {request.amount:.2f})")
-            return ZohoBankTransactionResponse(
-                code=0,
-                message="Bank transaction created (Mock)",
-                transaction_id=mock_id,
-                transaction_type=request.transaction_type,
-                amount=request.amount,
-                status="uncategorized",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create bank transaction: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -1066,7 +913,7 @@ class ZohoBooksService:
     )
     async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
         """Fetches bank accounts registered in Zoho Books API (/bankaccounts)."""
-        if settings.MOCK_MODE or not self.org_id:
+        if not self.org_id:
             return []
 
         access_token = await self.get_access_token()
@@ -1099,8 +946,7 @@ class ZohoBooksService:
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Fetches bank transactions from Zoho Books API (/banktransactions)."""
-        if settings.MOCK_MODE or not self.org_id:
-            logger.info("[MOCK] Bank transactions requested in mock mode; returning empty list.")
+        if not self.org_id:
             return []
 
         access_token = await self.get_access_token()
@@ -1140,7 +986,7 @@ class ZohoBooksService:
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Fetches transactions for a specific chart of accounts account from Zoho Books API (/chartofaccounts/accounttransactions)."""
-        if settings.MOCK_MODE or not self.org_id:
+        if not self.org_id:
             return []
 
         access_token = await self.get_access_token()
@@ -1174,18 +1020,8 @@ class ZohoBooksService:
     )
     async def create_journal_entry(self, request: ZohoJournalRequest) -> ZohoJournalResponse:
         """Posts a balanced double-entry manual journal into Zoho Books."""
-        if settings.MOCK_MODE or not self.org_id:
-            mock_id = f"jrnl_mock_{int(time.time())}"
-            tot = sum(e.amount for e in request.journal_entries if e.debit_or_credit == "debit")
-            logger.info(f"[MOCK] Posted Manual Journal {mock_id} (Total Debits: GHS {tot:.2f})")
-            return ZohoJournalResponse(
-                code=0,
-                message="Journal posted (Mock)",
-                journal_id=mock_id,
-                journal_date=request.journal_date,
-                total=tot,
-                journal_url=f"https://books.zoho.com/app#/journals/{mock_id}",
-            )
+        if not self.org_id:
+            raise ValueError("Cannot create journal entry: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)

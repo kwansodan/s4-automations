@@ -756,109 +756,14 @@ class GoogleSheetsService:
 
     def fetch_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
         """Fetches all rows from both Tab 1 (Daily Details) and Tab 2 (Monthly Summary) for UI review."""
-        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+        if not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             return {
                 "month": month,
                 "year": year,
-                "spreadsheet_id": spreadsheet_id,
-                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
-                "daily_details": [
-                    {
-                        "slip_date": f"15/08/{year}",
-                        "file_name": "slip_luxwood_01.jpg",
-                        "client_name": "Luxwood",
-                        "raw_item_name": "B/Sheet Dbl",
-                        "standard_item_name": "Bed Sheet (Double / King)",
-                        "pickup_qty": 35,
-                        "delivery_qty": 32,
-                        "loss_qty": 3,
-                        "confidence_score": "HIGH",
-                        "drive_file_url": "https://drive.google.com/file/d/mock1/view",
-                        "processed_at": "2026-08-28 10:15:00",
-                    },
-                    {
-                        "slip_date": f"15/08/{year}",
-                        "file_name": "slip_luxwood_01.jpg",
-                        "client_name": "Luxwood",
-                        "raw_item_name": "Bath Towel",
-                        "standard_item_name": "Bath Towel",
-                        "pickup_qty": 50,
-                        "delivery_qty": 50,
-                        "loss_qty": 0,
-                        "confidence_score": "HIGH",
-                        "drive_file_url": "https://drive.google.com/file/d/mock1/view",
-                        "processed_at": "2026-08-28 10:15:00",
-                    },
-                    {
-                        "slip_date": f"16/08/{year}",
-                        "file_name": "slip_thelennox_02.jpg",
-                        "client_name": "The Lennox",
-                        "raw_item_name": "King Duvet Cover",
-                        "standard_item_name": "Duvet Cover (King)",
-                        "pickup_qty": 20,
-                        "delivery_qty": 20,
-                        "loss_qty": 0,
-                        "confidence_score": "HIGH",
-                        "drive_file_url": "https://drive.google.com/file/d/mock2/view",
-                        "processed_at": "2026-08-28 11:30:00",
-                    },
-                ],
-                "monthly_summary": [
-                    {
-                        "row_index": 2,
-                        "client_name": "Luxwood",
-                        "zoho_contact_id": "cnt_luxwood_001",
-                        "zoho_item_id": "item_bed_sheet_dbl",
-                        "standard_item_name": "Bed Sheet (Double / King)",
-                        "raw_names_seen": "B/Sheet Dbl, Double Bedsheet",
-                        "confidence_score": "HIGH",
-                        "unit_rate": 18.50,
-                        "total_picked_up": 50,
-                        "total_delivered": 47,
-                        "linen_discrepancy": 3,
-                        "total_billed": 925.00,
-                        "audit_notes": "Pickup 50, Delivered 47 (3 unreturned)",
-                        "reviewed": True,
-                        "approved": True,
-                        "status": "PENDING",
-                    },
-                    {
-                        "row_index": 3,
-                        "client_name": "Luxwood",
-                        "zoho_contact_id": "cnt_luxwood_001",
-                        "zoho_item_id": "item_bath_towel",
-                        "standard_item_name": "Bath Towel",
-                        "raw_names_seen": "Bath Towel",
-                        "confidence_score": "HIGH",
-                        "unit_rate": 12.00,
-                        "total_picked_up": 80,
-                        "total_delivered": 80,
-                        "linen_discrepancy": 0,
-                        "total_billed": 960.00,
-                        "audit_notes": "Pickup 80, Delivered 80",
-                        "reviewed": True,
-                        "approved": True,
-                        "status": "PENDING",
-                    },
-                    {
-                        "row_index": 4,
-                        "client_name": "The Lennox",
-                        "zoho_contact_id": "cnt_the_lennox_003",
-                        "zoho_item_id": "item_duvet_cover_king",
-                        "standard_item_name": "Duvet Cover (King)",
-                        "raw_names_seen": "King Duvet Cover",
-                        "confidence_score": "HIGH",
-                        "unit_rate": 25.00,
-                        "total_picked_up": 30,
-                        "total_delivered": 30,
-                        "linen_discrepancy": 0,
-                        "total_billed": 750.00,
-                        "audit_notes": "Reconciled",
-                        "reviewed": False,
-                        "approved": False,
-                        "status": "PENDING",
-                    },
-                ],
+                "spreadsheet_id": spreadsheet_id or "",
+                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit" if spreadsheet_id else "",
+                "daily_details": [],
+                "monthly_summary": [],
             }
 
         try:
@@ -928,8 +833,15 @@ class GoogleSheetsService:
             }
         except HttpError as e:
             if e.resp.status in (404, 403):
-                logger.warning(f"Spreadsheet {spreadsheet_id} not found or accessible in Google Sheets (HTTP {e.resp.status}). Returning mock review data.")
-                return self.fetch_sheets_review_data("mock_sheet", month, year)
+                logger.warning(f"Spreadsheet {spreadsheet_id} not found or accessible in Google Sheets (HTTP {e.resp.status}). Returning empty review data.")
+                return {
+                    "month": month,
+                    "year": year,
+                    "spreadsheet_id": spreadsheet_id,
+                    "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                    "daily_details": [],
+                    "monthly_summary": [],
+                }
             raise
 
     def toggle_row_field(self, spreadsheet_id: str, row_index: int, field: str, value: Any) -> bool:

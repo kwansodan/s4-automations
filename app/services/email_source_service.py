@@ -39,24 +39,8 @@ class EmailSourceService:
         """
         extensions = allowed_extensions or [".pdf", ".png", ".jpg", ".jpeg", ".csv"]
         
-        # Development / Mock fallback when IMAP credentials are not yet configured
-        if not self.host or not self.username or not self.password or settings.MOCK_MODE:
-            logger.info("IMAP credentials not configured or running in Mock Mode. Returning simulated email attachments.")
-            return [
-                {
-                    "file_name": "Supplier_Invoice_INV-88912.pdf",
-                    "sender_email": "billing@apexlogistics.com",
-                    "subject": "Monthly Freight & Clearing Invoice INV-88912",
-                    "received_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                    "mime_type": "application/pdf",
-                    "file_bytes": b"%PDF-1.4 simulated pdf bytes",
-                    "metadata": {
-                        "message_id": "<msg_apex_88912@apexlogistics.com>",
-                        "vendor_name": "Apex Logistics Ghana Ltd",
-                        "po_number": "PO-2026-081",
-                    },
-                }
-            ]
+        if not self.host or not self.username or not self.password:
+            return []
 
         extracted_attachments = []
         try:

@@ -45,43 +45,13 @@ class MrOseiPropertyStrategy(BaseAutomationStrategy):
                 )
             )
 
-        # Simulated receipts if inbox is currently empty
-        if not sources:
-            sources.append(
-                SourceDocument(
-                    file_name=f"MTN_MoMo_Rent_Receipt_Unit_4B_{month}.jpg",
-                    source_type=SourceType.EMAIL_ATTACHMENT,
-                    mime_type="image/jpeg",
-                    metadata={"unit": "Unit 4B", "tenant": "Dr. Emmanuel Mensah"},
-                )
-            )
         return sources
 
     async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
         """Extracts tenant payments and computes utility allocations."""
+        if not sources:
+            return []
         items: List[ExtractedLineItem] = []
-        for src in sources:
-            # Simulated tenant receipt schema extraction
-            items.extend([
-                ExtractedLineItem(
-                    item_or_description="Monthly Residential Apartment Rent (Unit 4B)",
-                    category_or_account="40020 - Rental Property Income",
-                    quantity_or_debit=1.0,
-                    unit_price=4500.00,
-                    total_amount=4500.00,
-                    confidence_score=0.99,
-                    raw_extracted_data={"tenant_name": "Dr. Emmanuel Mensah", "unit": "Unit 4B", "ref": "MOMO-9918231"},
-                ),
-                ExtractedLineItem(
-                    item_or_description="Shared ECG Power & Water Apportionment (Unit 4B)",
-                    category_or_account="40030 - Utility Reimbursements",
-                    quantity_or_debit=1.0,
-                    unit_price=350.00,
-                    total_amount=350.00,
-                    confidence_score=0.95,
-                    raw_extracted_data={"tenant_name": "Dr. Emmanuel Mensah", "unit": "Unit 4B"},
-                ),
-            ])
         return items
 
     async def sync_review_workspace(

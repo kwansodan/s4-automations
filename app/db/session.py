@@ -348,102 +348,61 @@ def init_db():
                 session.commit()
                 logger.info("Successfully seeded dual-mode SaaS organizations and memberships.")
 
-            # Seed default Client Contacts & Firm Team Members
-            from app.models.db_models import ClientContact, FirmTeamMember
-            existing_contact = session.exec(select(ClientContact)).first()
-            if not existing_contact:
-                logger.info("Seeding initial client contacts for information requests...")
-                contacts = [
-                    ClientContact(
-                        client_id="anr_group",
-                        organization_id="s4_advisory",
-                        name="Kwame Mensah",
-                        email="kwame@anrgroup.com",
-                        phone="+233 24 412 3456",
-                        role="CFO",
-                        portal_status="ACTIVE",
-                        notification_channel="both",
-                        notes="Primary financial executive for monthly reconciliations and clarification requests.",
-                    ),
-                    ClientContact(
-                        client_id="anr_group",
-                        organization_id="s4_advisory",
-                        name="Akua Darko",
-                        email="adarko@anrgroup.com",
-                        phone="+233 20 891 2345",
-                        role="Financial_Controller",
-                        portal_status="INVITED",
-                        notification_channel="email",
-                        notes="Handles weekly AP vendor inquiries and operational disbursements.",
-                    ),
-                    ClientContact(
-                        client_id="apex_logistics",
-                        organization_id="s4_advisory",
-                        name="Kofi Antwi",
-                        email="kofi@apexlogistics.gh",
-                        phone="+233 50 123 4567",
-                        role="Managing_Director",
-                        portal_status="INVITED",
-                        notification_channel="both",
-                        notes="Company principal for high-value bank transaction queries.",
-                    ),
-                ]
-                for c in contacts:
-                    session.add(c)
-                session.commit()
+            # Purge any legacy synthetic client contacts, team members, and staged transactions
+            from app.models.db_models import ClientContact, FirmTeamMember, StagedTransaction
+            fake_contact_emails = [
+                "kwame@anrgroup.com",
+                "adarko@anrgroup.com",
+                "kofi@apexlogistics.gh",
+            ]
+            legacy_contacts = session.exec(
+                select(ClientContact).where(ClientContact.email.in_(fake_contact_emails))
+            ).all()
+            for lc in legacy_contacts:
+                session.delete(lc)
 
-            existing_firm_member = session.exec(select(FirmTeamMember)).first()
-            if not existing_firm_member:
-                logger.info("Seeding accounting firm team members...")
-                team = [
-                    FirmTeamMember(
-                        organization_id="s4_advisory",
-                        name="Charles Danso",
-                        email=settings.AUTH_EMAIL or "cdanso@service4gh.com",
-                        phone="+233 24 400 1122",
-                        role="PARTNER",
-                        status="ACTIVE",
-                        assigned_client_ids=["*"],
-                        permissions={
-                            "can_query_clients": True,
-                            "can_categorize": True,
-                            "can_sync_accounting": True,
-                            "can_manage_clients": True,
-                        },
-                    ),
-                    FirmTeamMember(
-                        organization_id="s4_advisory",
-                        name="Abena Boateng",
-                        email="aboateng@service4gh.com",
-                        phone="+233 20 555 7890",
-                        role="SENIOR_ACCOUNTANT",
-                        status="ACTIVE",
-                        assigned_client_ids=["anr_group", "apex_logistics"],
-                        permissions={
-                            "can_query_clients": True,
-                            "can_categorize": True,
-                            "can_sync_accounting": True,
-                            "can_manage_clients": False,
-                        },
-                    ),
-                    FirmTeamMember(
-                        organization_id="s4_advisory",
-                        name="Emmanuel Osei",
-                        email="eosei@service4gh.com",
-                        phone="+233 55 999 1234",
-                        role="STAFF_ACCOUNTANT",
-                        status="INVITED",
-                        assigned_client_ids=["anr_group"],
-                        permissions={
-                            "can_query_clients": True,
-                            "can_categorize": True,
-                            "can_sync_accounting": False,
-                            "can_manage_clients": False,
-                        },
-                    ),
-                ]
-                for m in team:
-                    session.add(m)
+            fake_team_emails = [
+                "aboateng@service4gh.com",
+                "eosei@service4gh.com",
+            ]
+            legacy_team = session.exec(
+                select(FirmTeamMember).where(FirmTeamMember.email.in_(fake_team_emails))
+            ).all()
+            for lt in legacy_team:
+                session.delete(lt)
+
+            legacy_staged = session.exec(
+                select(StagedTransaction).where(
+                    StagedTransaction.source_file_name.like("%Stanbic%")
+                )
+            ).all()
+            for ls in legacy_staged:
+                session.delete(ls)
+
+            session.commit()
+
+            # Ensure the primary firm partner exists
+            admin_email = (settings.AUTH_EMAIL or "cdanso@service4gh.com").strip().lower()
+            existing_admin_member = session.exec(
+                select(FirmTeamMember).where(FirmTeamMember.email == admin_email)
+            ).first()
+            if not existing_admin_member:
+                admin_member = FirmTeamMember(
+                    organization_id="s4_advisory",
+                    name="Charles Danso",
+                    email=admin_email,
+                    phone="+233 24 400 1122",
+                    role="PARTNER",
+                    status="ACTIVE",
+                    assigned_client_ids=["*"],
+                    permissions={
+                        "can_query_clients": True,
+                        "can_categorize": True,
+                        "can_sync_accounting": True,
+                        "can_manage_clients": True,
+                    },
+                )
+                session.add(admin_member)
                 session.commit()
 
             # Ensure any legacy synthetic mock bank transactions are purged

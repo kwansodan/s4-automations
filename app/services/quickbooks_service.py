@@ -50,11 +50,8 @@ class QuickBooksService:
         if self._access_token and time.time() < self._token_expiry - 60:
             return self._access_token
 
-        if not self.refresh_token:
-            # Sandbox default token
-            self._access_token = "mock_qbo_bearer_token"
-            self._token_expiry = time.time() + 3600
-            return self._access_token
+        if not self.refresh_token or not self.client_id or not self.client_secret:
+            raise ValueError("QuickBooks credentials (refresh token, client ID, secret) are not configured.")
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -72,90 +69,46 @@ class QuickBooksService:
                     self._token_expiry = time.time() + data.get("expires_in", 3600)
                     return self._access_token
                 else:
-                    logger.warning(f"QuickBooks token refresh returned status {resp.status_code}, using mock.")
+                    raise RuntimeError(f"QuickBooks token refresh returned status {resp.status_code}: {resp.text}")
         except Exception as e:
-            logger.warning(f"Failed to refresh QuickBooks token ({e}), falling back to simulated session.")
-
-        self._access_token = "mock_qbo_bearer_token"
-        self._token_expiry = time.time() + 3600
-        return self._access_token
+            logger.error(f"Failed to refresh QuickBooks token: {e}")
+            raise
 
     async def fetch_customers(self) -> List[Dict[str, Any]]:
         """Fetch active customers from QuickBooks Online."""
+        if not self.refresh_token:
+            return []
         try:
             token = await self.get_access_token()
-            if self.refresh_token:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    headers = {
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/json",
-                    }
-                    query = "select * from Customer maxresults 100"
-                    resp = await client.get(
-                        f"{self.base_url}/query",
-                        params={"query": query},
-                        headers=headers,
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        customers = data.get("QueryResponse", {}).get("Customer", [])
-                        return [
-                            {
-                                "contact_id": str(c.get("Id")),
-                                "contact_name": c.get("DisplayName", c.get("FullyQualifiedName", "")),
-                                "company_name": c.get("CompanyName", ""),
-                                "email": c.get("PrimaryEmailAddr", {}).get("Address", ""),
-                                "phone": c.get("PrimaryPhone", {}).get("FreeFormNumber", ""),
-                                "currency": c.get("CurrencyRef", {}).get("value", "GHS"),
-                            }
-                            for c in customers
-                        ]
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                }
+                query = "select * from Customer maxresults 100"
+                resp = await client.get(
+                    f"{self.base_url}/query",
+                    params={"query": query},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    customers = data.get("QueryResponse", {}).get("Customer", [])
+                    return [
+                        {
+                            "contact_id": str(c.get("Id")),
+                            "contact_name": c.get("DisplayName", c.get("FullyQualifiedName", "")),
+                            "company_name": c.get("CompanyName", ""),
+                            "email": c.get("PrimaryEmailAddr", {}).get("Address", ""),
+                            "phone": c.get("PrimaryPhone", {}).get("FreeFormNumber", ""),
+                            "currency": c.get("CurrencyRef", {}).get("value", "GHS"),
+                        }
+                        for c in customers
+                    ]
         except Exception as e:
-            logger.warning(f"QuickBooks customer query fallback: {e}")
+            logger.warning(f"QuickBooks customer query error: {e}")
 
-        # Standard West Africa Enterprise Mock Customers
-        return [
-            {
-                "contact_id": "QBO_CUST_101",
-                "contact_name": "Kempinski Hotel Gold Coast City",
-                "company_name": "Kempinski Hotel Accra",
-                "email": "finance@kempinski-accra.com",
-                "phone": "+233 24 411 2233",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "QBO_CUST_102",
-                "contact_name": "Movenpick Ambassador Hotel",
-                "company_name": "Movenpick Hotel Accra",
-                "email": "ap@movenpick-accra.com",
-                "phone": "+233 20 899 0011",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "QBO_CUST_103",
-                "contact_name": "Marriott Hotel Airport City",
-                "company_name": "Accra Marriott Hotel",
-                "email": "accounts@marriott-accra.com",
-                "phone": "+233 30 273 8000",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "QBO_CUST_104",
-                "contact_name": "Apex Distribution Ghana Ltd",
-                "company_name": "Apex Distribution Group",
-                "email": "billing@apexdistgh.com",
-                "phone": "+233 55 400 1928",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "QBO_CUST_105",
-                "contact_name": "Mr. Osei Property Holdings",
-                "company_name": "Osei Real Estate",
-                "email": "osei.holdings@gmail.com",
-                "phone": "+233 24 333 4455",
-                "currency": "GHS",
-            },
-        ]
+        return []
 
     async def fetch_items(self) -> List[Dict[str, Any]]:
         """Fetch item catalog (SKUs and rates) from QuickBooks Online."""
@@ -188,21 +141,9 @@ class QuickBooksService:
                             for it in items
                         ]
         except Exception as e:
-            logger.warning(f"QuickBooks item query fallback: {e}")
+            logger.warning(f"QuickBooks item query error: {e}")
 
-        # Standard Default Item Catalog
-        return [
-            {"item_id": "QBO_ITEM_01", "name": "Bedsheet Double (Standard)", "rate": 45.0, "sku": "LINEN_BS_DBL", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_02", "name": "Bedsheet Single (Standard)", "rate": 35.0, "sku": "LINEN_BS_SGL", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_03", "name": "Face Towel", "rate": 15.0, "sku": "LINEN_FT", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_04", "name": "Bath Towel Large", "rate": 30.0, "sku": "LINEN_BT_LRG", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_05", "name": "Duvet Cover Double", "rate": 75.0, "sku": "LINEN_DC_DBL", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_06", "name": "Pillow Case", "rate": 12.0, "sku": "LINEN_PC", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_07", "name": "Table Cloth White", "rate": 28.0, "sku": "LINEN_TC_WHT", "account_code": "4000"},
-            {"item_id": "QBO_ITEM_08", "name": "Industrial Detergent 25L", "rate": 380.0, "sku": "CHEM_DET_25L", "account_code": "5000"},
-            {"item_id": "QBO_ITEM_09", "name": "Chlorine Bleach 20L", "rate": 220.0, "sku": "CHEM_BLCH_20L", "account_code": "5000"},
-            {"item_id": "QBO_ITEM_10", "name": "Fabric Softener 20L", "rate": 290.0, "sku": "CHEM_SOFT_20L", "account_code": "5000"},
-        ]
+        return []
 
     async def create_invoice(self, invoice_payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a Sales Invoice in QuickBooks Online (/invoice)."""

@@ -142,13 +142,12 @@ class OneDriveService:
         parsed = self.parse_folder_path_or_url(target)
         display_name = parsed.get("clean_path") or target or "Root Folder"
 
-        if settings.MOCK_MODE or not self.tenant_id or not self.client_id:
-            logger.info("Mock mode: Simulated successful OneDrive / SharePoint connection probe.")
+        if not self.tenant_id or not self.client_id or not self.client_secret:
             return {
-                "success": True,
-                "status": "CONNECTED",
-                "message": f"Connected to Microsoft SharePoint/OneDrive folder '{display_name}'. (Ready for Ingestion)",
-                "items_count": 4,
+                "success": False,
+                "status": "NOT_CONFIGURED",
+                "message": f"Microsoft OneDrive / SharePoint credentials are not configured for folder '{display_name}'.",
+                "items_count": 0,
             }
 
         token = await self.get_access_token()
@@ -200,26 +199,8 @@ class OneDriveService:
         parsed = self.parse_folder_path_or_url(target)
         display_name = parsed.get("clean_path") or target or "Ingestion"
 
-        if settings.MOCK_MODE or not self.tenant_id or not self.client_id:
-            logger.info(f"OneDrive Service: Running in simulated mode for {month} {year} ({display_name})")
-            return [
-                SourceDocument(
-                    file_name=f"SharePoint_Slip_{month}_{year}_001.pdf",
-                    source_type=SourceType.ONEDRIVE,
-                    mime_type="application/pdf",
-                    file_bytes=b"%PDF-1.4 Mock SharePoint Document Content",
-                    source_identifier="ms-graph-item-001",
-                    metadata={"folder": target, "month": month, "year": year},
-                ),
-                SourceDocument(
-                    file_name=f"SharePoint_Invoice_{month}_{year}_002.pdf",
-                    source_type=SourceType.ONEDRIVE,
-                    mime_type="application/pdf",
-                    file_bytes=b"%PDF-1.4 Mock SharePoint Document Content",
-                    source_identifier="ms-graph-item-002",
-                    metadata={"folder": target, "month": month, "year": year},
-                ),
-            ]
+        if not self.tenant_id or not self.client_id or not self.client_secret:
+            return []
 
         token = await self.get_access_token()
         if not token:

@@ -50,6 +50,9 @@ class XeroService:
             self._token_expiry = time.time() + 3600
             return self._access_token
 
+        if not self.refresh_token or not self.client_id or not self.client_secret:
+            raise ValueError("Xero credentials (refresh token, client ID, secret) are not configured.")
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
@@ -66,129 +69,74 @@ class XeroService:
                     self._token_expiry = time.time() + data.get("expires_in", 3600)
                     return self._access_token
                 else:
-                    logger.warning(f"Xero token refresh returned status {resp.status_code}, using mock.")
+                    raise RuntimeError(f"Xero token refresh returned status {resp.status_code}: {resp.text}")
         except Exception as e:
-            logger.warning(f"Failed to refresh Xero token ({e}), using simulated session.")
-
-        self._access_token = "mock_xero_bearer_token"
-        self._token_expiry = time.time() + 3600
-        return self._access_token
+            logger.error(f"Failed to refresh Xero token: {e}")
+            raise
 
     async def fetch_contacts(self) -> List[Dict[str, Any]]:
         """Fetch active contacts from Xero."""
+        if not self.refresh_token or not self.tenant_id:
+            return []
         try:
             token = await self.get_access_token()
-            if self.refresh_token:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    headers = {
-                        "Authorization": f"Bearer {token}",
-                        "Xero-tenant-id": self.tenant_id,
-                        "Accept": "application/json",
-                    }
-                    resp = await client.get(f"{self.base_url}/Contacts", headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        contacts = data.get("Contacts", [])
-                        return [
-                            {
-                                "contact_id": str(c.get("ContactID")),
-                                "contact_name": c.get("Name", ""),
-                                "company_name": c.get("Name", ""),
-                                "email": c.get("EmailAddress", ""),
-                                "phone": c.get("Phones", [{}])[0].get("PhoneNumber", "") if c.get("Phones") else "",
-                                "currency": c.get("DefaultCurrency", "GHS"),
-                            }
-                            for c in contacts
-                        ]
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Xero-tenant-id": self.tenant_id,
+                    "Accept": "application/json",
+                }
+                resp = await client.get(f"{self.base_url}/Contacts", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    contacts = data.get("Contacts", [])
+                    return [
+                        {
+                            "contact_id": str(c.get("ContactID")),
+                            "contact_name": c.get("Name", ""),
+                            "company_name": c.get("Name", ""),
+                            "email": c.get("EmailAddress", ""),
+                            "phone": c.get("Phones", [{}])[0].get("PhoneNumber", "") if c.get("Phones") else "",
+                            "currency": c.get("DefaultCurrency", "GHS"),
+                        }
+                        for c in contacts
+                    ]
         except Exception as e:
-            logger.warning(f"Xero contact query fallback: {e}")
+            logger.warning(f"Xero contact query error: {e}")
 
-        # Standard Default Xero Contacts for West Africa
-        return [
-            {
-                "contact_id": "XERO_CONT_01",
-                "contact_name": "Kempinski Hotel Gold Coast City",
-                "company_name": "Kempinski Hotel Accra",
-                "email": "finance@kempinski-accra.com",
-                "phone": "+233 24 411 2233",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "XERO_CONT_02",
-                "contact_name": "Movenpick Ambassador Hotel",
-                "company_name": "Movenpick Hotel Accra",
-                "email": "ap@movenpick-accra.com",
-                "phone": "+233 20 899 0011",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "XERO_CONT_03",
-                "contact_name": "Marriott Hotel Airport City",
-                "company_name": "Accra Marriott Hotel",
-                "email": "accounts@marriott-accra.com",
-                "phone": "+233 30 273 8000",
-                "currency": "GHS",
-            },
-            {
-                "contact_id": "XERO_CONT_04",
-                "contact_name": "Polaris Capital Advisory Ltd",
-                "company_name": "Polaris Advisory Group",
-                "email": "ops@polarisadvisory.com",
-                "phone": "+233 55 900 1122",
-                "currency": "USD",
-            },
-            {
-                "contact_id": "XERO_CONT_05",
-                "contact_name": "West Africa Chemical Suppliers Ltd",
-                "company_name": "WACS Ltd",
-                "email": "sales@wacsltd.com",
-                "phone": "+233 24 500 6677",
-                "currency": "GHS",
-            },
-        ]
+        return []
 
     async def fetch_items(self) -> List[Dict[str, Any]]:
         """Fetch inventory item catalog from Xero."""
+        if not self.refresh_token or not self.tenant_id:
+            return []
         try:
             token = await self.get_access_token()
-            if self.refresh_token:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    headers = {
-                        "Authorization": f"Bearer {token}",
-                        "Xero-tenant-id": self.tenant_id,
-                        "Accept": "application/json",
-                    }
-                    resp = await client.get(f"{self.base_url}/Items", headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        items = data.get("Items", [])
-                        return [
-                            {
-                                "item_id": str(it.get("ItemID")),
-                                "name": it.get("Name", ""),
-                                "description": it.get("Description", ""),
-                                "rate": float(it.get("SalesDetails", {}).get("UnitPrice", 0.0)),
-                                "sku": it.get("Code", it.get("Name", "")),
-                                "account_code": it.get("SalesDetails", {}).get("AccountCode", "200"),
-                            }
-                            for it in items
-                        ]
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Xero-tenant-id": self.tenant_id,
+                    "Accept": "application/json",
+                }
+                resp = await client.get(f"{self.base_url}/Items", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("Items", [])
+                    return [
+                        {
+                            "item_id": str(it.get("ItemID")),
+                            "name": it.get("Name", ""),
+                            "description": it.get("Description", ""),
+                            "rate": float(it.get("SalesDetails", {}).get("UnitPrice", 0.0)),
+                            "sku": it.get("Code", it.get("Name", "")),
+                            "account_code": it.get("SalesDetails", {}).get("AccountCode", "200"),
+                        }
+                        for it in items
+                    ]
         except Exception as e:
-            logger.warning(f"Xero item query fallback: {e}")
+            logger.warning(f"Xero item query error: {e}")
 
-        # Standard Default Item Catalog
-        return [
-            {"item_id": "XERO_ITEM_01", "name": "Bedsheet Double (Standard)", "rate": 45.0, "sku": "LINEN_BS_DBL", "account_code": "200"},
-            {"item_id": "XERO_ITEM_02", "name": "Bedsheet Single (Standard)", "rate": 35.0, "sku": "LINEN_BS_SGL", "account_code": "200"},
-            {"item_id": "XERO_ITEM_03", "name": "Face Towel", "rate": 15.0, "sku": "LINEN_FT", "account_code": "200"},
-            {"item_id": "XERO_ITEM_04", "name": "Bath Towel Large", "rate": 30.0, "sku": "LINEN_BT_LRG", "account_code": "200"},
-            {"item_id": "XERO_ITEM_05", "name": "Duvet Cover Double", "rate": 75.0, "sku": "LINEN_DC_DBL", "account_code": "200"},
-            {"item_id": "XERO_ITEM_06", "name": "Pillow Case", "rate": 12.0, "sku": "LINEN_PC", "account_code": "200"},
-            {"item_id": "XERO_ITEM_07", "name": "Table Cloth White", "rate": 28.0, "sku": "LINEN_TC_WHT", "account_code": "200"},
-            {"item_id": "XERO_ITEM_08", "name": "Industrial Detergent 25L", "rate": 380.0, "sku": "CHEM_DET_25L", "account_code": "300"},
-            {"item_id": "XERO_ITEM_09", "name": "Chlorine Bleach 20L", "rate": 220.0, "sku": "CHEM_BLCH_20L", "account_code": "300"},
-            {"item_id": "XERO_ITEM_10", "name": "Fabric Softener 20L", "rate": 290.0, "sku": "CHEM_SOFT_20L", "account_code": "300"},
-        ]
+        return []
 
     async def create_invoice(self, invoice_payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a Sales Invoice in Xero (/Invoices - Type ACCREC)."""

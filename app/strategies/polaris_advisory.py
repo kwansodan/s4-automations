@@ -27,40 +27,15 @@ class PolarisBankFeedStrategy(BaseAutomationStrategy):
         self.zoho = ZohoBooksService()
 
     async def discover_sources(self, month: str, year: int) -> List[SourceDocument]:
-        """Discovers Polaris Bank Statement PDFs."""
-        return [
-            SourceDocument(
-                file_name=f"Stanbic_Bank_Statement_{month}_{year}.pdf",
-                source_type=SourceType.BANK_FEED,
-                mime_type="application/pdf",
-                metadata={"bank_name": "Stanbic Bank Ghana", "account_no": "904000889122"},
-            )
-        ]
+        """Discovers Polaris Bank Statement files or connected feeds."""
+        # Without an active connected feed or uploaded statement, discover zero sources
+        return []
 
     async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
-        """Extracts transactions and maps to Zoho Chart of Accounts."""
-        # Simulated intelligent bank statement parser
-        simulated_transactions = [
-            {"date": "2026-08-04", "desc": "AWS Cloud Infrastructure EMEA", "debit": 1450.00, "credit": 0.0, "account": "60020 - Cloud & Hosting Expenses"},
-            {"date": "2026-08-12", "desc": "MTN Ghana Business Internet", "debit": 620.00, "credit": 0.0, "account": "60010 - Telecom & Utilities"},
-            {"date": "2026-08-18", "desc": "Ghana Revenue Authority PAYE", "debit": 4850.00, "credit": 0.0, "account": "20010 - Statutory Payroll Liabilities"},
-            {"date": "2026-08-25", "desc": "Advisory Retainer Fee - TechCorp", "debit": 0.0, "credit": 18500.00, "account": "40010 - Management Advisory Revenue"},
-        ]
-
+        """Extracts transactions from discovered statement sources."""
+        if not sources:
+            return []
         items: List[ExtractedLineItem] = []
-        for tx in simulated_transactions:
-            items.append(
-                ExtractedLineItem(
-                    item_or_description=tx["desc"],
-                    category_or_account=tx["account"],
-                    quantity_or_debit=tx["debit"],
-                    credit_amount=tx["credit"],
-                    unit_price=tx["debit"] or tx["credit"],
-                    total_amount=tx["debit"] or tx["credit"],
-                    confidence_score=0.98,
-                    raw_extracted_data={"date": tx["date"], "bank": "Stanbic Bank Ghana"},
-                )
-            )
         return items
 
     async def sync_review_workspace(
@@ -77,7 +52,7 @@ class PolarisBankFeedStrategy(BaseAutomationStrategy):
                     batch_id=batch_id,
                     transaction_date=i.raw_extracted_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
                     source_type="bank_feed",
-                    source_file_name=f"Stanbic_Bank_Statement_{month}_{year}.pdf",
+                    source_file_name=i.raw_extracted_data.get("source_file") or f"Bank_Statement_{month}_{year}.pdf",
                     item_or_description=i.item_or_description,
                     category_or_account=i.category_or_account,
                     quantity_or_debit=i.quantity_or_debit,

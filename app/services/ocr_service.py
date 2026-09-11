@@ -31,7 +31,7 @@ class GeminiOCRService:
         self._client = None
 
     def _get_client(self):
-        if self._client is None and not settings.MOCK_MODE:
+        if self._client is None:
             try:
                 # Try google-genai client first
                 from google import genai
@@ -43,7 +43,7 @@ class GeminiOCRService:
                     genai_legacy.configure(api_key=self.api_key)
                     self._client = genai_legacy
                 except Exception as e:
-                    logger.warning(f"Could not initialize Gemini client: {e}. Will use mock/fallback.")
+                    logger.error(f"Could not initialize Gemini client: {e}")
         return self._client
 
     def _build_prompt(self, client_name: str, file_name: str, item_catalog: List[ZohoItem]) -> str:
@@ -84,9 +84,8 @@ Return strictly valid JSON conforming to the schema.
         """
         Invokes Gemini Vision with structured schema to extract line items from a slip.
         """
-        if settings.MOCK_MODE or not self.api_key:
-            logger.info(f"[MOCK] Running mock extraction for slip {file_name} (Client: {client_name})")
-            return self._generate_mock_extraction(file_name, client_name, item_catalog)
+        if not self.api_key:
+            raise ValueError(f"Gemini API key is not configured for OCR extraction ({file_name}).")
 
         prompt = self._build_prompt(client_name, file_name, item_catalog)
 
@@ -145,12 +144,8 @@ Return strictly valid JSON conforming to the schema.
         """
         Invokes Gemini Vision to extract AP vendor bill data.
         """
-        if settings.MOCK_MODE or not self.api_key:
-            return OCRAPBillExtraction(
-                vendor_name="Mock Vendor",
-                bill_date="01/01/2026",
-                total_amount=100.0,
-            )
+        if not self.api_key:
+            raise ValueError(f"Gemini API key is not configured for vendor bill extraction ({file_name}).")
 
         prompt = f"""
 You are an expert accounts payable clerk. Analyze this vendor bill/invoice.
@@ -165,7 +160,10 @@ Return strictly valid JSON conforming to the schema.
             client = genai.Client(api_key=self.api_key)
             response = client.models.generate_content(
                 model=self.model_name,
-                contents=[types.Part.from_bytes(data=file_bytes, mime_type=mime_type), prompt],
+                contents=[
+                    types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                    prompt,
+                ],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=OCRAPBillExtraction,
@@ -173,13 +171,10 @@ Return strictly valid JSON conforming to the schema.
                 ),
             )
             raw_text = response.text
-            import json
-            cleaned = re.sub(r"^```json\s*", "", raw_text.strip(), flags=re.MULTILINE)
-            cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
-            return OCRAPBillExtraction.model_validate_json(cleaned)
+            return self._safe_parse_bill_extraction(raw_text, file_name)
         except Exception as e:
-            logger.error(f"Failed to extract vendor bill {file_name}: {e}")
-            raise RuntimeError(f"Failed to extract vendor bill {file_name}: {e}")
+            logger.error(f"Gemini vendor bill extraction failed: {e}")
+            raise RuntimeError(f"Vendor bill extraction failed for {file_name}: {e}")
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def extract_bank_statement(
@@ -191,13 +186,8 @@ Return strictly valid JSON conforming to the schema.
         """
         Invokes Gemini Vision to extract transactions from PDF bank statements.
         """
-        if settings.MOCK_MODE or not self.api_key:
-            return OCRBankStatementExtraction(
-                bank_name="GCB Bank Ghana",
-                account_number="1234567890",
-                statement_period="August 2026",
-                transactions=[],
-            )
+        if not self.api_key:
+            raise ValueError(f"Gemini API key is not configured for bank statement extraction ({file_name}).")
 
         prompt = f"""
 You are an expert banking and financial auditor. Analyze this Bank Statement.
@@ -330,42 +320,6 @@ Return strictly valid JSON conforming to the schema.
 
         return None
 
-    def _generate_mock_extraction(
-        self, file_name: str, client_name: str, item_catalog: List[ZohoItem]
-    ) -> OCRSlipExtraction:
-        """Generates realistic mock OCR extraction data for test slip files."""
-        # Pick 2-3 standard items from catalog
-        items = []
-        sample_skus = [
-            ("Bed Sheet (Double / King)", "B/Sheet Dbl", 25, 23, 18.50, "item_bed_sheet_dbl"),
-            ("Bath Towel", "Bath Towel", 30, 30, 12.00, "item_bath_towel"),
-            ("Pillow Case", "P/Case", 50, 48, 6.50, "item_pillow_case"),
-        ]
-
-        for std_name, raw_name, pick, deliv, rate, z_id in sample_skus:
-            items.append(
-                OCRSlipItem(
-                    raw_item_name=raw_name,
-                    standard_item_name=std_name,
-                    zoho_item_id=z_id,
-                    unit_rate=rate,
-                    pickup_qty=pick,
-                    delivery_qty=deliv,
-                    unreturned_loss_qty=pick - deliv,
-                    confidence_score=ConfidenceLevel.HIGH,
-                    remarks="Count verified",
-                )
-            )
-
-        return OCRSlipExtraction(
-            file_name=file_name,
-            client_name=client_name,
-            slip_date="15/08/2026",
-            items=items,
-            overall_confidence=ConfidenceLevel.HIGH,
-            notes="Legible handwritten control note",
-        )
-
     def aggregate_monthly_skus(
         self,
         client_name: str,
@@ -478,17 +432,8 @@ Return strictly valid JSON conforming to the schema.
         catalog = item_catalog or []
         instructions_text = human_instructions.strip() if human_instructions else "Extract all standard transaction fields and line items matching the target entity schema."
 
-        # If Mock mode or no API key, synthesize intelligent mock simulation
-        if settings.MOCK_MODE or not self.api_key:
-            return self._generate_mock_simulation(
-                file_name=file_name,
-                sample_text=sample_text,
-                entity_type=entity_type,
-                client_name=client_name,
-                human_instructions=instructions_text,
-                accounting_software=accounting_software,
-                item_catalog=catalog,
-            )
+        if not self.api_key:
+            raise ValueError("Gemini API key is not configured for document transposition.")
 
         # Build Multi-Modal AI Prompt
         prompt = f"""
@@ -553,128 +498,5 @@ Analyze thoroughly and return JSON output only.
             return data
 
         except Exception as e:
-            logger.warning(f"Live Gemini simulation failed ({e}). Falling back to mock simulation.")
-            return self._generate_mock_simulation(
-                file_name=file_name,
-                sample_text=sample_text,
-                entity_type=entity_type,
-                client_name=client_name,
-                human_instructions=instructions_text,
-                accounting_software=accounting_software,
-                item_catalog=catalog,
-            )
-
-    def _generate_mock_simulation(
-        self,
-        file_name: str,
-        sample_text: Optional[str],
-        entity_type: str,
-        client_name: str,
-        human_instructions: str,
-        accounting_software: str,
-        item_catalog: List[ZohoItem],
-    ) -> Dict[str, Any]:
-        """Synthesizes structured simulation response honoring entity schema and human instructions."""
-        now_date = "2026-08-30"
-
-        # 1. Accounts Receivable: Sales Invoices
-        if "invoice" in entity_type or entity_type == "ar_sales_invoice":
-            raw_datapoints = [
-                {"key": "Client / Hotel", "value": client_name, "confidence": 0.98, "source_snippet": f"Header: {client_name}"},
-                {"key": "Date", "value": now_date, "confidence": 0.95, "source_snippet": "Date: 30/08/2026"},
-                {"key": "Line 1: Bed Sheet Double", "value": "25 pcs @ GHS 18.50", "confidence": 0.96, "source_snippet": "B/Sheet Dbl 25 23"},
-                {"key": "Line 2: Bath Towel", "value": "30 pcs @ GHS 12.00", "confidence": 0.97, "source_snippet": "Bath Towel 30 30"},
-                {"key": "Discrepancy (Linen Loss)", "value": "2 pcs unreturned", "confidence": 0.92, "source_snippet": "Pickup 25 - Deliv 23"},
-            ]
-            transposed_payload = {
-                "customer_id": f"cnt_{client_name.lower().replace(' ', '_')[:10]}",
-                "customer_name": client_name,
-                "date": now_date,
-                "invoice_number": f"INV-{client_name[:3].upper()}-2026-08",
-                "line_items": [
-                    {"name": "Bed Sheet (Double / King)", "description": "Commercial Laundry Pickup/Delivery", "rate": 18.50, "quantity": 25, "amount": 462.50},
-                    {"name": "Bath Towel (White)", "description": "Standard Hospitality Terry", "rate": 12.00, "quantity": 30, "amount": 360.00},
-                ],
-                "total_amount": 822.50,
-                "currency": "GHS",
-                "notes": f"Auto-transposed via S4 AI Engine for {client_name}. Instructions applied: '{human_instructions[:80]}...'",
-            }
-            reasoning = (
-                f"Identified client '{client_name}' and date {now_date}. Parsed 2 line items from slip. "
-                f"Applied human rule: '{human_instructions[:100]}'. Calculated line totals with catalog pricing."
-            )
-
-        # 2. Accounts Payable: Vendor Bills
-        elif "bill" in entity_type or entity_type == "ap_vendor_bill":
-            raw_datapoints = [
-                {"key": "Vendor Name", "value": "Golden Detergents & Chemicals Ltd", "confidence": 0.96, "source_snippet": "From: Golden Detergents Ltd"},
-                {"key": "Bill Number", "value": "BILL-GD-8821", "confidence": 0.98, "source_snippet": "Invoice #: BILL-GD-8821"},
-                {"key": "Bill Date", "value": now_date, "confidence": 0.95, "source_snippet": "30-Aug-2026"},
-                {"key": "Chemical Supply 50L", "value": "4 Drums @ 350.00", "confidence": 0.94, "source_snippet": "Heavy Duty Detergent 50L x 4"},
-            ]
-            transposed_payload = {
-                "vendor_id": "vnd_golden_detergents",
-                "vendor_name": "Golden Detergents & Chemicals Ltd",
-                "bill_number": "BILL-GD-8821",
-                "date": now_date,
-                "line_items": [
-                    {"name": "Industrial Laundry Detergent 50L", "rate": 350.00, "quantity": 4, "amount": 1400.00}
-                ],
-                "total_amount": 1400.00,
-                "currency": "GHS",
-                "notes": f"Vendor bill ingestion for {client_name}. Transposed according to: '{human_instructions[:80]}...'",
-            }
-            reasoning = (
-                f"Extracted vendor 'Golden Detergents & Chemicals Ltd' and bill #BILL-GD-8821. "
-                f"Transposed 4 units of detergent into AP Vendor Bill payload for {accounting_software}."
-            )
-
-        # 3. Bank & Mobile Money Statements
-        elif "bank" in entity_type or "momo" in entity_type:
-            raw_datapoints = [
-                {"key": "Bank / Channel", "value": "Stanbic Bank Ghana (Account ending 9122)", "confidence": 0.99, "source_snippet": "Stanbic Bank Stmt"},
-                {"key": "Tx Date", "value": now_date, "confidence": 0.95, "source_snippet": "2026-08-30"},
-                {"key": "Description", "value": "AWS Cloud Infrastructure EMEA", "confidence": 0.97, "source_snippet": "POS: AWS EMEA CLOUD"},
-                {"key": "Debit Amount", "value": "1450.00", "confidence": 0.98, "source_snippet": "DR: 1,450.00"},
-            ]
-            transposed_payload = {
-                "account_id": "acc_bank_operating_01",
-                "transaction_type": "debit",
-                "date": now_date,
-                "amount": 1450.00,
-                "description": "AWS Cloud Infrastructure EMEA",
-                "reference_number": "TX-STANBIC-88401",
-                "category_suggestion": "60020 - Cloud & Hosting Expenses",
-            }
-            reasoning = (
-                f"Parsed bank transaction debit of GHS 1,450.00 on {now_date}. "
-                f"Mapped description 'AWS Cloud Infrastructure EMEA' to GL Expense Code '60020' based on rule instructions."
-            )
-
-        # 4. General Ledger Journals
-        else:
-            raw_datapoints = [
-                {"key": "Journal Narrative", "value": "Monthly Retainer Fee Accrual", "confidence": 0.95, "source_snippet": "Advisory Fee Aug 2026"},
-                {"key": "Debit Account", "value": "12000 - Accounts Receivable", "amount": 15000.00, "confidence": 0.98},
-                {"key": "Credit Account", "value": "40010 - Advisory Revenue", "amount": 15000.00, "confidence": 0.98},
-            ]
-            transposed_payload = {
-                "journal_date": now_date,
-                "reference_number": "JRNL-2026-08-01",
-                "notes": f"Advisory accrual for {client_name}. Instructions: {human_instructions[:60]}",
-                "line_items": [
-                    {"account": "12000 - Accounts Receivable", "debit": 15000.00, "credit": 0.0},
-                    {"account": "40010 - Advisory Revenue", "debit": 0.0, "credit": 15000.00},
-                ],
-                "total_debit": 15000.00,
-                "total_credit": 15000.00,
-            }
-            reasoning = "Generated balanced double-entry manual journal entry with Debit = Credit = 15,000.00."
-
-        return {
-            "success": True,
-            "raw_datapoints": raw_datapoints,
-            "transposed_payload": transposed_payload,
-            "ai_reasoning": reasoning,
-            "confidence_score": 0.96,
-        }
+            logger.error(f"Live document extraction failed: {e}")
+            raise RuntimeError(f"Live document extraction failed: {e}")
