@@ -261,7 +261,12 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
   });
 }
 
-async function handleResponse<T>(res: Response, context = 'API request', payload?: any): Promise<T> {
+async function handleResponse<T>(
+  res: Response,
+  context = 'API request',
+  payload?: any,
+  options?: { silent?: boolean }
+): Promise<T> {
   const method = res.url ? 'HTTP' : 'API';
   if (!res.ok) {
     let errorDetail = '';
@@ -297,8 +302,8 @@ async function handleResponse<T>(res: Response, context = 'API request', payload
 
     const fullMessage = `${context} failed (${res.status}): ${errorDetail || res.statusText}`;
 
-    // Auto-report to in-app ErrorContext & pop notification
-    if (typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
+    // Auto-report to in-app ErrorContext & pop notification (unless explicitly silenced)
+    if (!options?.silent && typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
       (window as any).__S4_REPORT_ERROR__({
         severity: res.status >= 500 ? 'critical' : res.status === 422 ? 'warning' : 'error',
         category: res.status === 422 ? 'validation' : 'api',
@@ -1104,7 +1109,7 @@ export async function fetchServerErrorsApi(
   const res = await resilientFetch(`/api/v1/system/errors?${params.toString()}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse(res, 'Fetch Server Errors');
+  return handleResponse(res, 'Fetch Server Errors', undefined, { silent: true });
 }
 
 export async function clearServerLogsApi(): Promise<{ status: string; message: string }> {

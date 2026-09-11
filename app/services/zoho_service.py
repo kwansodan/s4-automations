@@ -985,32 +985,124 @@ class ZohoBooksService:
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Fetches transactions for a specific chart of accounts account from Zoho Books API (/chartofaccounts/accounttransactions)."""
+        """Fetches transactions for a specific chart of accounts account from Zoho Books API.
+        
+        Tries in order:
+        1. /registers/{account_id}/transactions (standard Zoho Books ledger register endpoint)
+        2. /banktransactions?account_id={account_id}
+        3. /chartofaccounts/accounttransactions
+        """
         if not self.org_id:
             return []
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
-        url = f"{self.books_api_url}/chartofaccounts/accounttransactions"
-        params: Dict[str, Any] = {
-            "organization_id": self.org_id,
-            "account_id": account_id,
-        }
-        if date_start:
-            params["date_start"] = date_start
-        if date_end:
-            params["date_end"] = date_end
+
+        # 1. Primary: /registers/{account_id}/transactions
+        reg_url = f"{self.books_api_url}/registers/{account_id}/transactions"
+        reg_params: Dict[str, Any] = {"organization_id": self.org_id}
+        if date_start and date_end:
+            reg_params["filter_by"] = "TransactionDate.CustomDate"
+            reg_params["from_date"] = date_start
+            reg_params["to_date"] = date_end
+        elif date_start:
+            reg_params["from_date"] = date_start
+        elif date_end:
+            reg_params["to_date"] = date_end
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers, params=params)
-            if response.status_code == 401:
-                access_token = await self.get_access_token(force_refresh=True)
-                headers = self._get_headers(access_token)
-                response = await client.get(url, headers=headers, params=params)
+            try:
+                response = await client.get(reg_url, headers=headers, params=reg_params)
+                if response.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    response = await client.get(reg_url, headers=headers, params=reg_params)
 
-            response.raise_for_status()
-            data = response.json()
-            return data.get("account_transactions", [])
+                if response.status_code == 200:
+                    data = response.json()
+                    txs = (
+                        data.get("register_transactions")
+                        or data.get("account_transactions")
+                        or data.get("transactions")
+                        or []
+                    )
+                    if txs:
+                        logger.info(f"Fetched {len(txs)} transactions from /registers/{account_id}/transactions for org {self.org_id}.")
+                        return txs
+
+                    # If date range filter returned 0, try without date filter in case transactions are in adjacent periods
+                    if date_start or date_end:
+                        all_params = {"organization_id": self.org_id}
+                        res_all = await client.get(reg_url, headers=headers, params=all_params)
+                        if res_all.status_code == 200:
+                            all_data = res_all.json()
+                            all_txs = (
+                                all_data.get("register_transactions")
+                                or all_data.get("account_transactions")
+                                or all_data.get("transactions")
+                                or []
+                            )
+                            if all_txs:
+                                logger.info(f"Found {len(all_txs)} transactions in /registers/{account_id}/transactions across all dates.")
+                                return all_txs
+                else:
+                    logger.warning(f"/registers/{account_id}/transactions returned status {response.status_code}: {response.text[:200]}")
+            except Exception as r_err:
+                logger.warning(f"Error querying /registers/{account_id}/transactions: {r_err}")
+
+            # 2. Secondary: /banktransactions?account_id={account_id}
+            try:
+                bank_url = f"{self.books_api_url}/banktransactions"
+                bank_params: Dict[str, Any] = {
+                    "organization_id": self.org_id,
+                    "account_id": account_id,
+                }
+                if date_start:
+                    bank_params["from_date"] = date_start
+                if date_end:
+                    bank_params["to_date"] = date_end
+
+                b_res = await client.get(bank_url, headers=headers, params=bank_params)
+                if b_res.status_code == 200:
+                    b_data = b_res.json()
+                    b_txs = b_data.get("banktransactions", [])
+                    if b_txs:
+                        logger.info(f"Fetched {len(b_txs)} transactions from /banktransactions for account {account_id}.")
+                        return b_txs
+
+                    if date_start or date_end:
+                        all_b_res = await client.get(bank_url, headers=headers, params={"organization_id": self.org_id, "account_id": account_id})
+                        if all_b_res.status_code == 200:
+                            all_b_txs = all_b_res.json().get("banktransactions", [])
+                            if all_b_txs:
+                                logger.info(f"Found {len(all_b_txs)} banktransactions for account {account_id} across all dates.")
+                                return all_b_txs
+            except Exception as b_err:
+                logger.warning(f"Error querying /banktransactions for account {account_id}: {b_err}")
+
+            # 3. Fallback: /chartofaccounts/accounttransactions
+            try:
+                coa_url = f"{self.books_api_url}/chartofaccounts/accounttransactions"
+                coa_params: Dict[str, Any] = {
+                    "organization_id": self.org_id,
+                    "account_id": account_id,
+                }
+                if date_start:
+                    coa_params["date_start"] = date_start
+                if date_end:
+                    coa_params["date_end"] = date_end
+
+                c_res = await client.get(coa_url, headers=headers, params=coa_params)
+                if c_res.status_code == 200:
+                    c_data = c_res.json()
+                    c_txs = c_data.get("account_transactions", [])
+                    if c_txs:
+                        logger.info(f"Fetched {len(c_txs)} transactions from /chartofaccounts/accounttransactions for account {account_id}.")
+                        return c_txs
+            except Exception as c_err:
+                logger.warning(f"Error querying /chartofaccounts/accounttransactions: {c_err}")
+
+        return []
 
     @retry(
         reraise=True,

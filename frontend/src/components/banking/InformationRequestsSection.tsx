@@ -844,12 +844,38 @@ export const InformationRequestsSection: React.FC = () => {
             <span>Loading watched account transactions &amp; queries...</span>
           </div>
         ) : transactions.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs space-y-2">
+          <div className="p-12 text-center text-slate-400 text-xs space-y-3">
             <ShieldCheck className="w-8 h-8 text-emerald-400/80 mx-auto" />
             <p className="font-bold text-white text-sm">No Transactions Found in Watched Accounts</p>
-            <p className="text-slate-500 max-w-sm mx-auto">
-              All transactions in monitored watched accounts are currently classified, or none match the active search and filter criteria.
+            <p className="text-slate-400 max-w-md mx-auto">
+              {selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL'
+                ? `No transactions match the current filter (${[selectedMonth !== 'ALL' && selectedMonth, selectedYear !== 'ALL' && selectedYear, statusFilter !== 'ALL' && statusFilter].filter(Boolean).join(', ')}). Your monitored accounts may contain records in other months or years.`
+                : 'All transactions in monitored watched accounts are currently classified, or none have been imported yet from your accounting software.'}
             </p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setSelectedMonth('ALL');
+                    setSelectedYear('ALL');
+                    setSearchQuery('');
+                    setStatusFilter('ALL');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 hover:bg-sky-500/30 font-medium transition text-xs flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Show All Periods &amp; Clear Filters
+                </button>
+              )}
+              <button
+                onClick={handleSyncFeeds}
+                disabled={isSyncing}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-sky-400' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync Watched Accounts'}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

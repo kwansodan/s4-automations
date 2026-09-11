@@ -299,9 +299,31 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                             tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
                             debit = float(tx.get("debit_amount", 0.0) or 0.0)
                             credit = float(tx.get("credit_amount", 0.0) or 0.0)
-                            amt = debit if debit > 0 else credit
-                            tx_t = "DEBIT" if debit > 0 else "CREDIT"
-                            desc = tx.get("description") or tx.get("payee") or tx.get("reference_number") or f"Entry in {acc_name}"
+                            raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or 0.0)
+                            amt = debit if debit > 0 else (credit if credit > 0 else abs(raw_amt))
+
+                            tx_t_raw = str(tx.get("transaction_type") or tx.get("debit_or_credit") or "").upper()
+                            if debit > 0:
+                                tx_t = "DEBIT"
+                            elif credit > 0:
+                                tx_t = "CREDIT"
+                            elif "DEBIT" in tx_t_raw or "OUT" in tx_t_raw or "EXPENSE" in tx_t_raw or "PAYMENT" in tx_t_raw:
+                                tx_t = "DEBIT"
+                            elif "CREDIT" in tx_t_raw or "IN" in tx_t_raw or "INCOME" in tx_t_raw or "RECEIPT" in tx_t_raw:
+                                tx_t = "CREDIT"
+                            else:
+                                tx_t = "DEBIT" if raw_amt < 0 else "CREDIT"
+
+                            desc = (
+                                tx.get("description")
+                                or tx.get("notes")
+                                or tx.get("payee")
+                                or tx.get("customer_name")
+                                or tx.get("vendor_name")
+                                or tx.get("reference_number")
+                                or tx.get("entry_number")
+                                or f"Entry in {acc_name}"
+                            )
 
                             u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
                             if u_key not in seen_keys:
