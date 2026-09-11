@@ -1229,6 +1229,7 @@ export const AdminBillingSection: React.FC = () => {
                   required
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
                 >
+                  <option value="">-- Select Organization --</option>
                   {subscriptions.map((org) => (
                     <option key={org.id} value={org.id}>
                       {org.name} ({org.id})

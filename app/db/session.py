@@ -66,6 +66,11 @@ def run_schema_migrations(active_engine: Engine):
     import app.models.db_models  # Ensure all SQLModel schemas are registered
     from sqlalchemy import inspect, text
 
+    try:
+        SQLModel.metadata.create_all(active_engine)
+    except Exception as e:
+        logger.debug(f"metadata.create_all notice in run_schema_migrations: {e}")
+
     is_postgres = active_engine.dialect.name == "postgresql"
     ts_type = "TIMESTAMP" if is_postgres else "DATETIME"
     json_type = "JSON"

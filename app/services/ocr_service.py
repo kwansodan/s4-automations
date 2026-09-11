@@ -149,9 +149,26 @@ Return strictly valid JSON conforming to the schema.
                 raw_text = response.text
                 parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
                 self._reconcile_with_catalog(parsed, item_catalog)
+                duration_ms = (time.time() - start_time) * 1000
+                record_api_call_sync(
+                    service_name="gemini_vision",
+                    operation="ocr_slip_extraction_legacy_fallback",
+                    client_id=client_name,
+                    units_consumed=1,
+                    latency_ms=duration_ms,
+                    is_success=True,
+                )
                 return parsed
             except Exception as legacy_err:
                 logger.error(f"Gemini extraction failed: {legacy_err}")
+                record_api_call_sync(
+                    service_name="gemini_vision",
+                    operation="ocr_slip_extraction_failed",
+                    client_id=client_name,
+                    units_consumed=1,
+                    is_success=False,
+                    error_message=str(legacy_err),
+                )
                 raise RuntimeError(f"OCR extraction failed for {file_name}: {legacy_err}")
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -167,6 +184,7 @@ Return strictly valid JSON conforming to the schema.
         if not self.api_key:
             raise ValueError(f"Gemini API key is not configured for vendor bill extraction ({file_name}).")
 
+        start_time = time.time()
         prompt = f"""
 You are an expert accounts payable clerk. Analyze this vendor bill/invoice.
 Extract the vendor name, bill date, bill number, currency (default GHS if not found), total amount, and line items.
@@ -191,9 +209,32 @@ Return strictly valid JSON conforming to the schema.
                 ),
             )
             raw_text = response.text
-            return self._safe_parse_bill_extraction(raw_text, file_name)
+            parsed_bill = self._safe_parse_bill_extraction(raw_text, file_name)
+
+            duration_ms = (time.time() - start_time) * 1000
+            usage = getattr(response, "usage_metadata", None)
+            p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+            c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_vendor_bill",
+                units_consumed=1,
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=(p_tokens + c_tokens),
+                latency_ms=duration_ms,
+                is_success=True,
+            )
+            return parsed_bill
         except Exception as e:
             logger.error(f"Gemini vendor bill extraction failed: {e}")
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_vendor_bill",
+                units_consumed=1,
+                is_success=False,
+                error_message=str(e),
+            )
             raise RuntimeError(f"Vendor bill extraction failed for {file_name}: {e}")
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -209,6 +250,7 @@ Return strictly valid JSON conforming to the schema.
         if not self.api_key:
             raise ValueError(f"Gemini API key is not configured for bank statement extraction ({file_name}).")
 
+        start_time = time.time()
         prompt = f"""
 You are an expert banking and financial auditor. Analyze this Bank Statement.
 Extract bank name, account number, statement period, and every transaction row.
@@ -238,9 +280,32 @@ Return strictly valid JSON conforming to the schema.
             import json
             cleaned = re.sub(r"^```json\s*", "", raw_text.strip(), flags=re.MULTILINE)
             cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
-            return OCRBankStatementExtraction.model_validate_json(cleaned)
+            statement_data = OCRBankStatementExtraction.model_validate_json(cleaned)
+
+            duration_ms = (time.time() - start_time) * 1000
+            usage = getattr(response, "usage_metadata", None)
+            p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+            c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_bank_statement",
+                units_consumed=1,
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=(p_tokens + c_tokens),
+                latency_ms=duration_ms,
+                is_success=True,
+            )
+            return statement_data
         except Exception as e:
             logger.error(f"Failed to extract bank statement {file_name}: {e}")
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_bank_statement",
+                units_consumed=1,
+                is_success=False,
+                error_message=str(e),
+            )
             raise RuntimeError(f"Failed to extract bank statement {file_name}: {e}")
 
 

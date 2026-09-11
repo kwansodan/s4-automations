@@ -3,7 +3,7 @@
 import asyncio
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from sqlmodel import Session, select, func, desc
 
 from app.db.session import get_engine
@@ -26,7 +26,7 @@ def calculate_service_cost(
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     units: int = 1,
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """
     Calculates estimated cost in USD and GHS for third-party operations.
     Returns: (cost_usd, cost_ghs)
