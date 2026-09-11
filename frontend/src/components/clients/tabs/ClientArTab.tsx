@@ -213,7 +213,7 @@ export const ClientArTab: React.FC = () => {
 
           {/* Run OCR */}
           <button
-            onClick={handleRunArOcr}
+            onClick={() => handleRunArOcr()}
             disabled={isRunningOcr}
             className="flex items-center gap-1.5 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-500/40 text-sky-300 text-xs font-semibold px-3.5 py-1.5 rounded-xl transition cursor-pointer disabled:opacity-50"
           >
