@@ -17,7 +17,9 @@ from app.models.schemas import (
     OCRAPBillExtraction,
     OCRBankStatementExtraction,
 )
+import time
 from app.utils.logging import get_logger
+from app.services.telemetry_service import record_api_call_sync
 
 logger = get_logger("ocr_service")
 
@@ -87,6 +89,7 @@ Return strictly valid JSON conforming to the schema.
         if not self.api_key:
             raise ValueError(f"Gemini API key is not configured for OCR extraction ({file_name}).")
 
+        start_time = time.time()
         prompt = self._build_prompt(client_name, file_name, item_catalog)
 
         try:
@@ -110,6 +113,23 @@ Return strictly valid JSON conforming to the schema.
             raw_text = response.text
             parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
             self._reconcile_with_catalog(parsed, item_catalog)
+
+            duration_ms = (time.time() - start_time) * 1000
+            usage = getattr(response, "usage_metadata", None)
+            p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+            c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+            t_tokens = getattr(usage, "total_token_count", 0) if usage else (p_tokens + c_tokens)
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_slip_extraction",
+                client_id=client_name,
+                units_consumed=1,
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=t_tokens,
+                latency_ms=duration_ms,
+                is_success=True,
+            )
             return parsed
 
         except Exception as genai_err:

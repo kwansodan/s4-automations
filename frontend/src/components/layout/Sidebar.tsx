@@ -23,6 +23,7 @@ import {
   BookOpen,
   Users,
   Globe,
+  CreditCard,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -133,6 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     ...(user?.role === 'admin'
       ? [
+          { tab: 'billing' as ActiveTab, label: 'Billing & Subscriptions', icon: CreditCard, badge: 'Finance' },
           { tab: 'landing-manager' as ActiveTab, label: 'Landing Page Manager', icon: Globe, badge: 'Public' },
           { tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' },
         ]

@@ -85,6 +85,11 @@ export const ROUTE_MAP: Array<{
     aliases: ['/landing-page', '/visitor-settings', '/landing'],
   },
   {
+    path: '/billing',
+    tab: 'billing',
+    aliases: ['/subscriptions', '/payments', '/cost-monitor'],
+  },
+  {
     path: '/platform-settings',
     tab: 'config',
     aliases: ['/config', '/system-settings'],

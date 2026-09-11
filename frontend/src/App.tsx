@@ -23,6 +23,7 @@ import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad
 import { ChangelogSection } from './components/changelog/ChangelogSection';
 import { LandingPage } from './components/landing/LandingPage';
 import { LandingManagerSection } from './components/landing/LandingManagerSection';
+import { AdminBillingSection } from './components/billing/AdminBillingSection';
 import { MaintenanceView } from './components/landing/MaintenanceView';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import {
@@ -197,6 +198,28 @@ const MainLayout: React.FC = () => {
                   <h3 className="text-lg font-bold text-white">Access Restricted</h3>
                   <p className="text-xs text-slate-300 leading-relaxed">
                     The Landing Page Manager controls public-facing messaging, sales lead pipelines, and conversion switches. Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to manage landing page settings.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab('workspace')}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Return to Client Workspace
+                    </button>
+                  </div>
+                </div>
+              )
+            ) : activeTab === 'billing' ? (
+              user?.role === 'admin' ? (
+                <AdminBillingSection />
+              ) : (
+                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Platform billing, customer subscriptions, and 3rd-party cost monitor are strictly restricted to administrators.
                   </p>
                   <div className="pt-2">
                     <button

@@ -91,9 +91,77 @@ class Organization(SQLModel, table=True):
     storage_strategy: str = Field(default="platform_managed", description="platform_managed, byos_google, byos_onedrive")
     storage_credentials: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     
+    # Subscription & Billing Lifecycle
+    subscription_status: str = Field(default="ACTIVE", description="ACTIVE, TRIALING, PAST_DUE, GRACE_PERIOD, CANCELED, SUSPENDED")
+    billing_cycle: str = Field(default="MONTHLY", description="MONTHLY, ANNUALLY")
+    currency: str = Field(default="GHS", description="GHS, USD")
+    base_price: float = Field(default=2800.0, description="Monthly or annual base subscription fee")
+    current_period_start: Optional[datetime] = Field(default=None)
+    current_period_end: Optional[datetime] = Field(default=None)
+    
+    # Trial Lifecycle
+    trial_start_at: Optional[datetime] = Field(default=None)
+    trial_ends_at: Optional[datetime] = Field(default=None)
+    trial_document_quota: int = Field(default=50, description="Free document extractions during trial")
+    
+    # Document Volume Allowances & Option 2 Booster Top-Up Packs
+    monthly_document_allowance: int = Field(default=3000, description="Included document allowance per month")
+    monthly_documents_processed: int = Field(default=0, description="Documents processed in current billing cycle")
+    topup_document_balance: int = Field(default=0, description="Active rollover booster top-up balance (Option 2)")
+    topup_purchased_total: int = Field(default=0, description="Lifetime booster pack slips purchased")
+    overage_rate_per_doc: float = Field(default=0.90, description="Overage rate per document")
+    
+    # Billing Contacts
+    billing_contact_name: Optional[str] = Field(default=None)
+    billing_contact_email: Optional[str] = Field(default=None)
+    billing_contact_phone: Optional[str] = Field(default=None, description="Mobile Money phone number for payment notifications")
+    billing_notes: Optional[str] = Field(default=None)
+
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class CustomerPaymentRecord(SQLModel, table=True):
+    """Tracks platform subscription payments, MoMo reconciliations, and booster purchases."""
+    __tablename__ = "customer_payments"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    organization_id: str = Field(index=True, description="Organization slug ID")
+    invoice_number: str = Field(index=True, description="e.g. S4-INV-2026-0001")
+    amount: float = Field(default=0.0)
+    currency: str = Field(default="GHS")
+    period_covered: str = Field(default="September 2026")
+    payment_status: str = Field(default="PAID", index=True, description="PAID, PENDING_VERIFICATION, OVERDUE, FAILED, WAIVED_TRIAL")
+    payment_channel: str = Field(default="MTN_MOMO", description="MTN_MOMO, VODAFONE_CASH, BANK_DEPOSIT, CARD, MANUAL_OVERRIDE")
+    payment_type: str = Field(default="SUBSCRIPTION", description="SUBSCRIPTION, BOOSTER_PACK, OVERAGE, CUSTOM")
+    transaction_reference: Optional[str] = Field(default=None, index=True, description="MoMo reference or bank wire slip number")
+    due_date: Optional[datetime] = Field(default=None)
+    paid_at: Optional[datetime] = Field(default=None)
+    admin_notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
+
+
+class ApiKeyUsageLog(SQLModel, table=True):
+    """Tracks non-blocking usage, token consumption, and estimated costs of paid 3rd-party services."""
+    __tablename__ = "api_key_usage_logs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    service_name: str = Field(index=True, description="gemini, zoho, mailjet, google_drive, twitter, inngest")
+    operation: str = Field(default="ocr_extraction", description="e.g. ocr_slip_extraction, zoho_create_invoice, send_otp")
+    organization_id: Optional[str] = Field(default="s4_advisory", index=True)
+    client_id: Optional[str] = Field(default=None, index=True)
+    units_consumed: int = Field(default=1, description="Slips processed, requests, emails sent")
+    prompt_tokens: int = Field(default=0)
+    completion_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    estimated_cost_usd: float = Field(default=0.0)
+    estimated_cost_ghs: float = Field(default=0.0)
+    latency_ms: float = Field(default=0.0)
+    is_success: bool = Field(default=True, index=True)
+    status_code: Optional[int] = Field(default=200)
+    error_message: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
 
 
 class UserOrganizationMembership(SQLModel, table=True):

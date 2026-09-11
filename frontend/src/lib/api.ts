@@ -1878,6 +1878,251 @@ export async function updateMarketingLeadStatus(
   return handleResponse(res, 'Update Lead Status');
 }
 
+// -------------------------------------------------------------------------
+// Billing, Customer Subscriptions & Cost Monitor API
+// -------------------------------------------------------------------------
+
+export interface BoosterPackOption {
+  slips: number;
+  price_ghs: number;
+  unit_rate: number;
+  badge: string;
+  is_popular?: boolean;
+}
+
+export interface BillingOverview {
+  mrr_ghs: number;
+  arr_ghs: number;
+  mrr_usd: number;
+  infra_cost_30d_ghs: number;
+  infra_cost_30d_usd: number;
+  gross_profit_margin_percent: number;
+  active_subscriptions_count: number;
+  trialing_accounts_count: number;
+  expiring_trials_count: number;
+  past_due_count: number;
+  overdue_payments_count: number;
+  booster_packs: BoosterPackOption[];
+}
+
+export interface CustomerSubscription {
+  id: string;
+  name: string;
+  org_type: string;
+  plan_tier: string;
+  subscription_status: string;
+  billing_cycle: string;
+  currency: string;
+  base_price: number;
+  current_period_start?: string;
+  current_period_end?: string;
+  trial_start_at?: string;
+  trial_ends_at?: string;
+  trial_days_remaining?: number;
+  trial_document_quota: number;
+  monthly_document_allowance: number;
+  monthly_documents_processed: number;
+  topup_document_balance: number;
+  total_available_capacity: number;
+  quota_utilization_percent: number;
+  overage_rate_per_doc: number;
+  billing_contact_name?: string;
+  billing_contact_email?: string;
+  billing_contact_phone?: string;
+  billing_notes?: string;
+  max_clients: number;
+  is_active: boolean;
+}
+
+export interface CustomerPayment {
+  id: number;
+  organization_id: string;
+  invoice_number: string;
+  amount: number;
+  currency: string;
+  period_covered: string;
+  payment_status: string;
+  payment_channel: string;
+  payment_type: string;
+  transaction_reference?: string;
+  due_date?: string;
+  paid_at?: string;
+  admin_notes?: string;
+  created_at: string;
+}
+
+export interface CostMonitorData {
+  summary: {
+    period_days: number;
+    total_cost_usd: number;
+    total_cost_ghs: number;
+    total_api_calls: number;
+    failed_calls: number;
+    overall_success_rate: number;
+    services: Record<
+      string,
+      {
+        name: string;
+        calls: number;
+        tokens: number;
+        cost_usd: number;
+        cost_ghs: number;
+        errors: number;
+        avg_latency_ms: number;
+        unit_label: string;
+      }
+    >;
+    client_attribution: Array<{
+      client_id: string;
+      total_calls: number;
+      gemini_tokens: number;
+      cost_usd: number;
+      cost_ghs: number;
+    }>;
+  };
+  recent_api_calls: any[];
+}
+
+export async function fetchBillingOverview(): Promise<BillingOverview> {
+  const res = await resilientFetch('/api/v1/billing/overview', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Billing Overview');
+}
+
+export async function fetchCustomerSubscriptions(
+  statusFilter?: string,
+  search?: string
+): Promise<{ organizations: CustomerSubscription[]; total_count: number }> {
+  const params = new URLSearchParams();
+  if (statusFilter && statusFilter !== 'ALL') params.append('status_filter', statusFilter);
+  if (search) params.append('search', search);
+
+  const res = await resilientFetch(`/api/v1/billing/organizations?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Customer Subscriptions');
+}
+
+export async function updateCustomerSubscription(
+  orgId: string,
+  payload: Partial<CustomerSubscription>
+): Promise<{ success: boolean; message: string; organization: CustomerSubscription }> {
+  const res = await resilientFetch(`/api/v1/billing/organizations/${orgId}/subscription`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update Customer Subscription');
+}
+
+export async function applyBoosterPack(
+  orgId: string,
+  payload: {
+    slips_count: number;
+    amount_ghs: number;
+    payment_channel: string;
+    transaction_reference?: string;
+    mark_as_paid?: boolean;
+    notes?: string;
+  }
+): Promise<{ success: boolean; message: string; new_balance: number; payment: CustomerPayment }> {
+  const res = await resilientFetch(`/api/v1/billing/organizations/${orgId}/booster-pack`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Apply Booster Pack');
+}
+
+export async function extendCustomerTrial(
+  orgId: string,
+  payload: { additional_days: number; additional_slips: number; notes?: string }
+): Promise<{ success: boolean; message: string; trial_ends_at: string; new_quota: number }> {
+  const res = await resilientFetch(`/api/v1/billing/organizations/${orgId}/extend-trial`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Extend Customer Trial');
+}
+
+export async function convertTrialToPaid(
+  orgId: string,
+  payload: {
+    plan_tier: string;
+    base_price: number;
+    billing_cycle: string;
+    currency: string;
+    payment_channel: string;
+    transaction_reference?: string;
+    notes?: string;
+  }
+): Promise<{ success: boolean; message: string; organization: CustomerSubscription; payment: CustomerPayment }> {
+  const res = await resilientFetch(`/api/v1/billing/organizations/${orgId}/convert-to-paid`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Convert Trial to Paid');
+}
+
+export async function fetchCustomerPayments(
+  orgId?: string,
+  statusFilter?: string,
+  paymentType?: string
+): Promise<{ payments: CustomerPayment[]; total_count: number }> {
+  const params = new URLSearchParams();
+  if (orgId) params.append('organization_id', orgId);
+  if (statusFilter && statusFilter !== 'ALL') params.append('status_filter', statusFilter);
+  if (paymentType) params.append('payment_type', paymentType);
+
+  const res = await resilientFetch(`/api/v1/billing/payments?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Customer Payments');
+}
+
+export async function recordCustomerPayment(payload: {
+  organization_id: string;
+  amount: number;
+  currency?: string;
+  period_covered?: string;
+  payment_channel?: string;
+  payment_type?: string;
+  transaction_reference?: string;
+  payment_status?: string;
+  admin_notes?: string;
+}): Promise<{ success: boolean; message: string; payment: CustomerPayment }> {
+  const res = await resilientFetch('/api/v1/billing/payments/record', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Record Customer Payment');
+}
+
+export async function updatePaymentStatus(
+  paymentId: number,
+  newStatus: string,
+  notes?: string
+): Promise<{ success: boolean; message: string; payment: CustomerPayment }> {
+  const res = await resilientFetch(`/api/v1/billing/payments/${paymentId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ payment_status: newStatus, admin_notes: notes }),
+  });
+  return handleResponse(res, 'Update Payment Status');
+}
+
+export async function fetchPaidServicesCostMonitor(days: number = 30): Promise<CostMonitorData> {
+  const res = await resilientFetch(`/api/v1/billing/cost-monitor?days=${days}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch 3rd-Party Cost Monitor');
+}
+
+
 
 
 

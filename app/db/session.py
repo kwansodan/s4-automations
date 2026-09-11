@@ -71,6 +71,26 @@ def run_schema_migrations(active_engine: Engine):
     json_type = "JSON"
 
     columns_to_ensure = [
+        # organizations table
+        ("organizations", "subscription_status", "VARCHAR DEFAULT 'ACTIVE'"),
+        ("organizations", "billing_cycle", "VARCHAR DEFAULT 'MONTHLY'"),
+        ("organizations", "currency", "VARCHAR DEFAULT 'GHS'"),
+        ("organizations", "base_price", "FLOAT DEFAULT 2800.0"),
+        ("organizations", "current_period_start", ts_type),
+        ("organizations", "current_period_end", ts_type),
+        ("organizations", "trial_start_at", ts_type),
+        ("organizations", "trial_ends_at", ts_type),
+        ("organizations", "trial_document_quota", "INTEGER DEFAULT 50"),
+        ("organizations", "monthly_document_allowance", "INTEGER DEFAULT 3000"),
+        ("organizations", "monthly_documents_processed", "INTEGER DEFAULT 0"),
+        ("organizations", "topup_document_balance", "INTEGER DEFAULT 0"),
+        ("organizations", "topup_purchased_total", "INTEGER DEFAULT 0"),
+        ("organizations", "overage_rate_per_doc", "FLOAT DEFAULT 0.90"),
+        ("organizations", "billing_contact_name", "VARCHAR"),
+        ("organizations", "billing_contact_email", "VARCHAR"),
+        ("organizations", "billing_contact_phone", "VARCHAR"),
+        ("organizations", "billing_notes", "VARCHAR"),
+
         # clients table
         ("clients", "organization_id", "VARCHAR DEFAULT 's4_advisory'"),
         ("clients", "accounting_software", "VARCHAR DEFAULT 'zoho_books'"),

@@ -16,6 +16,7 @@ from app.api.v1.system import router as system_router
 from app.api.v1.social import router as social_router
 from app.api.v1.marketing import router as marketing_router
 from app.api.v1.contacts import router as contacts_router
+from app.api.v1.billing import router as billing_router
 
 api_sub_router = APIRouter()
 
@@ -33,6 +34,7 @@ api_sub_router.include_router(system_router)
 api_sub_router.include_router(social_router)
 api_sub_router.include_router(marketing_router)
 api_sub_router.include_router(contacts_router)
+api_sub_router.include_router(billing_router)
 
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(api_sub_router)
