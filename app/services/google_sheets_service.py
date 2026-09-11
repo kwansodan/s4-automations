@@ -1,7 +1,7 @@
 """Google Sheets Service for managing the two-tier billing review workbook."""
 
 from datetime import datetime
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Set
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from googleapiclient.errors import HttpError
@@ -550,6 +550,27 @@ class GoogleSheetsService:
 
         logger.info(f"Successfully appended {len(rows)} detail rows to {TAB_DAILY_DETAILS}")
         return len(rows)
+
+    def get_existing_filenames_in_workbook(self, spreadsheet_id: str, is_ap: bool = False) -> Set[str]:
+        """Returns set of lowercased file names currently recorded in Tab 1: Daily_Slip_Details or Vendor_Bills."""
+        if not spreadsheet_id or spreadsheet_id.startswith("mock_") or not self.sheets:
+            return set()
+        try:
+            tab_name = TAB_AP_BILLS if is_ap else TAB_DAILY_DETAILS
+            col_range = f"'{tab_name}'!D2:D5000" if is_ap else f"'{tab_name}'!B2:B5000"
+            res = self.sheets.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=col_range,
+            ).execute()
+            values = res.get("values", [])
+            return {
+                str(row[0]).strip().lower()
+                for row in values
+                if row and len(row) > 0 and str(row[0]).strip()
+            }
+        except Exception as e:
+            logger.debug(f"Could not read existing filenames from sheet {spreadsheet_id}: {e}")
+            return set()
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def sync_monthly_summaries(self, spreadsheet_id: str, summary_rows: List[MonthlySummaryRow]) -> int:

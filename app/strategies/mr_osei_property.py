@@ -47,7 +47,7 @@ class MrOseiPropertyStrategy(BaseAutomationStrategy):
 
         return sources
 
-    async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
+    async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
         """Extracts tenant payments and computes utility allocations."""
         if not sources:
             return []

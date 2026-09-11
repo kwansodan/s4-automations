@@ -69,6 +69,7 @@ class RunStrategyPayload(BaseModel):
     month: Optional[str] = None
     year: Optional[int] = None
     auto_post_to_accounting: bool = False
+    force_reprocess: bool = False
 
 
 class BatchApprovePayload(BaseModel):
@@ -738,6 +739,7 @@ async def trigger_pipeline_stream(
     now = datetime.now()
     month = payload.month or now.strftime("%B") if payload else now.strftime("%B")
     year = payload.year or now.year if payload else now.year
+    force_reprocess = payload.force_reprocess if payload else False
     if payload and payload.auto_post_to_accounting is not None:
         auto_post = payload.auto_post_to_accounting
     else:
@@ -759,7 +761,13 @@ async def trigger_pipeline_stream(
     try:
         # Discover and extract for this specific pipeline
         sources = await strategy.discover_sources(month, year, pipeline_id=pipeline_id)
-        extracted = await strategy.extract_and_validate(sources)
+        extracted = await strategy.extract_and_validate(
+            sources,
+            force_reprocess=force_reprocess,
+            month=month,
+            year=year,
+            pipeline_id=pipeline_id,
+        )
         sync_res = await strategy.sync_review_workspace(
             month, year, extracted, auto_post=auto_post, pipeline_id=pipeline_id
         )
@@ -1058,12 +1066,13 @@ async def trigger_client_strategy(
     month = payload.month or now.strftime("%B") if payload else now.strftime("%B")
     year = payload.year or now.year if payload else now.year
     auto_post = payload.auto_post_to_accounting if payload else False
+    force_reprocess = payload.force_reprocess if payload else False
 
     strategy = StrategyFactory.get(client_id)
-    logger.info(f"Executing strategy {strategy.__class__.__name__} for client: {client_id} ({month} {year})")
+    logger.info(f"Executing strategy {strategy.__class__.__name__} for client: {client_id} ({month} {year}, force_reprocess={force_reprocess})")
 
     try:
-        result = await strategy.execute(month=month, year=year, auto_post=auto_post)
+        result = await strategy.execute(month=month, year=year, auto_post=auto_post, force_reprocess=force_reprocess)
         res_data = result.model_dump()
         exec_errs = getattr(strategy, "execution_errors", [])
         exec_warns = getattr(strategy, "execution_warnings", [])

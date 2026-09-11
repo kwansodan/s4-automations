@@ -63,13 +63,14 @@ export const ClientPipelinesTab: React.FC = () => {
     }
   };
 
-  const handleTriggerStream = async (pipelineId: string, pipelineName: string) => {
+  const handleTriggerStream = async (pipelineId: string, pipelineName: string, forceReprocess: boolean = false) => {
     setTriggeringPipeId(pipelineId);
-    addLog('info', `⚡ [STREAM] Triggering "${pipelineName}" (${selectedMonth} ${selectedYear})...`);
+    addLog('info', `⚡ [STREAM] Triggering "${pipelineName}" (${selectedMonth} ${selectedYear})${forceReprocess ? ' [Force Reprocess]' : ''}...`);
     try {
       const result = await triggerClientPipeline(currentClient.id, pipelineId, {
         month: selectedMonth,
         year: selectedYear,
+        force_reprocess: forceReprocess,
       });
 
       const summary: PipelineRunSummary = result.last_run_summary || {
@@ -320,6 +321,19 @@ export const ClientPipelinesTab: React.FC = () => {
                     )}
                     <span>{triggeringPipeId === pipe.id ? 'Running Stream...' : 'Trigger Stream Now'}</span>
                   </button>
+
+                  {pipe.last_run_summary?.status === 'COMPLETED_DUPLICATES_SKIPPED' && (
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerStream(pipe.id, pipe.name, true)}
+                      disabled={triggeringPipeId === pipe.id}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/30 text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
+                      title="Force extraction: bypass checksum duplicate skip and populate Google Review Sheet"
+                    >
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      <span>Force Reprocess &amp; Sync Sheet</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -360,7 +374,12 @@ export const ClientPipelinesTab: React.FC = () => {
         runSummary={activeRunSummary}
         onTriggerAgain={
           activeRunSummary?.pipeline_id
-            ? () => handleTriggerStream(activeRunSummary.pipeline_id!, activeRunSummary.pipeline_name || 'Stream')
+            ? (forceReprocess?: boolean) =>
+                handleTriggerStream(
+                  activeRunSummary.pipeline_id!,
+                  activeRunSummary.pipeline_name || 'Stream',
+                  forceReprocess
+                )
             : undefined
         }
       />

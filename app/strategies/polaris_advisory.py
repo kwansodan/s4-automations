@@ -31,7 +31,7 @@ class PolarisBankFeedStrategy(BaseAutomationStrategy):
         # Without an active connected feed or uploaded statement, discover zero sources
         return []
 
-    async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
+    async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
         """Extracts transactions from discovered statement sources."""
         if not sources:
             return []

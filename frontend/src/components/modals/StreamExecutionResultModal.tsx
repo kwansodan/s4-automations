@@ -22,7 +22,7 @@ interface StreamExecutionResultModalProps {
   isOpen: boolean;
   onClose: () => void;
   runSummary: PipelineRunSummary | null;
-  onTriggerAgain?: () => void;
+  onTriggerAgain?: (forceReprocess?: boolean) => void;
 }
 
 export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProps> = ({
@@ -406,10 +406,21 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
           </div>
 
           <div className="flex items-center gap-2">
+            {onTriggerAgain && isDuplicateSkipOnly && (
+              <button
+                type="button"
+                onClick={() => onTriggerAgain(true)}
+                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl border border-amber-500 transition cursor-pointer shadow-md shadow-amber-600/20"
+                title="Bypass deduplication, clear stale staging entries, and repopulate Google Review Sheet"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Force Reprocess &amp; Sync Sheet</span>
+              </button>
+            )}
             {onTriggerAgain && (
               <button
                 type="button"
-                onClick={onTriggerAgain}
+                onClick={() => onTriggerAgain(false)}
                 className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl border border-slate-700 transition cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />

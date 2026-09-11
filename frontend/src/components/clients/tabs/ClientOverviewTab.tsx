@@ -208,13 +208,14 @@ export const ClientOverviewTab: React.FC = () => {
   };
 
   // Handler: Trigger an Individual Pipeline Stream
-  const handleTriggerStream = async (pipelineId: string, pipelineName: string): Promise<PipelineRunSummary | null> => {
+  const handleTriggerStream = async (pipelineId: string, pipelineName: string, forceReprocess: boolean = false): Promise<PipelineRunSummary | null> => {
     setTriggeringPipeId(pipelineId);
-    addLog('info', `⚡ [STREAM] Triggering "${pipelineName}" (${selectedMonth} ${selectedYear})...`);
+    addLog('info', `⚡ [STREAM] Triggering "${pipelineName}" (${selectedMonth} ${selectedYear})${forceReprocess ? ' [Force Reprocess]' : ''}...`);
     try {
       const result = await triggerClientPipeline(currentClient.id, pipelineId, {
         month: selectedMonth,
         year: selectedYear,
+        force_reprocess: forceReprocess,
       });
 
       const summary: PipelineRunSummary = result.last_run_summary || {

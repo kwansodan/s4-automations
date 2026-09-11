@@ -106,7 +106,7 @@ class BaseAutomationStrategy(ABC):
         pass
 
     @abstractmethod
-    async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
+    async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
         """Stage 2: Run AI Vision / PDF schema extraction and domain validation."""
         pass
 
@@ -156,21 +156,32 @@ class BaseAutomationStrategy(ABC):
 
         return flags
 
-    async def execute(self, month: str, year: int, auto_post: bool = False) -> StrategyExecutionResult:
+    async def execute(
+        self,
+        month: str,
+        year: int,
+        auto_post: bool = False,
+        force_reprocess: bool = False,
+    ) -> StrategyExecutionResult:
         """Executes the complete pipeline lifecycle for this client."""
         from app.services.audit_service import AuditService
 
         AuditService.log(
             client_id=self.client_id,
             action="PIPELINE_TRIGGERED",
-            details={"month": month, "year": year, "auto_post": auto_post},
+            details={"month": month, "year": year, "auto_post": auto_post, "force_reprocess": force_reprocess},
         )
 
         # Stage 1: Discover
         sources = await self.discover_sources(month, year)
 
         # Stage 2: Extract & Validate
-        items = await self.extract_and_validate(sources)
+        items = await self.extract_and_validate(
+            sources,
+            force_reprocess=force_reprocess,
+            month=month,
+            year=year,
+        )
 
         # Run standard anomaly checks on each item
         for item in items:

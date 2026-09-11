@@ -67,11 +67,15 @@ export const ClientArTab: React.FC = () => {
     loadTransactions();
   }, [currentClient.id]);
 
-  const handleRunArOcr = async () => {
+  const handleRunArOcr = async (forceReprocess: boolean = false) => {
     setIsRunningOcr(true);
-    addLog('info', `[AR OCR] Extracting control slips for ${currentClient.name} (${selectedMonth} ${selectedYear})...`);
+    addLog('info', `[AR OCR] Extracting control slips for ${currentClient.name} (${selectedMonth} ${selectedYear})${forceReprocess ? ' [Force Reprocess]' : ''}...`);
     try {
-      const res = await runClientStrategy(currentClient.id, false);
+      const res = await runClientStrategy(currentClient.id, false, {
+        month: selectedMonth,
+        year: selectedYear,
+        force_reprocess: forceReprocess,
+      });
       addLog('success', `[AR OCR] Ingestion complete: ${res.message || 'Slips extracted and staged.'}`);
       await refreshAll();
       await loadTransactions();

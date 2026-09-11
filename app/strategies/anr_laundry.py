@@ -48,7 +48,7 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
             )
         return sources
 
-    async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
+    async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
         """Runs Gemini 3.6 Flash Vision structured OCR extraction."""
         items: List[ExtractedLineItem] = []
         catalog = await self.zoho.fetch_item_catalog()

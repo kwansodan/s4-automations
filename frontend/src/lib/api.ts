@@ -545,11 +545,12 @@ export async function fetchClientById(clientId: string): Promise<any> {
   return handleResponse<any>(res, `Fetch client ${clientId}`);
 }
 
-export async function runClientStrategy(clientId: string, dryRun = false): Promise<any> {
+export async function runClientStrategy(clientId: string, dryRun = false, payload?: any): Promise<any> {
+  const body = typeof payload === 'object' ? { dry_run: dryRun, ...payload } : { dry_run: dryRun };
   const res = await resilientFetch(`/api/clients/${clientId}/run`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ dry_run: dryRun }),
+    body: JSON.stringify(body),
   });
   return handleResponse<any>(res, `Run strategy for ${clientId}`);
 }

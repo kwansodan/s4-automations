@@ -203,9 +203,17 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 )
             ]
 
-    async def extract_and_validate(self, sources: List[SourceDocument]) -> List[ExtractedLineItem]:
-        """Extracts structured line items with SHA-256 de-duplication check and Zoho contract validation."""
-        logger.info(f"[{self.client_name}] Stage 2: Extracting data from {len(sources)} source documents...")
+    async def extract_and_validate(
+        self,
+        sources: List[SourceDocument],
+        force_reprocess: bool = False,
+        month: Optional[str] = None,
+        year: Optional[int] = None,
+        pipeline_id: Optional[str] = None,
+        **kwargs,
+    ) -> List[ExtractedLineItem]:
+        """Extracts structured line items with SHA-256 de-duplication check, sheet-aware auto-resync, and Zoho contract validation."""
+        logger.info(f"[{self.client_name}] Stage 2: Extracting data from {len(sources)} source documents (force_reprocess={force_reprocess})...")
         extracted_items: List[ExtractedLineItem] = []
         ocr = GeminiOCRService()
         zoho = ZohoBooksService()
@@ -218,6 +226,55 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             f"Connected to Zoho Books ({len(contacts)} contacts, {len(items_catalog)} catalog items verified).",
             "info",
         )
+
+        # Resolve target Google Review Sheet for client to verify if files are absent from sheet
+        sheet_id = None
+        is_pipe_ap = False
+        try:
+            drive = GoogleDriveService()
+            sheets = GoogleSheetsService()
+            month_folder_id = self.client.folder_id or "root"
+            target_m = month or (sources[0].metadata.get("month") if sources else None) or datetime.now().strftime("%B")
+            target_y = year or (sources[0].metadata.get("year") if sources else None) or datetime.now().year
+
+            pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
+            pipe_folder = (
+                pipe_obj.get("source_identifier")
+                or (pipe_obj.get("source_config") or {}).get("folder_id")
+                if pipe_obj else None
+            )
+            if pipe_folder and not str(pipe_folder).startswith("mock_"):
+                month_folder_id = str(pipe_folder)
+            else:
+                try:
+                    m_fid = drive.get_month_folder(target_m, target_y)
+                    if m_fid and not str(m_fid).startswith("mock_"):
+                        month_folder_id = m_fid
+                except Exception:
+                    pass
+
+            pipe_type = (pipe_obj.get("pipeline_type") if pipe_obj else None) or "AR"
+            is_pipe_ap = (
+                pipe_type == "AP"
+                or any(k in str(pipe_obj.get("name", "")).lower() for k in ["ap", "bill", "vendor", "payable"])
+                if pipe_obj else False
+            )
+
+            if is_pipe_ap:
+                sheet_id, _ = sheets.find_or_create_ap_workbook(target_m, target_y, month_folder_id, client_name=self.client_name)
+            else:
+                sheet_id, _ = sheets.find_or_create_workbook(target_m, target_y, month_folder_id)
+        except Exception as e:
+            logger.debug(f"Notice resolving review sheet for pre-check: {e}")
+
+        existing_filenames_in_sheet = set()
+        if sheet_id and not sheet_id.startswith("mock_"):
+            try:
+                sheets = GoogleSheetsService()
+                existing_filenames_in_sheet = sheets.get_existing_filenames_in_workbook(sheet_id, is_ap=is_pipe_ap)
+                logger.info(f"Pre-check: Found {len(existing_filenames_in_sheet)} recorded file(s) in review sheet '{sheet_id}'")
+            except Exception as sheet_err:
+                logger.debug(f"Sheet pre-check read notice: {sheet_err}")
 
         # Query existing processed checksums in DB to ensure idempotency
         existing_checksums = set()
@@ -233,24 +290,80 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         for doc in sources:
             pipeline_id = doc.metadata.get("pipeline_id")
             checksum = doc.get_checksum()
+            doc_file_lower = (doc.file_name or "").strip().lower()
+
             if checksum in existing_checksums:
-                reason = f"Document already processed in an earlier run (SHA-256 hash {checksum[:8]}... found in ledger)."
-                self.skipped_documents.append({
-                    "file_name": doc.file_name,
-                    "reason": reason,
-                    "checksum": checksum,
-                    "source_identifier": doc.source_identifier,
-                })
-                self.log_step(
-                    "DEDUPLICATION",
-                    f"Skipped duplicate '{doc.file_name}' — already processed and recorded in ledger.",
-                    "duplicate",
-                    {"file_name": doc.file_name, "checksum": checksum[:12]},
-                )
-                logger.info(f"⏭️ Skipping duplicate document '{doc.file_name}' (Checksum: {checksum[:8]}...)")
-                # Also archive lingering duplicate from source folder if move toggle is enabled
-                self._archive_file_if_needed(doc, pipeline_id)
-                continue
+                should_reprocess = False
+
+                if force_reprocess:
+                    should_reprocess = True
+                    logger.info(f"🔄 Force reprocess active for '{doc.file_name}'. Bypassing deduplication.")
+                else:
+                    # Check database: are any existing staged records already finalized/posted in accounting?
+                    has_posted_tx = False
+                    try:
+                        with Session(get_engine()) as session:
+                            staged_records = session.exec(
+                                select(StagedTransaction).where(
+                                    StagedTransaction.client_id == self.client_id,
+                                    StagedTransaction.checksum == checksum,
+                                )
+                            ).all()
+                            has_posted_tx = any(
+                                r.status in ["INVOICED", "BILLED", "JOURNAL_POSTED", "PAID"]
+                                for r in staged_records
+                            )
+                    except Exception as tx_check_err:
+                        logger.warning(f"Error checking staged records status: {tx_check_err}")
+
+                    # If not finalized in accounting, check if absent from the active review sheet
+                    if not has_posted_tx:
+                        if sheet_id and doc_file_lower not in existing_filenames_in_sheet:
+                            should_reprocess = True
+                            logger.info(
+                                f"🔄 Auto-resync: '{doc.file_name}' was previously staged but is missing from review sheet "
+                                f"(and unposted in accounting). Clearing stale ledger records and re-extracting fresh."
+                            )
+
+                if should_reprocess:
+                    # Delete stale unposted staged transactions from DB so fresh extraction can stage cleanly
+                    try:
+                        with Session(get_engine()) as session:
+                            stale_records = session.exec(
+                                select(StagedTransaction).where(
+                                    StagedTransaction.client_id == self.client_id,
+                                    (StagedTransaction.checksum == checksum) | (StagedTransaction.source_file_name == doc.file_name),
+                                    StagedTransaction.status.notin_(["INVOICED", "BILLED", "JOURNAL_POSTED", "PAID"]),
+                                )
+                            ).all()
+                            for sr in stale_records:
+                                session.delete(sr)
+                            session.commit()
+                            if stale_records:
+                                logger.info(f"Purged {len(stale_records)} stale unposted StagedTransaction records for '{doc.file_name}'.")
+                    except Exception as purge_err:
+                        logger.warning(f"Error purging stale staged records: {purge_err}")
+
+                    # Remove from in-memory existing_checksums so it proceeds to extraction
+                    existing_checksums.discard(checksum)
+                else:
+                    reason = f"Document already processed in an earlier run (SHA-256 hash {checksum[:8]}... found in ledger)."
+                    self.skipped_documents.append({
+                        "file_name": doc.file_name,
+                        "reason": reason,
+                        "checksum": checksum,
+                        "source_identifier": doc.source_identifier,
+                    })
+                    self.log_step(
+                        "DEDUPLICATION",
+                        f"Skipped duplicate '{doc.file_name}' — already processed and recorded in ledger.",
+                        "duplicate",
+                        {"file_name": doc.file_name, "checksum": checksum[:12]},
+                    )
+                    logger.info(f"⏭️ Skipping duplicate document '{doc.file_name}' (Checksum: {checksum[:8]}...)")
+                    # Also archive lingering duplicate from source folder if move toggle is enabled
+                    self._archive_file_if_needed(doc, pipeline_id)
+                    continue
 
             entity_type = doc.metadata.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)
             pipeline_name = doc.metadata.get("pipeline_name", "Default Ingestion Pipeline")
