@@ -39,10 +39,16 @@ export const ClientWorkspace: React.FC = () => {
     }
   }, [workspaceSubTab, activeSections, setWorkspaceSubTab]);
 
-  const operationsTabs = React.useMemo(() => {
-    const tabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-      { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    ];
+  const coreTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  ];
+
+  const watchedTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { id: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests', icon: ShieldCheck },
+  ];
+
+  const pipelineTabs = React.useMemo(() => {
+    const tabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [];
     if (activeSections.hasAr) {
       tabs.push({ id: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt });
     }
@@ -52,12 +58,11 @@ export const ClientWorkspace: React.FC = () => {
     if (activeSections.hasBank) {
       tabs.push({ id: 'bank', label: 'Bank Statements', icon: Landmark });
     }
-    tabs.push({ id: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests', icon: ShieldCheck });
+    tabs.push({ id: 'pipelines', label: 'Pipelines & Streams', icon: Layers });
     return tabs;
   }, [activeSections, isIndividualBusiness]);
 
   const configTabs: Array<{ id: WorkspaceSubTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { id: 'pipelines', label: 'Pipelines & Streams', icon: Layers },
     { id: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
   ];
 
@@ -118,7 +123,8 @@ export const ClientWorkspace: React.FC = () => {
 
         {/* Sub-Tab Navigation Bar */}
         <div className="flex items-center gap-1.5 mt-6 pt-4 border-t border-slate-800/80 overflow-x-auto custom-scrollbar">
-          {operationsTabs.map((tab) => {
+          {/* Core Overview */}
+          {coreTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = workspaceSubTab === tab.id;
 
@@ -138,9 +144,64 @@ export const ClientWorkspace: React.FC = () => {
             );
           })}
 
-          {/* Visual Divider between Operations and Configuration */}
+          {/* Section Divider */}
           <div className="h-5 w-px bg-slate-800 mx-1.5 shrink-0 hidden sm:block" />
 
+          {/* Dedicated Section: Watched Accounts & Clarification Requests */}
+          {watchedTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = workspaceSubTab === tab.id;
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setWorkspaceSubTab(tab.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                    : 'bg-slate-950/80 text-sky-300 hover:text-white hover:bg-slate-900 border border-sky-500/30'
+                }`}
+                title="Review transactions residing in watched accounts (suspense, clearing, uncategorized)"
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-sky-400'}`} />
+                <span>{tab.label}</span>
+                <span className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded font-bold ${
+                  isActive ? 'bg-sky-700 text-white' : 'bg-sky-950 text-sky-300 border border-sky-500/40'
+                }`}>
+                  Watched
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Section Divider */}
+          <div className="h-5 w-px bg-slate-800 mx-1.5 shrink-0 hidden sm:block" />
+
+          {/* Dedicated Section: Ingestion Pipelines */}
+          {pipelineTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = workspaceSubTab === tab.id;
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setWorkspaceSubTab(tab.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-slate-800/80'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+
+          {/* Section Divider */}
+          <div className="h-5 w-px bg-slate-800 mx-1.5 shrink-0 hidden sm:block" />
+
+          {/* Settings */}
           {configTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = workspaceSubTab === tab.id;

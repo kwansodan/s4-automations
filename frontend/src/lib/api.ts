@@ -955,6 +955,15 @@ export async function syncBankFeedsFromAccounting(
   return handleResponse(res, 'Sync transactions in watched accounts');
 }
 
+// Aliases explicitly denoting Watched Accounts
+export const syncWatchedAccountsFromAccounting = syncBankFeedsFromAccounting;
+export const fetchWatchedAccountTransactions = fetchBankTransactions;
+export const categorizeWatchedTransaction = categorizeBankTransaction;
+export const queryWatchedTransaction = queryBankTransaction;
+export const bulkCategorizeWatchedTransactions = bulkCategorizeBankTransactions;
+export const bulkQueryWatchedTransactions = bulkQueryBankTransactions;
+export type WatchedAccountTransactionRecord = BankTransactionRecord;
+
 export async function verifyPortalMagicToken(token: string): Promise<{
   success: boolean;
   token: string;

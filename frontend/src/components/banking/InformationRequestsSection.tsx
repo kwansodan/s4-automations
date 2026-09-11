@@ -277,7 +277,7 @@ export const InformationRequestsSection: React.FC = () => {
   const handleBulkQuery = async () => {
     if (selectedTxIds.length === 0) return;
     const promptText = prompt(
-      `Enter clarification query for ${selectedTxIds.length} selected bank transactions:`,
+      `Enter clarification query for ${selectedTxIds.length} selected transactions in watched accounts:`,
       'Please clarify the business purpose and provide receipts for these transactions.'
     );
     if (!promptText) return;
@@ -309,14 +309,17 @@ export const InformationRequestsSection: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
-                <Landmark className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 shadow-inner">
+                <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-xl font-extrabold text-white tracking-tight">
-                    Information Requests &amp; Bank Classification
+                    Information Requests
                   </h1>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/40 uppercase tracking-wider">
+                    Watched Accounts
+                  </span>
                   {clients && clients.length > 1 ? (
                     <div className="flex items-center gap-1.5 bg-sky-950/90 border border-sky-500/40 rounded-xl px-2.5 py-1 shadow-sm">
                       <span className="text-[10px] uppercase font-bold text-sky-400">Client:</span>
@@ -339,7 +342,7 @@ export const InformationRequestsSection: React.FC = () => {
                   )}
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
-                  Review transactions in watched accounts, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
+                  Review unclassified transactions in monitored watched accounts, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
                 </p>
               </div>
             </div>
@@ -405,7 +408,7 @@ export const InformationRequestsSection: React.FC = () => {
                   <span>Monitored Suspense &amp; Uncategorized Accounts</span>
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Select which Chart of Account codes this pipeline should automatically monitor for unmapped transactions:
+                  Select which Chart of Account codes to monitor for unclassified transactions:
                 </p>
               </div>
 
@@ -838,14 +841,14 @@ export const InformationRequestsSection: React.FC = () => {
         {isLoading ? (
           <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
             <RefreshCw className="w-6 h-6 text-sky-400 animate-spin" />
-            <span>Loading bank transactions &amp; queries...</span>
+            <span>Loading watched account transactions &amp; queries...</span>
           </div>
         ) : transactions.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs space-y-2">
-            <Landmark className="w-8 h-8 text-slate-600 mx-auto" />
-            <p className="font-bold text-white text-sm">No Bank Transactions Found</p>
+            <ShieldCheck className="w-8 h-8 text-emerald-400/80 mx-auto" />
+            <p className="font-bold text-white text-sm">No Transactions Found in Watched Accounts</p>
             <p className="text-slate-500 max-w-sm mx-auto">
-              All transactions in watched suspense accounts are currently reconciled, or none match the active search query.
+              All transactions in monitored watched accounts are currently classified, or none match the active search and filter criteria.
             </p>
           </div>
         ) : (
@@ -904,14 +907,11 @@ export const InformationRequestsSection: React.FC = () => {
                       {/* Date & Account */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
                         <span className="font-mono font-bold text-white block">{tx.transaction_date}</span>
-                        <span className="text-[10px] text-slate-400 font-mono block truncate max-w-[150px]">
-                          {tx.bank_account_name || 'Operating Account'}
+                        <span className="text-[10px] text-sky-400/90 font-mono block truncate max-w-[160px]">
+                          {tx.metadata_json?.watched_account
+                            ? `Watched: ${tx.metadata_json.watched_account}`
+                            : (tx.bank_account_name || 'Watched Account')}
                         </span>
-                        {tx.metadata_json?.watched_account && (
-                          <span className="inline-block mt-0.5 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-300 border border-sky-500/40">
-                            Watched: {tx.metadata_json.watched_account}
-                          </span>
-                        )}
                       </td>
 
                       {/* Raw Description */}

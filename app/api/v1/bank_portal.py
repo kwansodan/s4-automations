@@ -780,7 +780,7 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
             subject = f"❓ [Action Required] Clarification requested for GHS {tx.amount:,.2f} ({client_name})"
             html_content = f"""
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 12px; max-width: 600px;">
-                <h2 style="color: #38bdf8; margin-top: 0;">Clarification Needed on Bank Transaction</h2>
+                <h2 style="color: #38bdf8; margin-top: 0;">Clarification Needed on Transaction in Watched Account</h2>
                 <p>Hello from your accounting team for <strong>{client_name}</strong>,</p>
                 <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
                     <div style="font-size: 13px; color: #94a3b8;">Transaction Details:</div>
@@ -875,7 +875,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         magic_url = f"http://localhost:5173/?portal_magic={magic_token}"
 
         target_email = payload.recipient_email or settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
-        subject = f"❓ [Action Required] Clarification requested on {len(txs)} bank transactions ({client_name})"
+        subject = f"❓ [Action Required] Clarification requested on {len(txs)} transactions in watched accounts ({client_name})"
         
         items_html = "".join(
             f"<li><strong>GHS {t.amount:,.2f}</strong> ({t.transaction_date}) - <code>{t.description}</code></li>"
@@ -884,7 +884,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
 
         html_content = f"""
         <div style="font-family: sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 12px;">
-            <h2 style="color: #38bdf8;">Clarification Needed on {len(txs)} Bank Transactions</h2>
+            <h2 style="color: #38bdf8;">Clarification Needed on {len(txs)} Transactions in Watched Accounts</h2>
             <p>Your accounting team has requested information on the following items for <strong>{client_name}</strong>:</p>
             <div style="background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; padding: 12px; margin: 16px 0;">
                 <p style="margin: 0; color: #ffffff;">"{payload.query_text}"</p>
@@ -982,7 +982,7 @@ async def accountant_sync_bank_feeds(
                     description=f.get("description", "Direct Watched Account Line"),
                     amount=float(f.get("amount", 0.0)),
                     transaction_type=f.get("transaction_type", "DEBIT"),
-                    bank_account_name=f.get("bank_account_name", "Main Operating Account"),
+                    bank_account_name=f.get("bank_account_name") or f.get("account_name") or "Watched Account",
                     source_file_name=f.get("source_file_name", "Live_Watched_Accounts_Sync"),
                     checksum=c_hash,
                     status="UNMAPPED",

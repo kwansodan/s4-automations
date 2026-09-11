@@ -258,7 +258,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                   Client Clarification Portal
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">Bank Transactions &amp; Accounting Queries</p>
+              <p className="text-[11px] text-slate-400 font-medium">Information Requests &amp; Watched Account Clarifications</p>
             </div>
           </div>
 
@@ -307,7 +307,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                 </div>
                 <h2 className="text-2xl font-black text-white tracking-tight">Client Secure Access</h2>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                  Login via email OTP to review and clarify monthly bank transactions for your accounting team.
+                  Login via email OTP to review and clarify monthly transactions in watched accounts for your accounting team.
                 </p>
               </div>
 
@@ -468,7 +468,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
             {isLoadingTx ? (
               <div className="p-16 text-center text-slate-400 bg-slate-900/40 border border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2">
                 <Clock className="w-6 h-6 animate-spin text-sky-400" />
-                <p className="text-xs font-medium">Loading bank transactions requiring attention...</p>
+                <p className="text-xs font-medium">Loading transactions in watched accounts requiring attention...</p>
               </div>
             ) : filteredTxs.length === 0 ? (
               <div className="p-16 text-center text-slate-400 bg-slate-900/40 border border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-3">
@@ -477,7 +477,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                 </div>
                 <h3 className="text-sm font-bold text-white">All Caught Up!</h3>
                 <p className="text-xs text-slate-400 max-w-sm">
-                  There are currently no unexplained bank transactions requiring your input. Thank you for keeping your
+                  There are currently no unexplained transactions in watched accounts requiring your input. Thank you for keeping your
                   books up to date!
                 </p>
               </div>

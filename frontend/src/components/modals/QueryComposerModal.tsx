@@ -143,11 +143,9 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
           <p className="text-xs font-mono text-slate-300 break-words bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
             {transaction.description}
           </p>
-          {transaction.bank_account_name && (
-            <span className="text-[11px] text-slate-400 block font-mono">
-              Account: {transaction.bank_account_name}
-            </span>
-          )}
+          <span className="text-[11px] text-sky-400/90 block font-mono">
+            Account: {transaction.metadata_json?.watched_account ? `Watched (${transaction.metadata_json.watched_account})` : (transaction.bank_account_name || 'Watched Account')}
+          </span>
         </div>
 
         {/* Quick Question Templates */}

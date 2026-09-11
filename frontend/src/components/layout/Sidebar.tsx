@@ -64,15 +64,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setIsMobileOpen(false);
   };
 
-  const clientOpsNavItems = React.useMemo(() => {
+  const clientCoreNavItems: Array<{
+    sub: WorkspaceSubTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
+    { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
+  ];
+
+  const clientWatchedNavItems: Array<{
+    sub: WorkspaceSubTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
+    {
+      sub: 'requests',
+      label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests',
+      icon: ShieldCheck,
+      badge: 'Watched',
+    },
+  ];
+
+  const clientPipelineNavItems = React.useMemo(() => {
     const items: Array<{
       sub: WorkspaceSubTab;
       label: string;
       icon: React.ComponentType<{ className?: string }>;
       badge?: string;
-    }> = [
-      { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
-    ];
+    }> = [];
     if (activeSections.hasAr) {
       items.push({ sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt });
     }
@@ -82,9 +103,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     if (activeSections.hasBank) {
       items.push({ sub: 'bank', label: 'Bank Statements', icon: Landmark });
     }
-    items.push({ sub: 'requests', label: isIndividualBusiness ? 'Clarification Requests' : 'Info Requests', icon: ShieldCheck });
+    items.push({ sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` });
     return items;
-  }, [activeSections, isIndividualBusiness]);
+  }, [activeSections, isIndividualBusiness, currentClient?.pipelines?.length]);
 
   const clientConfigNavItems: Array<{
     sub: WorkspaceSubTab;
@@ -92,7 +113,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
     { sub: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
   ];
 
@@ -102,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { tab: 'queries', label: 'Client Info Requests', icon: ShieldCheck, badge: 'Portal' },
+    { tab: 'queries', label: 'Info Requests (Watched)', icon: ShieldCheck, badge: 'Portal' },
     { tab: 'contacts', label: 'Contacts & Team', icon: Users, badge: 'Invite' },
     { tab: 'catalog', label: 'Master Catalog & CoA', icon: Package },
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
@@ -298,11 +318,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           <div className="space-y-1">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                {isIndividualBusiness ? 'Company Operations' : 'Client Workspace'}
+                {isIndividualBusiness ? 'Company' : 'Client Workspace'}
               </span>
             )}
 
-            {clientOpsNavItems.map((item) => {
+            {clientCoreNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
 
@@ -335,11 +355,93 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             })}
           </div>
 
-          {/* GROUP 2: AUTOMATION & SETTINGS */}
+          {/* GROUP 2: WATCHED ACCOUNTS & INFORMATION REQUESTS */}
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400/80 px-3 block mb-1.5 font-mono">
+                Watched Accounts
+              </span>
+            )}
+
+            {clientWatchedNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
+
+              return (
+                <button
+                  key={item.sub}
+                  onClick={() => handleNav('workspace', item.sub)}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                      : 'text-sky-300/90 hover:text-white hover:bg-slate-900/80'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-sky-400'}`} />
+                  {!isCollapsed && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                          isActive ? 'bg-sky-700 text-white' : 'bg-sky-950 text-sky-300 border border-sky-500/30'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* GROUP 3: INGESTION PIPELINES */}
           <div className="space-y-1">
             {!isCollapsed && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                {isIndividualBusiness ? 'Pipelines & Settings' : 'Automation & Settings'}
+                Ingestion Pipelines
+              </span>
+            )}
+
+            {clientPipelineNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
+
+              return (
+                <button
+                  key={item.sub}
+                  onClick={() => handleNav('workspace', item.sub)}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  {!isCollapsed && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* GROUP 4: SETTINGS */}
+          <div className="space-y-1">
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
+                Settings
               </span>
             )}
 
