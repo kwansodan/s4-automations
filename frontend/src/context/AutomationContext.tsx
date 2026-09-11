@@ -69,6 +69,20 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [sheetsSubTab, setSheetsSubTab] = useState<'monthly' | 'daily'>('monthly');
 
+  const [health, setHealth] = useState<{ status: string; service: string; mock_mode: boolean } | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [sheetsData, setSheetsData] = useState<SheetsReviewData | null>(null);
+  const [catalog, setCatalog] = useState<ZohoCatalogData | null>(null);
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([
+    { time: new Date().toLocaleTimeString(), type: 'info', message: 'S4 Accounting Automation Engine v2.0 (React 19) initialized.' },
+  ]);
+
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
+
   const setActiveTab = useCallback((tab: ActiveTab) => {
     setActiveTabState(tab);
     syncUrlWithRoute(tab, workspaceSubTab);
