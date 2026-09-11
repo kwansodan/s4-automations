@@ -1132,9 +1132,9 @@ class ZohoBooksService:
                 logger.warning(f"Notice querying /registers/{account_id}/transactions: {r_err}")
 
             # -------------------------------------------------------------
-            # 3. CHART OF ACCOUNTS: /chartofaccounts/transactions & /accounttransactions
+            # 3. CHART OF ACCOUNTS: /chartofaccounts/accounttransactions & /transactions
             # -------------------------------------------------------------
-            for coa_endpoint in ["transactions", "accounttransactions"]:
+            for coa_endpoint in ["accounttransactions", "transactions"]:
                 try:
                     c_url = f"{self.books_api_url}/chartofaccounts/{coa_endpoint}"
                     c_params: Dict[str, Any] = {
@@ -1143,10 +1143,18 @@ class ZohoBooksService:
                     }
                     if date_start:
                         c_params["date_start"] = date_start
+                        c_params["from_date"] = date_start
                     if date_end:
                         c_params["date_end"] = date_end
+                        c_params["to_date"] = date_end
 
                     c_res = await client.get(c_url, headers=headers, params=c_params)
+                    if c_res.status_code == 401:
+                        access_token = await self.get_access_token(force_refresh=True)
+                        headers = self._get_headers(access_token)
+                        c_res = await client.get(c_url, headers=headers, params=c_params)
+
+                    c_list = []
                     if c_res.status_code == 200:
                         c_data = c_res.json()
                         c_list = (
@@ -1154,8 +1162,20 @@ class ZohoBooksService:
                             or c_data.get("transactions")
                             or c_data.get("chartofaccounts", [])
                         )
-                        for c_item in (c_list or []):
-                            _add_tx(c_item)
+
+                    # Fallback to fetch all transactions without date restriction
+                    if not c_list and (date_start or date_end):
+                        all_c_res = await client.get(c_url, headers=headers, params={"organization_id": self.org_id, "account_id": account_id})
+                        if all_c_res.status_code == 200:
+                            all_c_data = all_c_res.json()
+                            c_list = (
+                                all_c_data.get("account_transactions")
+                                or all_c_data.get("transactions")
+                                or all_c_data.get("chartofaccounts", [])
+                            )
+
+                    for c_item in (c_list or []):
+                        _add_tx(c_item)
                 except Exception as coa_err:
                     logger.debug(f"Notice querying /chartofaccounts/{coa_endpoint}: {coa_err}")
 
@@ -1238,6 +1258,79 @@ class ZohoBooksService:
                         _add_tx(b_item)
             except Exception as b_err:
                 logger.debug(f"Notice querying /banktransactions for account {account_id}: {b_err}")
+
+            # -------------------------------------------------------------
+            # 7. VENDOR BILLS & PAYMENTS: /bills & /vendorpayments
+            # -------------------------------------------------------------
+            try:
+                bill_url = f"{self.books_api_url}/bills"
+                bill_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start:
+                    bill_params["date_start"] = date_start
+                if date_end:
+                    bill_params["date_end"] = date_end
+
+                bill_res = await client.get(bill_url, headers=headers, params=bill_params)
+                if bill_res.status_code == 200:
+                    raw_bills = bill_res.json().get("bills", [])
+                    for b in raw_bills:
+                        b_acc_id = str(b.get("account_id", ""))
+                        b_acc_name = str(b.get("account_name", "")).strip().lower()
+                        target_id = str(account_id)
+                        target_name = str(account_name or "").strip().lower()
+                        if b_acc_id == target_id or (target_name and (b_acc_name == target_name or target_name in b_acc_name)):
+                            _add_tx({
+                                "transaction_id": b.get("bill_id"),
+                                "bill_id": b.get("bill_id"),
+                                "date": b.get("date"),
+                                "transaction_date": b.get("date"),
+                                "amount": float(b.get("total", 0.0) or b.get("bcy_total", 0.0) or 0.0),
+                                "debit_amount": float(b.get("total", 0.0) or 0.0),
+                                "transaction_type": "DEBIT",
+                                "vendor_name": b.get("vendor_name"),
+                                "payee": b.get("vendor_name"),
+                                "description": b.get("description") or f"Bill {b.get('bill_number')} - {b.get('vendor_name')}",
+                                "reference_number": b.get("bill_number") or b.get("reference_number"),
+                                "account_id": b_acc_id or target_id,
+                                "account_name": b.get("account_name") or account_name,
+                            })
+            except Exception as bill_err:
+                logger.debug(f"Notice querying /bills: {bill_err}")
+
+            try:
+                vp_url = f"{self.books_api_url}/vendorpayments"
+                vp_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start:
+                    vp_params["date_start"] = date_start
+                if date_end:
+                    vp_params["date_end"] = date_end
+
+                vp_res = await client.get(vp_url, headers=headers, params=vp_params)
+                if vp_res.status_code == 200:
+                    raw_vps = vp_res.json().get("vendorpayments", [])
+                    for vp in raw_vps:
+                        vp_paid_id = str(vp.get("paid_through_account_id", ""))
+                        vp_paid_name = str(vp.get("paid_through_account_name", "")).strip().lower()
+                        target_id = str(account_id)
+                        target_name = str(account_name or "").strip().lower()
+                        if vp_paid_id == target_id or (target_name and (vp_paid_name == target_name or target_name in vp_paid_name)):
+                            _add_tx({
+                                "transaction_id": vp.get("payment_id"),
+                                "payment_id": vp.get("payment_id"),
+                                "date": vp.get("date"),
+                                "transaction_date": vp.get("date"),
+                                "amount": float(vp.get("amount", 0.0) or vp.get("bcy_amount", 0.0) or 0.0),
+                                "debit_amount": float(vp.get("amount", 0.0) or 0.0),
+                                "transaction_type": "DEBIT",
+                                "vendor_name": vp.get("vendor_name"),
+                                "payee": vp.get("vendor_name"),
+                                "description": vp.get("description") or f"Vendor Payment to {vp.get('vendor_name')}",
+                                "reference_number": vp.get("payment_number") or vp.get("reference_number"),
+                                "account_id": vp_paid_id or target_id,
+                                "account_name": vp.get("paid_through_account_name") or account_name,
+                            })
+            except Exception as vp_err:
+                logger.debug(f"Notice querying /vendorpayments: {vp_err}")
 
         logger.info(f"Total transactions fetched for account {account_id} ({account_name or ''}): {len(combined_txs)}.")
         return combined_txs

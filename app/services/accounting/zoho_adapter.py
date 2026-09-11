@@ -275,7 +275,7 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                 acc_type = acc["account_type"]
                 acc_name = acc["account_name"]
 
-                # Case A: Bank / Credit Card account -> use /banktransactions
+                # 1. Fetch from Bank Transactions if account is bank/credit_card
                 if acc_type in ["bank", "credit_card"] or acc["source"] == "bank":
                     try:
                         raw_txs = await self.zoho.fetch_bank_transactions(
@@ -310,14 +310,13 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                                     "watched_account": w_label,
                                 })
                     except Exception as tx_err:
-                        logger.warning(f"Error fetching bank transactions for account {acc_id} ({acc_name}): {tx_err}")
+                        logger.debug(f"Notice fetching bank transactions for account {acc_id} ({acc_name}): {tx_err}")
 
-                # Case B: General Ledger account -> use /chartofaccounts/accounttransactions
-                else:
-                    try:
-                        raw_acc_txs = await self.zoho.fetch_account_transactions(
-                            account_id=acc_id,
-                            account_name=acc_name,
+                # 2. Comprehensive Multi-Source Ledger Fetch (Expenses, Bills, Payments, Journals, Registers, COA)
+                try:
+                    raw_acc_txs = await self.zoho.fetch_account_transactions(
+                        account_id=acc_id,
+                        account_name=acc_name,
                             date_start=date_start,
                             date_end=date_end,
                         )
