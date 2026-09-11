@@ -29,14 +29,27 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         accounts_url = self.config.get("zoho_accounts_url") or self.config.get("accounts_url")
         books_api_url = self.config.get("zoho_books_api_url") or self.config.get("books_api_url")
 
-        self.zoho = ZohoBooksService(
-            client_id=client_id_val,
-            client_secret=client_secret_val,
-            refresh_token=refresh_token_val,
-            org_id=org_id,
-            accounts_url=accounts_url,
-            books_api_url=books_api_url,
-        )
+        if client_id and not org_id:
+            try:
+                self.zoho = ZohoBooksService.from_client_id(client_id)
+            except Exception:
+                self.zoho = ZohoBooksService(
+                    client_id=client_id_val,
+                    client_secret=client_secret_val,
+                    refresh_token=refresh_token_val,
+                    org_id=org_id,
+                    accounts_url=accounts_url,
+                    books_api_url=books_api_url,
+                )
+        else:
+            self.zoho = ZohoBooksService(
+                client_id=client_id_val,
+                client_secret=client_secret_val,
+                refresh_token=refresh_token_val,
+                org_id=org_id,
+                accounts_url=accounts_url,
+                books_api_url=books_api_url,
+            )
 
     @property
     def platform_name(self) -> str:
@@ -228,14 +241,27 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
             # 2. Match watched accounts
             matched_targets = []
             for w in effective_watched:
-                w_norm = w.lower()
+                w_norm = str(w).strip().lower()
+                matched_any = False
                 for acc in all_known_accounts:
                     if (
                         acc["account_id"].lower() == w_norm
                         or (acc["account_code"] and acc["account_code"].lower() == w_norm)
                         or (w_norm in acc["account_name"].lower())
+                        or (acc["account_name"].lower() in w_norm)
                     ):
                         matched_targets.append((w, acc))
+                        matched_any = True
+
+                # If w is a specific account ID (numeric) not yet in chart accounts, query it directly
+                if not matched_any and w_norm.isdigit() and len(w_norm) > 5:
+                    matched_targets.append((w, {
+                        "account_id": str(w).strip(),
+                        "account_code": str(w).strip(),
+                        "account_name": f"Watched Account {w}",
+                        "account_type": "expense",
+                        "source": "watched_id",
+                    }))
 
             # If no direct match on watched names/codes, check bank accounts
             if not matched_targets:
@@ -291,15 +317,16 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     try:
                         raw_acc_txs = await self.zoho.fetch_account_transactions(
                             account_id=acc_id,
+                            account_name=acc_name,
                             date_start=date_start,
                             date_end=date_end,
                         )
                         for tx in (raw_acc_txs or []):
-                            tx_id = str(tx.get("transaction_id", ""))
+                            tx_id = str(tx.get("transaction_id") or tx.get("expense_id") or tx.get("journal_id") or "")
                             tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
                             debit = float(tx.get("debit_amount", 0.0) or 0.0)
                             credit = float(tx.get("credit_amount", 0.0) or 0.0)
-                            raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or 0.0)
+                            raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or tx.get("bcy_total", 0.0) or 0.0)
                             amt = debit if debit > 0 else (credit if credit > 0 else abs(raw_amt))
 
                             tx_t_raw = str(tx.get("transaction_type") or tx.get("debit_or_credit") or "").upper()

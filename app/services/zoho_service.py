@@ -982,15 +982,18 @@ class ZohoBooksService:
     async def fetch_account_transactions(
         self,
         account_id: str,
+        account_name: Optional[str] = None,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Fetches transactions for a specific chart of accounts account from Zoho Books API.
+        """Fetches transactions for a specific chart of accounts or general ledger account from Zoho Books.
         
-        Tries in order:
-        1. /registers/{account_id}/transactions (standard Zoho Books ledger register endpoint)
-        2. /banktransactions?account_id={account_id}
-        3. /chartofaccounts/accounttransactions
+        Searches across:
+        1. /expenses (for expense accounts like 'Uncate Outflows' where entries are created as Expenses)
+        2. /registers/{account_id}/transactions (standard Zoho Books ledger register endpoint)
+        3. /chartofaccounts/transactions and /chartofaccounts/accounttransactions
+        4. /journals (manual journal entries)
+        5. /banktransactions?account_id={account_id}
         """
         if not self.org_id:
             return []
@@ -998,111 +1001,246 @@ class ZohoBooksService:
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
 
-        # 1. Primary: /registers/{account_id}/transactions
-        reg_url = f"{self.books_api_url}/registers/{account_id}/transactions"
-        reg_params: Dict[str, Any] = {"organization_id": self.org_id}
-        if date_start and date_end:
-            reg_params["filter_by"] = "TransactionDate.CustomDate"
-            reg_params["from_date"] = date_start
-            reg_params["to_date"] = date_end
-        elif date_start:
-            reg_params["from_date"] = date_start
-        elif date_end:
-            reg_params["to_date"] = date_end
+        combined_txs: List[Dict[str, Any]] = []
+        seen_keys = set()
+
+        def _add_tx(t: Dict[str, Any]):
+            tid = str(t.get("transaction_id") or t.get("expense_id") or t.get("journal_id") or "")
+            tdate = str(t.get("transaction_date") or t.get("date") or "")
+            tamt = str(t.get("amount") or t.get("total") or t.get("debit_amount") or "")
+            tdesc = str(t.get("description") or t.get("vendor_name") or t.get("customer_name") or "")
+            key = f"{tid}:{tdate}:{tamt}:{tdesc}" if tid else f"{tdate}:{tamt}:{tdesc}"
+            if key not in seen_keys:
+                seen_keys.add(key)
+                combined_txs.append(t)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # -------------------------------------------------------------
+            # 1. EXPENSES: Query /expenses (Directly captures Expense transactions)
+            # -------------------------------------------------------------
             try:
-                response = await client.get(reg_url, headers=headers, params=reg_params)
-                if response.status_code == 401:
+                exp_url = f"{self.books_api_url}/expenses"
+                exp_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start:
+                    exp_params["date_start"] = date_start
+                if date_end:
+                    exp_params["date_end"] = date_end
+
+                exp_res = await client.get(exp_url, headers=headers, params=exp_params)
+                if exp_res.status_code == 401:
                     access_token = await self.get_access_token(force_refresh=True)
                     headers = self._get_headers(access_token)
-                    response = await client.get(reg_url, headers=headers, params=reg_params)
+                    exp_res = await client.get(exp_url, headers=headers, params=exp_params)
 
-                if response.status_code == 200:
-                    data = response.json()
-                    txs = (
-                        data.get("register_transactions")
-                        or data.get("account_transactions")
-                        or data.get("transactions")
+                raw_expenses = []
+                if exp_res.status_code == 200:
+                    raw_expenses = exp_res.json().get("expenses", [])
+
+                # Fallback: if date filter returned 0, fetch all expenses to catch any period
+                if not raw_expenses and (date_start or date_end):
+                    all_exp_res = await client.get(exp_url, headers=headers, params={"organization_id": self.org_id})
+                    if all_exp_res.status_code == 200:
+                        raw_expenses = all_exp_res.json().get("expenses", [])
+
+                for exp in raw_expenses:
+                    e_acc_id = str(exp.get("account_id", ""))
+                    e_paid_id = str(exp.get("paid_through_account_id", ""))
+                    e_acc_name = str(exp.get("account_name", "")).strip().lower()
+                    target_id = str(account_id)
+                    target_name = str(account_name or "").strip().lower()
+
+                    matches = (
+                        e_acc_id == target_id
+                        or e_paid_id == target_id
+                        or (target_name and (e_acc_name == target_name or target_name in e_acc_name))
+                    )
+                    if matches:
+                        formatted_exp = {
+                            "transaction_id": exp.get("expense_id") or exp.get("transaction_id"),
+                            "expense_id": exp.get("expense_id"),
+                            "date": exp.get("date"),
+                            "transaction_date": exp.get("date"),
+                            "amount": float(exp.get("total", 0.0) or exp.get("amount", 0.0) or exp.get("bcy_total", 0.0) or 0.0),
+                            "total": float(exp.get("total", 0.0) or exp.get("amount", 0.0) or 0.0),
+                            "debit_amount": float(exp.get("total", 0.0) or exp.get("amount", 0.0) or 0.0),
+                            "transaction_type": "EXPENSE",
+                            "vendor_name": exp.get("vendor_name"),
+                            "customer_name": exp.get("customer_name"),
+                            "payee": exp.get("vendor_name") or exp.get("customer_name"),
+                            "description": (
+                                exp.get("description")
+                                or exp.get("vendor_name")
+                                or exp.get("customer_name")
+                                or f"Expense in {exp.get('account_name', account_name or 'Watched Account')}"
+                            ),
+                            "reference_number": exp.get("reference_number"),
+                            "account_id": e_acc_id or target_id,
+                            "account_name": exp.get("account_name") or account_name,
+                        }
+                        _add_tx(formatted_exp)
+
+                if combined_txs:
+                    logger.info(f"Fetched {len(combined_txs)} expense transactions from /expenses for account {account_id} ({account_name}).")
+            except Exception as exp_err:
+                logger.warning(f"Error querying /expenses for account {account_id}: {exp_err}")
+
+            # -------------------------------------------------------------
+            # 2. REGISTERS: /registers/{account_id}/transactions
+            # -------------------------------------------------------------
+            try:
+                reg_url = f"{self.books_api_url}/registers/{account_id}/transactions"
+                reg_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start and date_end:
+                    reg_params["filter_by"] = "TransactionDate.CustomDate"
+                    reg_params["from_date"] = date_start
+                    reg_params["to_date"] = date_end
+                elif date_start:
+                    reg_params["from_date"] = date_start
+                elif date_end:
+                    reg_params["to_date"] = date_end
+
+                r_res = await client.get(reg_url, headers=headers, params=reg_params)
+                if r_res.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    r_res = await client.get(reg_url, headers=headers, params=reg_params)
+
+                r_txs = []
+                if r_res.status_code == 200:
+                    r_data = r_res.json()
+                    r_txs = (
+                        r_data.get("register_transactions")
+                        or r_data.get("account_transactions")
+                        or r_data.get("transactions")
                         or []
                     )
-                    if txs:
-                        logger.info(f"Fetched {len(txs)} transactions from /registers/{account_id}/transactions for org {self.org_id}.")
-                        return txs
+                elif date_start or date_end:
+                    # Fallback to no date filter
+                    all_r_res = await client.get(reg_url, headers=headers, params={"organization_id": self.org_id})
+                    if all_r_res.status_code == 200:
+                        all_r_data = all_r_res.json()
+                        r_txs = (
+                            all_r_data.get("register_transactions")
+                            or all_r_data.get("account_transactions")
+                            or all_r_data.get("transactions")
+                            or []
+                        )
 
-                    # If date range filter returned 0, try without date filter in case transactions are in adjacent periods
-                    if date_start or date_end:
-                        all_params = {"organization_id": self.org_id}
-                        res_all = await client.get(reg_url, headers=headers, params=all_params)
-                        if res_all.status_code == 200:
-                            all_data = res_all.json()
-                            all_txs = (
-                                all_data.get("register_transactions")
-                                or all_data.get("account_transactions")
-                                or all_data.get("transactions")
-                                or []
-                            )
-                            if all_txs:
-                                logger.info(f"Found {len(all_txs)} transactions in /registers/{account_id}/transactions across all dates.")
-                                return all_txs
-                else:
-                    logger.warning(f"/registers/{account_id}/transactions returned status {response.status_code}: {response.text[:200]}")
+                for r_item in r_txs:
+                    _add_tx(r_item)
             except Exception as r_err:
-                logger.warning(f"Error querying /registers/{account_id}/transactions: {r_err}")
+                logger.warning(f"Notice querying /registers/{account_id}/transactions: {r_err}")
 
-            # 2. Secondary: /banktransactions?account_id={account_id}
+            # -------------------------------------------------------------
+            # 3. CHART OF ACCOUNTS: /chartofaccounts/transactions & /accounttransactions
+            # -------------------------------------------------------------
+            for coa_endpoint in ["transactions", "accounttransactions"]:
+                try:
+                    c_url = f"{self.books_api_url}/chartofaccounts/{coa_endpoint}"
+                    c_params: Dict[str, Any] = {
+                        "organization_id": self.org_id,
+                        "account_id": account_id,
+                    }
+                    if date_start:
+                        c_params["date_start"] = date_start
+                    if date_end:
+                        c_params["date_end"] = date_end
+
+                    c_res = await client.get(c_url, headers=headers, params=c_params)
+                    if c_res.status_code == 200:
+                        c_data = c_res.json()
+                        c_list = (
+                            c_data.get("account_transactions")
+                            or c_data.get("transactions")
+                            or c_data.get("chartofaccounts", [])
+                        )
+                        for c_item in (c_list or []):
+                            _add_tx(c_item)
+                except Exception as coa_err:
+                    logger.debug(f"Notice querying /chartofaccounts/{coa_endpoint}: {coa_err}")
+
+            # -------------------------------------------------------------
+            # 4. JOURNALS: /journals (Manual journals affecting account)
+            # -------------------------------------------------------------
             try:
-                bank_url = f"{self.books_api_url}/banktransactions"
-                bank_params: Dict[str, Any] = {
+                j_url = f"{self.books_api_url}/journals"
+                j_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start:
+                    j_params["date_start"] = date_start
+                if date_end:
+                    j_params["date_end"] = date_end
+
+                j_res = await client.get(j_url, headers=headers, params=j_params)
+                if j_res.status_code == 200:
+                    j_list = j_res.json().get("journals", [])
+                    for j_item in j_list:
+                        j_account_id = str(j_item.get("account_id", ""))
+                        if j_account_id == str(account_id):
+                            _add_tx(j_item)
+            except Exception as j_err:
+                logger.debug(f"Notice querying /journals: {j_err}")
+
+            # -------------------------------------------------------------
+            # 5. CUSTOMER PAYMENTS: /customerpayments (Inflows / payments deposited to account)
+            # -------------------------------------------------------------
+            try:
+                cp_url = f"{self.books_api_url}/customerpayments"
+                cp_params: Dict[str, Any] = {"organization_id": self.org_id}
+                if date_start:
+                    cp_params["date_start"] = date_start
+                if date_end:
+                    cp_params["date_end"] = date_end
+
+                cp_res = await client.get(cp_url, headers=headers, params=cp_params)
+                if cp_res.status_code == 200:
+                    raw_payments = cp_res.json().get("customerpayments", [])
+                    for cp in raw_payments:
+                        cp_acc_id = str(cp.get("account_id", ""))
+                        cp_acc_name = str(cp.get("account_name", "")).strip().lower()
+                        target_id = str(account_id)
+                        target_name = str(account_name or "").strip().lower()
+                        if cp_acc_id == target_id or (target_name and (cp_acc_name == target_name or target_name in cp_acc_name)):
+                            _add_tx({
+                                "transaction_id": cp.get("payment_id"),
+                                "date": cp.get("date"),
+                                "transaction_date": cp.get("date"),
+                                "amount": float(cp.get("amount", 0.0) or cp.get("bcy_amount", 0.0) or 0.0),
+                                "credit_amount": float(cp.get("amount", 0.0) or 0.0),
+                                "transaction_type": "CREDIT",
+                                "customer_name": cp.get("customer_name"),
+                                "payee": cp.get("customer_name"),
+                                "description": cp.get("description") or cp.get("reference_number") or f"Payment from {cp.get('customer_name')}",
+                                "reference_number": cp.get("payment_number") or cp.get("reference_number"),
+                                "account_id": cp_acc_id or target_id,
+                                "account_name": cp.get("account_name") or account_name,
+                            })
+            except Exception as cp_err:
+                logger.debug(f"Notice querying /customerpayments: {cp_err}")
+
+            # -------------------------------------------------------------
+            # 6. BANK TRANSACTIONS: /banktransactions?account_id={account_id}
+            # -------------------------------------------------------------
+            try:
+                b_url = f"{self.books_api_url}/banktransactions"
+                b_params: Dict[str, Any] = {
                     "organization_id": self.org_id,
                     "account_id": account_id,
                 }
                 if date_start:
-                    bank_params["from_date"] = date_start
+                    b_params["from_date"] = date_start
                 if date_end:
-                    bank_params["to_date"] = date_end
+                    b_params["to_date"] = date_end
 
-                b_res = await client.get(bank_url, headers=headers, params=bank_params)
+                b_res = await client.get(b_url, headers=headers, params=b_params)
                 if b_res.status_code == 200:
-                    b_data = b_res.json()
-                    b_txs = b_data.get("banktransactions", [])
-                    if b_txs:
-                        logger.info(f"Fetched {len(b_txs)} transactions from /banktransactions for account {account_id}.")
-                        return b_txs
-
-                    if date_start or date_end:
-                        all_b_res = await client.get(bank_url, headers=headers, params={"organization_id": self.org_id, "account_id": account_id})
-                        if all_b_res.status_code == 200:
-                            all_b_txs = all_b_res.json().get("banktransactions", [])
-                            if all_b_txs:
-                                logger.info(f"Found {len(all_b_txs)} banktransactions for account {account_id} across all dates.")
-                                return all_b_txs
+                    b_txs = b_res.json().get("banktransactions", [])
+                    for b_item in b_txs:
+                        _add_tx(b_item)
             except Exception as b_err:
-                logger.warning(f"Error querying /banktransactions for account {account_id}: {b_err}")
+                logger.debug(f"Notice querying /banktransactions for account {account_id}: {b_err}")
 
-            # 3. Fallback: /chartofaccounts/accounttransactions
-            try:
-                coa_url = f"{self.books_api_url}/chartofaccounts/accounttransactions"
-                coa_params: Dict[str, Any] = {
-                    "organization_id": self.org_id,
-                    "account_id": account_id,
-                }
-                if date_start:
-                    coa_params["date_start"] = date_start
-                if date_end:
-                    coa_params["date_end"] = date_end
-
-                c_res = await client.get(coa_url, headers=headers, params=coa_params)
-                if c_res.status_code == 200:
-                    c_data = c_res.json()
-                    c_txs = c_data.get("account_transactions", [])
-                    if c_txs:
-                        logger.info(f"Fetched {len(c_txs)} transactions from /chartofaccounts/accounttransactions for account {account_id}.")
-                        return c_txs
-            except Exception as c_err:
-                logger.warning(f"Error querying /chartofaccounts/accounttransactions: {c_err}")
-
-        return []
+        logger.info(f"Total transactions fetched for account {account_id} ({account_name or ''}): {len(combined_txs)}.")
+        return combined_txs
 
     @retry(
         reraise=True,
