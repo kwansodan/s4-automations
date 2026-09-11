@@ -22,7 +22,14 @@ import { SheetsViewer } from './components/sheets/SheetsViewer';
 import { MultiChannelLaunchpad } from './components/social/MultiChannelLaunchpad';
 import { ChangelogSection } from './components/changelog/ChangelogSection';
 import { LandingPage } from './components/landing/LandingPage';
+import { LandingManagerSection } from './components/landing/LandingManagerSection';
+import { MaintenanceView } from './components/landing/MaintenanceView';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
+import {
+  LandingPageConfig,
+  DEFAULT_LANDING_CONFIG,
+  fetchLandingPageConfig,
+} from './lib/api';
 import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -37,6 +44,22 @@ const MainLayout: React.FC = () => {
     }
     return false;
   });
+
+  const [landingConfig, setLandingConfig] = useState<LandingPageConfig>(DEFAULT_LANDING_CONFIG);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      let isMounted = true;
+      fetchLandingPageConfig()
+        .then((cfg) => {
+          if (isMounted && cfg) setLandingConfig(cfg);
+        })
+        .catch(() => {});
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [isAuthenticated]);
 
   // Public Privacy Policy view accessible without authentication
   if (activeTab === 'privacy') {
@@ -71,9 +94,38 @@ const MainLayout: React.FC = () => {
         </ErrorBoundary>
       );
     }
+
+    if (landingConfig.mode === 'login_only') {
+      return (
+        <ErrorBoundary componentName="Login View">
+          <LoginCard onBackToLanding={() => {}} />
+        </ErrorBoundary>
+      );
+    }
+
+    if (landingConfig.mode === 'maintenance') {
+      return (
+        <ErrorBoundary componentName="Maintenance Mode">
+          <MaintenanceView
+            headline={landingConfig.maintenance_headline}
+            message={landingConfig.maintenance_message}
+            supportEmail={landingConfig.maintenance_support_email}
+            whatsappNumber={landingConfig.whatsapp_number}
+            onStaffLogin={() => {
+              setShowLogin(true);
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/login');
+              }
+            }}
+          />
+        </ErrorBoundary>
+      );
+    }
+
     return (
       <ErrorBoundary componentName="Public Landing Page">
         <LandingPage
+          initialConfig={landingConfig}
           onGoToLogin={() => {
             setShowLogin(true);
             if (typeof window !== 'undefined') {
@@ -119,6 +171,28 @@ const MainLayout: React.FC = () => {
                   <h3 className="text-lg font-bold text-white">Access Restricted</h3>
                   <p className="text-xs text-slate-300 leading-relaxed">
                     Platform Settings contains sensitive global infrastructure credentials (AI OCR models, SMTP gateways, database connections, and server keys). Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to view or modify these parameters.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab('workspace')}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Return to Client Workspace
+                    </button>
+                  </div>
+                </div>
+              )
+            ) : activeTab === 'landing-manager' ? (
+              user?.role === 'admin' ? (
+                <LandingManagerSection />
+              ) : (
+                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    The Landing Page Manager controls public-facing messaging, sales lead pipelines, and conversion switches. Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to manage landing page settings.
                   </p>
                   <div className="pt-2">
                     <button

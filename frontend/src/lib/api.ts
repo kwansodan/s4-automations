@@ -1588,6 +1588,295 @@ export async function deleteFirmTeamMember(
   return handleResponse(res, 'Delete Firm Team Member');
 }
 
+// -------------------------------------------------------------------------
+// Landing Page & Visitor Visibility Management Types & API Client
+// -------------------------------------------------------------------------
+
+export type LandingPageMode = 'public' | 'login_only' | 'maintenance';
+
+export interface PricingTier {
+  id: string;
+  title: string;
+  subtitle: string;
+  price_display: string;
+  period: string;
+  badge?: string;
+  is_popular?: boolean;
+  features: string[];
+  cta_text: string;
+  cta_action: 'lead_modal' | 'whatsapp' | 'url';
+}
+
+export interface FaqItem {
+  question: string;
+  answer: string;
+  category?: string;
+}
+
+export interface LandingPageConfig {
+  id: number;
+  mode: LandingPageMode;
+  is_published: boolean;
+
+  // Announcement
+  announcement_enabled: boolean;
+  announcement_badge: string;
+  announcement_text: string;
+  announcement_link?: string;
+
+  // Hero Section
+  hero_badge: string;
+  hero_headline: string;
+  hero_subheadline: string;
+  hero_primary_cta_text: string;
+  hero_primary_cta_action: string;
+  hero_secondary_cta_text: string;
+  hero_secondary_cta_action: string;
+  hero_highlights: string[];
+
+  // Section Visibility Toggles (Visitor Controls)
+  show_announcement: boolean;
+  show_hero: boolean;
+  show_how_it_works: boolean;
+  show_ocr_sandbox: boolean;
+  show_roi_calculator: boolean;
+  show_integrations: boolean;
+  show_social_proof: boolean;
+  show_pricing: boolean;
+  show_faq: boolean;
+  show_cta_banner: boolean;
+  show_demo_modal: boolean;
+  show_client_portal_link: boolean;
+
+  // Contact / WhatsApp
+  whatsapp_number: string;
+  whatsapp_message: string;
+
+  // ROI Parameters
+  roi_hourly_rate_ghs: number;
+  roi_default_clients: number;
+  roi_default_slips: number;
+
+  // Structured Content
+  faq_items: FaqItem[];
+  pricing_tiers: PricingTier[];
+
+  // Maintenance Screen
+  maintenance_headline: string;
+  maintenance_message: string;
+  maintenance_estimated_time?: string;
+
+  // Governance & History
+  version: number;
+  version_history?: any[];
+  last_updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const DEFAULT_LANDING_CONFIG: LandingPageConfig = {
+  id: 1,
+  mode: 'public',
+  is_published: true,
+
+  announcement_enabled: true,
+  announcement_badge: "What's New",
+  announcement_text: '🚀 Live: Multi-Pipeline Ingestion with Automatic Zoho & QuickBooks Reconciliation.',
+  announcement_link: '#how-it-works',
+
+  hero_badge: 'Built for Accounting Firms, Hospitality & Multi-Branch Enterprises',
+  hero_headline: 'Stop Manually Keying Receipts, Control Slips & MoMo Statements.',
+  hero_subheadline:
+    'S4 Automations leverages Gemini Vision AI to read messy handwritten chits, crumpled vendor invoices, and mobile money dockets. It converts them into verified draft bills and invoices inside Zoho Books, QuickBooks, and Xero with 1 click.',
+  hero_primary_cta_text: 'Request a Free Firm Walkthrough',
+  hero_primary_cta_action: 'lead_modal',
+  hero_secondary_cta_text: 'See How It Works in 3 Steps',
+  hero_secondary_cta_action: '#how-it-works',
+  hero_highlights: [
+    '99.4% Extraction Accuracy',
+    'Human-in-the-Loop Review Sheet',
+    'Direct Bank & MoMo Reconciliation',
+  ],
+
+  show_announcement: true,
+  show_hero: true,
+  show_how_it_works: true,
+  show_ocr_sandbox: true,
+  show_roi_calculator: true,
+  show_integrations: true,
+  show_social_proof: true,
+  show_pricing: true,
+  show_faq: true,
+  show_cta_banner: true,
+  show_demo_modal: true,
+  show_client_portal_link: true,
+
+  whatsapp_number: '233200000000',
+  whatsapp_message: "Hi S4 Team, I'd like to test 3 sample receipts/invoices from my firm for automation.",
+
+  roi_hourly_rate_ghs: 75.0,
+  roi_default_clients: 12,
+  roi_default_slips: 180,
+
+  faq_items: [
+    {
+      question: 'How does S4 Automations handle messy handwriting and low-light scans?',
+      answer:
+        'Our proprietary S4 Neural Ingestion Engine™ is trained on unstructured West African paperwork. Before any data reaches your ledger, low-confidence fields are flagged in a human-in-the-loop spreadsheet or web review inbox for your team to verify with 1 click.',
+    },
+    {
+      question: 'Will syncing create duplicate invoices or bills in our accounting software?',
+      answer:
+        'No. Every source document receives a cryptographic checksum. If you re-run an ingestion, our idempotent engine automatically matches existing draft documents and appends only verified items, completely eliminating duplicates.',
+    },
+    {
+      question: 'Can the engine handle local statutory taxes (VAT, NHIL, GETFund, COVID levy)?',
+      answer:
+        "Yes. S4's blueprint strategies automatically identify taxable items, calculate statutory levies, and post them directly to the corresponding tax sub-accounts in Zoho Books, QuickBooks, or Xero.",
+    },
+    {
+      question: "Do you store our or our clients' confidential financial data?",
+      answer:
+        'No. S4 utilizes a Bring-Your-Own-Storage (BYOS) architecture. Your source scans and receipts remain safely inside your own Google Drive or cloud folders. We process and sync directly to your accounting API with bank-grade TLS 1.3 encryption.',
+    },
+    {
+      question: 'How long does it take to onboard a new business or client?',
+      answer:
+        'Setup takes less than 15 minutes. Connect your accounting organization via 1-Click OAuth, point S4 to your Google Drive folder, and run your first test extraction immediately.',
+    },
+  ],
+
+  pricing_tiers: [
+    {
+      id: 'business',
+      title: 'Boutique & Single Entity',
+      subtitle: 'Ideal for hotels, restaurants, retail shops, or single businesses automating daily control slips & bills.',
+      price_display: 'Custom Pilot',
+      period: 'starting at GHS 850/mo',
+      badge: 'Single Business',
+      is_popular: false,
+      features: [
+        'Up to 500 monthly documents',
+        'Gemini 2.5 Flash Vision OCR',
+        'Google Sheets & Web Review Inbox',
+        '1-Click Sync to Zoho / QuickBooks',
+        'Linen & stock discrepancy alerts',
+        'WhatsApp audit support',
+      ],
+      cta_text: 'Start Free 20-Slip Pilot',
+      cta_action: 'lead_modal',
+    },
+    {
+      id: 'firm',
+      title: 'Accounting & Advisory Firm',
+      subtitle: 'Purpose-built for CPAs and bookkeepers managing multi-client portfolios.',
+      price_display: 'Firm Portfolio',
+      period: 'tailored to client volume',
+      badge: 'Most Popular for CPAs',
+      is_popular: true,
+      features: [
+        'Unlimited client organizations',
+        'Multi-pipeline AR, AP & Bank streams',
+        'Client Clarification Magic Portal',
+        'Automatic MoMo & Bank feed matching',
+        'Multi-staff role permissions',
+        'Priority WhatsApp & Slack channel',
+      ],
+      cta_text: 'Request Firm Walkthrough',
+      cta_action: 'lead_modal',
+    },
+    {
+      id: 'enterprise',
+      title: 'Multi-Branch Enterprise',
+      subtitle: 'For large hospitality chains, commercial laundries, and distributed retail operations.',
+      price_display: 'Enterprise SLA',
+      period: 'custom dedicated deployment',
+      badge: 'High Volume',
+      is_popular: false,
+      features: [
+        'Custom blueprint pipeline rules',
+        'Dedicated cloud ingestion workers',
+        'Custom ERP / Database connectors',
+        'Custom VAT / statutory tax engines',
+        'Dedicated account manager',
+        '99.9% uptime SLA guarantee',
+      ],
+      cta_text: 'Contact Enterprise Team',
+      cta_action: 'whatsapp',
+    },
+  ],
+
+  maintenance_headline: 'S4 Automations is Upgrading',
+  maintenance_message:
+    'We are currently deploying high-throughput ingestion engine updates. Existing scheduled automated pipelines continue running in the background. Public registrations will re-open shortly.',
+  maintenance_estimated_time: 'Resuming at 08:00 UTC',
+
+  version: 1,
+};
+
+export async function fetchLandingPageConfig(): Promise<LandingPageConfig> {
+  try {
+    const res = await resilientFetch('/api/v1/marketing/landing-config');
+    if (!res.ok) {
+      return DEFAULT_LANDING_CONFIG;
+    }
+    const data = await res.json();
+    return { ...DEFAULT_LANDING_CONFIG, ...data };
+  } catch (err) {
+    console.warn('Falling back to static default landing page configuration:', err);
+    return DEFAULT_LANDING_CONFIG;
+  }
+}
+
+export async function saveLandingPageConfig(
+  payload: Partial<LandingPageConfig>
+): Promise<{ success: boolean; message: string; config: LandingPageConfig }> {
+  const res = await resilientFetch('/api/v1/marketing/landing-config', {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Save Landing Page Configuration');
+}
+
+export async function rollbackLandingPageConfig(
+  versionId: number
+): Promise<{ success: boolean; message: string; config: LandingPageConfig }> {
+  const res = await resilientFetch(`/api/v1/marketing/landing-config/rollback/${versionId}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, `Rollback to Version ${versionId}`);
+}
+
+export async function fetchMarketingLeadsList(
+  statusFilter?: string,
+  search?: string
+): Promise<{ leads: any[]; total_count: number }> {
+  const params = new URLSearchParams();
+  if (statusFilter && statusFilter !== 'ALL') params.append('status_filter', statusFilter);
+  if (search) params.append('search', search);
+
+  const res = await resilientFetch(`/api/v1/marketing/leads?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Inbound Leads');
+}
+
+export async function updateMarketingLeadStatus(
+  leadId: number,
+  newStatus: string,
+  notes?: string
+): Promise<{ success: boolean; lead: any }> {
+  const res = await resilientFetch(`/api/v1/marketing/leads/${leadId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ status: newStatus, notes }),
+  });
+  return handleResponse(res, 'Update Lead Status');
+}
+
+
 
 
 

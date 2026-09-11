@@ -22,6 +22,7 @@ import {
   Share2,
   BookOpen,
   Users,
+  Globe,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -131,7 +132,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     { tab: 'changelog', label: "What's New", icon: BookOpen },
     { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     ...(user?.role === 'admin'
-      ? [{ tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' }]
+      ? [
+          { tab: 'landing-manager' as ActiveTab, label: 'Landing Page Manager', icon: Globe, badge: 'Public' },
+          { tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' },
+        ]
       : []),
     { tab: 'logs', label: 'Live Telemetry Logs', icon: Terminal },
   ];

@@ -1,18 +1,23 @@
 """Marketing & Audience CRM Endpoints for S4 Automations."""
 
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, func, or_, desc
 
 from app.config import settings
 from app.db.session import get_db_session
-from app.models.db_models import EmailSubscriber, MarketingLead, ClientOrganization, get_utc_now
+from app.models.db_models import EmailSubscriber, MarketingLead, ClientOrganization, LandingPageConfig, get_utc_now
 from app.services.mailjet_service import MailjetService
 from app.utils.logging import get_logger
 
 logger = get_logger("marketing_api")
+
+# Thread-safe in-memory cache for ultra-fast public landing page serving (< 2ms)
+_LANDING_CACHE: Optional[Dict[str, Any]] = None
+_LANDING_LOCK = threading.Lock()
 
 router = APIRouter(prefix="/marketing", tags=["Marketing & Audience CRM"])
 
@@ -56,6 +61,53 @@ class LeadCaptureRequest(BaseModel):
 class UpdateLeadStatusRequest(BaseModel):
     status: str = Field(..., description="NEW, CONTACTED, DEMO_SCHEDULED, PILOT_ACTIVE, CONVERTED, CLOSED")
     notes: Optional[str] = None
+
+
+class UpdateLandingConfigRequest(BaseModel):
+    mode: Optional[str] = None
+    is_published: Optional[bool] = None
+
+    announcement_enabled: Optional[bool] = None
+    announcement_badge: Optional[str] = None
+    announcement_text: Optional[str] = None
+    announcement_link: Optional[str] = None
+
+    hero_badge: Optional[str] = None
+    hero_headline: Optional[str] = None
+    hero_subheadline: Optional[str] = None
+    hero_primary_cta_text: Optional[str] = None
+    hero_primary_cta_action: Optional[str] = None
+    hero_secondary_cta_text: Optional[str] = None
+    hero_secondary_cta_action: Optional[str] = None
+    hero_highlights: Optional[List[str]] = None
+
+    show_announcement: Optional[bool] = None
+    show_hero: Optional[bool] = None
+    show_how_it_works: Optional[bool] = None
+    show_ocr_sandbox: Optional[bool] = None
+    show_roi_calculator: Optional[bool] = None
+    show_integrations: Optional[bool] = None
+    show_social_proof: Optional[bool] = None
+    show_pricing: Optional[bool] = None
+    show_faq: Optional[bool] = None
+    show_cta_banner: Optional[bool] = None
+    show_demo_modal: Optional[bool] = None
+    show_client_portal_link: Optional[bool] = None
+
+    whatsapp_number: Optional[str] = None
+    whatsapp_message: Optional[str] = None
+
+    roi_hourly_rate_ghs: Optional[float] = None
+    roi_default_clients: Optional[int] = None
+    roi_default_slips: Optional[int] = None
+
+    faq_items: Optional[List[Dict[str, Any]]] = None
+    pricing_tiers: Optional[List[Dict[str, Any]]] = None
+
+    maintenance_headline: Optional[str] = None
+    maintenance_message: Optional[str] = None
+    maintenance_estimated_time: Optional[str] = None
+    last_updated_by: Optional[str] = None
 
 
 # -------------------------------------------------------------------------
@@ -441,16 +493,27 @@ async def capture_public_lead(
 @router.get("/leads")
 async def list_marketing_leads(
     status_filter: Optional[str] = None,
+    search: Optional[str] = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
-    """Admin view for pipeline of inbound landing page leads."""
+    """Admin view for pipeline of inbound landing page leads with search."""
     query = select(MarketingLead)
     count_query = select(func.count(MarketingLead.id))
     if status_filter:
         query = query.where(MarketingLead.status == status_filter)
         count_query = count_query.where(MarketingLead.status == status_filter)
+    if search:
+        pattern = f"%{search.strip().lower()}%"
+        search_filter = or_(
+            func.lower(MarketingLead.full_name).like(pattern),
+            func.lower(MarketingLead.email).like(pattern),
+            func.lower(MarketingLead.company_name).like(pattern),
+        )
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
+
     query = query.order_by(desc(MarketingLead.created_at)).offset(offset).limit(limit)
 
     leads = db.exec(query).all()
@@ -463,6 +526,7 @@ async def list_marketing_leads(
 
 
 @router.put("/leads/{lead_id}/status")
+@router.patch("/leads/{lead_id}/status")
 async def update_lead_status(
     lead_id: int,
     payload: UpdateLeadStatusRequest,
@@ -490,3 +554,144 @@ async def update_lead_status(
     db.refresh(lead)
 
     return {"success": True, "lead": lead}
+
+
+# -------------------------------------------------------------------------
+# Public Landing Page & Visitor Visibility Management Endpoints
+# -------------------------------------------------------------------------
+
+@router.get("/landing-config", summary="Get Public Landing Page Configuration")
+async def get_landing_config(
+    response: Response,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Returns public landing page configuration.
+    High-performance: Served from in-memory cache with HTTP Edge Caching headers.
+    Zero-CLS design ensures instant client hydration.
+    """
+    global _LANDING_CACHE
+
+    with _LANDING_LOCK:
+        if _LANDING_CACHE is not None:
+            response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+            return _LANDING_CACHE
+
+    # Cache miss - load from DB or initialize default
+    cfg = db.exec(select(LandingPageConfig).where(LandingPageConfig.id == 1)).first()
+    if not cfg:
+        logger.info("Initializing default LandingPageConfig in database...")
+        cfg = LandingPageConfig(id=1)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+
+    cfg_dict = cfg.model_dump()
+
+    with _LANDING_LOCK:
+        _LANDING_CACHE = cfg_dict
+
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+    return cfg_dict
+
+
+@router.put("/landing-config", summary="Update Landing Page Configuration (Admin)")
+async def update_landing_config(
+    payload: UpdateLandingConfigRequest,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Updates landing page configuration, saves historical snapshot for rollback,
+    and invalidates in-memory cache immediately.
+    """
+    global _LANDING_CACHE
+
+    cfg = db.exec(select(LandingPageConfig).where(LandingPageConfig.id == 1)).first()
+    if not cfg:
+        cfg = LandingPageConfig(id=1)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+
+    # 1. Snapshot previous state into version_history
+    prev_snapshot = cfg.model_dump(exclude={"version_history"})
+    prev_snapshot["snapshot_timestamp"] = get_utc_now().isoformat()
+    history = list(cfg.version_history or [])
+    history.insert(0, prev_snapshot)
+    # Keep up to 20 historical versions
+    cfg.version_history = history[:20]
+    cfg.version = (cfg.version or 1) + 1
+
+    # 2. Apply updates
+    data = payload.model_dump(exclude_unset=True)
+    for field_name, value in data.items():
+        if hasattr(cfg, field_name) and value is not None:
+            setattr(cfg, field_name, value)
+
+    cfg.updated_at = get_utc_now()
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+
+    cfg_dict = cfg.model_dump()
+
+    # 3. Invalidate / update in-memory cache
+    with _LANDING_LOCK:
+        _LANDING_CACHE = cfg_dict
+
+    logger.info(f"Published LandingPageConfig v{cfg.version} (Mode: {cfg.mode})")
+    return {
+        "success": True,
+        "message": f"Landing page configuration v{cfg.version} published successfully.",
+        "config": cfg_dict,
+    }
+
+
+@router.post("/landing-config/rollback/{version_id}", summary="Rollback Landing Page Config (Admin)")
+async def rollback_landing_config(
+    version_id: int,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Rolls back landing page configuration to a previous snapshot."""
+    global _LANDING_CACHE
+
+    cfg = db.exec(select(LandingPageConfig).where(LandingPageConfig.id == 1)).first()
+    if not cfg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config record not found.")
+
+    target_snapshot = next((s for s in (cfg.version_history or []) if s.get("version") == version_id), None)
+    if not target_snapshot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Version {version_id} not found in history.")
+
+    # Record current state as a snapshot before rolling back
+    current_snapshot = cfg.model_dump(exclude={"version_history"})
+    current_snapshot["snapshot_timestamp"] = get_utc_now().isoformat()
+    current_snapshot["note"] = f"Pre-rollback snapshot before restoring v{version_id}"
+    history = list(cfg.version_history or [])
+    history.insert(0, current_snapshot)
+    cfg.version_history = history[:20]
+
+    # Restore fields from target_snapshot
+    for field_name, value in target_snapshot.items():
+        if field_name not in ["id", "version", "version_history", "created_at", "snapshot_timestamp", "note"]:
+            if hasattr(cfg, field_name):
+                setattr(cfg, field_name, value)
+
+    cfg.version = (cfg.version or 1) + 1
+    cfg.updated_at = get_utc_now()
+    cfg.last_updated_by = f"Rollback to v{version_id}"
+
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+
+    cfg_dict = cfg.model_dump()
+    with _LANDING_LOCK:
+        _LANDING_CACHE = cfg_dict
+
+    logger.info(f"Restored LandingPageConfig to snapshot v{version_id} (New active version: v{cfg.version})")
+    return {
+        "success": True,
+        "message": f"Successfully rolled back to version {version_id}.",
+        "config": cfg_dict,
+    }

@@ -347,5 +347,167 @@ class FirmTeamMember(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=get_utc_now)
 
 
+class LandingPageConfig(SQLModel, table=True):
+    """Stores full landing page configuration, visitor access modes, and section toggles."""
+    __tablename__ = "landing_page_config"
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    mode: str = Field(default="public", description="public, login_only, maintenance")
+    is_published: bool = Field(default=True)
+
+    # Announcement Bar
+    announcement_enabled: bool = Field(default=True)
+    announcement_badge: str = Field(default="What's New")
+    announcement_text: str = Field(default="🚀 Live: Multi-Pipeline Ingestion with Automatic Zoho & QuickBooks Reconciliation.")
+    announcement_link: Optional[str] = Field(default="#how-it-works")
+
+    # Hero Section
+    hero_badge: str = Field(default="Built for Accounting Firms, Hospitality & Multi-Branch Enterprises")
+    hero_headline: str = Field(default="Stop Manually Keying Receipts, Control Slips & MoMo Statements.")
+    hero_subheadline: str = Field(
+        default="S4 Automations leverages Gemini Vision AI to read messy handwritten chits, crumpled vendor invoices, and mobile money dockets. It converts them into verified draft bills and invoices inside Zoho Books, QuickBooks, and Xero with 1 click."
+    )
+    hero_primary_cta_text: str = Field(default="Request a Free Firm Walkthrough")
+    hero_primary_cta_action: str = Field(default="lead_modal")
+    hero_secondary_cta_text: str = Field(default="See How It Works in 3 Steps")
+    hero_secondary_cta_action: str = Field(default="#how-it-works")
+    hero_highlights: List[str] = Field(
+        default_factory=lambda: [
+            "99.4% Extraction Accuracy",
+            "Human-in-the-Loop Review Sheet",
+            "Direct Bank & MoMo Reconciliation",
+        ],
+        sa_column=Column(JSON),
+    )
+
+    # Section Visibility Toggles (Visitor Controls)
+    show_announcement: bool = Field(default=True)
+    show_hero: bool = Field(default=True)
+    show_how_it_works: bool = Field(default=True)
+    show_ocr_sandbox: bool = Field(default=True)
+    show_roi_calculator: bool = Field(default=True)
+    show_integrations: bool = Field(default=True)
+    show_social_proof: bool = Field(default=True)
+    show_pricing: bool = Field(default=True)
+    show_faq: bool = Field(default=True)
+    show_cta_banner: bool = Field(default=True)
+    show_demo_modal: bool = Field(default=True)
+    show_client_portal_link: bool = Field(default=True)
+
+    # WhatsApp & Quick Pilot
+    whatsapp_number: str = Field(default="233200000000")
+    whatsapp_message: str = Field(default="Hi S4 Team, I'd like to test 3 sample receipts/invoices from my firm for automation.")
+
+    # ROI Parameters
+    roi_hourly_rate_ghs: float = Field(default=75.0)
+    roi_default_clients: int = Field(default=12)
+    roi_default_slips: int = Field(default=180)
+
+    # Custom FAQs (JSON list of {question, answer})
+    faq_items: List[Dict[str, Any]] = Field(
+        default_factory=lambda: [
+            {
+                "question": "How does S4 Automations handle messy handwriting and low-light scans?",
+                "answer": "Our proprietary S4 Neural Ingestion Engine™ is trained on unstructured West African paperwork. Before any data reaches your ledger, low-confidence fields are flagged in a human-in-the-loop spreadsheet or web review inbox for your team to verify with 1 click.",
+            },
+            {
+                "question": "Will syncing create duplicate invoices or bills in our accounting software?",
+                "answer": "No. Every source document receives a cryptographic checksum. If you re-run an ingestion, our idempotent engine automatically matches existing draft documents and appends only verified items, completely eliminating duplicates.",
+            },
+            {
+                "question": "Can the engine handle local statutory taxes (VAT, NHIL, GETFund, COVID levy)?",
+                "answer": "Yes. S4's blueprint strategies automatically identify taxable items, calculate statutory levies, and post them directly to the corresponding tax sub-accounts in Zoho Books, QuickBooks, or Xero.",
+            },
+            {
+                "question": "Do you store our or our clients' confidential financial data?",
+                "answer": "No. S4 utilizes a Bring-Your-Own-Storage (BYOS) architecture. Your source scans and receipts remain safely inside your own Google Drive or cloud folders. We process and sync directly to your accounting API with bank-grade TLS 1.3 encryption.",
+            },
+            {
+                "question": "How long does it take to onboard a new business or client?",
+                "answer": "Setup takes less than 15 minutes. Connect your accounting organization via 1-Click OAuth, point S4 to your Google Drive folder, and run your first test extraction immediately.",
+            },
+        ],
+        sa_column=Column(JSON),
+    )
+
+    # Pricing Tiers (JSON list of {id, title, subtitle, price_display, period, badge, features, cta_text, cta_action, is_popular})
+    pricing_tiers: List[Dict[str, Any]] = Field(
+        default_factory=lambda: [
+            {
+                "id": "business",
+                "title": "Boutique & Single Entity",
+                "subtitle": "Ideal for hotels, restaurants, retail shops, or single businesses automating daily control slips & bills.",
+                "price_display": "Custom Pilot",
+                "period": "starting at GHS 850/mo",
+                "badge": "Single Business",
+                "is_popular": False,
+                "features": [
+                    "Up to 500 monthly documents",
+                    "Gemini 2.5 Flash Vision OCR",
+                    "Google Sheets & Web Review Inbox",
+                    "1-Click Sync to Zoho / QuickBooks",
+                    "Linen & stock discrepancy alerts",
+                    "WhatsApp audit support",
+                ],
+                "cta_text": "Start Free 20-Slip Pilot",
+                "cta_action": "lead_modal",
+            },
+            {
+                "id": "firm",
+                "title": "Accounting & Advisory Firm",
+                "subtitle": "Purpose-built for CPAs and bookkeepers managing multi-client portfolios.",
+                "price_display": "Firm Portfolio",
+                "period": "tailored to client volume",
+                "badge": "Most Popular for CPAs",
+                "is_popular": True,
+                "features": [
+                    "Unlimited client organizations",
+                    "Multi-pipeline AR, AP & Bank streams",
+                    "Client Clarification Magic Portal",
+                    "Automatic MoMo & Bank feed matching",
+                    "Multi-staff role permissions",
+                    "Priority WhatsApp & Slack channel",
+                ],
+                "cta_text": "Request Firm Walkthrough",
+                "cta_action": "lead_modal",
+            },
+            {
+                "id": "enterprise",
+                "title": "Multi-Branch Enterprise",
+                "subtitle": "For large hospitality chains, commercial laundries, and distributed retail operations.",
+                "price_display": "Enterprise SLA",
+                "period": "custom dedicated deployment",
+                "badge": "High Volume",
+                "is_popular": False,
+                "features": [
+                    "Custom blueprint pipeline rules",
+                    "Dedicated cloud ingestion workers",
+                    "Custom ERP / Database connectors",
+                    "Custom VAT / statutory tax engines",
+                    "Dedicated account manager",
+                    "99.9% uptime SLA guarantee",
+                ],
+                "cta_text": "Contact Enterprise Team",
+                "cta_action": "whatsapp",
+            },
+        ],
+        sa_column=Column(JSON),
+    )
+
+    # Maintenance Mode Details
+    maintenance_headline: str = Field(default="S4 Automations is Upgrading")
+    maintenance_message: str = Field(
+        default="We are currently deploying high-throughput ingestion engine updates. Existing scheduled automated pipelines continue running in the background. Public registrations will re-open shortly."
+    )
+    maintenance_estimated_time: Optional[str] = Field(default="Resuming at 08:00 UTC")
+
+    # Audit & Rollback
+    version: int = Field(default=1)
+    version_history: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    last_updated_by: Optional[str] = Field(default="System Administrator")
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
 
 

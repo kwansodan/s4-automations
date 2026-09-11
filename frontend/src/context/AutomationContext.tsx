@@ -18,7 +18,7 @@ import {
 import { useAuth } from './AuthContext';
 import { parseCurrentRoute, syncUrlWithRoute, initRouteListener } from '../lib/router';
 
-export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts';
+export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts' | 'landing-manager';
 
 export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'settings';
 

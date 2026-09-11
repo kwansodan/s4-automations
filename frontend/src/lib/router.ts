@@ -80,6 +80,11 @@ export const ROUTE_MAP: Array<{
     aliases: ['/social', '/release-broadcaster'],
   },
   {
+    path: '/landing-manager',
+    tab: 'landing-manager',
+    aliases: ['/landing-page', '/visitor-settings', '/landing'],
+  },
+  {
     path: '/platform-settings',
     tab: 'config',
     aliases: ['/config', '/system-settings'],
