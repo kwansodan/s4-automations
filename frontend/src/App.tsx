@@ -84,12 +84,16 @@ const MainLayout: React.FC = () => {
       return (
         <ErrorBoundary componentName="Login View">
           <LoginCard
-            onBackToLanding={() => {
-              setShowLogin(false);
-              if (typeof window !== 'undefined') {
-                window.history.replaceState({}, '', '/');
-              }
-            }}
+            onBackToLanding={
+              landingConfig.mode !== 'login_only'
+                ? () => {
+                    setShowLogin(false);
+                    if (typeof window !== 'undefined') {
+                      window.history.replaceState({}, '', '/');
+                    }
+                  }
+                : undefined
+            }
           />
         </ErrorBoundary>
       );
@@ -98,7 +102,7 @@ const MainLayout: React.FC = () => {
     if (landingConfig.mode === 'login_only') {
       return (
         <ErrorBoundary componentName="Login View">
-          <LoginCard onBackToLanding={() => {}} />
+          <LoginCard />
         </ErrorBoundary>
       );
     }

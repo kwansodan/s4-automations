@@ -396,6 +396,18 @@ export const LandingManagerSection: React.FC = () => {
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    Emergency Support Email
+                  </label>
+                  <input
+                    type="email"
+                    value={config.maintenance_support_email || ''}
+                    onChange={(e) => setConfig({ ...config, maintenance_support_email: e.target.value })}
+                    placeholder="support@service4gh.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                     Maintenance Message / Explanation
                   </label>
                   <textarea

@@ -500,6 +500,7 @@ class LandingPageConfig(SQLModel, table=True):
         default="We are currently deploying high-throughput ingestion engine updates. Existing scheduled automated pipelines continue running in the background. Public registrations will re-open shortly."
     )
     maintenance_estimated_time: Optional[str] = Field(default="Resuming at 08:00 UTC")
+    maintenance_support_email: Optional[str] = Field(default="support@service4gh.com")
 
     # Audit & Rollback
     version: int = Field(default=1)

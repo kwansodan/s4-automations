@@ -6,6 +6,7 @@ interface MaintenanceViewProps {
   headline?: string;
   message?: string;
   estimatedTime?: string;
+  supportEmail?: string;
   whatsappNumber?: string;
   onStaffLogin: () => void;
 }
@@ -14,6 +15,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   headline = 'S4 Automations is Upgrading',
   message = 'We are currently deploying high-throughput ingestion engine updates. Existing scheduled automated pipelines continue running in the background. Public registrations will re-open shortly.',
   estimatedTime = 'Resuming at 08:00 UTC',
+  supportEmail,
   whatsappNumber = '233200000000',
   onStaffLogin,
 }) => {
@@ -121,9 +123,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             )}
           </div>
 
-          {/* WhatsApp Support fallback */}
-          {whatsappNumber && (
-            <div className="pt-4">
+          {/* WhatsApp / Email Support fallback */}
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+            {whatsappNumber && (
               <a
                 href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hi S4 Team, inquiring regarding the system upgrade.')}`}
                 target="_blank"
@@ -131,11 +133,20 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                 className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                <span>Urgent client inquiry? Reach our on-call team on WhatsApp</span>
+                <span>Reach on-call support on WhatsApp</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
-            </div>
-          )}
+            )}
+            {supportEmail && (
+              <a
+                href={`mailto:${supportEmail}`}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>{supportEmail}</span>
+              </a>
+            )}
+          </div>
         </div>
       </main>
 

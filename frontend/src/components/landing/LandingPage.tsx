@@ -51,6 +51,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [cfg, setCfg] = useState<LandingPageConfig>(initialConfig || DEFAULT_LANDING_CONFIG);
 
   useEffect(() => {
+    if (initialConfig) {
+      setCfg(initialConfig);
+    }
+  }, [initialConfig]);
+
+  useEffect(() => {
     // Background optimistic hydration
     let isMounted = true;
     fetchLandingPageConfig().then((liveConfig) => {

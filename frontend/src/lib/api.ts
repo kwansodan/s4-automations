@@ -1665,6 +1665,7 @@ export interface LandingPageConfig {
   maintenance_headline: string;
   maintenance_message: string;
   maintenance_estimated_time?: string;
+  maintenance_support_email?: string;
 
   // Governance & History
   version: number;
@@ -1810,6 +1811,7 @@ export const DEFAULT_LANDING_CONFIG: LandingPageConfig = {
   maintenance_message:
     'We are currently deploying high-throughput ingestion engine updates. Existing scheduled automated pipelines continue running in the background. Public registrations will re-open shortly.',
   maintenance_estimated_time: 'Resuming at 08:00 UTC',
+  maintenance_support_email: 'support@service4gh.com',
 
   version: 1,
 };

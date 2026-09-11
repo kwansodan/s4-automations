@@ -107,6 +107,7 @@ class UpdateLandingConfigRequest(BaseModel):
     maintenance_headline: Optional[str] = None
     maintenance_message: Optional[str] = None
     maintenance_estimated_time: Optional[str] = None
+    maintenance_support_email: Optional[str] = None
     last_updated_by: Optional[str] = None
 
 
@@ -673,7 +674,7 @@ async def rollback_landing_config(
 
     # Restore fields from target_snapshot
     for field_name, value in target_snapshot.items():
-        if field_name not in ["id", "version", "version_history", "created_at", "snapshot_timestamp", "note"]:
+        if field_name not in ["id", "version", "version_history", "created_at", "updated_at", "snapshot_timestamp", "note"]:
             if hasattr(cfg, field_name):
                 setattr(cfg, field_name, value)
 
