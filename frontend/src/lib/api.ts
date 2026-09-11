@@ -6,9 +6,8 @@
 import type { OtpRequestResponse, OtpVerifyResponse, AuthUser } from '../types/auth';
 import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
-import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, DiagnosticsResult } from '../types/config';
-import type { PipelineSimulationResult } from '../types/client';
+import type { PipelineSimulationResult, BankTransactionRecord } from '../types/client';
 import type {
   ClientContact,
   FirmTeamMember,
