@@ -12,6 +12,8 @@ from app.models.db_models import (
     Organization,
     CustomerPaymentRecord,
     ApiKeyUsageLog,
+    PlatformPricingConfig,
+    LandingPageConfig,
     get_utc_now,
 )
 from app.services.telemetry_service import (
@@ -86,6 +88,17 @@ class UpdatePaymentStatusRequest(BaseModel):
     admin_notes: Optional[str] = None
 
 
+class UpdatePricingConfigRequest(BaseModel):
+    currency: Optional[str] = "GHS"
+    usd_to_ghs_rate: Optional[float] = 13.50
+    trial_days: Optional[int] = 14
+    trial_document_quota: Optional[int] = 50
+    grace_period_days: Optional[int] = 3
+    tiers: Optional[List[Dict[str, Any]]] = None
+    booster_packs: Optional[List[Dict[str, Any]]] = None
+    sync_landing_page: Optional[bool] = True
+
+
 # -------------------------------------------------------------------------
 # Billing Endpoints
 # -------------------------------------------------------------------------
@@ -100,6 +113,16 @@ async def get_billing_overview(
     """
     now = get_utc_now()
     orgs = db.exec(select(Organization)).all()
+
+    # Load dynamic PlatformPricingConfig
+    pricing_cfg = db.exec(select(PlatformPricingConfig).where(PlatformPricingConfig.id == 1)).first()
+    if not pricing_cfg:
+        pricing_cfg = PlatformPricingConfig(id=1)
+        db.add(pricing_cfg)
+        db.commit()
+        db.refresh(pricing_cfg)
+
+    fx_rate = pricing_cfg.usd_to_ghs_rate or USD_TO_GHS_RATE
 
     # If no organizations exist yet, seed a default S4 Advisory Firm
     if not orgs:
@@ -139,7 +162,7 @@ async def get_billing_overview(
         if status_val == "ACTIVE":
             active_count += 1
             if (o.currency or "GHS") == "USD":
-                total_mrr_ghs += (o.base_price or 0.0) * USD_TO_GHS_RATE
+                total_mrr_ghs += (o.base_price or 0.0) * fx_rate
             else:
                 total_mrr_ghs += (o.base_price or 0.0)
         elif status_val == "TRIALING":
@@ -168,7 +191,7 @@ async def get_billing_overview(
     return {
         "mrr_ghs": round(total_mrr_ghs, 2),
         "arr_ghs": round(total_mrr_ghs * 12, 2),
-        "mrr_usd": round(total_mrr_ghs / USD_TO_GHS_RATE, 2),
+        "mrr_usd": round(total_mrr_ghs / fx_rate, 2) if fx_rate > 0 else 0.0,
         "infra_cost_30d_ghs": infra_cost_ghs,
         "infra_cost_30d_usd": cost_data.get("total_cost_usd", 0.0),
         "gross_profit_margin_percent": margin_percent,
@@ -177,7 +200,7 @@ async def get_billing_overview(
         "expiring_trials_count": expiring_trials_count,
         "past_due_count": past_due_count,
         "overdue_payments_count": overdue_count,
-        "booster_packs": [
+        "booster_packs": pricing_cfg.booster_packs or [
             {"slips": 250, "price_ghs": 320.0, "unit_rate": 1.28, "badge": "Quick Top-Up"},
             {"slips": 500, "price_ghs": 550.0, "unit_rate": 1.10, "badge": "Most Popular", "is_popular": True},
             {"slips": 1000, "price_ghs": 950.0, "unit_rate": 0.95, "badge": "Best Value"},
@@ -535,4 +558,83 @@ async def get_paid_services_cost_monitor(
     return {
         "summary": summary,
         "recent_api_calls": jsonable_encoder(recent_stream),
+    }
+
+
+# -------------------------------------------------------------------------
+# Global Platform Pricing & Option 2 Booster Rates Catalog
+# -------------------------------------------------------------------------
+
+@router.get("/pricing-config", summary="Get Global Pricing Tiers & Booster Rates")
+async def get_platform_pricing_config(
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Returns platform subscription tiers, Option 2 booster rates, trial settings, and FX rate."""
+    pricing_cfg = db.exec(select(PlatformPricingConfig).where(PlatformPricingConfig.id == 1)).first()
+    if not pricing_cfg:
+        pricing_cfg = PlatformPricingConfig(id=1)
+        db.add(pricing_cfg)
+        db.commit()
+        db.refresh(pricing_cfg)
+    return {"config": jsonable_encoder(pricing_cfg)}
+
+
+@router.put("/pricing-config", summary="Update Global Pricing Tiers & Booster Rates (Admin)")
+async def update_platform_pricing_config(
+    payload: UpdatePricingConfigRequest,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Updates standard subscription tiers, booster pack prices, free trial quotas, and FX conversion rates."""
+    pricing_cfg = db.exec(select(PlatformPricingConfig).where(PlatformPricingConfig.id == 1)).first()
+    if not pricing_cfg:
+        pricing_cfg = PlatformPricingConfig(id=1)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, val in update_data.items():
+        if hasattr(pricing_cfg, field) and val is not None:
+            setattr(pricing_cfg, field, val)
+
+    pricing_cfg.updated_at = get_utc_now()
+    db.add(pricing_cfg)
+
+    # Optional synchronization to public LandingPageConfig pricing tiers
+    if payload.sync_landing_page and payload.tiers:
+        landing_cfg = db.exec(select(LandingPageConfig).where(LandingPageConfig.id == 1)).first()
+        if landing_cfg:
+            new_pricing_tiers = []
+            for t in payload.tiers:
+                tier_id = t.get("tier_id")
+                landing_id = "business" if tier_id == "starter" else ("firm" if tier_id == "pro" else "enterprise")
+                new_pricing_tiers.append({
+                    "id": landing_id,
+                    "title": t.get("name") or ("Boutique & Single Entity" if tier_id == "starter" else ("Accounting & Advisory Firm" if tier_id == "pro" else "Multi-Branch Enterprise")),
+                    "subtitle": t.get("description") or "",
+                    "price_display": f"GHS {t.get('price_ghs', 0):,.0f}",
+                    "period": "/ month",
+                    "badge": t.get("badge") or ("Single Business" if tier_id == "starter" else ("Most Popular for CPAs" if tier_id == "pro" else "High Volume")),
+                    "is_popular": bool(t.get("is_popular", False)),
+                    "features": [
+                        f"Up to {t.get('document_allowance', 500):,} monthly documents",
+                        "Gemini 2.5/3.6 Flash Vision OCR",
+                        f"Up to {t.get('max_clients', 1)} client organization(s)" if t.get('max_clients', 1) > 1 else "Single entity workspace",
+                        "Google Sheets & Web Review Inbox",
+                        "1-Click Sync to Zoho / QuickBooks",
+                        f"Option 2 Rollover Boosters or GHS {t.get('overage_rate_ghs', 1.0):.2f}/slip",
+                    ],
+                    "cta_text": "Request Free Firm Walkthrough" if tier_id == "pro" else ("Start Free Pilot" if tier_id == "starter" else "Contact Enterprise Team"),
+                    "cta_action": "lead_modal",
+                })
+            landing_cfg.pricing_tiers = new_pricing_tiers
+            landing_cfg.updated_at = get_utc_now()
+            db.add(landing_cfg)
+            logger.info("Synchronized platform pricing tiers to LandingPageConfig.")
+
+    db.commit()
+    db.refresh(pricing_cfg)
+
+    logger.info("Updated global PlatformPricingConfig.")
+    return {
+        "success": True,
+        "message": "Global platform pricing catalog and booster rates updated successfully.",
+        "config": jsonable_encoder(pricing_cfg),
     }

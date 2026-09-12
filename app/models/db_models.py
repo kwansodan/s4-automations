@@ -578,5 +578,100 @@ class LandingPageConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=get_utc_now)
 
 
+class PlatformPricingConfig(SQLModel, table=True):
+    """Global platform pricing tiers, Option 2 booster rates, trial policies, and FX conversion settings."""
+    __tablename__ = "platform_pricing_config"
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    currency: str = Field(default="GHS")
+    usd_to_ghs_rate: float = Field(default=13.50)
+
+    # Free Trial & Grace Policies
+    trial_days: int = Field(default=14, description="Standard free trial duration in days")
+    trial_document_quota: int = Field(default=50, description="Complimentary slips during trial")
+    grace_period_days: int = Field(default=3, description="Days before suspended status on past due accounts")
+
+    # Standard Subscription Tiers
+    tiers: List[Dict[str, Any]] = Field(
+        default_factory=lambda: [
+            {
+                "tier_id": "starter",
+                "name": "Starter Practice",
+                "description": "Solo Bookkeepers & Single Entities",
+                "price_ghs": 850.0,
+                "price_annual_ghs": 8670.0,
+                "document_allowance": 500,
+                "max_clients": 1,
+                "extra_client_price_ghs": 0.0,
+                "overage_rate_ghs": 1.20,
+                "badge": "Single Entity",
+                "is_popular": False,
+            },
+            {
+                "tier_id": "pro",
+                "name": "CPA Firm Pro",
+                "description": "Mid-size Accounting & Advisory Practices",
+                "price_ghs": 2800.0,
+                "price_annual_ghs": 28560.0,
+                "document_allowance": 3000,
+                "max_clients": 15,
+                "extra_client_price_ghs": 150.0,
+                "overage_rate_ghs": 0.90,
+                "badge": "Most Popular for CPAs",
+                "is_popular": True,
+            },
+            {
+                "tier_id": "enterprise",
+                "name": "Scale & Enterprise",
+                "description": "Large Audit Firms & BPOs",
+                "price_ghs": 6500.0,
+                "price_annual_ghs": 66300.0,
+                "document_allowance": 10000,
+                "max_clients": 50,
+                "extra_client_price_ghs": 120.0,
+                "overage_rate_ghs": 0.70,
+                "badge": "High Volume",
+                "is_popular": False,
+            },
+        ],
+        sa_column=Column(JSON),
+    )
+
+    # Option 2 Rollover Booster Top-Up Packs (Never Expire)
+    booster_packs: List[Dict[str, Any]] = Field(
+        default_factory=lambda: [
+            {
+                "id": "booster_250",
+                "slips": 250,
+                "price_ghs": 320.0,
+                "unit_rate": 1.28,
+                "badge": "Quick Top-Up",
+                "is_popular": False,
+            },
+            {
+                "id": "booster_500",
+                "slips": 500,
+                "price_ghs": 550.0,
+                "unit_rate": 1.10,
+                "badge": "Most Popular",
+                "is_popular": True,
+            },
+            {
+                "id": "booster_1000",
+                "slips": 1000,
+                "price_ghs": 950.0,
+                "unit_rate": 0.95,
+                "badge": "Best Value",
+                "is_popular": False,
+            },
+        ],
+        sa_column=Column(JSON),
+    )
+
+    sync_landing_page: bool = Field(default=True)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+
 
 

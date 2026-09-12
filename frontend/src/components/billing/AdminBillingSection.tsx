@@ -25,6 +25,10 @@ import {
   HelpCircle,
   Receipt,
   FileText,
+  Tag,
+  Sliders,
+  Trash2,
+  Save,
 } from 'lucide-react';
 import {
   fetchBillingOverview,
@@ -37,15 +41,19 @@ import {
   recordCustomerPayment,
   updatePaymentStatus,
   fetchPaidServicesCostMonitor,
+  fetchPlatformPricingConfig,
+  updatePlatformPricingConfig,
   BillingOverview,
   CustomerSubscription,
   CustomerPayment,
   CostMonitorData,
   BoosterPackOption,
+  PlatformPricingConfig,
+  SubscriptionTierConfig,
 } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
 
-type BillingTab = 'overview' | 'subscriptions' | 'trials' | 'payments' | 'costs';
+type BillingTab = 'overview' | 'subscriptions' | 'trials' | 'payments' | 'costs' | 'pricing';
 
 export const AdminBillingSection: React.FC = () => {
   const { addLog } = useAutomation();
@@ -101,22 +109,31 @@ export const AdminBillingSection: React.FC = () => {
   const [payNotes, setPayNotes] = useState('');
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
 
+  // Global Pricing & Booster Rates State
+  const [pricingConfig, setPricingConfig] = useState<PlatformPricingConfig | null>(null);
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
+  const [newBoosterSlips, setNewBoosterSlips] = useState(2500);
+  const [newBoosterPrice, setNewBoosterPrice] = useState(2200);
+  const [newBoosterBadge, setNewBoosterBadge] = useState('Bulk Scale');
+
   // Load Overview & Data
   const loadData = async () => {
     setIsLoading(true);
     setErrorMessage('');
     try {
-      const [ov, subs, pays, costs] = await Promise.all([
+      const [ov, subs, pays, costs, pCfg] = await Promise.all([
         fetchBillingOverview().catch(() => null),
         fetchCustomerSubscriptions().catch(() => ({ organizations: [], total_count: 0 })),
         fetchCustomerPayments().catch(() => ({ payments: [], total_count: 0 })),
         fetchPaidServicesCostMonitor(costDays).catch(() => null),
+        fetchPlatformPricingConfig().catch(() => null),
       ]);
 
       if (ov) setOverview(ov);
       if (subs?.organizations) setSubscriptions(subs.organizations);
       if (pays?.payments) setPayments(pays.payments);
       if (costs) setCostData(costs);
+      if (pCfg) setPricingConfig(pCfg);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to load billing metrics');
     } finally {
@@ -127,6 +144,59 @@ export const AdminBillingSection: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [costDays]);
+
+  // Handle Save Global Pricing
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pricingConfig) return;
+
+    setIsSavingPricing(true);
+    try {
+      const res = await updatePlatformPricingConfig(pricingConfig);
+      addLog('success', 'Saved global platform pricing catalog and booster rates.');
+      setPricingConfig(res.config);
+      loadData();
+    } catch (err: any) {
+      alert(`Failed to save pricing configuration: ${err.message}`);
+    } finally {
+      setIsSavingPricing(false);
+    }
+  };
+
+  // Add Custom Booster Pack
+  const handleAddCustomBooster = () => {
+    if (!pricingConfig) return;
+    if (newBoosterSlips <= 0 || newBoosterPrice <= 0) {
+      alert('Please provide a valid slip count and price in GHS.');
+      return;
+    }
+    const unitRate = Number((newBoosterPrice / newBoosterSlips).toFixed(2));
+    const newPack: BoosterPackOption = {
+      id: `booster_${newBoosterSlips}_${Date.now()}`,
+      slips: newBoosterSlips,
+      price_ghs: newBoosterPrice,
+      unit_rate: unitRate,
+      badge: newBoosterBadge || 'Custom Pack',
+      is_popular: false,
+    };
+    setPricingConfig({
+      ...pricingConfig,
+      booster_packs: [...(pricingConfig.booster_packs || []), newPack],
+    });
+    setNewBoosterSlips(5000);
+    setNewBoosterPrice(4200);
+    setNewBoosterBadge('Enterprise Pack');
+  };
+
+  // Remove Booster Pack
+  const handleRemoveBooster = (indexToRemove: number) => {
+    if (!pricingConfig) return;
+    const filtered = pricingConfig.booster_packs.filter((_, idx) => idx !== indexToRemove);
+    setPricingConfig({
+      ...pricingConfig,
+      booster_packs: filtered,
+    });
+  };
 
   // Handle Option 2 Booster Pack Apply
   const handleApplyBooster = async (e: React.FormEvent) => {
@@ -315,6 +385,7 @@ export const AdminBillingSection: React.FC = () => {
           { id: 'trials', label: `Free Trial Center (${subscriptions.filter((s) => s.subscription_status === 'TRIALING').length})`, icon: Clock },
           { id: 'payments', label: `Payments & MoMo Ledger (${payments.length})`, icon: Receipt },
           { id: 'costs', label: '3rd-Party Cost Monitor', icon: Zap },
+          { id: 'pricing', label: 'Global Pricing & Booster Rates', icon: Sliders },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -978,6 +1049,437 @@ export const AdminBillingSection: React.FC = () => {
         </div>
       )}
 
+      {/* TAB 6: GLOBAL PRICING & BOOSTER RATES EDITOR */}
+      {activeTab === 'pricing' && (
+        <form onSubmit={handleSavePricing} className="space-y-6 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
+            {/* Header & Save Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                    Platform Master Catalog
+                  </span>
+                  <h3 className="text-sm font-bold text-white">Global Pricing, Tiers &amp; Booster Rates</h3>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Adjust default platform-wide subscription plans, add or modify Option 2 booster pack prices, and configure free trial rules.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="submit"
+                  disabled={isSavingPricing}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingPricing ? 'Saving Changes...' : 'Save Pricing Catalog'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* General Currency & Global FX Rate */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-950 border border-slate-850">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Primary Currency
+                </label>
+                <select
+                  value={pricingConfig?.currency || 'GHS'}
+                  onChange={(e) =>
+                    setPricingConfig(pricingConfig ? { ...pricingConfig, currency: e.target.value } : null)
+                  }
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+                >
+                  <option value="GHS">GHS (Ghanaian Cedi)</option>
+                  <option value="USD">USD (US Dollar)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  USD to GHS FX Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={pricingConfig?.usd_to_ghs_rate ?? 13.50}
+                  onChange={(e) =>
+                    setPricingConfig(
+                      pricingConfig ? { ...pricingConfig, usd_to_ghs_rate: Number(e.target.value) } : null
+                    )
+                  }
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Free Trial Duration (Days)
+                </label>
+                <input
+                  type="number"
+                  value={pricingConfig?.trial_days ?? 14}
+                  onChange={(e) =>
+                    setPricingConfig(
+                      pricingConfig ? { ...pricingConfig, trial_days: Number(e.target.value) } : null
+                    )
+                  }
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Trial Document Quota (Slips)
+                </label>
+                <input
+                  type="number"
+                  value={pricingConfig?.trial_document_quota ?? 50}
+                  onChange={(e) =>
+                    setPricingConfig(
+                      pricingConfig ? { ...pricingConfig, trial_document_quota: Number(e.target.value) } : null
+                    )
+                  }
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Section 1: Standard Subscription Tiers */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    1. Standard Platform Subscription Tiers
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Defines default prices, included volume, and client limits when new organizations subscribe.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {pricingConfig?.tiers?.map((tier, tIdx) => (
+                  <div
+                    key={tier.tier_id || tIdx}
+                    className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 relative flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <input
+                          type="text"
+                          value={tier.name}
+                          onChange={(e) => {
+                            if (!pricingConfig) return;
+                            const newTiers = [...pricingConfig.tiers];
+                            newTiers[tIdx] = { ...tier, name: e.target.value };
+                            setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                          }}
+                          className="font-bold text-xs text-white bg-transparent border-b border-transparent focus:border-slate-600 focus:outline-none pb-0.5"
+                        />
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                          {tier.tier_id}
+                        </span>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={tier.description || ''}
+                        onChange={(e) => {
+                          if (!pricingConfig) return;
+                          const newTiers = [...pricingConfig.tiers];
+                          newTiers[tIdx] = { ...tier, description: e.target.value };
+                          setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                        }}
+                        placeholder="Tier description..."
+                        className="text-[11px] text-slate-400 bg-transparent border-b border-transparent focus:border-slate-600 focus:outline-none w-full"
+                      />
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Monthly Price ({pricingConfig.currency})</label>
+                          <input
+                            type="number"
+                            value={tier.price_ghs}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, price_ghs: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Annual Price ({pricingConfig.currency})</label>
+                          <input
+                            type="number"
+                            value={tier.price_annual_ghs}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, price_annual_ghs: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Monthly Slips</label>
+                          <input
+                            type="number"
+                            value={tier.document_allowance}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, document_allowance: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-sky-400 font-mono focus:outline-none font-bold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Max Client Orgs</label>
+                          <input
+                            type="number"
+                            value={tier.max_clients}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, max_clients: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Overage / Extra Slip</label>
+                          <input
+                            type="number"
+                            step="0.05"
+                            value={tier.overage_rate_ghs}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, overage_rate_ghs: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Extra Client Fee</label>
+                          <input
+                            type="number"
+                            value={tier.extra_client_price_ghs}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newTiers = [...pricingConfig.tiers];
+                              newTiers[tIdx] = { ...tier, extra_client_price_ghs: Number(e.target.value) };
+                              setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-500">Badge Label:</span>
+                      <input
+                        type="text"
+                        value={tier.badge || ''}
+                        onChange={(e) => {
+                          if (!pricingConfig) return;
+                          const newTiers = [...pricingConfig.tiers];
+                          newTiers[tIdx] = { ...tier, badge: e.target.value };
+                          setPricingConfig({ ...pricingConfig, tiers: newTiers });
+                        }}
+                        className="bg-transparent text-right font-mono text-emerald-400 focus:outline-none border-b border-transparent focus:border-slate-600"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Section 2: Option 2 Rollover Booster Packs */}
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    2. Option 2 Mid-Month Rollover Booster Packs
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    On-demand slip packs that clients or admins can activate when monthly limits are reached. Credits never expire and roll over indefinitely.
+                  </p>
+                </div>
+              </div>
+
+              {/* Booster Packs Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {pricingConfig?.booster_packs?.map((bp, bpIdx) => (
+                  <div
+                    key={bp.id || bpIdx}
+                    className="bg-slate-950 border border-slate-855 rounded-xl p-3.5 space-y-2 relative flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white">+{bp.slips} Slips</span>
+                          {bp.is_popular && (
+                            <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                              Popular
+                            </span>
+                          )}
+                        </div>
+                        {pricingConfig.booster_packs.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBooster(bpIdx)}
+                            className="text-slate-500 hover:text-rose-400 p-0.5 transition cursor-pointer"
+                            title="Remove booster pack"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Price ({pricingConfig.currency})</label>
+                          <input
+                            type="number"
+                            value={bp.price_ghs}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newPacks = [...pricingConfig.booster_packs];
+                              const p = Number(e.target.value);
+                              const u = bp.slips > 0 ? Number((p / bp.slips).toFixed(2)) : 0;
+                              newPacks[bpIdx] = { ...bp, price_ghs: p, unit_rate: u };
+                              setPricingConfig({ ...pricingConfig, booster_packs: newPacks });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-emerald-400 font-mono font-bold focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                          <span>Unit Rate:</span>
+                          <span className="text-white">GHS {bp.unit_rate || (bp.price_ghs / (bp.slips || 1)).toFixed(2)}/slip</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Badge / Tag</label>
+                          <input
+                            type="text"
+                            value={bp.badge}
+                            onChange={(e) => {
+                              if (!pricingConfig) return;
+                              const newPacks = [...pricingConfig.booster_packs];
+                              newPacks[bpIdx] = { ...bp, badge: e.target.value };
+                              setPricingConfig({ ...pricingConfig, booster_packs: newPacks });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-300 text-[11px] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add Custom Pack Card */}
+                <div className="bg-slate-950/60 border border-dashed border-slate-800 rounded-xl p-3.5 space-y-2.5 flex flex-col justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-300 block mb-2">
+                      + Add Custom Booster Pack
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Slips</label>
+                        <input
+                          type="number"
+                          value={newBoosterSlips}
+                          onChange={(e) => setNewBoosterSlips(Number(e.target.value))}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Price (GHS)</label>
+                        <input
+                          type="number"
+                          value={newBoosterPrice}
+                          onChange={(e) => setNewBoosterPrice(Number(e.target.value))}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-emerald-400 font-mono text-xs focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Badge Title</label>
+                      <input
+                        type="text"
+                        value={newBoosterBadge}
+                        onChange={(e) => setNewBoosterBadge(e.target.value)}
+                        placeholder="e.g. Enterprise Pack"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-300 text-xs focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddCustomBooster}
+                    className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Add Pack to Catalog</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Sync & Save Controls */}
+            <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={pricingConfig?.sync_landing_page ?? true}
+                  onChange={(e) =>
+                    setPricingConfig(
+                      pricingConfig ? { ...pricingConfig, sync_landing_page: e.target.checked } : null
+                    )
+                  }
+                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                <span>
+                  Synchronize pricing updates to public landing page pricing cards automatically
+                </span>
+              </label>
+
+              <button
+                type="submit"
+                disabled={isSavingPricing}
+                className="flex items-center justify-center gap-1.5 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xl shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSavingPricing ? 'Saving Changes...' : 'Save Global Pricing Catalog'}</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
       {/* MODAL: Apply Option 2 Booster Pack */}
       {selectedOrgForBooster && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
@@ -1001,17 +1503,17 @@ export const AdminBillingSection: React.FC = () => {
                   Select Booster Pack (Credits Never Expire)
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { slips: 250, price: 320 },
-                    { slips: 500, price: 550 },
-                    { slips: 1000, price: 950 },
-                  ].map((bp) => (
+                  {(pricingConfig?.booster_packs || overview?.booster_packs || [
+                    { slips: 250, price_ghs: 320, badge: 'Quick Top-Up' },
+                    { slips: 500, price_ghs: 550, badge: 'Most Popular' },
+                    { slips: 1000, price_ghs: 950, badge: 'Best Value' },
+                  ]).map((bp) => (
                     <button
                       key={bp.slips}
                       type="button"
                       onClick={() => {
                         setBoosterSlips(bp.slips);
-                        setBoosterPriceGhs(bp.price);
+                        setBoosterPriceGhs(bp.price_ghs);
                       }}
                       className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                         boosterSlips === bp.slips
@@ -1019,8 +1521,11 @@ export const AdminBillingSection: React.FC = () => {
                           : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
-                      <div>+{bp.slips} Slips</div>
-                      <div className="text-[10px] text-emerald-400 font-mono">GHS {bp.price}</div>
+                      <div className="font-bold">+{bp.slips} Slips</div>
+                      <div className="text-[10px] text-emerald-400 font-mono">GHS {bp.price_ghs}</div>
+                      {bp.badge && (
+                        <div className="text-[8px] text-slate-400 truncate mt-0.5">{bp.badge}</div>
+                      )}
                     </button>
                   ))}
                 </div>

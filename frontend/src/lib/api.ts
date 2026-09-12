@@ -1883,11 +1883,39 @@ export async function updateMarketingLeadStatus(
 // -------------------------------------------------------------------------
 
 export interface BoosterPackOption {
+  id?: string;
   slips: number;
   price_ghs: number;
   unit_rate: number;
   badge: string;
   is_popular?: boolean;
+}
+
+export interface SubscriptionTierConfig {
+  tier_id: string;
+  name: string;
+  description: string;
+  price_ghs: number;
+  price_annual_ghs: number;
+  document_allowance: number;
+  max_clients: number;
+  extra_client_price_ghs: number;
+  overage_rate_ghs: number;
+  badge: string;
+  is_popular?: boolean;
+}
+
+export interface PlatformPricingConfig {
+  id?: number;
+  currency: string;
+  usd_to_ghs_rate: number;
+  trial_days: number;
+  trial_document_quota: number;
+  grace_period_days: number;
+  tiers: SubscriptionTierConfig[];
+  booster_packs: BoosterPackOption[];
+  sync_landing_page: boolean;
+  updated_at?: string;
 }
 
 export interface BillingOverview {
@@ -2120,6 +2148,25 @@ export async function fetchPaidServicesCostMonitor(days: number = 30): Promise<C
     headers: getAuthHeaders(),
   });
   return handleResponse(res, 'Fetch 3rd-Party Cost Monitor');
+}
+
+export async function fetchPlatformPricingConfig(): Promise<PlatformPricingConfig> {
+  const res = await resilientFetch('/api/v1/billing/pricing-config', {
+    headers: getAuthHeaders(),
+  });
+  const data = await handleResponse(res, 'Fetch Platform Pricing Config');
+  return data.config;
+}
+
+export async function updatePlatformPricingConfig(
+  payload: Partial<PlatformPricingConfig>
+): Promise<{ success: boolean; message: string; config: PlatformPricingConfig }> {
+  const res = await resilientFetch('/api/v1/billing/pricing-config', {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update Platform Pricing Config');
 }
 
 
