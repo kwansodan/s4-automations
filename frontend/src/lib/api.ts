@@ -2154,7 +2154,10 @@ export async function fetchPlatformPricingConfig(): Promise<PlatformPricingConfi
   const res = await resilientFetch('/api/v1/billing/pricing-config', {
     headers: getAuthHeaders(),
   });
-  const data = await handleResponse(res, 'Fetch Platform Pricing Config');
+  const data = await handleResponse<{ config: PlatformPricingConfig }>(
+    res,
+    'Fetch Platform Pricing Config'
+  );
   return data.config;
 }
 
@@ -2166,7 +2169,10 @@ export async function updatePlatformPricingConfig(
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
-  return handleResponse(res, 'Update Platform Pricing Config');
+  return handleResponse<{ success: boolean; message: string; config: PlatformPricingConfig }>(
+    res,
+    'Update Platform Pricing Config'
+  );
 }
 
 
