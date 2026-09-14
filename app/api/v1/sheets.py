@@ -142,3 +142,31 @@ async def update_daily_detail_cell(payload: Dict[str, Any]) -> Dict[str, Any]:
         "is_ap": is_ap,
     }
 
+
+@router.post("/retrofit", summary="Retroactively Upgrade Existing Workbook with Dynamic Formulas")
+async def retrofit_existing_workbook(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Retroactively updates any existing spreadsheet to use dynamic live formulas."""
+    sheets = GoogleSheetsService()
+    sheet_id = payload.get("spreadsheet_id")
+    is_ap = bool(payload.get("is_ap", False))
+
+    if not sheet_id:
+        from datetime import datetime
+        now = datetime.now()
+        month = payload.get("month") or now.strftime("%B")
+        year = payload.get("year") or now.year
+        client_name = payload.get("client_name", "Client")
+        drive = GoogleDriveService()
+        m_fid = drive.get_month_folder(month, year) if month and year else "root"
+        if is_ap:
+            sheet_id, _ = sheets.find_or_create_ap_workbook(month, year, m_fid, client_name=client_name)
+        else:
+            sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
+
+    if not sheet_id:
+        return {"success": False, "message": "Could not identify target spreadsheet."}
+
+    result = sheets.retrofit_workbook_formulas(sheet_id, is_ap=is_ap)
+    return {"success": True, "result": result}
+
+

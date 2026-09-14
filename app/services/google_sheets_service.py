@@ -1102,6 +1102,9 @@ class GoogleSheetsService:
             }
 
         try:
+            # Retrofit existing historical workbooks with live dynamic formulas if needed
+            self.retrofit_workbook_formulas(spreadsheet_id, is_ap=False)
+
             # 1. Fetch Daily Details
             daily_res = self.sheets.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
@@ -1221,6 +1224,9 @@ class GoogleSheetsService:
             }
 
         try:
+            # Retrofit existing historical AP workbooks with live dynamic formulas if needed
+            self.retrofit_workbook_formulas(spreadsheet_id, is_ap=True)
+
             # 1. Fetch Daily Details (try TAB_AP_DAILY_DETAILS, fallback to TAB_AP_BILLS)
             daily_res = None
             for t_name in [TAB_AP_DAILY_DETAILS, "Daily_Details", TAB_AP_BILLS, "Vendor_Bills"]:
@@ -1389,4 +1395,108 @@ class GoogleSheetsService:
 
         logger.info(f"Updated Daily_Details cell {cell_range} to '{value}' (dynamic formulas recalculate).")
         return True
+
+    def retrofit_workbook_formulas(self, spreadsheet_id: str, is_ap: bool = False) -> Dict[str, Any]:
+        """
+        Retrospectively upgrades an existing spreadsheet so that its Monthly_Summary rows
+        use dynamic live Google Sheets formulas linked to Daily_Details.
+        Preserves all existing client/vendor names, categories, and accountant checkboxes.
+        """
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            return {"status": "MOCK_RETROFITTED", "spreadsheet_id": spreadsheet_id, "rows_upgraded": 0}
+
+        tab_summary = TAB_AP_MONTHLY_SUMMARY if is_ap else TAB_MONTHLY_SUMMARY
+        tab_daily = TAB_AP_DAILY_DETAILS if is_ap else TAB_DAILY_DETAILS
+
+        try:
+            # Read current formulas to inspect whether retrofit is needed
+            res = self.sheets.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"'{tab_summary}'!A2:O500",
+                valueRenderOption="FORMULA",
+            ).execute()
+
+            rows = res.get("values", [])
+            if not rows:
+                return {"status": "EMPTY", "spreadsheet_id": spreadsheet_id, "rows_upgraded": 0}
+
+            updates = []
+            upgraded_count = 0
+
+            for idx, r in enumerate(rows, start=2):
+                if not r:
+                    continue
+
+                if is_ap:
+                    # AP: A: Vendor, B: Zoho Contact ID, C: Expense Category, D: Bills Count, E: Quantity, F: Total Billed
+                    col_d_val = str(r[3]) if len(r) > 3 else ""
+                    if not col_d_val.startswith("="):
+                        bills_formula = f"=COUNTIFS('{tab_daily}'!B:B, A{idx}, '{tab_daily}'!F:F, C{idx})"
+                        qty_formula = f"=SUMIFS('{tab_daily}'!G:G, '{tab_daily}'!B:B, A{idx}, '{tab_daily}'!F:F, C{idx})"
+                        total_formula = f"=SUMIFS('{tab_daily}'!I:I, '{tab_daily}'!B:B, A{idx}, '{tab_daily}'!F:F, C{idx})"
+                        updates.append({
+                            "range": f"'{tab_summary}'!D{idx}:F{idx}",
+                            "values": [[bills_formula, qty_formula, total_formula]],
+                        })
+                        upgraded_count += 1
+                else:
+                    # AR: A: Client, B: Contact ID, C: Item ID, D: Standard Item Name, ...
+                    # H: Picked Up, I: Delivered, J: Discrepancy, K: Total Billed
+                    col_h_val = str(r[7]) if len(r) > 7 else ""
+                    if not col_h_val.startswith("="):
+                        picked_up_formula = f"=SUMIFS('{tab_daily}'!F:F, '{tab_daily}'!C:C, A{idx}, '{tab_daily}'!E:E, D{idx})"
+                        delivered_formula = f"=SUMIFS('{tab_daily}'!G:G, '{tab_daily}'!C:C, A{idx}, '{tab_daily}'!E:E, D{idx})"
+                        discrepancy_formula = f"=MAX(0, H{idx} - I{idx})"
+                        total_formula = f"=ROUND(I{idx} * G{idx}, 2)"
+                        updates.append({
+                            "range": f"'{tab_summary}'!H{idx}:K{idx}",
+                            "values": [[picked_up_formula, delivered_formula, discrepancy_formula, total_formula]],
+                        })
+                        upgraded_count += 1
+
+            if updates:
+                self.sheets.spreadsheets().values().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={"valueInputOption": "USER_ENTERED", "data": updates},
+                ).execute()
+                logger.info(f"Retroactively upgraded {upgraded_count} summary rows to live dynamic formulas in sheet {spreadsheet_id} (is_ap={is_ap}).")
+
+            # Also retrofit Daily_Details loss_qty (AR) if not already a formula
+            if not is_ap:
+                try:
+                    daily_res = self.sheets.spreadsheets().values().get(
+                        spreadsheetId=spreadsheet_id,
+                        range=f"'{tab_daily}'!A2:H500",
+                        valueRenderOption="FORMULA",
+                    ).execute()
+                    daily_rows = daily_res.get("values", [])
+                    daily_updates = []
+                    for k, d_row in enumerate(daily_rows, start=2):
+                        if not d_row:
+                            continue
+                        loss_val = str(d_row[7]) if len(d_row) > 7 else ""
+                        if not loss_val.startswith("="):
+                            daily_updates.append({
+                                "range": f"'{tab_daily}'!H{k}",
+                                "values": [[f"=MAX(0, F{k} - G{k})"]],
+                            })
+                    if daily_updates:
+                        self.sheets.spreadsheets().values().batchUpdate(
+                            spreadsheetId=spreadsheet_id,
+                            body={"valueInputOption": "USER_ENTERED", "data": daily_updates},
+                        ).execute()
+                        logger.info(f"Retroactively upgraded {len(daily_updates)} Daily_Details loss rows to =MAX(0, F-G) in {spreadsheet_id}")
+                except Exception as daily_err:
+                    logger.debug(f"Notice retrofitting daily details formulas: {daily_err}")
+
+            return {
+                "status": "UPGRADED" if upgraded_count > 0 else "ALREADY_CURRENT",
+                "spreadsheet_id": spreadsheet_id,
+                "rows_upgraded": upgraded_count,
+                "is_ap": is_ap,
+            }
+        except Exception as e:
+            logger.warning(f"Notice during retrofit_workbook_formulas for {spreadsheet_id}: {e}")
+            return {"status": "ERROR", "error": str(e), "spreadsheet_id": spreadsheet_id, "rows_upgraded": 0}
+
 
