@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
 import { useErrors } from '../../context/ErrorContext';
 import { ExternalLink, Check, AlertTriangle, AlertCircle, FileSpreadsheet, RefreshCw, Layers, Calendar, Terminal } from 'lucide-react';
@@ -26,24 +26,45 @@ export const SheetsViewer: React.FC = () => {
   const [search, setSearch] = useState('');
 
   const sheetsError = errors.find(
-    (e) => e.endpoint?.includes('sheets') || e.title?.toLowerCase().includes('sheet')
+    (e) => e.endpoint?.includes('sheets') || (e.title || '').toLowerCase().includes('sheet')
   );
 
   const dailyDetails = sheetsData?.daily_details || [];
   const monthlySummary = sheetsData?.monthly_summary || [];
 
-  const filteredDaily = dailyDetails.filter(
-    (d) =>
-      d.client_name.toLowerCase().includes(search.toLowerCase()) ||
-      d.item_name.toLowerCase().includes(search.toLowerCase()) ||
-      d.file_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const query = (search || '').trim().toLowerCase();
 
-  const filteredSummary = monthlySummary.filter(
-    (s) =>
-      s.client_name.toLowerCase().includes(search.toLowerCase()) ||
-      s.item_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredDaily = useMemo(() => {
+    if (!query) return dailyDetails;
+    return dailyDetails.filter((d) => {
+      const client = (d?.client_name || '').toLowerCase();
+      const item = (d?.item_name || '').toLowerCase();
+      const file = (d?.file_name || '').toLowerCase();
+      const cat = (d?.category || '').toLowerCase();
+      const date = (d?.date || '').toLowerCase();
+      return (
+        client.includes(query) ||
+        item.includes(query) ||
+        file.includes(query) ||
+        cat.includes(query) ||
+        date.includes(query)
+      );
+    });
+  }, [dailyDetails, query]);
+
+  const filteredSummary = useMemo(() => {
+    if (!query) return monthlySummary;
+    return monthlySummary.filter((s) => {
+      const client = (s?.client_name || '').toLowerCase();
+      const item = (s?.item_name || '').toLowerCase();
+      const status = (s?.status || '').toLowerCase();
+      return (
+        client.includes(query) ||
+        item.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [monthlySummary, query]);
 
   const approvedRowsCount = monthlySummary.filter((s) => s.approved).length;
   const totalApprovedAmount = monthlySummary

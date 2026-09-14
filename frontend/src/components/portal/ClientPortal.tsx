@@ -230,10 +230,10 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
 
   const filteredTxs = transactions.filter((t) => {
     if (!searchFilter) return true;
-    const query = searchFilter.toLowerCase();
+    const query = searchFilter.trim().toLowerCase();
     return (
-      t.description.toLowerCase().includes(query) ||
-      t.transaction_date.includes(query) ||
+      (t.description || '').toLowerCase().includes(query) ||
+      (t.transaction_date || '').includes(query) ||
       (t.accountant_query && t.accountant_query.toLowerCase().includes(query)) ||
       (t.client_explanation && t.client_explanation.toLowerCase().includes(query))
     );

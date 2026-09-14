@@ -31,10 +31,12 @@ export const ClientsHub: React.FC = () => {
   };
 
   const filteredClients = clients.filter((c) => {
+    const q = (search || '').trim().toLowerCase();
     const matchesSearch =
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.industry.toLowerCase().includes(search.toLowerCase()) ||
-      c.desc.toLowerCase().includes(search.toLowerCase());
+      !q ||
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.industry || '').toLowerCase().includes(q) ||
+      (c.desc || '').toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });

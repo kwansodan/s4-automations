@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useClient } from '../../../context/ClientContext';
 import { useAutomation } from '../../../context/AutomationContext';
 import {
@@ -105,20 +105,57 @@ export const ClientArTab: React.FC = () => {
   const dailyDetails = sheetsData?.daily_details || [];
   const monthlySummary = sheetsData?.monthly_summary || [];
 
-  const filteredDaily = dailyDetails.filter(
-    (d) =>
-      d.client_name.toLowerCase().includes(search.toLowerCase()) ||
-      d.item_name.toLowerCase().includes(search.toLowerCase()) ||
-      d.file_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const query = (search || '').trim().toLowerCase();
 
-  const filteredSummary = monthlySummary.filter(
-    (s) =>
-      s.client_name.toLowerCase().includes(search.toLowerCase()) ||
-      s.item_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredDaily = useMemo(() => {
+    if (!query) return dailyDetails;
+    return dailyDetails.filter((d) => {
+      const client = (d?.client_name || '').toLowerCase();
+      const item = (d?.item_name || '').toLowerCase();
+      const file = (d?.file_name || '').toLowerCase();
+      const cat = (d?.category || '').toLowerCase();
+      const date = (d?.date || '').toLowerCase();
+      return (
+        client.includes(query) ||
+        item.includes(query) ||
+        file.includes(query) ||
+        cat.includes(query) ||
+        date.includes(query)
+      );
+    });
+  }, [dailyDetails, query]);
+
+  const filteredSummary = useMemo(() => {
+    if (!query) return monthlySummary;
+    return monthlySummary.filter((s) => {
+      const client = (s?.client_name || '').toLowerCase();
+      const item = (s?.item_name || '').toLowerCase();
+      const status = (s?.status || '').toLowerCase();
+      return (
+        client.includes(query) ||
+        item.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [monthlySummary, query]);
 
   const arStagedTx = transactions.filter((t) => t.pipeline_type !== 'AP');
+
+  const filteredArStagedTx = useMemo(() => {
+    if (!query) return arStagedTx;
+    return arStagedTx.filter((t) => {
+      const desc = (t?.item_or_description || '').toLowerCase();
+      const cat = (t?.category_or_account || '').toLowerCase();
+      const date = (t?.transaction_date || '').toLowerCase();
+      const status = (t?.status || '').toLowerCase();
+      return (
+        desc.includes(query) ||
+        cat.includes(query) ||
+        date.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [arStagedTx, query]);
 
   const sheetsApprovedCount = monthlySummary.filter((s) => s.approved && s.status !== 'INVOICED').length;
   const sheetsApprovedAmount = monthlySummary
@@ -472,8 +509,8 @@ export const ClientArTab: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300">
-                  {arStagedTx.length > 0 ? (
-                    arStagedTx.map((tx) => (
+                  {filteredArStagedTx.length > 0 ? (
+                    filteredArStagedTx.map((tx) => (
                       <tr key={tx.id} className="hover:bg-slate-800/40 transition">
                         <td className="py-3 px-4 text-slate-400 font-mono">{tx.transaction_date}</td>
                         <td className="py-3 px-4 text-white font-semibold">{tx.item_or_description}</td>
