@@ -757,6 +757,21 @@ export async function toggleApproval(payloadOrId: any, approved?: boolean): Prom
   return handleResponse<{ success: boolean; message: string }>(res, 'Toggle approval');
 }
 
+export async function updateDailyDetailCell(payload: {
+  spreadsheet_id: string;
+  row_index: number;
+  field: string;
+  value: any;
+  is_ap?: boolean;
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await resilientFetch('/api/sheets/daily-detail', {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ success: boolean; message?: string }>(res, 'Update daily detail cell');
+}
+
 export async function updateConfig(newConfig: Record<string, any>): Promise<{ success: boolean; message: string; config: any }> {
   const res = await resilientFetch('/api/config', {
     method: 'POST',

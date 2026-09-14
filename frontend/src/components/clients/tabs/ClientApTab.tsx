@@ -347,6 +347,30 @@ export const ClientApTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Live Dynamic Spreadsheet Linking Banner */}
+      <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-indigo-300">
+        <div className="flex items-center gap-2">
+          <span className="flex h-2 w-2 relative shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+          </span>
+          <span>
+            <strong>Dynamic Spreadsheet Linking Active:</strong> Monthly Summary figures are dynamic formulas (<code className="text-indigo-200 font-mono">=COUNTIFS</code>, <code className="text-indigo-200 font-mono">=SUMIFS</code>) calculated directly from Daily Details. Any manual adjustments in Daily Details or Google Sheets automatically update the summary.
+          </span>
+        </div>
+        {sheetsData?.spreadsheet_url && (
+          <a
+            href={sheetsData.spreadsheet_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 underline shrink-0 cursor-pointer"
+          >
+            <span>Live Sheet</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+
       {/* Main Content Area */}
       <div className="glass-panel rounded-2xl overflow-hidden shadow-xl border border-slate-800">
         <div className="overflow-x-auto custom-scrollbar">

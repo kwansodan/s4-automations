@@ -496,7 +496,15 @@ class GoogleSheetsService:
 
         self._ensure_ap_tab_exists(spreadsheet_id, TAB_AP_DAILY_DETAILS, AP_DAILY_DETAILS_HEADERS)
 
-        values = [row.to_sheet_row() for row in rows]
+        # Determine starting row in TAB_AP_DAILY_DETAILS
+        existing_res = self.sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{TAB_AP_DAILY_DETAILS}'!A:A"
+        ).execute()
+        existing_count = len(existing_res.get("values", []))
+        start_row = max(2, existing_count + 1)
+
+        values = [row.to_sheet_row(row_index=start_row + i) for i, row in enumerate(rows)]
         range_name = f"'{TAB_AP_DAILY_DETAILS}'!A:N"
 
         self.sheets.spreadsheets().values().append(
@@ -506,7 +514,7 @@ class GoogleSheetsService:
             body={"values": values},
         ).execute()
 
-        logger.info(f"Successfully appended {len(rows)} AP detail rows to {TAB_AP_DAILY_DETAILS}")
+        logger.info(f"Successfully appended {len(rows)} AP detail rows (starting at row {start_row}) to {TAB_AP_DAILY_DETAILS}")
         return len(rows)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -514,6 +522,7 @@ class GoogleSheetsService:
         """
         Synchronizes monthly vendor summary rows to Tab 2: Monthly_Summary.
         Upserts rows matching (Vendor Name + Expense Category).
+        Uses dynamic Google Sheets formulas (COUNTIFS, SUMIFS) referencing Tab 1: Daily_Details.
         Preserves user 'Reviewed?' and 'Approved?' checkboxes if already checked.
         """
         if not summary_rows:
@@ -544,6 +553,7 @@ class GoogleSheetsService:
 
         updates = []
         appends = []
+        start_append_row = len(existing_values) + 2
 
         for summary in summary_rows:
             key = (summary.vendor_name.strip().lower(), summary.expense_category.strip().lower())
@@ -566,10 +576,11 @@ class GoogleSheetsService:
 
                 updates.append({
                     "range": f"'{TAB_AP_MONTHLY_SUMMARY}'!A{row_idx}:K{row_idx}",
-                    "values": [summary.to_sheet_row()],
+                    "values": [summary.to_sheet_row(row_index=row_idx)],
                 })
             else:
-                appends.append(summary.to_sheet_row())
+                row_idx = start_append_row + len(appends)
+                appends.append(summary.to_sheet_row(row_index=row_idx))
 
         if updates:
             self.sheets.spreadsheets().values().batchUpdate(
@@ -585,7 +596,7 @@ class GoogleSheetsService:
                 body={"values": appends},
             ).execute()
 
-        logger.info(f"Successfully synced {len(summary_rows)} AP summary rows ({len(updates)} updated, {len(appends)} appended) to {TAB_AP_MONTHLY_SUMMARY}")
+        logger.info(f"Successfully synced {len(summary_rows)} AP summary rows with dynamic formulas ({len(updates)} updated, {len(appends)} appended) to {TAB_AP_MONTHLY_SUMMARY}")
         return len(summary_rows)
 
     def sync_ap_review_workspace(
@@ -810,7 +821,7 @@ class GoogleSheetsService:
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def append_daily_slip_details(self, spreadsheet_id: str, rows: List[DailySlipDetailRow]) -> int:
-        """Appends individual line items to Tab 1: Daily_Slip_Details."""
+        """Appends individual line items to Tab 1: Daily_Details."""
         if not rows:
             return 0
 
@@ -818,17 +829,25 @@ class GoogleSheetsService:
             logger.info(f"[MOCK] Appended {len(rows)} rows to {TAB_DAILY_DETAILS}")
             return len(rows)
 
-        values = [row.to_sheet_row() for row in rows]
+        # Determine starting row in TAB_DAILY_DETAILS
+        res = self.sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{TAB_DAILY_DETAILS}'!A:A"
+        ).execute()
+        existing_count = len(res.get("values", []))
+        start_row = max(2, existing_count + 1)
+
+        values = [row.to_sheet_row(row_index=start_row + i) for i, row in enumerate(rows)]
         range_name = f"'{TAB_DAILY_DETAILS}'!A:K"
 
         self.sheets.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=range_name,
-            valueInputOption="USER_ENTERED",  # Required to render =HYPERLINK formula
+            valueInputOption="USER_ENTERED",  # Required to render =HYPERLINK formula and =MAX formula
             body={"values": values},
         ).execute()
 
-        logger.info(f"Successfully appended {len(rows)} detail rows to {TAB_DAILY_DETAILS}")
+        logger.info(f"Successfully appended {len(rows)} detail rows (starting at row {start_row}) to {TAB_DAILY_DETAILS}")
         return len(rows)
 
     def get_existing_filenames_in_workbook(self, spreadsheet_id: str, is_ap: bool = False) -> Set[str]:
@@ -869,6 +888,7 @@ class GoogleSheetsService:
         """
         Synchronizes monthly SKU summary rows to Tab 2: Monthly_Summary.
         Upserts rows matching (Client Name + Zoho Item ID).
+        Uses dynamic Google Sheets formulas (SUMIFS, MAX, ROUND) referencing Tab 1: Daily_Details.
         Preserves user 'Reviewed?' and 'Approved?' checkboxes if already checked.
         """
         if not summary_rows:
@@ -898,6 +918,7 @@ class GoogleSheetsService:
 
         updates = []
         appends = []
+        start_append_row = len(existing_values) + 2
 
         for summary in summary_rows:
             key = (summary.client_name.strip().lower(), (summary.zoho_item_id or summary.standard_item_name).strip().lower())
@@ -922,10 +943,11 @@ class GoogleSheetsService:
 
                 updates.append({
                     "range": f"'{TAB_MONTHLY_SUMMARY}'!A{row_idx}:O{row_idx}",
-                    "values": [summary.to_sheet_row()],
+                    "values": [summary.to_sheet_row(row_index=row_idx)],
                 })
             else:
-                appends.append(summary.to_sheet_row())
+                row_idx = start_append_row + len(appends)
+                appends.append(summary.to_sheet_row(row_index=row_idx))
 
         if updates:
             self.sheets.spreadsheets().values().batchUpdate(
@@ -940,8 +962,7 @@ class GoogleSheetsService:
                 valueInputOption="USER_ENTERED",
                 body={"values": appends},
             ).execute()
-
-        logger.info(f"Updated {len(updates)} and appended {len(appends)} rows in {TAB_MONTHLY_SUMMARY}")
+        logger.info(f"Successfully synced {len(summary_rows)} SKU summary rows with dynamic formulas ({len(updates)} updated, {len(appends)} appended) to {TAB_MONTHLY_SUMMARY}")
         return len(summary_rows)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -994,7 +1015,8 @@ class GoogleSheetsService:
 
         res = self.sheets.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
+            range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500",
+            valueRenderOption="UNFORMATTED_VALUE",
         ).execute()
 
         rows = res.get("values", [])
@@ -1082,7 +1104,9 @@ class GoogleSheetsService:
         try:
             # 1. Fetch Daily Details
             daily_res = self.sheets.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id, range=f"'{TAB_DAILY_DETAILS}'!A2:K500"
+                spreadsheetId=spreadsheet_id,
+                range=f"'{TAB_DAILY_DETAILS}'!A2:K500",
+                valueRenderOption="UNFORMATTED_VALUE",
             ).execute()
             daily_rows = daily_res.get("values", [])
             daily_details = []
@@ -1105,7 +1129,9 @@ class GoogleSheetsService:
 
             # 2. Fetch Monthly Summary
             monthly_res = self.sheets.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id, range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
+                spreadsheetId=spreadsheet_id,
+                range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500",
+                valueRenderOption="UNFORMATTED_VALUE",
             ).execute()
             monthly_rows = monthly_res.get("values", [])
             monthly_summary = []
@@ -1200,7 +1226,9 @@ class GoogleSheetsService:
             for t_name in [TAB_AP_DAILY_DETAILS, "Daily_Details", TAB_AP_BILLS, "Vendor_Bills"]:
                 try:
                     daily_res = self.sheets.spreadsheets().values().get(
-                        spreadsheetId=spreadsheet_id, range=f"'{t_name}'!A2:N500"
+                        spreadsheetId=spreadsheet_id,
+                        range=f"'{t_name}'!A2:N500",
+                        valueRenderOption="UNFORMATTED_VALUE",
                     ).execute()
                     if daily_res and daily_res.get("values"):
                         break
@@ -1235,7 +1263,9 @@ class GoogleSheetsService:
             monthly_res = None
             try:
                 monthly_res = self.sheets.spreadsheets().values().get(
-                    spreadsheetId=spreadsheet_id, range=f"'{TAB_AP_MONTHLY_SUMMARY}'!A2:K500"
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'{TAB_AP_MONTHLY_SUMMARY}'!A2:K500",
+                    valueRenderOption="UNFORMATTED_VALUE",
                 ).execute()
             except Exception:
                 pass
@@ -1288,4 +1318,75 @@ class GoogleSheetsService:
                     "monthly_summary": [],
                 }
             raise
+
+    def update_daily_detail_cell(
+        self,
+        spreadsheet_id: str,
+        row_index: int,
+        field: str,
+        value: Any,
+        is_ap: bool = False,
+    ) -> bool:
+        """
+        Updates a specific cell in Tab 1: Daily_Details.
+        Uses valueInputOption='USER_ENTERED' so that live formulas in Tab 2 (Monthly_Summary)
+        automatically and dynamically recalculate in real time.
+        """
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            logger.info(f"[MOCK] Updated Daily_Details row {row_index} field '{field}' to '{value}' (is_ap={is_ap})")
+            return True
+
+        tab_name = TAB_AP_DAILY_DETAILS if is_ap else TAB_DAILY_DETAILS
+
+        if is_ap:
+            field_map = {
+                "date": "A",
+                "vendor_name": "B",
+                "vendor": "B",
+                "bill_number": "C",
+                "bill_no": "C",
+                "file_name": "D",
+                "item_description": "E",
+                "description": "E",
+                "expense_category": "F",
+                "category": "F",
+                "quantity": "G",
+                "qty": "G",
+                "unit_rate": "H",
+                "unit_price": "H",
+                "total_amount": "I",
+                "amount": "I",
+                "currency": "J",
+                "status": "K",
+            }
+        else:
+            field_map = {
+                "date": "A",
+                "slip_date": "A",
+                "file_name": "B",
+                "client_name": "C",
+                "raw_item_name": "D",
+                "standard_item_name": "E",
+                "item_name": "E",
+                "pickup_qty": "F",
+                "delivery_qty": "G",
+                "loss_qty": "H",
+                "confidence_score": "I",
+            }
+
+        col_letter = field_map.get(field.lower())
+        if not col_letter:
+            logger.warning(f"Unknown field '{field}' for daily detail cell update in tab '{tab_name}'.")
+            return False
+
+        cell_range = f"'{tab_name}'!{col_letter}{row_index}"
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=cell_range,
+            valueInputOption="USER_ENTERED",
+            body={"values": [[value]]},
+        ).execute()
+
+        logger.info(f"Updated Daily_Details cell {cell_range} to '{value}' (dynamic formulas recalculate).")
+        return True
 

@@ -92,9 +92,10 @@ class DailySlipDetailRow(BaseModel):
     drive_file_url: str
     processed_at: str
 
-    def to_sheet_row(self) -> List[Any]:
-        """Convert to Google Sheets row values array."""
+    def to_sheet_row(self, row_index: Optional[int] = None) -> List[Any]:
+        """Convert to Google Sheets row values array. If row_index is provided, uses dynamic formula for loss_qty."""
         hyperlink_formula = f'=HYPERLINK("{self.drive_file_url}", "View Scan ↗")' if self.drive_file_url else "N/A"
+        loss_val = f"=MAX(0, F{row_index} - G{row_index})" if row_index is not None else self.loss_qty
         return [
             self.slip_date,
             self.file_name,
@@ -103,7 +104,7 @@ class DailySlipDetailRow(BaseModel):
             self.standard_item_name,
             self.pickup_qty,
             self.delivery_qty,
-            self.loss_qty,
+            loss_val,
             self.confidence_score.value,
             hyperlink_formula,
             self.processed_at,
@@ -128,8 +129,23 @@ class MonthlySummaryRow(BaseModel):
     approved: bool = False
     status: SlipStatus = SlipStatus.PENDING
 
-    def to_sheet_row(self) -> List[Any]:
-        """Convert to Google Sheets 15-column row values array."""
+    def to_sheet_row(self, row_index: Optional[int] = None) -> List[Any]:
+        """
+        Convert to Google Sheets 15-column row values array.
+        When row_index is passed, generates dynamic formulas that automatically link to Tab 1: Daily_Details.
+        """
+        if row_index is not None:
+            # Dynamic formulas referencing Daily_Details
+            picked_up: Any = f"=SUMIFS('Daily_Details'!F:F, 'Daily_Details'!C:C, A{row_index}, 'Daily_Details'!E:E, D{row_index})"
+            delivered: Any = f"=SUMIFS('Daily_Details'!G:G, 'Daily_Details'!C:C, A{row_index}, 'Daily_Details'!E:E, D{row_index})"
+            discrepancy: Any = f"=MAX(0, H{row_index} - I{row_index})"
+            total_billed: Any = f"=ROUND(I{row_index} * G{row_index}, 2)"
+        else:
+            picked_up = self.total_picked_up
+            delivered = self.total_delivered
+            discrepancy = self.linen_discrepancy
+            total_billed = round(self.total_billed, 2)
+
         return [
             self.client_name,
             self.zoho_contact_id,
@@ -138,10 +154,10 @@ class MonthlySummaryRow(BaseModel):
             self.raw_names_seen,
             self.confidence_score.value,
             round(self.unit_rate, 2),
-            self.total_picked_up,
-            self.total_delivered,
-            self.linen_discrepancy,
-            round(self.total_billed, 2),
+            picked_up,
+            delivered,
+            discrepancy,
+            total_billed,
             self.audit_notes,
             self.reviewed,
             self.approved,
@@ -166,9 +182,14 @@ class APDailyDetailRow(BaseModel):
     scan_url: str = ""
     processed_at: str = ""
 
-    def to_sheet_row(self) -> List[Any]:
-        """Convert to Google Sheets row values array."""
+    def to_sheet_row(self, row_index: Optional[int] = None) -> List[Any]:
+        """Convert to Google Sheets row values array. If row_index is given and unit_rate > 0, uses dynamic formula for total."""
         scan_link = f'=HYPERLINK("{self.scan_url}", "View Document ↗")' if self.scan_url else "N/A"
+        if row_index is not None and self.unit_rate > 0:
+            total_val: Any = f"=ROUND(G{row_index} * H{row_index}, 2)"
+        else:
+            total_val = round(self.total_amount, 2)
+
         return [
             self.bill_date,
             self.vendor_name,
@@ -178,7 +199,7 @@ class APDailyDetailRow(BaseModel):
             self.expense_category,
             round(self.quantity, 2),
             round(self.unit_rate, 2),
-            round(self.total_amount, 2),
+            total_val,
             self.currency,
             self.status,
             self.accounting_ref,
@@ -201,15 +222,28 @@ class APMonthlySummaryRow(BaseModel):
     approved: bool = False
     status: str = "PENDING"
 
-    def to_sheet_row(self) -> List[Any]:
-        """Convert to Google Sheets row values array."""
+    def to_sheet_row(self, row_index: Optional[int] = None) -> List[Any]:
+        """
+        Convert to Google Sheets row values array.
+        When row_index is passed, generates dynamic formulas that automatically link to Daily_Details.
+        """
+        if row_index is not None:
+            # Dynamic formulas referencing Daily_Details
+            bills_count: Any = f"=COUNTIFS('Daily_Details'!B:B, A{row_index}, 'Daily_Details'!F:F, C{row_index})"
+            total_qty: Any = f"=SUMIFS('Daily_Details'!G:G, 'Daily_Details'!B:B, A{row_index}, 'Daily_Details'!F:F, C{row_index})"
+            total_amount: Any = f"=SUMIFS('Daily_Details'!I:I, 'Daily_Details'!B:B, A{row_index}, 'Daily_Details'!F:F, C{row_index})"
+        else:
+            bills_count = self.total_bills_count
+            total_qty = round(self.total_quantity, 2)
+            total_amount = round(self.total_amount, 2)
+
         return [
             self.vendor_name,
             self.zoho_contact_id,
             self.expense_category,
-            self.total_bills_count,
-            round(self.total_quantity, 2),
-            round(self.total_amount, 2),
+            bills_count,
+            total_qty,
+            total_amount,
             self.currency,
             self.audit_notes,
             self.reviewed,

@@ -117,3 +117,28 @@ async def toggle_sheet_approval(payload: Dict[str, Any]) -> Dict[str, Any]:
         "value": val,
         "is_ap": is_ap,
     }
+
+
+@router.patch("/daily-detail", summary="Update Cell in Daily Details")
+async def update_daily_detail_cell(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Updates a cell in Daily_Details with USER_ENTERED so dynamic formulas in Monthly_Summary recalculate."""
+    sheets = GoogleSheetsService()
+    sheet_id = payload.get("spreadsheet_id")
+    row_idx = int(payload.get("row_index", 2))
+    field = payload.get("field", "delivery_qty")
+    val = payload.get("value")
+    is_ap = bool(payload.get("is_ap", False))
+
+    if not sheet_id:
+        return {"success": False, "message": "Missing spreadsheet_id parameter."}
+
+    success = sheets.update_daily_detail_cell(sheet_id, row_idx, field, val, is_ap=is_ap)
+    return {
+        "success": success,
+        "spreadsheet_id": sheet_id,
+        "row_index": row_idx,
+        "field": field,
+        "value": val,
+        "is_ap": is_ap,
+    }
+
