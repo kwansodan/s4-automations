@@ -194,6 +194,29 @@ async def run_ap_pipeline_core(
                 current_step=f"Extracted bill {idx+1}/{len(files)}: {file_name}",
             )
 
+        # Step 4: Sync to 2-Tab Google Review Sheet (Daily_Details + Monthly_Summary)
+        sheet_id = None
+        sheet_url = None
+        try:
+            from app.services.google_sheets_service import GoogleSheetsService
+            sheets = GoogleSheetsService()
+            month_folder_id = drive.get_month_folder(target_month, target_year)
+            sheet_id, sheet_url = sheets.find_or_create_ap_workbook(
+                target_month, target_year, month_folder_id, client_name=client_name
+            )
+            if sheet_id and not sheet_id.startswith("mock_"):
+                with Session(get_engine()) as session:
+                    batch_txs = session.exec(
+                        select(StagedTransaction).where(StagedTransaction.batch_id == batch_id)
+                    ).all()
+                if batch_txs:
+                    sheets.sync_ap_review_workspace(
+                        sheet_id, batch_txs, auto_post=auto_post_draft, client_name=client_name
+                    )
+                    logger.info(f"📊 Synced {len(batch_txs)} AP transactions to 2-Tab Google Sheet '{sheet_id}'")
+        except Exception as sheet_err:
+            logger.warning(f"Notice syncing AP pipeline results to Google Sheets: {sheet_err}")
+
         pipeline_tracker.update_progress(
             percent=100,
             stage_index=4,
@@ -201,6 +224,7 @@ async def run_ap_pipeline_core(
             stats_update={
                 "bills_processed": len(processed_bills),
                 "total_ap_amount": sum(b.get("total_amount", 0.0) for b in processed_bills),
+                "spreadsheet_url": sheet_url,
             },
         )
 
@@ -210,6 +234,8 @@ async def run_ap_pipeline_core(
             "target_year": target_year,
             "bills_processed_count": len(processed_bills),
             "bills": processed_bills,
+            "spreadsheet_id": sheet_id,
+            "spreadsheet_url": sheet_url,
         }
 
     except Exception as e:

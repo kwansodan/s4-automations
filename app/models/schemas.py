@@ -149,6 +149,75 @@ class MonthlySummaryRow(BaseModel):
         ]
 
 
+class APDailyDetailRow(BaseModel):
+    """Row model for AP Tab 1: Daily_Details (Individual Vendor Bill Items)."""
+    bill_date: str
+    vendor_name: str
+    bill_number: str = ""
+    file_name: str = ""
+    item_description: str = ""
+    expense_category: str = "Operating Expense"
+    quantity: float = 1.0
+    unit_rate: float = 0.0
+    total_amount: float = 0.0
+    currency: str = "GHS"
+    status: str = "PENDING"
+    accounting_ref: str = ""
+    scan_url: str = ""
+    processed_at: str = ""
+
+    def to_sheet_row(self) -> List[Any]:
+        """Convert to Google Sheets row values array."""
+        scan_link = f'=HYPERLINK("{self.scan_url}", "View Document ↗")' if self.scan_url else "N/A"
+        return [
+            self.bill_date,
+            self.vendor_name,
+            self.bill_number,
+            self.file_name,
+            self.item_description,
+            self.expense_category,
+            round(self.quantity, 2),
+            round(self.unit_rate, 2),
+            round(self.total_amount, 2),
+            self.currency,
+            self.status,
+            self.accounting_ref,
+            scan_link,
+            self.processed_at,
+        ]
+
+
+class APMonthlySummaryRow(BaseModel):
+    """Row model for AP Tab 2: Monthly_Summary (Vendor Monthly Aggregated Review)."""
+    vendor_name: str
+    zoho_contact_id: str = ""
+    expense_category: str = "Operating Expense"
+    total_bills_count: int = 1
+    total_quantity: float = 1.0
+    total_amount: float = 0.0
+    currency: str = "GHS"
+    audit_notes: str = ""
+    reviewed: bool = False
+    approved: bool = False
+    status: str = "PENDING"
+
+    def to_sheet_row(self) -> List[Any]:
+        """Convert to Google Sheets row values array."""
+        return [
+            self.vendor_name,
+            self.zoho_contact_id,
+            self.expense_category,
+            self.total_bills_count,
+            round(self.total_quantity, 2),
+            round(self.total_amount, 2),
+            self.currency,
+            self.audit_notes,
+            self.reviewed,
+            self.approved,
+            self.status,
+        ]
+
+
 # -------------------------------------------------------------------------
 # Zoho Books Schemas
 # -------------------------------------------------------------------------

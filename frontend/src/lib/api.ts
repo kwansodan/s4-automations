@@ -701,9 +701,19 @@ export async function fetchConfig(): Promise<{ status: string; config: any }> {
   return handleResponse<{ status: string; config: any }>(res, 'Fetch config');
 }
 
-export async function fetchSheetsData(month?: string, year?: number): Promise<SheetsReviewData> {
-  const query = month && year ? `?month=${month}&year=${year}` : '';
-  const res = await resilientFetch(`/api/sheets/data${query}`, {
+export async function fetchSheetsData(
+  month?: string,
+  year?: number,
+  pipelineType: 'AR' | 'AP' = 'AR',
+  clientId?: string
+): Promise<SheetsReviewData> {
+  const params = new URLSearchParams();
+  if (month) params.append('month', month);
+  if (year) params.append('year', year.toString());
+  if (pipelineType) params.append('pipeline_type', pipelineType);
+  if (clientId) params.append('client_id', clientId);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+  const res = await resilientFetch(`/api/sheets/data${qStr}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<SheetsReviewData>(res, 'Fetch sheets data');

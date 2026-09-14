@@ -10,6 +10,8 @@ from app.config import settings
 from app.models.schemas import (
     DailySlipDetailRow,
     MonthlySummaryRow,
+    APDailyDetailRow,
+    APMonthlySummaryRow,
     ConfidenceLevel,
     SlipStatus,
 )
@@ -21,6 +23,8 @@ logger = get_logger("google_sheets")
 TAB_DAILY_DETAILS = "Daily_Slip_Details"
 TAB_MONTHLY_SUMMARY = "Monthly_Summary"
 TAB_AP_BILLS = "Vendor_Bills"
+TAB_AP_DAILY_DETAILS = "Daily_Details"
+TAB_AP_MONTHLY_SUMMARY = "Monthly_Summary"
 
 DAILY_DETAILS_HEADERS = [
     "Date",
@@ -67,6 +71,37 @@ AP_BILLS_HEADERS = [
     "Status",
     "Accounting Ref",
     "Processed At",
+]
+
+AP_DAILY_DETAILS_HEADERS = [
+    "Date",
+    "Vendor Name",
+    "Bill #",
+    "File Name",
+    "Item / Description",
+    "Expense Category",
+    "Quantity",
+    "Unit Rate (GHS)",
+    "Total Amount (GHS)",
+    "Currency",
+    "Status",
+    "Accounting Ref",
+    "Scan Link",
+    "Processed At",
+]
+
+AP_MONTHLY_SUMMARY_HEADERS = [
+    "Vendor Name",
+    "Zoho Contact ID",
+    "Expense Category",
+    "Total Bills Count",
+    "Total Quantity",
+    "Total Billed (GHS)",
+    "Currency",
+    "Audit Notes",
+    "Reviewed?",
+    "Approved?",
+    "Status",
 ]
 
 
@@ -196,9 +231,9 @@ class GoogleSheetsService:
     ) -> Tuple[str, Optional[str]]:
         """
         Locates or creates a dedicated Google Sheet AP review workbook:
-        '{client_name}_AP_Bills_{Month}_{YYYY}' inside the Month Folder.
-        Falls back to attaching a 'Vendor_Bills' tab to an existing review workbook in the folder
-        if creating a separate spreadsheet is restricted by Google Drive quota/permissions.
+        '{client_name}_AP_Bills_{Month}_{YYYY}' inside the Month Folder with 2 tabs:
+        1. Monthly_Summary (Tab index 0)
+        2. Daily_Details (Tab index 1)
         Returns (spreadsheet_id, spreadsheet_url).
         """
         safe_prefix = "".join(c for c in client_name if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
@@ -234,70 +269,46 @@ class GoogleSheetsService:
                 sheet_id = files[0]["id"]
                 sheet_url = files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
                 logger.info(f"Found existing AP review workbook '{workbook_title}' (ID: {sheet_id})")
+                self._ensure_ap_tab_exists(sheet_id, TAB_AP_MONTHLY_SUMMARY, AP_MONTHLY_SUMMARY_HEADERS)
+                self._ensure_ap_tab_exists(sheet_id, TAB_AP_DAILY_DETAILS, AP_DAILY_DETAILS_HEADERS)
                 return sheet_id, sheet_url
 
-            # 2. Try creating new dedicated AP spreadsheet inside parent folder
-            file_metadata = {
-                "name": workbook_title,
-                "mimeType": "application/vnd.google-apps.spreadsheet",
-            }
-            if parent_folder and parent_folder != "root":
-                file_metadata["parents"] = [parent_folder]
-
+            # 2. Try creating new dedicated AP spreadsheet with 2 tabs
             try:
-                created = self.drive.files().create(
-                    body=file_metadata,
-                    fields="id, webViewLink",
-                    supportsAllDrives=True,
+                spreadsheet_body = {
+                    "properties": {"title": workbook_title},
+                    "sheets": [
+                        {"properties": {"title": TAB_AP_MONTHLY_SUMMARY, "index": 0}},
+                        {"properties": {"title": TAB_AP_DAILY_DETAILS, "index": 1}},
+                    ],
+                }
+                created = self.sheets.spreadsheets().create(
+                    body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl"
                 ).execute()
-                sheet_id = created["id"]
-                sheet_url = created.get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                sheet_id = created["spreadsheetId"]
+                sheet_url = created["spreadsheetUrl"]
 
-                # Rename default Sheet1 to TAB_AP_BILLS
-                try:
-                    sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                    first_sheet_id = sheet_meta["sheets"][0]["properties"]["sheetId"]
-                    self.sheets.spreadsheets().batchUpdate(
-                        spreadsheetId=sheet_id,
-                        body={
-                            "requests": [
-                                {
-                                    "updateSheetProperties": {
-                                        "properties": {
-                                            "sheetId": first_sheet_id,
-                                            "title": TAB_AP_BILLS,
-                                        },
-                                        "fields": "title",
-                                    }
-                                }
-                            ]
-                        },
-                    ).execute()
-                except Exception as rename_err:
-                    logger.warning(f"Notice setting initial tab title: {rename_err}")
+                # Move to parent folder if specified
+                if parent_folder and parent_folder != "root":
+                    try:
+                        self.drive.files().update(
+                            fileId=sheet_id,
+                            addParents=parent_folder,
+                            fields="id, parents",
+                            supportsAllDrives=True,
+                        ).execute()
+                    except Exception as move_err:
+                        logger.warning(f"Could not move AP sheet {sheet_id} to folder {parent_folder}: {move_err}")
 
-                # Initialize AP headers
-                self.sheets.spreadsheets().values().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={
-                        "valueInputOption": "RAW",
-                        "data": [
-                            {
-                                "range": f"'{TAB_AP_BILLS}'!A1:L1",
-                                "values": [AP_BILLS_HEADERS],
-                            },
-                        ],
-                    },
-                ).execute()
-                logger.info(f"Created and initialized dedicated AP review workbook '{workbook_title}' (ID: {sheet_id})")
+                # Initialize headers and styling
+                self._format_ap_workbook(sheet_id)
+                logger.info(f"Created and formatted 2-tab AP review workbook '{workbook_title}' (ID: {sheet_id})")
                 return sheet_id, sheet_url
 
             except Exception as create_err:
                 logger.warning(f"Could not create standalone AP spreadsheet in folder: {create_err}. Checking for existing shared workbook...")
 
-            # 3. Fallback: If creating a standalone sheet is restricted, check if an existing
-            # review workbook is shared in this folder (e.g. ANR_Billing_Review_<Month>_<Year>)
-            # and attach a dedicated 'Vendor_Bills' tab to it.
+            # 3. Fallback: Check if an existing review workbook exists in folder, attach AP tabs to it
             if parent_folder and parent_folder != "root":
                 try:
                     q_existing = (
@@ -316,39 +327,12 @@ class GoogleSheetsService:
                     if ext_files:
                         existing_sheet_id = ext_files[0]["id"]
                         existing_sheet_url = ext_files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{existing_sheet_id}/edit")
-                        # Inspect sheets to see if Vendor_Bills already exists
-                        sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=existing_sheet_id).execute()
-                        sheets_list = sheet_meta.get("sheets", [])
-                        tab_id = None
-                        for s in sheets_list:
-                            if s["properties"]["title"] == TAB_AP_BILLS:
-                                tab_id = s["properties"]["sheetId"]
-                                break
-                        if tab_id is None:
-                            # Add dedicated Vendor_Bills tab
-                            add_resp = self.sheets.spreadsheets().batchUpdate(
-                                spreadsheetId=existing_sheet_id,
-                                body={
-                                    "requests": [
-                                        {"addSheet": {"properties": {"title": TAB_AP_BILLS}}}
-                                    ]
-                                }
-                            ).execute()
-                            tab_id = add_resp.get("replies", [{}])[0].get("addSheet", {}).get("properties", {}).get("sheetId")
-                            self.sheets.spreadsheets().values().batchUpdate(
-                                spreadsheetId=existing_sheet_id,
-                                body={
-                                    "valueInputOption": "RAW",
-                                    "data": [
-                                        {"range": f"'{TAB_AP_BILLS}'!A1:L1", "values": [AP_BILLS_HEADERS]},
-                                    ],
-                                },
-                            ).execute()
-                        final_url = f"{existing_sheet_url}#gid={tab_id}" if tab_id is not None else existing_sheet_url
-                        logger.info(f"Attached '{TAB_AP_BILLS}' tab to existing shared review sheet '{ext_files[0]['name']}' (ID: {existing_sheet_id})")
-                        return existing_sheet_id, final_url
+                        self._ensure_ap_tab_exists(existing_sheet_id, TAB_AP_MONTHLY_SUMMARY, AP_MONTHLY_SUMMARY_HEADERS)
+                        self._ensure_ap_tab_exists(existing_sheet_id, TAB_AP_DAILY_DETAILS, AP_DAILY_DETAILS_HEADERS)
+                        logger.info(f"Attached 2 AP tabs to existing shared review sheet '{ext_files[0]['name']}' (ID: {existing_sheet_id})")
+                        return existing_sheet_id, existing_sheet_url
                 except Exception as fb_err:
-                    logger.warning(f"Attaching tab to existing review sheet fallback notice: {fb_err}")
+                    logger.warning(f"Attaching AP tabs fallback notice: {fb_err}")
 
             mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
             return mock_id, None
@@ -358,60 +342,356 @@ class GoogleSheetsService:
             mock_id = f"mock_sheet_ap_{month_name.lower()}_{year}"
             return mock_id, None
 
-    def append_ap_vendor_bills(self, spreadsheet_id: str, items: List[Any], auto_post: bool = False):
-        """Appends extracted AP vendor bills to the Vendor_Bills sheet."""
-        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+    def _format_ap_workbook(self, spreadsheet_id: str):
+        """Applies headers, freeze row, and checkbox validation to AP 2-tab review workbook."""
+        if settings.MOCK_MODE or not self.sheets:
             return
 
-        rows = []
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        for it in items:
-            raw = getattr(it, "raw_extracted_data", {}) or {}
-            d = raw.get("date") or raw.get("bill_date") or ""
-            v_name = raw.get("vendor") or raw.get("vendor_name") or ""
-            b_num = raw.get("bill_number") or ""
-            f_name = raw.get("file_name") or ""
-            desc = getattr(it, "item_or_description", "")
-            qty = getattr(it, "quantity_or_debit", 1.0)
-            rate = getattr(it, "unit_price", 0.0)
-            tot = getattr(it, "total_amount", 0.0)
-            curr = raw.get("currency", "GHS")
-            st = "BILLED" if auto_post else "PENDING"
-            doc_ref = raw.get("accounting_ref_id", "")
+        # Write header values to both tabs
+        self.sheets.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "valueInputOption": "RAW",
+                "data": [
+                    {
+                        "range": f"'{TAB_AP_MONTHLY_SUMMARY}'!A1:K1",
+                        "values": [AP_MONTHLY_SUMMARY_HEADERS],
+                    },
+                    {
+                        "range": f"'{TAB_AP_DAILY_DETAILS}'!A1:N1",
+                        "values": [AP_DAILY_DETAILS_HEADERS],
+                    },
+                ],
+            },
+        ).execute()
 
-            rows.append([d, v_name, b_num, f_name, desc, qty, rate, tot, curr, st, doc_ref, now_str])
+        # Get sheet IDs for styling
+        sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        monthly_sheet_id = None
+        daily_sheet_id = None
+        for s in sheet_meta.get("sheets", []):
+            if s["properties"]["title"] == TAB_AP_MONTHLY_SUMMARY:
+                monthly_sheet_id = s["properties"]["sheetId"]
+            elif s["properties"]["title"] == TAB_AP_DAILY_DETAILS:
+                daily_sheet_id = s["properties"]["sheetId"]
 
-        if rows:
-            try:
-                # Ensure Vendor_Bills tab exists in target sheet
-                try:
-                    sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-                    titles = [s["properties"]["title"] for s in sheet_meta.get("sheets", [])]
-                    if TAB_AP_BILLS not in titles:
-                        self.sheets.spreadsheets().batchUpdate(
-                            spreadsheetId=spreadsheet_id,
-                            body={"requests": [{"addSheet": {"properties": {"title": TAB_AP_BILLS}}}]}
-                        ).execute()
-                        self.sheets.spreadsheets().values().batchUpdate(
-                            spreadsheetId=spreadsheet_id,
-                            body={
-                                "valueInputOption": "RAW",
-                                "data": [{"range": f"'{TAB_AP_BILLS}'!A1:L1", "values": [AP_BILLS_HEADERS]}],
-                            }
-                        ).execute()
-                except Exception as meta_err:
-                    logger.debug(f"Sheet tab check notice: {meta_err}")
+        requests = []
+        for s_id in [monthly_sheet_id, daily_sheet_id]:
+            if s_id is None:
+                continue
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": s_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.10, "green": 0.21, "blue": 0.36},
+                            "textFormat": {
+                                "bold": True,
+                                "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                                "fontSize": 10,
+                            },
+                            "horizontalAlignment": "CENTER",
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+                }
+            })
+            requests.append({
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": s_id,
+                        "gridProperties": {"frozenRowCount": 1},
+                    },
+                    "fields": "gridProperties.frozenRowCount",
+                }
+            })
 
-                self.sheets.spreadsheets().values().append(
+        # Add Checkbox data validation on Monthly_Summary for Reviewed? (col I / idx 8) & Approved? (col J / idx 9)
+        if monthly_sheet_id is not None:
+            for col_idx in [8, 9]:
+                requests.append({
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": monthly_sheet_id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": col_idx,
+                            "endColumnIndex": col_idx + 1,
+                        },
+                        "rule": {
+                            "condition": {"type": "BOOLEAN"},
+                            "showCustomUi": True,
+                        },
+                    }
+                })
+
+        if requests:
+            self.sheets.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": requests}
+            ).execute()
+
+    def _ensure_ap_tab_exists(self, spreadsheet_id: str, tab_title: str, headers: List[str]):
+        """Ensures the specified AP tab exists in spreadsheet, creating and adding headers if absent."""
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            return
+        try:
+            sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            titles = [s["properties"]["title"] for s in sheet_meta.get("sheets", [])]
+            if tab_title not in titles:
+                add_res = self.sheets.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id,
-                    range=f"'{TAB_AP_BILLS}'!A2:L",
-                    valueInputOption="USER_ENTERED",
-                    insertDataOption="INSERT_ROWS",
-                    body={"values": rows},
+                    body={"requests": [{"addSheet": {"properties": {"title": tab_title}}}]}
                 ).execute()
-                logger.info(f"Appended {len(rows)} AP bill rows to Google Sheet '{spreadsheet_id}'")
-            except Exception as e:
-                logger.warning(f"Could not append AP bills to Google Sheet: {e}")
+                new_sheet_id = add_res.get("replies", [{}])[0].get("addSheet", {}).get("properties", {}).get("sheetId")
+                end_col = chr(ord('A') + len(headers) - 1)
+                self.sheets.spreadsheets().values().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={
+                        "valueInputOption": "RAW",
+                        "data": [{"range": f"'{tab_title}'!A1:{end_col}1", "values": [headers]}],
+                    }
+                ).execute()
+                if new_sheet_id is not None:
+                    self.sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "repeatCell": {
+                                        "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                                        "cell": {
+                                            "userEnteredFormat": {
+                                                "backgroundColor": {"red": 0.10, "green": 0.21, "blue": 0.36},
+                                                "textFormat": {"bold": True, "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "fontSize": 10},
+                                                "horizontalAlignment": "CENTER",
+                                            }
+                                        },
+                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+                                    }
+                                },
+                                {
+                                    "updateSheetProperties": {
+                                        "properties": {"sheetId": new_sheet_id, "gridProperties": {"frozenRowCount": 1}},
+                                        "fields": "gridProperties.frozenRowCount",
+                                    }
+                                }
+                            ]
+                        }
+                    ).execute()
+        except Exception as err:
+            logger.debug(f"Notice ensuring tab '{tab_title}' exists: {err}")
+
+    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def append_ap_daily_details(self, spreadsheet_id: str, rows: List[APDailyDetailRow]) -> int:
+        """Appends individual vendor bill line items to Tab 1: Daily_Details."""
+        if not rows:
+            return 0
+
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            logger.info(f"[MOCK] Appended {len(rows)} AP bill rows to {TAB_AP_DAILY_DETAILS}")
+            return len(rows)
+
+        self._ensure_ap_tab_exists(spreadsheet_id, TAB_AP_DAILY_DETAILS, AP_DAILY_DETAILS_HEADERS)
+
+        values = [row.to_sheet_row() for row in rows]
+        range_name = f"'{TAB_AP_DAILY_DETAILS}'!A:N"
+
+        self.sheets.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption="USER_ENTERED",
+            body={"values": values},
+        ).execute()
+
+        logger.info(f"Successfully appended {len(rows)} AP detail rows to {TAB_AP_DAILY_DETAILS}")
+        return len(rows)
+
+    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def sync_ap_monthly_summaries(self, spreadsheet_id: str, summary_rows: List[APMonthlySummaryRow]) -> int:
+        """
+        Synchronizes monthly vendor summary rows to Tab 2: Monthly_Summary.
+        Upserts rows matching (Vendor Name + Expense Category).
+        Preserves user 'Reviewed?' and 'Approved?' checkboxes if already checked.
+        """
+        if not summary_rows:
+            return 0
+
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            logger.info(f"[MOCK] Synchronized {len(summary_rows)} AP summary rows to {TAB_AP_MONTHLY_SUMMARY}")
+            return len(summary_rows)
+
+        self._ensure_ap_tab_exists(spreadsheet_id, TAB_AP_MONTHLY_SUMMARY, AP_MONTHLY_SUMMARY_HEADERS)
+
+        # Read existing rows from Monthly_Summary
+        res = self.sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{TAB_AP_MONTHLY_SUMMARY}'!A2:K500"
+        ).execute()
+        existing_values = res.get("values", [])
+
+        # Index existing rows by key: (vendor_name.lower(), expense_category.lower())
+        existing_map: Dict[Tuple[str, str], Tuple[int, List[Any]]] = {}
+        for idx, row in enumerate(existing_values, start=2):
+            if not row:
+                continue
+            v_name = row[0].strip().lower() if len(row) > 0 else ""
+            cat_name = row[2].strip().lower() if len(row) > 2 else ""
+            key = (v_name, cat_name)
+            existing_map[key] = (idx, row)
+
+        updates = []
+        appends = []
+
+        for summary in summary_rows:
+            key = (summary.vendor_name.strip().lower(), summary.expense_category.strip().lower())
+            
+            if key in existing_map:
+                row_idx, old_row = existing_map[key]
+                old_reviewed = old_row[8] if len(old_row) > 8 else summary.reviewed
+                old_approved = old_row[9] if len(old_row) > 9 else summary.approved
+                old_status = old_row[10] if len(old_row) > 10 else summary.status
+
+                if isinstance(old_reviewed, str):
+                    old_reviewed = old_reviewed.upper() in ["TRUE", "YES", "1"]
+                if isinstance(old_approved, str):
+                    old_approved = old_approved.upper() in ["TRUE", "YES", "1"]
+
+                summary.reviewed = bool(old_reviewed)
+                summary.approved = bool(old_approved)
+                if old_status:
+                    summary.status = str(old_status)
+
+                updates.append({
+                    "range": f"'{TAB_AP_MONTHLY_SUMMARY}'!A{row_idx}:K{row_idx}",
+                    "values": [summary.to_sheet_row()],
+                })
+            else:
+                appends.append(summary.to_sheet_row())
+
+        if updates:
+            self.sheets.spreadsheets().values().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"valueInputOption": "USER_ENTERED", "data": updates},
+            ).execute()
+
+        if appends:
+            self.sheets.spreadsheets().values().append(
+                spreadsheetId=spreadsheet_id,
+                range=f"'{TAB_AP_MONTHLY_SUMMARY}'!A:K",
+                valueInputOption="USER_ENTERED",
+                body={"values": appends},
+            ).execute()
+
+        logger.info(f"Successfully synced {len(summary_rows)} AP summary rows ({len(updates)} updated, {len(appends)} appended) to {TAB_AP_MONTHLY_SUMMARY}")
+        return len(summary_rows)
+
+    def sync_ap_review_workspace(
+        self,
+        spreadsheet_id: str,
+        items: List[Any],
+        auto_post: bool = False,
+        client_name: str = "Client",
+    ) -> Dict[str, Any]:
+        """
+        Populates both Tab 1 (Daily_Details) and Tab 2 (Monthly_Summary) for AP vendor bills.
+        Accepts list of ExtractedLineItem or bill dictionaries.
+        """
+        if not items:
+            return {"daily_rows_written": 0, "summary_rows_synced": 0}
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        daily_rows: List[APDailyDetailRow] = []
+
+        summary_map: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+        for it in items:
+            raw = getattr(it, "raw_extracted_data", {}) or (it if isinstance(it, dict) else {})
+            b_date = raw.get("date") or raw.get("bill_date") or getattr(it, "transaction_date", "") or datetime.now().strftime("%Y-%m-%d")
+            v_name = raw.get("vendor") or raw.get("vendor_name") or getattr(it, "vendor_name", "") or client_name or "Vendor"
+            b_num = raw.get("bill_number") or ""
+            f_name = raw.get("file_name") or getattr(it, "source_file_name", "") or ""
+            desc = getattr(it, "item_or_description", None) or raw.get("item_description") or raw.get("description") or "Vendor Bill Item"
+            cat = getattr(it, "category_or_account", None) or raw.get("expense_category") or raw.get("category") or "Operating Expense"
+            qty = float(getattr(it, "quantity_or_debit", 1.0) or 1.0)
+            rate = float(getattr(it, "unit_price", 0.0) or getattr(it, "rate_or_price", 0.0) or 0.0)
+            tot = float(getattr(it, "total_amount", 0.0) or 0.0)
+            if tot == 0.0 and rate > 0:
+                tot = rate * qty
+            elif rate == 0.0 and qty > 0 and tot > 0:
+                rate = tot / qty
+            curr = raw.get("currency", "GHS")
+            st = getattr(it, "status", None) or ("BILLED" if auto_post else "PENDING")
+            doc_ref = getattr(it, "accounting_ref_id", None) or raw.get("accounting_ref_id") or ""
+            scan_url = raw.get("drive_file_url") or raw.get("scan_url") or ""
+
+            daily_rows.append(
+                APDailyDetailRow(
+                    bill_date=str(b_date),
+                    vendor_name=str(v_name),
+                    bill_number=str(b_num),
+                    file_name=str(f_name),
+                    item_description=str(desc),
+                    expense_category=str(cat),
+                    quantity=qty,
+                    unit_rate=rate,
+                    total_amount=tot,
+                    currency=str(curr),
+                    status=str(st),
+                    accounting_ref=str(doc_ref),
+                    scan_url=str(scan_url),
+                    processed_at=now_str,
+                )
+            )
+
+            key = (str(v_name).strip(), str(cat).strip())
+            if key not in summary_map:
+                summary_map[key] = {
+                    "vendor_name": str(v_name).strip(),
+                    "zoho_contact_id": raw.get("vendor_id") or "",
+                    "expense_category": str(cat).strip(),
+                    "bills_count": set(),
+                    "total_quantity": 0.0,
+                    "total_amount": 0.0,
+                    "currency": str(curr),
+                }
+            bill_identifier = str(b_num).strip() or str(f_name).strip() or f"item_{len(daily_rows)}"
+            summary_map[key]["bills_count"].add(bill_identifier)
+            summary_map[key]["total_quantity"] += qty
+            summary_map[key]["total_amount"] += tot
+
+        summary_rows: List[APMonthlySummaryRow] = []
+        for data in summary_map.values():
+            summary_rows.append(
+                APMonthlySummaryRow(
+                    vendor_name=data["vendor_name"],
+                    zoho_contact_id=data["zoho_contact_id"],
+                    expense_category=data["expense_category"],
+                    total_bills_count=len(data["bills_count"]),
+                    total_quantity=data["total_quantity"],
+                    total_amount=data["total_amount"],
+                    currency=data["currency"],
+                    audit_notes="Auto-Posted Live" if auto_post else "Pending Accountant Review",
+                    reviewed=bool(auto_post),
+                    approved=bool(auto_post),
+                    status="BILLED" if auto_post else "PENDING",
+                )
+            )
+
+        daily_count = self.append_ap_daily_details(spreadsheet_id, daily_rows)
+        summary_count = self.sync_ap_monthly_summaries(spreadsheet_id, summary_rows)
+
+        return {
+            "spreadsheet_id": spreadsheet_id,
+            "daily_rows_written": daily_count,
+            "summary_rows_synced": summary_count,
+        }
+
+    def append_ap_vendor_bills(self, spreadsheet_id: str, items: List[Any], auto_post: bool = False, client_name: str = "Client"):
+        """Wrapper ensuring backwards compatibility: routes to 2-tab sync_ap_review_workspace."""
+        return self.sync_ap_review_workspace(spreadsheet_id, items, auto_post=auto_post, client_name=client_name)
 
     def _initialize_tabs(self, spreadsheet_id: str):
         """Initializes headers, column formats, frozen rows, and conditional formatting."""
@@ -552,17 +832,29 @@ class GoogleSheetsService:
         return len(rows)
 
     def get_existing_filenames_in_workbook(self, spreadsheet_id: str, is_ap: bool = False) -> Set[str]:
-        """Returns set of lowercased file names currently recorded in Tab 1: Daily_Slip_Details or Vendor_Bills."""
+        """Returns set of lowercased file names currently recorded in Tab 1 (Daily_Details or Daily_Slip_Details)."""
         if not spreadsheet_id or spreadsheet_id.startswith("mock_") or not self.sheets:
             return set()
         try:
-            tab_name = TAB_AP_BILLS if is_ap else TAB_DAILY_DETAILS
-            col_range = f"'{tab_name}'!D2:D5000" if is_ap else f"'{tab_name}'!B2:B5000"
-            res = self.sheets.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range=col_range,
-            ).execute()
-            values = res.get("values", [])
+            if is_ap:
+                candidate_tabs = [TAB_AP_DAILY_DETAILS, TAB_AP_BILLS, "Daily_Details", "Vendor_Bills"]
+            else:
+                candidate_tabs = [TAB_DAILY_DETAILS, "Daily_Slip_Details"]
+
+            values = []
+            for t_name in candidate_tabs:
+                try:
+                    col_range = f"'{t_name}'!D2:D5000" if is_ap else f"'{t_name}'!B2:B5000"
+                    res = self.sheets.spreadsheets().values().get(
+                        spreadsheetId=spreadsheet_id,
+                        range=col_range,
+                    ).execute()
+                    values = res.get("values", [])
+                    if values:
+                        break
+                except Exception:
+                    continue
+
             return {
                 str(row[0]).strip().lower()
                 for row in values
@@ -865,14 +1157,20 @@ class GoogleSheetsService:
                 }
             raise
 
-    def toggle_row_field(self, spreadsheet_id: str, row_index: int, field: str, value: Any) -> bool:
+    def toggle_row_field(self, spreadsheet_id: str, row_index: int, field: str, value: Any, is_ap: bool = False) -> bool:
         """Toggles 'reviewed', 'approved', or 'status' for a row in Tab 2."""
         if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
-            logger.info(f"[MOCK] Toggled row {row_index} field {field} to {value}")
+            logger.info(f"[MOCK] Toggled row {row_index} field {field} to {value} (is_ap={is_ap})")
             return True
 
-        col_letter = "M" if field == "reviewed" else ("N" if field == "approved" else "O")
-        cell_range = f"'{TAB_MONTHLY_SUMMARY}'!{col_letter}{row_index}"
+        if is_ap:
+            col_letter = "I" if field == "reviewed" else ("J" if field == "approved" else "K")
+            tab_name = TAB_AP_MONTHLY_SUMMARY
+        else:
+            col_letter = "M" if field == "reviewed" else ("N" if field == "approved" else "O")
+            tab_name = TAB_MONTHLY_SUMMARY
+
+        cell_range = f"'{tab_name}'!{col_letter}{row_index}"
 
         self.sheets.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
@@ -881,6 +1179,113 @@ class GoogleSheetsService:
             body={"values": [[value]]},
         ).execute()
 
-        logger.info(f"Updated row {row_index} {field} -> {value} in {spreadsheet_id}")
+        logger.info(f"Updated row {row_index} {field} -> {value} in {spreadsheet_id} (tab: {tab_name})")
         return True
+
+    def fetch_ap_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
+        """Fetches all rows from both AP Tab 1 (Daily Details) and AP Tab 2 (Monthly Summary) for UI review."""
+        if not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            return {
+                "month": month,
+                "year": year,
+                "spreadsheet_id": spreadsheet_id or "",
+                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit" if spreadsheet_id else "",
+                "daily_details": [],
+                "monthly_summary": [],
+            }
+
+        try:
+            # 1. Fetch Daily Details (try TAB_AP_DAILY_DETAILS, fallback to TAB_AP_BILLS)
+            daily_res = None
+            for t_name in [TAB_AP_DAILY_DETAILS, "Daily_Details", TAB_AP_BILLS, "Vendor_Bills"]:
+                try:
+                    daily_res = self.sheets.spreadsheets().values().get(
+                        spreadsheetId=spreadsheet_id, range=f"'{t_name}'!A2:N500"
+                    ).execute()
+                    if daily_res and daily_res.get("values"):
+                        break
+                except Exception:
+                    continue
+
+            daily_rows = daily_res.get("values", []) if daily_res else []
+            daily_details = []
+            for r in daily_rows:
+                if not r:
+                    continue
+                daily_details.append({
+                    "date": r[0] if len(r) > 0 else "",
+                    "slip_date": r[0] if len(r) > 0 else "",
+                    "client_name": r[1] if len(r) > 1 else "",
+                    "vendor_name": r[1] if len(r) > 1 else "",
+                    "bill_number": r[2] if len(r) > 2 else "",
+                    "file_name": r[3] if len(r) > 3 else "",
+                    "item_name": r[4] if len(r) > 4 else "",
+                    "item_description": r[4] if len(r) > 4 else "",
+                    "category": r[5] if len(r) > 5 else "Operating Expense",
+                    "quantity": _parse_float(r[6] if len(r) > 6 else 1.0, 1.0),
+                    "unit_price": _parse_float(r[7] if len(r) > 7 else 0.0),
+                    "total_amount": _parse_float(r[8] if len(r) > 8 else 0.0),
+                    "currency": r[9] if len(r) > 9 else "GHS",
+                    "status": r[10] if len(r) > 10 else "PENDING",
+                    "accounting_ref": r[11] if len(r) > 11 else "",
+                    "processed_at": r[13] if len(r) > 13 else (r[11] if len(r) > 11 else ""),
+                })
+
+            # 2. Fetch Monthly Summary
+            monthly_res = None
+            try:
+                monthly_res = self.sheets.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id, range=f"'{TAB_AP_MONTHLY_SUMMARY}'!A2:K500"
+                ).execute()
+            except Exception:
+                pass
+
+            monthly_rows = monthly_res.get("values", []) if monthly_res else []
+            monthly_summary = []
+            for idx, r in enumerate(monthly_rows, start=2):
+                if not r:
+                    continue
+                rev_val = r[8] if len(r) > 8 else False
+                app_val = r[9] if len(r) > 9 else False
+                is_rev = rev_val if isinstance(rev_val, bool) else str(rev_val).upper() in ["TRUE", "YES", "1"]
+                is_app = app_val if isinstance(app_val, bool) else str(app_val).upper() in ["TRUE", "YES", "1"]
+
+                monthly_summary.append({
+                    "row_index": idx,
+                    "client_name": r[0].strip() if len(r) > 0 else "",
+                    "vendor_name": r[0].strip() if len(r) > 0 else "",
+                    "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
+                    "item_name": r[2].strip() if len(r) > 2 else "Operating Expense",
+                    "expense_category": r[2].strip() if len(r) > 2 else "Operating Expense",
+                    "total_bills_count": _parse_int(r[3] if len(r) > 3 else 1),
+                    "total_quantity": _parse_float(r[4] if len(r) > 4 else 1.0),
+                    "total_billed": _parse_float(r[5] if len(r) > 5 else 0.0),
+                    "total_amount": _parse_float(r[5] if len(r) > 5 else 0.0),
+                    "currency": r[6] if len(r) > 6 else "GHS",
+                    "audit_notes": r[7].strip() if len(r) > 7 else "",
+                    "reviewed": is_rev,
+                    "approved": is_app,
+                    "status": r[10].strip() if len(r) > 10 else "PENDING",
+                })
+
+            return {
+                "month": month,
+                "year": year,
+                "spreadsheet_id": spreadsheet_id,
+                "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                "daily_details": daily_details,
+                "monthly_summary": monthly_summary,
+            }
+        except HttpError as e:
+            if e.resp.status in (404, 403):
+                logger.warning(f"AP Spreadsheet {spreadsheet_id} not found or accessible in Google Sheets (HTTP {e.resp.status}).")
+                return {
+                    "month": month,
+                    "year": year,
+                    "spreadsheet_id": spreadsheet_id,
+                    "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                    "daily_details": [],
+                    "monthly_summary": [],
+                }
+            raise
 

@@ -643,19 +643,19 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     pass
 
             if is_ap:
-                # Dedicated AP Vendor Bills Review Workbook (Never touches the AR laundry sheet)
+                # Dedicated 2-Tab AP Vendor Bills Review Workbook (Daily_Details + Monthly_Summary)
                 sheet_id, sheet_url = sheets.find_or_create_ap_workbook(
                     month, year, month_folder_id, client_name=self.client_name
                 )
                 if sheet_id and not sheet_id.startswith("mock_"):
-                    sheets.append_ap_vendor_bills(sheet_id, items, auto_post=auto_post)
+                    sync_stats = sheets.sync_ap_review_workspace(sheet_id, items, auto_post=auto_post, client_name=self.client_name)
                     self.log_step(
                         "SPREADSHEET_SYNC",
-                        f"Logged {len(items)} AP bill(s) into AP Review Sheet '{sheet_id[:15]}...'.",
+                        f"Logged {len(items)} AP bill(s) into 2-Tab AP Review Sheet '{sheet_id[:15]}...' (Daily Details: {sync_stats.get('daily_rows_written', 0)}, Monthly Summary: {sync_stats.get('summary_rows_synced', 0)}).",
                         "info",
                         {"sheet_id": sheet_id, "sheet_url": sheet_url},
                     )
-                    logger.info(f"📊 Logged {len(items)} AP bills into AP Google Sheet '{sheet_id}' (auto_post={auto_post})")
+                    logger.info(f"📊 Logged {len(items)} AP bills into 2-Tab AP Google Sheet '{sheet_id}' (auto_post={auto_post})")
                 else:
                     sheet_url = None
             else:
