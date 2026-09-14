@@ -22,16 +22,29 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
 
     def __init__(self, client_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(client_id, config)
-        org_id = self.config.get("accounting_org_id") or self.config.get("zoho_org_id")
+        raw_org = self.config.get("accounting_org_id") or self.config.get("zoho_org_id")
+        org_id = raw_org if raw_org != "782910482" else None
         client_id_val = self.config.get("zoho_client_id") or self.config.get("client_id")
         client_secret_val = self.config.get("zoho_client_secret") or self.config.get("client_secret")
         refresh_token_val = self.config.get("zoho_refresh_token") or self.config.get("refresh_token")
         accounts_url = self.config.get("zoho_accounts_url") or self.config.get("accounts_url")
         books_api_url = self.config.get("zoho_books_api_url") or self.config.get("books_api_url")
 
-        if client_id and not org_id:
+        if client_id:
             try:
                 self.zoho = ZohoBooksService.from_client_id(client_id)
+                if org_id:
+                    self.zoho.org_id = org_id
+                if client_id_val:
+                    self.zoho.client_id = client_id_val
+                if client_secret_val:
+                    self.zoho.client_secret = client_secret_val
+                if refresh_token_val:
+                    self.zoho.refresh_token = refresh_token_val
+                if accounts_url:
+                    self.zoho.accounts_url = accounts_url.rstrip("/")
+                if books_api_url:
+                    self.zoho.books_api_url = books_api_url.rstrip("/")
             except Exception:
                 self.zoho = ZohoBooksService(
                     client_id=client_id_val,

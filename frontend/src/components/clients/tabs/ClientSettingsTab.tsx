@@ -7,7 +7,12 @@ import {
   getAccountingOAuthAuthorizeUrl,
   getAccountingOAuthStatus,
   disconnectAccountingOAuth,
+  confirmZohoOrganization,
+  fetchZohoOrganizations,
+  confirmXeroTenant,
+  fetchXeroTenants,
   type AccountingOAuthStatusResponse,
+  type ZohoOrganizationOption,
 } from '../../../lib/api';
 import { ACCOUNTING_PLATFORMS } from '../../../types/client';
 import {
@@ -30,6 +35,7 @@ import {
   Sliders,
   ChevronDown,
   Copy,
+  Building2,
 } from 'lucide-react';
 
 export const ClientSettingsTab: React.FC = () => {
@@ -47,6 +53,8 @@ export const ClientSettingsTab: React.FC = () => {
   const [oauthStatus, setOauthStatus] = useState<AccountingOAuthStatusResponse | null>(null);
   const [isLoadingOAuth, setIsLoadingOAuth] = useState(false);
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
+  const [isSwitchingEntity, setIsSwitchingEntity] = useState(false);
+  const [isRefreshingOrgs, setIsRefreshingOrgs] = useState(false);
   const [isAdvancedOAuthOpen, setIsAdvancedOAuthOpen] = useState(false);
   const [detectedRedirectUri, setDetectedRedirectUri] = useState<string>('https://autapi.service4gh.com/api/v1/oauth/zoho/callback');
   const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
@@ -127,6 +135,19 @@ export const ClientSettingsTab: React.FC = () => {
         event.data?.type === 'XERO_OAUTH_SUCCESS'
       ) {
         addLog('success', `🎉 1-Click OAuth Connected: ${event.data.orgName} (${event.data.orgId})`);
+        if (event.data.availableOrgs) {
+          setOauthStatus((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  is_connected: true,
+                  org_id: event.data.orgId,
+                  org_name: event.data.orgName,
+                  available_orgs: event.data.availableOrgs,
+                }
+              : null
+          );
+        }
         loadOAuthStatus();
         loadConfig();
       }
@@ -175,6 +196,60 @@ export const ClientSettingsTab: React.FC = () => {
       await loadConfig();
     } catch (err: any) {
       addLog('error', `Disconnect failed: ${err.message}`);
+    }
+  };
+
+  const handleSwitchEntity = async (newOrgId: string) => {
+    const selectedOrg = oauthStatus?.available_orgs?.find((o) => o.org_id === newOrgId);
+    setIsSwitchingEntity(true);
+    try {
+      if (activePlatform === 'xero') {
+        await confirmXeroTenant({
+          client_id: currentClient.id,
+          tenant_id: newOrgId,
+          tenant_name: selectedOrg?.name,
+          available_tenants: oauthStatus?.available_orgs,
+        });
+      } else {
+        await confirmZohoOrganization({
+          client_id: currentClient.id,
+          org_id: newOrgId,
+          org_name: selectedOrg?.name,
+          available_orgs: oauthStatus?.available_orgs,
+        });
+      }
+      addLog('success', `Switched active ${platformMeta.name} entity to "${selectedOrg?.name || newOrgId}" (ID: ${newOrgId})`);
+      await loadOAuthStatus();
+      await loadConfig();
+    } catch (err: any) {
+      addLog('error', `Failed to switch ${platformMeta.name} entity: ${err.message}`);
+      alert(`Could not switch entity: ${err.message}`);
+    } finally {
+      setIsSwitchingEntity(false);
+    }
+  };
+
+  const handleRefreshOrgs = async () => {
+    setIsRefreshingOrgs(true);
+    try {
+      let orgs: ZohoOrganizationOption[] = [];
+      if (activePlatform === 'xero') {
+        const data = await fetchXeroTenants(currentClient.id);
+        orgs = data.organizations || [];
+      } else {
+        const data = await fetchZohoOrganizations(currentClient.id);
+        orgs = data.organizations || [];
+      }
+      if (orgs.length > 0) {
+        setOauthStatus((prev) => (prev ? { ...prev, available_orgs: orgs } : null));
+        addLog('info', `Discovered ${orgs.length} ${platformMeta.name} organization entities.`);
+      } else {
+        addLog('info', `No additional ${platformMeta.name} organizations found.`);
+      }
+    } catch (err: any) {
+      addLog('error', `Could not fetch ${platformMeta.name} organizations: ${err.message}`);
+    } finally {
+      setIsRefreshingOrgs(false);
     }
   };
 
@@ -397,6 +472,76 @@ export const ClientSettingsTab: React.FC = () => {
                       </button>
                     </div>
                   </div>
+
+                  {/* Multi-Entity Organization Switcher (Zoho Books & Xero) */}
+                  {(activePlatform === 'zoho_books' || activePlatform === 'xero') && (
+                    <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Active {platformMeta.name} Entity:</span>
+                          {(oauthStatus.available_orgs?.length || 0) > 1 && (
+                            <span className="text-[10px] font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-1.5 py-0.2 rounded-full">
+                              {oauthStatus.available_orgs?.length} entities
+                            </span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRefreshOrgs}
+                          disabled={isRefreshingOrgs}
+                          className="text-[10px] text-slate-400 hover:text-sky-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                          title={`Refresh discovered entities from ${platformMeta.name} API`}
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${isRefreshingOrgs ? 'animate-spin' : ''}`} />
+                          <span>{isRefreshingOrgs ? 'Refreshing...' : 'Refresh List'}</span>
+                        </button>
+                      </div>
+
+                      {oauthStatus.available_orgs && oauthStatus.available_orgs.length > 1 ? (
+                        <div className="space-y-1">
+                          <select
+                            value={oauthStatus.org_id || clientConfig.zoho_org_id || ''}
+                            onChange={(e) => handleSwitchEntity(e.target.value)}
+                            disabled={isSwitchingEntity}
+                            className="w-full bg-slate-950 border border-slate-700 hover:border-sky-500/50 focus:border-sky-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none transition cursor-pointer"
+                          >
+                            {oauthStatus.available_orgs.map((org) => (
+                              <option key={org.org_id} value={org.org_id}>
+                                {org.name} (ID: {org.org_id}){org.is_default ? ' ★ Default' : ''}{org.currency ? ` • ${org.currency}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-slate-400">
+                            {isSwitchingEntity ? 'Switching entity...' : `Selected entity will be used for all automated chart of accounts, bills, and payment syncs in ${platformMeta.name}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs bg-slate-950/60 border border-slate-800 px-2.5 py-1.5 rounded-lg">
+                          <span className="text-slate-300 font-medium">
+                            {oauthStatus.org_name || currentClient.name}
+                          </span>
+                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 px-2 py-0.5 rounded">
+                            ID: {oauthStatus.org_id || clientConfig.zoho_org_id}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* QuickBooks Online note */}
+                  {activePlatform === 'quickbooks_online' && (
+                    <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between">
+                      <div>
+                        <span>Connected Company: </span>
+                        <strong className="text-white">{oauthStatus.org_name || currentClient.name}</strong>
+                        <span className="font-mono text-sky-400 ml-1.5">(Realm ID: {oauthStatus.org_id})</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 italic">
+                        Intuit company chosen at consent screen
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -432,8 +577,43 @@ export const ClientSettingsTab: React.FC = () => {
                         <span>{copiedRedirectUri ? 'Copied!' : 'Copy URI'}</span>
                       </button>
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 font-mono text-[11px] text-emerald-400 break-all select-all">
-                      {detectedRedirectUri}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={detectedRedirectUri}
+                        onChange={(e) => setDetectedRedirectUri(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-700 focus:border-sky-500 rounded px-2.5 py-1.5 font-mono text-[11px] text-emerald-400 focus:outline-none"
+                        placeholder="https://autapi.service4gh.com/api/v1/oauth/zoho/callback"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(detectedRedirectUri);
+                          setCopiedRedirectUri(true);
+                          setTimeout(() => setCopiedRedirectUri(false), 2000);
+                        }}
+                        className="flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-medium px-2 py-1.5 rounded bg-sky-950/50 border border-sky-800/40 hover:bg-sky-900/50 transition cursor-pointer shrink-0"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedRedirectUri ? 'Copied!' : 'Copy URI'}</span>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="text-[9px] text-slate-500">Quick presets:</span>
+                      <button
+                        type="button"
+                        onClick={() => setDetectedRedirectUri('https://autapi.service4gh.com/api/v1/oauth/zoho/callback')}
+                        className="text-[9px] font-mono text-slate-400 hover:text-white bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 cursor-pointer"
+                      >
+                        autapi.service4gh.com
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetectedRedirectUri('https://service4gh.com/api/v1/oauth/zoho/callback')}
+                        className="text-[9px] font-mono text-slate-400 hover:text-white bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 cursor-pointer"
+                      >
+                        service4gh.com
+                      </button>
                     </div>
                     <p className="text-[10px] text-slate-400 leading-relaxed">
                       💡 <span className="text-slate-300 font-medium">Zoho Requirement:</span> If you see <span className="text-amber-300 font-semibold">"Invalid Redirect Uri"</span> in Zoho, ensure this exact URL is added to <span className="text-white font-medium">Authorized Redirect URIs</span> under your application in the <a href="https://api-console.zoho.com" target="_blank" rel="noreferrer" className="text-sky-400 underline hover:text-sky-300 font-medium">Zoho API Console</a>{appClientId ? ` (Client ID: ${appClientId})` : ''}.

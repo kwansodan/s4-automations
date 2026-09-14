@@ -244,7 +244,7 @@ def init_db():
                         accounting_software="zoho_books",
                         description="Daily handwritten control slip OCR extraction, linen loss reconciliation, Google Sheets review sync, and Zoho Books draft invoicing.",
                         folder_id="1Uu_Q3p8s1_anr_laundry_slips",
-                        zoho_org_id="782910482",
+                        zoho_org_id=settings.ZOHO_ORG_ID or None,
                         source_type="google_drive",
                         active_integrations=["Google Drive", "Gemini Vision 3.6", "Google Sheets", "Zoho Books", "Inngest"],
                         pipelines=[
@@ -316,6 +316,26 @@ def init_db():
                 session.add(anr_client)
                 session.commit()
                 logger.info("Successfully updated ANR Group pipelines.")
+
+            if anr_client:
+                real_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+                needs_update = False
+                if real_folder and anr_client.folder_id == "1Uu_Q3p8s1_anr_laundry_slips":
+                    logger.info("Auto-migrating ANR Group placeholder folder ID to real CONTROL_SHEETS_FOLDER_ID...")
+                    anr_client.folder_id = real_folder
+                    needs_update = True
+                if real_folder and anr_client.pipelines:
+                    for p in anr_client.pipelines:
+                        if p.get("source_identifier") == "1Uu_Q3p8s1_anr_laundry_slips":
+                            p["source_identifier"] = real_folder
+                            needs_update = True
+                if anr_client.zoho_org_id == "782910482":
+                    logger.info(f"Auto-migrating ANR Group legacy dummy org ID 782910482 to dynamic ZOHO_ORG_ID: '{settings.ZOHO_ORG_ID}'...")
+                    anr_client.zoho_org_id = settings.ZOHO_ORG_ID or None
+                    needs_update = True
+                if needs_update:
+                    session.add(anr_client)
+                    session.commit()
 
             # Seed Default Organizations (Accounting Firm & Direct Business) if empty
             from app.models.db_models import Organization, UserOrganizationMembership

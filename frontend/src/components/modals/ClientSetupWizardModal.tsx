@@ -423,6 +423,13 @@ export const ClientSetupWizardModal: React.FC = () => {
 
   // Handle Recipe Change
   const handleSelectRecipe = (recipeId: string) => {
+    // If clicking the already selected recipe, unselect it and start blank
+    if (selectedRecipe === recipeId) {
+      setSelectedRecipe('');
+      setConfiguredPipelines([]);
+      return;
+    }
+
     const recipe = STARTER_RECIPES.find((p) => p.id === recipeId);
     if (!recipe) return;
     setSelectedRecipe(recipe.id);
@@ -840,7 +847,7 @@ export const ClientSetupWizardModal: React.FC = () => {
 
                     const orgPlaceholder =
                       accountingSoftware === 'zoho_books'
-                        ? "e.g. 782910482 (from Settings > Organization Profile)"
+                        ? "e.g. 928550250 (from Settings > Organization Profile)"
                         : accountingSoftware === 'quickbooks_online'
                         ? "e.g. 9341452891048201 (from Company Info)"
                         : "e.g. xero_tenant_accra_01 (from Connected Apps)";
@@ -1237,14 +1244,29 @@ export const ClientSetupWizardModal: React.FC = () => {
           {/* STEP 4: Starter Pipeline Streams Preset & Launch */}
           {currentStep === 4 && (
             <div className="space-y-6 animate-in fade-in">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-sky-400" />
-                  <span>Choose Starter Pipeline Stream Preset</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Choose a starter recipe to pre-initialize standard ingestion streams, or start blank and add pipelines individually.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-sky-400" />
+                    <span>Choose Starter Pipeline Stream Preset</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Choose a starter recipe to pre-initialize standard ingestion streams, or click to unselect and start blank.
+                  </p>
+                </div>
+                {selectedRecipe && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedRecipe('');
+                      setConfiguredPipelines([]);
+                    }}
+                    className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 px-3 py-1.5 rounded-lg transition cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Unselect Preset (Start Blank)</span>
+                  </button>
+                )}
               </div>
 
               {/* Starter Recipe Picker */}
@@ -1256,18 +1278,30 @@ export const ClientSetupWizardModal: React.FC = () => {
                       key={recipe.id}
                       type="button"
                       onClick={() => handleSelectRecipe(recipe.id)}
-                      className={`p-4 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                      className={`p-4 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between space-y-2 group ${
                         isSelected
-                          ? 'bg-sky-950/60 border-sky-500 shadow-lg shadow-sky-500/10'
+                          ? 'bg-sky-950/70 border-sky-500 shadow-lg shadow-sky-500/10 ring-1 ring-sky-500/40'
                           : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{recipe.icon}</span>
-                        <div>
-                          <span className="text-xs font-bold text-white block">{recipe.name}</span>
-                          <span className="text-[10px] text-sky-400 font-medium">{recipe.tagline}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{recipe.icon}</span>
+                          <div>
+                            <span className="text-xs font-bold text-white block">{recipe.name}</span>
+                            <span className="text-[10px] text-sky-400 font-medium">{recipe.tagline}</span>
+                          </div>
                         </div>
+                        {isSelected ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-950/90 border border-sky-500/50 px-2 py-0.5 rounded-full shrink-0">
+                            <span>✓ Selected</span>
+                            <span className="text-slate-400 font-normal hidden sm:inline">(click to unselect)</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition shrink-0">
+                            Click to select
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-400 line-clamp-2">
                         {recipe.description}

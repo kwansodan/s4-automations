@@ -7,7 +7,6 @@ from fastapi import APIRouter
 from app.config import settings
 from app.services.zoho_service import ZohoBooksService
 from app.services.google_drive_service import GoogleDriveService
-from app.services.google_sheets_service import GoogleSheetsService
 from app.utils.logging import get_logger
 
 logger = get_logger("api.config")
@@ -133,30 +132,49 @@ async def test_configuration_connections() -> Dict[str, Any]:
 
 @router.get("/stats", summary="Get Aggregated KPI Dashboard Stats")
 async def get_dashboard_stats(month: Optional[str] = None, year: Optional[int] = None) -> Dict[str, Any]:
-    """Returns aggregated KPI summary metrics."""
+    """Returns aggregated KPI summary metrics computed natively from PostgreSQL staged_transactions."""
     now = datetime.now()
     t_month = month or now.strftime("%B")
     t_year = year or now.year
 
-    drive = GoogleDriveService()
-    sheets = GoogleSheetsService()
+    from app.db.session import get_engine
+    from sqlmodel import Session, select
+    from app.models.db_models import StagedTransaction
+
+    total_slips = 0
+    total_loss = 0
+    approved_total = 0.0
+    pending_count = 0
+    active_clients = 0
 
     try:
-        month_folder_id = drive.get_month_folder(t_month, t_year)
-        sheet_id, _ = sheets.find_or_create_workbook(t_month, t_year, month_folder_id)
-        sheet_data = sheets.fetch_sheets_review_data(sheet_id, t_month, t_year)
+        with Session(get_engine()) as session:
+            query = select(StagedTransaction)
+            all_tx = session.exec(query).all()
+
+            # Match target month and year if transaction_date provided
+            period_tx = []
+            for tx in all_tx:
+                match = True
+                if tx.transaction_date and t_month:
+                    try:
+                        dt = datetime.fromisoformat(tx.transaction_date.replace("Z", "+00:00"))
+                        if dt.strftime("%B").lower() != t_month.lower():
+                            match = False
+                        if t_year and dt.year != t_year:
+                            match = False
+                    except Exception:
+                        pass
+                if match:
+                    period_tx.append(tx)
+
+            total_slips = len(set(tx.source_file_name for tx in period_tx if tx.source_file_name))
+            total_loss = sum(int(tx.discrepancy_amount or 0) for tx in period_tx)
+            approved_total = sum(float(tx.total_amount or 0.0) for tx in period_tx if tx.approved)
+            pending_count = sum(1 for tx in period_tx if not tx.approved and tx.status in ["PENDING", "APPROVED"])
+            active_clients = len(set(tx.client_id for tx in period_tx if tx.client_id))
     except Exception as e:
-        logger.warning(f"Stats fetch falling back to default review data: {e}")
-        sheet_data = sheets.fetch_sheets_review_data(f"mock_sheet_{t_month.lower()}_{t_year}", t_month, t_year)
-
-    monthly_rows = sheet_data.get("monthly_summary", [])
-    daily_rows = sheet_data.get("daily_details", [])
-
-    total_slips = len(set(d.get("file_name", "") for d in daily_rows))
-    total_loss = sum(r.get("linen_discrepancy", 0) for r in monthly_rows)
-    approved_total = sum(r.get("total_billed", 0.0) for r in monthly_rows if r.get("approved"))
-    pending_count = sum(1 for r in monthly_rows if not r.get("approved") and r.get("status") == "PENDING")
-    active_clients = len(set(r.get("client_name", "") for r in monthly_rows))
+        logger.warning(f"Error querying PostgreSQL ledger stats: {e}")
 
     return {
         "total_slips_ingested": total_slips or 2,

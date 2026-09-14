@@ -13,8 +13,6 @@ from app.models.db_models import ClientOrganization
 from app.db.session import get_engine
 from sqlmodel import select, Session
 from app.services.zoho_service import ZohoBooksService
-from app.services.google_drive_service import GoogleDriveService
-from app.services.google_sheets_service import GoogleSheetsService
 from app.utils.logging import get_logger
 from app.utils.progress_tracker import pipeline_tracker
 
@@ -71,69 +69,61 @@ async def run_zoho_invoices_core(
         )
         pipeline_tracker.add_log("info", f"Fetching approved items for {target_month} {target_year} (Invoice Date: {inv_date})...")
 
-        # Step 1: Discover / Locate Review Sheet & Fetch Approved Rows
+        # Step 1: Query PostgreSQL staged_transactions Ledger for Approved Rows
         async def fetch_approved() -> Dict[str, Any]:
-            sheets = GoogleSheetsService()
-            drive = GoogleDriveService()
-
-            sheet_id = explicit_sheet_id
-            sheet_url = ""
             approved_rows = []
 
-            try:
-                if not sheet_id:
-                    month_folder_id = drive.get_month_folder(target_month, target_year)
-                    sheet_id, sheet_url = sheets.find_or_create_workbook(target_month, target_year, month_folder_id)
-
-                approved_rows = sheets.fetch_approved_monthly_rows(sheet_id)
+            logger.info("Scanning PostgreSQL staged_transactions ledger for approved billing rows...")
+            from app.models.db_models import StagedTransaction
+            with Session(get_engine()) as session:
+                query = select(StagedTransaction).where(
+                    StagedTransaction.approved == True,
+                    StagedTransaction.status.in_(["PENDING", "APPROVED"]),
+                    StagedTransaction.pipeline_type != "AP",
+                )
                 if filter_client_name:
-                    approved_rows = [r for r in approved_rows if r.get("client_name", "").lower() == filter_client_name.lower()]
-            except Exception as sheet_err:
-                logger.warning(f"Notice fetching sheets approved rows: {sheet_err}")
-
-            # Fallback: check PostgreSQL staged_transactions if Google Sheets has no approved items
-            if not approved_rows:
-                logger.info("Scanning PostgreSQL staged_transactions ledger for approved items...")
-                from app.models.db_models import StagedTransaction
-                with Session(get_engine()) as session:
-                    query = select(StagedTransaction).where(
-                        StagedTransaction.approved == True,
-                        StagedTransaction.status.in_(["PENDING", "APPROVED"]),
-                        StagedTransaction.pipeline_type != "AP",
+                    c_slug = filter_client_name.lower().replace(" ", "_")
+                    query = query.where(
+                        (StagedTransaction.client_id == c_slug) | (StagedTransaction.client_id == filter_client_name)
                     )
-                    if filter_client_name:
-                        c_slug = filter_client_name.lower().replace(" ", "_")
-                        query = query.where(
-                            (StagedTransaction.client_id == c_slug) | (StagedTransaction.client_id == filter_client_name)
-                        )
-                    staged_approved = session.exec(query).all()
-                    if staged_approved:
-                        logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger.")
-                        for idx, st in enumerate(staged_approved, start=1000):
+                staged_approved = session.exec(query).all()
+                if staged_approved:
+                    logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger.")
+                    for idx, st in enumerate(staged_approved, start=1000):
+                        match_month = True
+                        if target_month and st.transaction_date:
+                            try:
+                                parsed_date = datetime.fromisoformat(st.transaction_date.replace("Z", "+00:00"))
+                                if parsed_date.strftime("%B").lower() != target_month.lower():
+                                    match_month = False
+                                if target_year and parsed_date.year != target_year:
+                                    match_month = False
+                            except Exception:
+                                pass
+                        if match_month:
                             approved_rows.append({
                                 "row_index": idx,
                                 "client_name": st.client_id,
-                                "zoho_contact_id": "",
-                                "zoho_item_id": st.accounting_ref_id or "",
+                                "zoho_contact_id": (st.metadata_json or {}).get("zoho_contact_id", ""),
+                                "zoho_item_id": st.accounting_ref_id or (st.metadata_json or {}).get("zoho_item_id", ""),
                                 "standard_item_name": st.item_or_description,
                                 "raw_names_seen": st.item_or_description,
                                 "confidence_score": "HIGH",
                                 "unit_rate": st.rate_or_price or st.total_amount,
-                                "total_picked_up": int(st.quantity_or_debit) or 1,
-                                "total_delivered": int(st.quantity_or_debit) or 1,
+                                "total_picked_up": int(st.credit_amount or st.quantity_or_debit or 1),
+                                "total_delivered": int(st.quantity_or_debit or 1),
                                 "linen_discrepancy": int(st.discrepancy_amount),
                                 "total_billed": st.total_amount,
                                 "audit_notes": f"PostgreSQL Staged ID: {st.id}",
                                 "reviewed": True,
                                 "approved": True,
-                                "status": "PENDING",
+                                "status": "APPROVED",
                                 "_staged_transaction_id": st.id,
                             })
 
-            logger.info(f"Retrieved {len(approved_rows)} approved items ready for invoicing.")
+            logger.info(f"Retrieved {len(approved_rows)} approved items from PostgreSQL ledger ready for invoicing.")
             return {
-                "spreadsheet_id": sheet_id or "local_ledger",
-                "spreadsheet_url": sheet_url,
+                "source": "in_app_ledger",
                 "approved_rows": approved_rows,
             }
 
@@ -165,8 +155,6 @@ async def run_zoho_invoices_core(
 
         # Step 2: Group by Client & Generate Draft Invoices
         async def generate_invoices() -> Dict[str, Any]:
-            sheets = GoogleSheetsService()
-
             client_groups: Dict[str, List[Dict[str, Any]]] = {}
             for row in approved_rows:
                 client = row.get("client_name", "Unknown Client")
@@ -243,23 +231,12 @@ async def run_zoho_invoices_core(
                     customer_id=contact_id,
                     date=inv_date,
                     line_items=zoho_line_items,
-                    notes=f"ANR Commercial Laundry Service Billing for {target_month} {target_year}. Sheet: {fetch_result.get('spreadsheet_url', sheet_id)}",
+                    notes=f"ANR Commercial Laundry Service Billing for {target_month} {target_year}. (Source: In-App PostgreSQL Ledger)",
                     terms="Payment due within 14 days of invoice date.",
                 )
 
                 pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
                 response = await zoho.create_or_append_draft_invoice(inv_request, target_month, target_year)
-
-                if sheet_id and not sheet_id.startswith("mock_") and sheet_id != "local_ledger":
-                    try:
-                        sheets.update_invoice_status(
-                            spreadsheet_id=sheet_id,
-                            row_indices=row_indices,
-                            invoice_number=response.invoice_number,
-                            invoice_url=response.invoice_url or "",
-                        )
-                    except Exception as sheet_err:
-                        logger.warning(f"Could not update sheet invoice status: {sheet_err}")
 
                 # Also update corresponding staged_transactions in PostgreSQL
                 staged_ids = [it.get("_staged_transaction_id") for it in items if it.get("_staged_transaction_id")]

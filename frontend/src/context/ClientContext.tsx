@@ -28,8 +28,8 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     accounting_software: 'zoho_books',
     folderId: '1Uu_Q3p8s1_anr_laundry_slips',
     folder_id: '1Uu_Q3p8s1_anr_laundry_slips',
-    zohoOrg: '782910482',
-    zoho_org_id: '782910482',
+    zohoOrg: '',
+    zoho_org_id: '',
     zohoContactId: 'cnt_luxwood_001',
     workflowsCount: 2,
     projectedMonthlyVolume: '350+ Slips / mo',
@@ -145,7 +145,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const saved = localStorage.getItem('S4_ACTIVE_CLIENT');
       if (saved) return saved;
     }
-    return 'anr_group';
+    return DEFAULT_CLIENTS[0]?.id || '';
   });
 
   const [isSwitcherOpen, setIsSwitcherOpen] = useState<boolean>(false);
@@ -236,7 +236,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // If in individual business mode, lock focus onto company client
         if (isIndividualBusiness) {
           const matched = mapped.find(
-            (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id || c.id === 'anr_group'
+            (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id
           );
           if (matched) {
             setCurrentClientId(matched.id);

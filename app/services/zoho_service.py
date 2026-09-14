@@ -88,11 +88,15 @@ class ZohoBooksService:
 
             if client_obj:
                 cfg = client_obj.custom_config or {}
+                zoho_org = client_obj.zoho_org_id if client_obj.zoho_org_id != "782910482" else None
+                configured_org = cfg.get("accounting_org_id") or cfg.get("zoho_org_id")
+                if configured_org == "782910482":
+                    configured_org = None
                 return cls(
                     client_id=cfg.get("zoho_client_id") or cfg.get("client_id") or settings.ZOHO_CLIENT_ID,
                     client_secret=cfg.get("zoho_client_secret") or cfg.get("client_secret") or settings.ZOHO_CLIENT_SECRET,
                     refresh_token=cfg.get("zoho_refresh_token") or cfg.get("refresh_token") or settings.ZOHO_REFRESH_TOKEN,
-                    org_id=client_obj.zoho_org_id or cfg.get("accounting_org_id") or cfg.get("zoho_org_id") or settings.ZOHO_ORG_ID,
+                    org_id=zoho_org or configured_org or settings.ZOHO_ORG_ID,
                     accounts_url=cfg.get("zoho_accounts_url") or settings.ZOHO_ACCOUNTS_URL,
                     books_api_url=cfg.get("zoho_books_api_url") or settings.ZOHO_BOOKS_API_URL,
                 )

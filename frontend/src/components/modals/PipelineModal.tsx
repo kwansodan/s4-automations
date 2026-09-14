@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
+import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
 import { PlayCircle, X, AlertCircle, Terminal, Loader2 } from 'lucide-react';
 import { ApiError } from '../../lib/api';
@@ -12,15 +13,24 @@ export const PipelineModal: React.FC = () => {
     selectedYear,
     runPipeline,
     catalog,
-    sheetsData,
   } = useAutomation();
+  const { clients } = useClient();
   const { openDebugDrawer } = useErrors();
 
-  // Dynamically derive available clients from Zoho Contacts and Google Sheets data
+  // Dynamically derive available clients from configured client organizations & Zoho Contacts
   const availableClients = React.useMemo(() => {
     const clientsMap = new Map<string, { slug: string; name: string }>();
 
-    // 1. Zoho Contacts
+    // 1. Configured Client Organizations
+    if (clients && clients.length > 0) {
+      for (const c of clients) {
+        if (c.id && !clientsMap.has(c.id)) {
+          clientsMap.set(c.id, { slug: c.id, name: c.name });
+        }
+      }
+    }
+
+    // 2. Zoho Contacts
     if (catalog?.contacts && catalog.contacts.length > 0) {
       for (const c of catalog.contacts) {
         const name = c.company_name || c.contact_name;
@@ -31,21 +41,8 @@ export const PipelineModal: React.FC = () => {
       }
     }
 
-    // 2. Google Sheets Review Data
-    if (sheetsData?.monthly_summary && sheetsData.monthly_summary.length > 0) {
-      for (const row of sheetsData.monthly_summary) {
-        const name = row.client_name;
-        if (name) {
-          const slug = name.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^\w]/g, '');
-          if (!clientsMap.has(slug)) {
-            clientsMap.set(slug, { slug, name });
-          }
-        }
-      }
-    }
-
     return Array.from(clientsMap.values());
-  }, [catalog, sheetsData]);
+  }, [clients, catalog]);
 
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
   const [month, setMonth] = useState(selectedMonth);

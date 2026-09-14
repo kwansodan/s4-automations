@@ -650,12 +650,122 @@ export async function dryRunSampleOcr(payload: {
   return handleResponse<any>(res, 'Execute dry-run OCR extraction');
 }
 
-export async function fetchClientTransactions(clientId: string, status?: string): Promise<any[]> {
-  const query = status ? `?status=${status}` : '';
-  const res = await resilientFetch(`/api/clients/${clientId}/transactions${query}`, {
+export interface ClientTransactionSummaryRow {
+  row_index: number;
+  item_name: string;
+  total_picked_up: number;
+  total_delivered: number;
+  linen_discrepancy: number;
+  unit_rate: number;
+  total_billed: number;
+  slips_count: number;
+  reviewed_count: number;
+  approved_count: number;
+  is_fully_reviewed: boolean;
+  is_fully_approved: boolean;
+  transaction_ids: number[];
+  dates_seen: string[];
+}
+
+export interface ClientTransactionSummaryResponse {
+  client_id: string;
+  month?: string;
+  year?: number;
+  pipeline_type: string;
+  total_items: number;
+  total_picked_up: number;
+  total_delivered: number;
+  total_discrepancy: number;
+  total_billed: number;
+  summary: ClientTransactionSummaryRow[];
+}
+
+export async function fetchClientTransactions(
+  clientId: string,
+  status?: string,
+  month?: string,
+  year?: number,
+  pipelineType?: string
+): Promise<any[]> {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (month) params.append('month', month);
+  if (year) params.append('year', year.toString());
+  if (pipelineType) params.append('pipeline_type', pipelineType);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions${qStr}`, {
     headers: getAuthHeaders(),
   });
   return handleResponse<any[]>(res, `Fetch transactions for ${clientId}`);
+}
+
+export async function fetchClientTransactionsSummary(
+  clientId: string,
+  month?: string,
+  year?: number,
+  pipelineType: string = 'AR'
+): Promise<ClientTransactionSummaryResponse> {
+  const params = new URLSearchParams();
+  if (month) params.append('month', month);
+  if (year) params.append('year', year.toString());
+  if (pipelineType) params.append('pipeline_type', pipelineType);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/summary${qStr}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ClientTransactionSummaryResponse>(res, `Fetch transactions summary for ${clientId}`);
+}
+
+export async function toggleClientTransaction(
+  clientId: string,
+  transactionId: number,
+  field: 'reviewed' | 'approved',
+  value?: boolean
+): Promise<{ success: boolean; transaction: any }> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/${transactionId}/toggle`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ field, value }),
+  });
+  return handleResponse<{ success: boolean; transaction: any }>(res, `Toggle ${field} on transaction ${transactionId}`);
+}
+
+export async function batchToggleTransactions(
+  clientId: string,
+  transactionIds: number[],
+  field: 'reviewed' | 'approved',
+  value?: boolean
+): Promise<{ success: boolean; updated_count: number }> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-toggle`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ transaction_ids: transactionIds, field, value }),
+  });
+  return handleResponse<{ success: boolean; updated_count: number }>(res, `Batch toggle ${field} on transactions`);
+}
+
+export async function updateClientTransaction(
+  clientId: string,
+  transactionId: number,
+  payload: {
+    item_or_description?: string;
+    quantity_or_debit?: number;
+    credit_amount?: number;
+    rate_or_price?: number;
+    total_amount?: number;
+    discrepancy_amount?: number;
+    discrepancy_reason?: string;
+    reviewed?: boolean;
+    approved?: boolean;
+    status?: string;
+  }
+): Promise<{ success: boolean; transaction: any }> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/${transactionId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ success: boolean; transaction: any }>(res, `Update transaction ${transactionId}`);
 }
 
 export async function batchApproveTransactions(clientId: string, transactionIds: number[], notes?: string): Promise<any> {
@@ -1039,12 +1149,21 @@ export interface AccountingOAuthAuthorizeUrlResponse {
   recommended_redirect_uris?: string[];
 }
 
+export interface ZohoOrganizationOption {
+  org_id: string;
+  name: string;
+  currency?: string;
+  is_default?: boolean;
+}
+
 export interface AccountingOAuthStatusResponse {
   platform: string;
   is_connected: boolean;
   org_id?: string;
   org_name?: string;
   connected_at?: string;
+  auth_type?: string;
+  available_orgs?: ZohoOrganizationOption[];
   details?: Record<string, any>;
 }
 
@@ -1094,6 +1213,60 @@ export async function disconnectAccountingOAuth(
     headers: getAuthHeaders(),
   });
   return handleResponse<{ success: boolean; message: string }>(res, `Disconnect ${platform} OAuth`);
+}
+
+export async function confirmZohoOrganization(payload: {
+  client_id: string;
+  org_id: string;
+  org_name?: string;
+  refresh_token?: string;
+  available_orgs?: ZohoOrganizationOption[];
+}): Promise<{ success: boolean; client_id: string; org_id: string; org_name?: string; available_orgs: ZohoOrganizationOption[] }> {
+  const res = await resilientFetch('/api/v1/oauth/zoho/confirm-org', {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Confirm Zoho Organization');
+}
+
+export async function fetchZohoOrganizations(
+  clientId: string
+): Promise<{ client_id: string; active_org_id?: string; organizations: ZohoOrganizationOption[] }> {
+  const res = await resilientFetch(`/api/v1/oauth/zoho/organizations?client_id=${encodeURIComponent(clientId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Zoho Organizations');
+}
+
+export async function confirmXeroTenant(payload: {
+  client_id: string;
+  tenant_id: string;
+  tenant_name?: string;
+  refresh_token?: string;
+  available_tenants?: any[];
+}): Promise<{ success: boolean; client_id: string; tenant_id: string; tenant_name?: string }> {
+  const res = await resilientFetch('/api/v1/oauth/xero/confirm-tenant', {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Confirm Xero Organisation');
+}
+
+export async function fetchXeroTenants(
+  clientId: string
+): Promise<{ client_id: string; active_org_id?: string; organizations: ZohoOrganizationOption[] }> {
+  const res = await resilientFetch(`/api/v1/oauth/xero/tenants?client_id=${encodeURIComponent(clientId)}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Xero Organisations');
 }
 
 // Backwards-compatible aliases

@@ -38,7 +38,7 @@ function getInitialClientId(clients) {
     const saved = localStorage.getItem('S4_ACTIVE_CLIENT');
     if (saved && clients.some((c) => c.id === saved)) return saved;
   }
-  return 'anr_group';
+  return clients[0]?.id || '';
 }
 
 function loadSavedAuth() {

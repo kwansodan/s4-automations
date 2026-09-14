@@ -200,6 +200,12 @@ class BaseAutomationStrategy(ABC):
         total_val = sum(i.total_amount for i in items)
         total_loss = sum(i.discrepancy for i in items)
 
+        if len(sources) == 0:
+            msg = f"0 slip files found for {self.client_name} ({month} {year}). Please verify that slip images or PDFs are placed directly in the Google Drive folder."
+            self.execution_warnings.append(msg)
+        else:
+            msg = f"Pipeline completed for {self.client_name} ({month} {year}): {len(items)} line items extracted from {len(sources)} source files."
+
         result = StrategyExecutionResult(
             client_id=self.client_id,
             month=month,
@@ -212,7 +218,7 @@ class BaseAutomationStrategy(ABC):
             total_amount=round(total_val, 2),
             discrepancies_count=int(total_loss),
             accounting_records_posted=posted_count,
-            message=f"Pipeline completed for {self.client_name} ({month} {year}).",
+            message=msg,
             details=review_sync,
         )
 

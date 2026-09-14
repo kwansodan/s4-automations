@@ -172,10 +172,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             p_cfg = (pipeline.get("source_config") if isinstance(pipeline, dict) else {}) or {}
             structure_hint = p_cfg.get("folder_structure", "auto_detect")
             lookback_window = p_cfg.get("enable_lookback_window", True)
-            auto_create = p_cfg.get("auto_create_month_folder", False)
+            target_folder = (source_identifier or "").strip()
+            if not target_folder or target_folder == "1Uu_Q3p8s1_anr_laundry_slips":
+                target_folder = (settings.CONTROL_SHEETS_FOLDER_ID or getattr(self.client, "folder_id", "") or "").strip()
+
             try:
                 return await drive.list_control_slips(
-                    source_identifier,
+                    target_folder,
                     month,
                     year,
                     structure_hint=structure_hint,
@@ -625,22 +628,32 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             from app.services.google_sheets_service import GoogleSheetsService
             drive = GoogleDriveService()
             sheets = GoogleSheetsService()
-            month_folder_id = self.client.folder_id or "root"
+            pipe_source_type = (pipe_obj.get("source_type") if pipe_obj else "") or getattr(self.client, "source_type", "google_drive")
+            is_gdrive_source = pipe_source_type == "google_drive"
+
+            month_folder_id = None
+            try:
+                m_fid = drive.get_month_folder(month, year)
+                if m_fid and not str(m_fid).startswith("mock_"):
+                    month_folder_id = m_fid
+            except Exception:
+                pass
+
             pipe_folder = (
                 pipe_obj.get("source_identifier")
                 or (pipe_obj.get("source_config") or {}).get("folder_id")
                 if pipe_obj
                 else None
             )
-            if pipe_folder and not str(pipe_folder).startswith("mock_"):
+            # Only use pipe_folder as Google Drive folder if source is explicitly google_drive
+            if is_gdrive_source and pipe_folder and not str(pipe_folder).startswith("mock_"):
                 month_folder_id = str(pipe_folder)
-            else:
-                try:
-                    m_fid = drive.get_month_folder(month, year)
-                    if m_fid and not str(m_fid).startswith("mock_"):
-                        month_folder_id = m_fid
-                except Exception:
-                    pass
+
+            client_gdrive_folder = getattr(self.client, "folder_id", None) if is_gdrive_source else None
+            explicit_sheet_id = (
+                (self.custom_config or {}).get("ap_spreadsheet_id" if is_ap else "ar_spreadsheet_id")
+                or (self.custom_config or {}).get("spreadsheet_id")
+            )
 
             if is_ap:
                 # Dedicated 2-Tab AP Vendor Bills Review Workbook (Daily_Details + Monthly_Summary)
@@ -661,7 +674,14 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             else:
                 # AR Customer Control Slips & Billing Review Workbook
                 from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
-                sheet_id, sheet_url = sheets.find_or_create_workbook(month, year, month_folder_id)
+                sheet_id, sheet_url = sheets.find_or_create_workbook(
+                    month,
+                    year,
+                    month_folder_id,
+                    client_name=self.client_name,
+                    client_folder_id=client_gdrive_folder,
+                    explicit_sheet_id=explicit_sheet_id,
+                )
                 if sheet_id and not sheet_id.startswith("mock_"):
                     detail_rows = []
                     for it in items:

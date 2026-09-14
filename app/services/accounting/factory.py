@@ -32,9 +32,8 @@ class AccountingAdapterFactory:
         client_id: str,
         config: Optional[Dict[str, Any]] = None,
     ) -> BaseAccountingAdapter:
-        """Returns the concrete or placeholder adapter for the requested platform."""
-        resolved_config = dict(config or {})
-        if not resolved_config and client_id:
+        resolved_config = {}
+        if client_id:
             try:
                 from sqlmodel import Session, select
                 from app.db.session import get_engine
@@ -42,13 +41,18 @@ class AccountingAdapterFactory:
                 with Session(get_engine()) as session:
                     client_obj = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
                     if client_obj:
-                        if client_obj.zoho_org_id:
-                            resolved_config["accounting_org_id"] = client_obj.zoho_org_id
-                            resolved_config["zoho_org_id"] = client_obj.zoho_org_id
+                        org = client_obj.zoho_org_id
+                        if org and org != "782910482":
+                            resolved_config["accounting_org_id"] = org
+                            resolved_config["zoho_org_id"] = org
                         if client_obj.custom_config:
                             resolved_config.update(client_obj.custom_config)
             except Exception:
                 pass
+
+        # Allow explicit config overrides
+        if config:
+            resolved_config.update(config)
 
         sid = (software_id or "zoho_books").lower()
         if sid == AccountingSoftware.ZOHO_BOOKS.value or sid == "zoho":

@@ -1005,21 +1005,328 @@ async def test_client_ingestion(
     }
 
 
+MONTH_MAP = {
+    "january": "01", "february": "02", "march": "03", "april": "04",
+    "may": "05", "june": "06", "july": "07", "august": "08",
+    "september": "09", "october": "10", "november": "11", "december": "12"
+}
+
+
 @router.get("/{client_id}/transactions", summary="List Staged Transactions")
 async def list_client_transactions(
     client_id: str,
     status: Optional[str] = None,
-    limit: int = 100,
+    month: Optional[str] = None,
+    year: Optional[int] = None,
+    pipeline_type: Optional[str] = None,
+    limit: int = 250,
     db: Session = Depends(get_db_session),
 ) -> List[Dict[str, Any]]:
     """Returns staged ledger transactions for review and batch approval."""
-    query = select(StagedTransaction).where(StagedTransaction.client_id == client_id)
+    c_slug = client_id.lower().replace(" ", "_")
+    query = select(StagedTransaction).where(
+        (StagedTransaction.client_id == client_id) | (StagedTransaction.client_id == c_slug)
+    )
     if status:
         query = query.where(StagedTransaction.status == status.upper())
-    query = query.order_by(StagedTransaction.id.desc()).limit(limit)
+    if pipeline_type:
+        query = query.where(StagedTransaction.pipeline_type == pipeline_type.upper())
 
+    query = query.order_by(StagedTransaction.id.desc()).limit(limit)
     transactions = db.exec(query).all()
+
+    # Filter by month/year in memory if provided
+    if month or year:
+        filtered = []
+        month_num = MONTH_MAP.get(str(month).lower()) if month else None
+        for t in transactions:
+            t_date = str(t.transaction_date or "").lower()
+            match = True
+            if year and str(year) not in t_date:
+                match = False
+            if month:
+                if month.lower() not in t_date and (not month_num or f"-{month_num}-" not in t_date):
+                    b_id = str(t.batch_id or "").lower()
+                    if month.lower() not in b_id:
+                        match = False
+            if match:
+                filtered.append(t)
+        transactions = filtered
+
     return [t.model_dump() for t in transactions]
+
+
+@router.get("/{client_id}/transactions/summary", summary="Get Aggregated Monthly Summary from PostgreSQL Ledger")
+async def get_client_transactions_summary(
+    client_id: str,
+    month: Optional[str] = None,
+    year: Optional[int] = None,
+    pipeline_type: Optional[str] = "AR",
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Returns aggregated line-item reconciliation summary directly from PostgreSQL staged transactions."""
+    c_slug = client_id.lower().replace(" ", "_")
+    p_type = (pipeline_type or "AR").upper()
+
+    query = select(StagedTransaction).where(
+        (StagedTransaction.client_id == client_id) | (StagedTransaction.client_id == c_slug),
+        StagedTransaction.pipeline_type == p_type,
+    ).order_by(StagedTransaction.id.desc())
+
+    all_tx = db.exec(query).all()
+
+    # Filter by month/year if provided
+    month_num = MONTH_MAP.get(str(month).lower()) if month else None
+    matched_tx = []
+    for t in all_tx:
+        t_date = str(t.transaction_date or "").lower()
+        match = True
+        if year and str(year) not in t_date:
+            match = False
+        if month:
+            if month.lower() not in t_date and (not month_num or f"-{month_num}-" not in t_date):
+                b_id = str(t.batch_id or "").lower()
+                if month.lower() not in b_id:
+                    match = False
+        if match:
+            matched_tx.append(t)
+
+    # Group by standard item name / description
+    groups: Dict[str, Dict[str, Any]] = {}
+    for t in matched_tx:
+        item_key = (t.item_or_description or "General Item").strip()
+        if item_key not in groups:
+            groups[item_key] = {
+                "client_name": client_id,
+                "item_name": item_key,
+                "standard_item_name": item_key,
+                "zoho_item_id": t.accounting_ref_id or "",
+                "pickup_qty": 0,
+                "total_picked_up": 0,
+                "pickup_quantity": 0,
+                "delivery_qty": 0,
+                "total_delivered": 0,
+                "delivery_quantity": 0,
+                "linen_discrepancy": 0,
+                "discrepancy": 0,
+                "unit_price": t.rate_or_price or 0.0,
+                "unit_rate": t.rate_or_price or 0.0,
+                "total_billed": 0.0,
+                "total_amount": 0.0,
+                "reviewed_count": 0,
+                "approved_count": 0,
+                "invoiced_count": 0,
+                "total_count": 0,
+                "transaction_ids": [],
+            }
+
+        g = groups[item_key]
+        p_qty = int(t.credit_amount or 0)
+        d_qty = int(t.quantity_or_debit or 0)
+        disc = int(t.discrepancy_amount or 0)
+        tot = float(t.total_amount or 0.0)
+
+        g["pickup_qty"] += p_qty
+        g["total_picked_up"] += p_qty
+        g["pickup_quantity"] += p_qty
+        g["delivery_qty"] += d_qty
+        g["total_delivered"] += d_qty
+        g["delivery_quantity"] += d_qty
+        g["linen_discrepancy"] += disc
+        g["discrepancy"] += disc
+        g["total_billed"] += tot
+        g["total_amount"] += tot
+        if t.rate_or_price and t.rate_or_price > 0:
+            g["unit_price"] = t.rate_or_price
+            g["unit_rate"] = t.rate_or_price
+        if t.reviewed:
+            g["reviewed_count"] += 1
+        if t.approved:
+            g["approved_count"] += 1
+        if t.status == "INVOICED":
+            g["invoiced_count"] += 1
+        g["total_count"] += 1
+        g["transaction_ids"].append(t.id)
+
+    summary_rows = []
+    for idx, (k, g) in enumerate(groups.items(), start=1):
+        is_all_reviewed = g["reviewed_count"] == g["total_count"] and g["total_count"] > 0
+        is_all_approved = g["approved_count"] == g["total_count"] and g["total_count"] > 0
+        is_invoiced = g["invoiced_count"] == g["total_count"] and g["total_count"] > 0
+
+        summary_rows.append({
+            "row_index": idx,
+            "client_name": g["client_name"],
+            "item_name": g["item_name"],
+            "standard_item_name": g["standard_item_name"],
+            "zoho_item_id": g["zoho_item_id"],
+            "pickup_qty": g["pickup_qty"],
+            "total_picked_up": g["total_picked_up"],
+            "pickup_quantity": g["pickup_quantity"],
+            "delivery_qty": g["delivery_qty"],
+            "total_delivered": g["total_delivered"],
+            "delivery_quantity": g["delivery_quantity"],
+            "linen_discrepancy": g["linen_discrepancy"],
+            "discrepancy": g["discrepancy"],
+            "unit_price": g["unit_price"],
+            "unit_rate": g["unit_rate"],
+            "total_billed": round(g["total_billed"], 2),
+            "total_amount": round(g["total_amount"], 2),
+            "reviewed": is_all_reviewed,
+            "approved": is_all_approved,
+            "status": "INVOICED" if is_invoiced else ("APPROVED" if is_all_approved else "PENDING"),
+            "transaction_ids": g["transaction_ids"],
+            "count": g["total_count"],
+        })
+
+    return {
+        "client_id": client_id,
+        "month": month,
+        "year": year,
+        "pipeline_type": p_type,
+        "total_transactions": len(matched_tx),
+        "summary": summary_rows,
+    }
+
+
+@router.patch("/{client_id}/transactions/{tx_id}/toggle", summary="Toggle Reviewed or Approved on Staged Transaction")
+async def toggle_staged_transaction(
+    client_id: str,
+    tx_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Toggles reviewed or approved on a specific staged transaction."""
+    c_slug = client_id.lower().replace(" ", "_")
+    tx = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.id == tx_id,
+            (StagedTransaction.client_id == client_id) | (StagedTransaction.client_id == c_slug),
+        )
+    ).first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail=f"Transaction {tx_id} not found.")
+
+    field = payload.get("field", "approved")
+    val = bool(payload.get("value", True))
+
+    if field == "approved":
+        tx.approved = val
+        if val:
+            tx.reviewed = True
+            tx.status = "APPROVED"
+        else:
+            tx.status = "PENDING"
+    elif field == "reviewed":
+        tx.reviewed = val
+    elif field == "status":
+        tx.status = str(val).upper()
+
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    return {
+        "success": True,
+        "transaction_id": tx_id,
+        "field": field,
+        "value": val,
+        "status": tx.status,
+        "reviewed": tx.reviewed,
+        "approved": tx.approved,
+    }
+
+
+@router.post("/{client_id}/transactions/batch-toggle", summary="Batch Toggle Reviewed or Approved Across Multiple Transactions")
+async def batch_toggle_staged_transactions(
+    client_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Batch toggles reviewed or approved across multiple transaction IDs."""
+    tx_ids = payload.get("transaction_ids", [])
+    field = payload.get("field", "approved")
+    val = bool(payload.get("value", True))
+
+    if not tx_ids:
+        return {"success": True, "updated_count": 0}
+
+    c_slug = client_id.lower().replace(" ", "_")
+    txs = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.id.in_(tx_ids),
+            (StagedTransaction.client_id == client_id) | (StagedTransaction.client_id == c_slug),
+        )
+    ).all()
+
+    for tx in txs:
+        if field == "approved":
+            tx.approved = val
+            if val:
+                tx.reviewed = True
+                tx.status = "APPROVED"
+            else:
+                tx.status = "PENDING"
+        elif field == "reviewed":
+            tx.reviewed = val
+        elif field == "status":
+            tx.status = str(val).upper()
+        db.add(tx)
+
+    db.commit()
+    return {
+        "success": True,
+        "updated_count": len(txs),
+        "field": field,
+        "value": val,
+    }
+
+
+@router.patch("/{client_id}/transactions/{tx_id}", summary="Update Cell Values on Staged Transaction")
+async def update_staged_transaction(
+    client_id: str,
+    tx_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Directly updates quantity, rate, or amount on a staged transaction in PostgreSQL."""
+    c_slug = client_id.lower().replace(" ", "_")
+    tx = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.id == tx_id,
+            (StagedTransaction.client_id == client_id) | (StagedTransaction.client_id == c_slug),
+        )
+    ).first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail=f"Transaction {tx_id} not found.")
+
+    if "quantity_or_debit" in payload:
+        tx.quantity_or_debit = float(payload["quantity_or_debit"])
+    if "credit_amount" in payload:
+        tx.credit_amount = float(payload["credit_amount"])
+    if "rate_or_price" in payload:
+        tx.rate_or_price = float(payload["rate_or_price"])
+    if "total_amount" in payload:
+        tx.total_amount = float(payload["total_amount"])
+    elif "quantity_or_debit" in payload or "rate_or_price" in payload:
+        tx.total_amount = round(tx.quantity_or_debit * tx.rate_or_price, 2)
+    if "discrepancy_amount" in payload:
+        tx.discrepancy_amount = float(payload["discrepancy_amount"])
+    else:
+        tx.discrepancy_amount = max(0.0, tx.credit_amount - tx.quantity_or_debit)
+    if "item_or_description" in payload:
+        tx.item_or_description = str(payload["item_or_description"])
+
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    return {
+        "success": True,
+        "transaction": tx.model_dump(),
+    }
 
 
 @router.post("/{client_id}/transactions/batch-approve", summary="1-Click Batch Approval for CPA")
@@ -1038,6 +1345,7 @@ async def batch_approve_transactions(
     for t in transactions:
         t.approved = True
         t.reviewed = True
+        t.status = "APPROVED"
         db.add(t)
     db.commit()
 

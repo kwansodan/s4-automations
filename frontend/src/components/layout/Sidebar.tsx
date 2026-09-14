@@ -93,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
       badge?: string;
     }> = [];
     if (activeSections.hasAr) {
-      items.push({ sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue & Sheets', icon: Receipt });
+      items.push({ sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue Ledger', icon: Receipt });
     }
     if (activeSections.hasAp) {
       items.push({ sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign });

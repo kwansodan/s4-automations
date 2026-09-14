@@ -29,6 +29,9 @@ async def get_sheets_data(
     sheets = GoogleSheetsService()
 
     client_name = "Client"
+    client_folder_id = None
+    explicit_sheet_id = None
+
     if client_id:
         from app.db.session import get_engine
         from sqlmodel import Session, select
@@ -37,14 +40,43 @@ async def get_sheets_data(
             c = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
             if c:
                 client_name = c.name
+                client_folder_id = c.folder_id
+                c_conf = c.custom_config or {}
+                s_conf = c.source_config or {}
+                if is_ap:
+                    explicit_sheet_id = (
+                        c_conf.get("ap_spreadsheet_id")
+                        or c_conf.get("ap_sheet_id")
+                        or s_conf.get("ap_spreadsheet_id")
+                    )
+                else:
+                    explicit_sheet_id = (
+                        c_conf.get("ar_spreadsheet_id")
+                        or c_conf.get("spreadsheet_id")
+                        or c_conf.get("sheet_id")
+                        or s_conf.get("ar_spreadsheet_id")
+                        or s_conf.get("spreadsheet_id")
+                    )
 
     try:
-        month_folder_id = drive.get_month_folder(t_month, t_year)
+        month_folder_id = None
+        try:
+            month_folder_id = drive.get_month_folder(t_month, t_year)
+        except Exception as fld_err:
+            logger.warning(f"Could not resolve month folder for {t_month} {t_year}: {fld_err}")
+
         if is_ap:
             sheet_id, sheet_url = sheets.find_or_create_ap_workbook(t_month, t_year, month_folder_id, client_name=client_name)
             data = sheets.fetch_ap_sheets_review_data(sheet_id, t_month, t_year)
         else:
-            sheet_id, sheet_url = sheets.find_or_create_workbook(t_month, t_year, month_folder_id)
+            sheet_id, sheet_url = sheets.find_or_create_workbook(
+                t_month,
+                t_year,
+                month_folder_id,
+                client_name=client_name,
+                client_folder_id=client_folder_id,
+                explicit_sheet_id=explicit_sheet_id,
+            )
             data = sheets.fetch_sheets_review_data(sheet_id, t_month, t_year)
         return data
     except Exception as e:
@@ -156,12 +188,40 @@ async def retrofit_existing_workbook(payload: Dict[str, Any]) -> Dict[str, Any]:
         month = payload.get("month") or now.strftime("%B")
         year = payload.get("year") or now.year
         client_name = payload.get("client_name", "Client")
+        client_id = payload.get("client_id")
+        client_folder_id = None
+        explicit_sheet_id = None
+
+        if client_id:
+            from app.db.session import get_engine
+            from sqlmodel import Session, select
+            from app.models.db_models import ClientOrganization
+            with Session(get_engine()) as session:
+                c = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+                if c:
+                    client_name = c.name
+                    client_folder_id = c.folder_id
+                    c_conf = c.custom_config or {}
+                    explicit_sheet_id = c_conf.get("ar_spreadsheet_id") or c_conf.get("spreadsheet_id")
+
         drive = GoogleDriveService()
-        m_fid = drive.get_month_folder(month, year) if month and year else "root"
+        m_fid = None
+        try:
+            m_fid = drive.get_month_folder(month, year) if month and year else None
+        except Exception:
+            pass
+
         if is_ap:
             sheet_id, _ = sheets.find_or_create_ap_workbook(month, year, m_fid, client_name=client_name)
         else:
-            sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
+            sheet_id, _ = sheets.find_or_create_workbook(
+                month,
+                year,
+                m_fid,
+                client_name=client_name,
+                client_folder_id=client_folder_id,
+                explicit_sheet_id=explicit_sheet_id,
+            )
 
     if not sheet_id:
         return {"success": False, "message": "Could not identify target spreadsheet."}

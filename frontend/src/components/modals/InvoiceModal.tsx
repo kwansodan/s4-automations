@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
+import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
-import { Check, X, FileSpreadsheet, AlertCircle, Terminal, Loader2 } from 'lucide-react';
+import { Check, X, Receipt, AlertCircle, Terminal, Loader2 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { ApiError } from '../../lib/api';
 
@@ -11,9 +12,10 @@ export const InvoiceModal: React.FC = () => {
     setIsInvoiceModalOpen,
     selectedMonth,
     selectedYear,
-    sheetsData,
+    stats,
     runInvoicing,
   } = useAutomation();
+  const { currentClient, clients } = useClient();
   const { openDebugDrawer } = useErrors();
 
   const [clientFilter, setClientFilter] = useState('');
@@ -28,11 +30,8 @@ export const InvoiceModal: React.FC = () => {
 
   if (!isInvoiceModalOpen) return null;
 
-  const monthlyRows = sheetsData?.monthly_summary || [];
-  const approvedRows = monthlyRows.filter((r) => r.approved);
-  const totalApproved = approvedRows.reduce((sum, r) => sum + (r.total_billed || 0), 0);
-
-  const uniqueApprovedClients = Array.from(new Set(approvedRows.map((r) => r.client_name)));
+  const totalApproved = stats?.approved_billing_total_ghs || 0;
+  const approvedRowsCount = stats?.approved_rows_count || stats?.pending_approval_count || 0;
 
   const handleClose = () => {
     if (isSubmitting) return;
@@ -48,8 +47,7 @@ export const InvoiceModal: React.FC = () => {
       await runInvoicing({
         month: selectedMonth,
         year: selectedYear,
-        spreadsheet_id: sheetsData?.spreadsheet_id,
-        client_name: clientFilter || null,
+        client_name: clientFilter || currentClient?.name || null,
         include_line_item_description: includeDescriptions,
       });
       // runInvoicing closes modal on success
@@ -78,7 +76,7 @@ export const InvoiceModal: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+            <Receipt className="w-5 h-5 text-emerald-400" />
             <h2 className="text-base font-bold text-white">Generate Accounting Draft Invoices</h2>
           </div>
           <button
@@ -146,28 +144,26 @@ export const InvoiceModal: React.FC = () => {
             </div>
             <div className="text-right">
               <span className="text-[11px] font-semibold text-emerald-300 block">Approved Items</span>
-              <span className="text-xl font-extrabold text-white font-mono">{approvedRows.length} Rows</span>
+              <span className="text-xl font-extrabold text-white font-mono">{approvedRowsCount} Rows</span>
             </div>
           </div>
 
-          {approvedRows.length === 0 && (
-            <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 text-[11px] text-sky-300">
-              ℹ️ No approved rows currently selected in Google Sheet. Clicking dispatch will scan the database staged ledger and connected sheets for any approved transactions.
-            </div>
-          )}
+          <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 text-[11px] text-sky-300">
+            ℹ️ Invoices are generated directly from approved line items in your In-App PostgreSQL Ledger.
+          </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Filter by Client / Hotel (Optional)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Target Client Organization</label>
             <select
               value={clientFilter}
               onChange={(e) => setClientFilter(e.target.value)}
               disabled={isSubmitting}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer disabled:opacity-50"
             >
-              <option value="">All Approved Clients ({uniqueApprovedClients.length} hotels)</option>
-              {uniqueApprovedClients.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              <option value="">{currentClient ? currentClient.name : 'All Clients'}</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
                 </option>
               ))}
             </select>

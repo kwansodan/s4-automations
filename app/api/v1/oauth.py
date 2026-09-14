@@ -1,11 +1,13 @@
 """Multi-Tenant OAuth2 Integration Endpoints for Zoho Books, QuickBooks Online & Xero."""
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import base64
+import json
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -197,6 +199,406 @@ def _render_error_html(platform_name: str, error: str) -> HTMLResponse:
     )
 
 
+def _render_org_selection_html(
+    client_slug: str,
+    orgs: List[Dict[str, Any]],
+    refresh_token: str,
+    access_token: str,
+) -> HTMLResponse:
+    """Renders an interactive organization entity selector when a Zoho account has multiple business entities."""
+    serialized_orgs = [
+        {
+            "org_id": str(o.get("organization_id", "")),
+            "name": o.get("name", "Unnamed Organization"),
+            "currency": o.get("currency_code", ""),
+            "is_default": bool(o.get("is_default_org", False)),
+        }
+        for o in orgs
+    ]
+    orgs_json_str = json.dumps(serialized_orgs)
+    client_display = client_slug.replace("_", " ").title()
+
+    cards_html = ""
+    for o in serialized_orgs:
+        def_badge = '<span style="background: rgba(16,185,129,0.2); color: #34d399; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 9999px; border: 1px solid rgba(16,185,129,0.3);">★ Default</span>' if o["is_default"] else ""
+        curr_text = f" • Currency: {o['currency']}" if o['currency'] else ""
+        cards_html += f"""
+        <div class="org-card" onclick="selectOrg('{o['org_id']}', '{o['name']}')">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+              <span style="font-size: 13px; font-weight: 700; color: #fff;">{o['name']}</span>
+              {def_badge}
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; font-family: monospace;">
+              Org ID: <span style="color: #38bdf8;">{o['org_id']}</span>{curr_text}
+            </div>
+          </div>
+          <button type="button" class="btn-select" id="btn-{o['org_id']}">
+            Select Entity &rarr;
+          </button>
+        </div>
+        """
+
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Select Zoho Books Entity</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background-color: #0b1120;
+                color: #f8fafc;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 16px;
+                box-sizing: border-box;
+              }}
+              .container {{
+                background: linear-gradient(145deg, #1e293b, #0f172a);
+                border-radius: 20px;
+                border: 1px solid rgba(56, 189, 248, 0.3);
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+                max-width: 520px;
+                width: 100%;
+                padding: 28px 24px;
+              }}
+              .header {{
+                text-align: center;
+                margin-bottom: 20px;
+              }}
+              .header h2 {{
+                color: #fff;
+                font-size: 18px;
+                font-weight: 800;
+                margin: 0 0 6px 0;
+              }}
+              .header p {{
+                color: #94a3b8;
+                font-size: 12px;
+                line-height: 1.4;
+                margin: 0;
+              }}
+              .org-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                max-height: 380px;
+                overflow-y: auto;
+                padding-right: 4px;
+              }}
+              .org-card {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                background: #0b1329;
+                border: 1px solid #334155;
+                border-radius: 12px;
+                padding: 14px 16px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-align: left;
+              }}
+              .org-card:hover {{
+                border-color: #38bdf8;
+                background: #0f1f3d;
+                transform: translateY(-1px);
+              }}
+              .btn-select {{
+                background: #0284c7;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 6px 12px;
+                cursor: pointer;
+                transition: background 0.15s ease;
+                white-space: nowrap;
+              }}
+              .btn-select:hover {{
+                background: #0369a1;
+              }}
+              .success-card {{
+                display: none;
+                text-align: center;
+                padding: 20px 0;
+              }}
+              .success-card h3 {{
+                color: #34d399;
+                margin: 12px 0 6px 0;
+              }}
+            </style>
+          </head>
+          <body>
+            <div class="container" id="picker-container">
+              <div id="picker-view">
+                <div class="header">
+                  <div style="font-size: 28px; margin-bottom: 8px;">🏢</div>
+                  <h2>Select Zoho Organization Entity</h2>
+                  <p>Your Zoho account is linked to <b>{len(serialized_orgs)} entities</b>. Select which organization to connect to <b>{client_display}</b>:</p>
+                </div>
+                <div class="org-list">
+                  {cards_html}
+                </div>
+              </div>
+              <div class="success-card" id="success-view">
+                <div style="font-size: 36px;">🟢</div>
+                <h3>Connected Successfully!</h3>
+                <p style="color: #94a3b8; font-size: 13px;" id="confirmed-label">Linked to organization</p>
+                <p style="color: #64748b; font-size: 11px; margin-top: 14px;">Closing window and returning to S4 Automations...</p>
+              </div>
+            </div>
+
+            <script>
+              const availableOrgs = {orgs_json_str};
+
+              async function selectOrg(orgId, orgName) {{
+                const btns = document.querySelectorAll('.btn-select');
+                btns.forEach(b => {{ b.disabled = true; b.innerText = 'Linking...'; }});
+                try {{
+                  const res = await fetch('/api/v1/oauth/zoho/confirm-org', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                      client_id: '{client_slug}',
+                      org_id: orgId,
+                      org_name: orgName,
+                      refresh_token: '{refresh_token}',
+                      available_orgs: availableOrgs
+                    }})
+                  }});
+                  if (!res.ok) throw new Error('Status ' + res.status);
+                  if (window.opener) {{
+                    window.opener.postMessage({{
+                      type: 'ZOHO_OAUTH_SUCCESS',
+                      clientId: '{client_slug}',
+                      orgId: orgId,
+                      orgName: orgName,
+                      refreshToken: '{refresh_token}',
+                      availableOrgs: availableOrgs
+                    }}, '*');
+                  }}
+                  document.getElementById('picker-view').style.display = 'none';
+                  document.getElementById('success-view').style.display = 'block';
+                  document.getElementById('confirmed-label').innerText = orgName + ' (ID: ' + orgId + ')';
+                  setTimeout(() => window.close(), 1600);
+                }} catch (e) {{
+                  alert('Failed to connect entity: ' + e.message);
+                  btns.forEach(b => {{ b.disabled = false; b.innerText = 'Select Entity →'; }});
+                }}
+              }}
+            </script>
+          </body>
+        </html>
+        """
+    )
+
+
+def _render_xero_tenant_selection_html(
+    client_slug: str,
+    tenants: List[Dict[str, Any]],
+    refresh_token: str,
+) -> HTMLResponse:
+    """Renders an interactive organization entity selector when a Xero user account is connected to multiple Xero tenants."""
+    serialized_tenants = [
+        {
+            "org_id": str(t.get("tenantId", "")),
+            "name": t.get("tenantName", "Unnamed Organisation"),
+            "tenant_type": t.get("tenantType", "ORGANISATION"),
+        }
+        for t in tenants
+    ]
+    tenants_json_str = json.dumps(serialized_tenants)
+    client_display = client_slug.replace("_", " ").title()
+
+    cards_html = ""
+    for t in serialized_tenants:
+        cards_html += f"""
+        <div class="org-card" onclick="selectTenant('{t['org_id']}', '{t['name']}')">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+              <span style="font-size: 13px; font-weight: 700; color: #fff;">{t['name']}</span>
+              <span style="background: rgba(2,132,199,0.2); color: #38bdf8; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 9999px; border: 1px solid rgba(2,132,199,0.3);">{t['tenant_type']}</span>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; font-family: monospace;">
+              Tenant ID: <span style="color: #38bdf8;">{t['org_id']}</span>
+            </div>
+          </div>
+          <button type="button" class="btn-select" id="btn-{t['org_id']}">
+            Select Organisation &rarr;
+          </button>
+        </div>
+        """
+
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Select Xero Organisation</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background-color: #0b1120;
+                color: #f8fafc;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 16px;
+                box-sizing: border-box;
+              }}
+              .container {{
+                background: linear-gradient(145deg, #1e293b, #0f172a);
+                border-radius: 20px;
+                border: 1px solid rgba(2, 132, 199, 0.4);
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+                max-width: 520px;
+                width: 100%;
+                padding: 28px 24px;
+              }}
+              .header {{
+                text-align: center;
+                margin-bottom: 20px;
+              }}
+              .header h2 {{
+                color: #fff;
+                font-size: 18px;
+                font-weight: 800;
+                margin: 0 0 6px 0;
+              }}
+              .header p {{
+                color: #94a3b8;
+                font-size: 12px;
+                line-height: 1.4;
+                margin: 0;
+              }}
+              .org-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                max-height: 380px;
+                overflow-y: auto;
+                padding-right: 4px;
+              }}
+              .org-card {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                background: #0b1329;
+                border: 1px solid #334155;
+                border-radius: 12px;
+                padding: 14px 16px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-align: left;
+              }}
+              .org-card:hover {{
+                border-color: #38bdf8;
+                background: #0f1f3d;
+                transform: translateY(-1px);
+              }}
+              .btn-select {{
+                background: #0284c7;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 6px 12px;
+                cursor: pointer;
+                transition: background 0.15s ease;
+                white-space: nowrap;
+              }}
+              .btn-select:hover {{
+                background: #0369a1;
+              }}
+              .success-card {{
+                display: none;
+                text-align: center;
+                padding: 20px 0;
+              }}
+              .success-card h3 {{
+                color: #38bdf8;
+                margin: 12px 0 6px 0;
+              }}
+            </style>
+          </head>
+          <body>
+            <div class="container" id="picker-container">
+              <div id="picker-view">
+                <div class="header">
+                  <div style="font-size: 28px; margin-bottom: 8px;">🔷</div>
+                  <h2>Select Xero Organisation</h2>
+                  <p>Your Xero account has access to <b>{len(serialized_tenants)} organisations</b>. Select which organisation to connect to <b>{client_display}</b>:</p>
+                </div>
+                <div class="org-list">
+                  {cards_html}
+                </div>
+              </div>
+              <div class="success-card" id="success-view">
+                <div style="font-size: 36px;">🟢</div>
+                <h3>Connected Successfully!</h3>
+                <p style="color: #94a3b8; font-size: 13px;" id="confirmed-label">Linked to Xero organisation</p>
+                <p style="color: #64748b; font-size: 11px; margin-top: 14px;">Closing window and returning to S4 Automations...</p>
+              </div>
+            </div>
+
+            <script>
+              const availableTenants = {tenants_json_str};
+
+              async function selectTenant(tenantId, tenantName) {{
+                const btns = document.querySelectorAll('.btn-select');
+                btns.forEach(b => {{ b.disabled = true; b.innerText = 'Linking...'; }});
+                try {{
+                  const res = await fetch('/api/v1/oauth/xero/confirm-tenant', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                      client_id: '{client_slug}',
+                      tenant_id: tenantId,
+                      tenant_name: tenantName,
+                      refresh_token: '{refresh_token}',
+                      available_tenants: availableTenants
+                    }})
+                  }});
+                  if (!res.ok) throw new Error('Status ' + res.status);
+                  if (window.opener) {{
+                    window.opener.postMessage({{
+                      type: 'XERO_OAUTH_SUCCESS',
+                      clientId: '{client_slug}',
+                      orgId: tenantId,
+                      orgName: tenantName,
+                      refreshToken: '{refresh_token}',
+                      availableOrgs: availableTenants
+                    }}, '*');
+                  }}
+                  document.getElementById('picker-view').style.display = 'none';
+                  document.getElementById('success-view').style.display = 'block';
+                  document.getElementById('confirmed-label').innerText = tenantName + ' (ID: ' + tenantId + ')';
+                  setTimeout(() => window.close(), 1600);
+                }} catch (e) {{
+                  alert('Failed to connect Xero organisation: ' + e.message);
+                  btns.forEach(b => {{ b.disabled = false; b.innerText = 'Select Organisation →'; }});
+                }}
+              }}
+            </script>
+          </body>
+        </html>
+        """
+    )
+
+
 # ============================================================================
 # 1. ZOHO BOOKS OAUTH2
 # ============================================================================
@@ -317,8 +719,16 @@ async def zoho_oauth_callback(
             if org_res.status_code == 200:
                 org_data = org_res.json()
                 orgs = org_data.get("organizations", [])
-                if orgs:
-                    primary_org = next((o for o in orgs if o.get("is_default_org")), orgs[0])
+                if len(orgs) > 1:
+                    logger.info(f"Zoho user has {len(orgs)} organizations. Presenting interactive entity picker for client '{client_slug}'.")
+                    return _render_org_selection_html(
+                        client_slug=client_slug,
+                        orgs=orgs,
+                        refresh_token=refresh_token or "",
+                        access_token=access_token or "",
+                    )
+                elif orgs:
+                    primary_org = orgs[0]
                     org_id = str(primary_org.get("organization_id", ""))
                     org_name = primary_org.get("name", "")
 
@@ -340,6 +750,16 @@ async def zoho_oauth_callback(
                 cfg["zoho_refresh_token"] = refresh_token
             if org_name:
                 cfg["zoho_org_name"] = org_name
+            if 'orgs' in locals() and orgs:
+                cfg["zoho_available_orgs"] = [
+                    {
+                        "org_id": str(o.get("organization_id", "")),
+                        "name": o.get("name", "Unnamed Organization"),
+                        "currency": o.get("currency_code", ""),
+                        "is_default": bool(o.get("is_default_org", False)),
+                    }
+                    for o in orgs
+                ]
             cfg["zoho_connected_at"] = datetime.now(timezone.utc).isoformat()
             cfg["zoho_auth_type"] = "1-click-oauth"
             client_obj.custom_config = cfg
@@ -367,6 +787,134 @@ async def zoho_oauth_callback(
     )
 
 
+class ZohoConfirmOrgRequest(BaseModel):
+    client_id: str = Field(..., description="Client organization slug")
+    org_id: str = Field(..., description="Selected Zoho organization ID")
+    org_name: Optional[str] = Field(None, description="Selected Zoho organization name")
+    refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
+    available_orgs: Optional[List[Dict[str, Any]]] = Field(None, description="Discovered Zoho organization entities")
+
+
+@router.post("/zoho/confirm-org")
+async def confirm_zoho_org(payload: ZohoConfirmOrgRequest) -> Dict[str, Any]:
+    """Persists user's chosen Zoho organization entity and refreshes client status."""
+    with Session(get_engine()) as session:
+        client_obj = session.exec(
+            select(ClientOrganization).where(
+                (ClientOrganization.id == payload.client_id) | (ClientOrganization.name == payload.client_id)
+            )
+        ).first()
+
+        if not client_obj:
+            raise HTTPException(status_code=404, detail=f"Client organization '{payload.client_id}' not found.")
+
+        client_obj.zoho_org_id = payload.org_id
+        cfg = dict(client_obj.custom_config or {})
+        if payload.refresh_token:
+            cfg["zoho_refresh_token"] = payload.refresh_token
+        if payload.org_name:
+            cfg["zoho_org_name"] = payload.org_name
+        if payload.available_orgs:
+            cfg["zoho_available_orgs"] = payload.available_orgs
+        cfg["zoho_connected_at"] = datetime.now(timezone.utc).isoformat()
+        cfg["zoho_auth_type"] = "1-click-oauth"
+        client_obj.custom_config = cfg
+
+        integrations = list(client_obj.active_integrations or [])
+        if "Zoho Books" not in integrations and "zoho_books" not in integrations:
+            integrations.append("Zoho Books")
+        client_obj.active_integrations = integrations
+        client_obj.status = "live"
+        client_obj.status_text = "Production Live"
+        client_obj.updated_at = datetime.now(timezone.utc)
+
+        session.add(client_obj)
+        session.commit()
+
+        logger.info(f"Successfully bound client '{payload.client_id}' to Zoho entity '{payload.org_name}' (ID: {payload.org_id})")
+
+        return {
+            "success": True,
+            "client_id": payload.client_id,
+            "org_id": payload.org_id,
+            "org_name": payload.org_name,
+            "available_orgs": payload.available_orgs or [],
+        }
+
+
+@router.get("/zoho/organizations")
+async def get_zoho_organizations(
+    client_id: str = Query(..., description="Client organization slug"),
+) -> Dict[str, Any]:
+    """Retrieves all Zoho organization entities accessible to the client.
+    First returns cached organizations from DB; if access token can be refreshed, refreshes live from Zoho API.
+    """
+    with Session(get_engine()) as session:
+        client_obj = session.exec(
+            select(ClientOrganization).where(
+                (ClientOrganization.id == client_id) | (ClientOrganization.name == client_id)
+            )
+        ).first()
+
+        if not client_obj:
+            raise HTTPException(status_code=404, detail=f"Client organization '{client_id}' not found.")
+
+        cfg = client_obj.custom_config or {}
+        cached_orgs = cfg.get("zoho_available_orgs", [])
+        active_org_id = client_obj.zoho_org_id or cfg.get("accounting_org_id")
+        refresh_token = cfg.get("zoho_refresh_token")
+
+        if not refresh_token or settings.MOCK_MODE:
+            return {
+                "client_id": client_id,
+                "active_org_id": active_org_id,
+                "organizations": cached_orgs or ([{"org_id": active_org_id, "name": cfg.get("zoho_org_name", client_obj.name), "is_default": True}] if active_org_id else []),
+            }
+
+        # Attempt live fetch from Zoho API using refresh token
+        try:
+            from app.services.zoho_service import ZohoBooksService
+            service = ZohoBooksService.from_client_id(client_id)
+            access_token = service._get_access_token()
+            api_domain = settings.ZOHO_BOOKS_API_URL.rstrip("/").replace("/books/v3", "")
+
+            async with httpx.AsyncClient(timeout=15.0) as http_client:
+                org_res = await http_client.get(
+                    f"{api_domain}/books/v3/organizations",
+                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
+                )
+                if org_res.status_code == 200:
+                    raw_orgs = org_res.json().get("organizations", [])
+                    live_orgs = [
+                        {
+                            "org_id": str(o.get("organization_id", "")),
+                            "name": o.get("name", "Unnamed Organization"),
+                            "currency": o.get("currency_code", ""),
+                            "is_default": bool(o.get("is_default_org", False)),
+                        }
+                        for o in raw_orgs
+                    ]
+                    # Update cache in DB
+                    cfg_copy = dict(cfg)
+                    cfg_copy["zoho_available_orgs"] = live_orgs
+                    client_obj.custom_config = cfg_copy
+                    session.add(client_obj)
+                    session.commit()
+                    return {
+                        "client_id": client_id,
+                        "active_org_id": active_org_id,
+                        "organizations": live_orgs,
+                    }
+        except Exception as e:
+            logger.warning(f"Could not refresh live Zoho orgs for '{client_id}': {e}")
+
+        return {
+            "client_id": client_id,
+            "active_org_id": active_org_id,
+            "organizations": cached_orgs,
+        }
+
+
 @router.get("/zoho/status")
 async def get_zoho_connection_status(
     client_id: str = Query(..., description="Client organization slug"),
@@ -386,6 +934,7 @@ async def get_zoho_connection_status(
         org_id = client_obj.zoho_org_id or cfg.get("accounting_org_id")
         org_name = cfg.get("zoho_org_name")
         connected_at = cfg.get("zoho_connected_at")
+        available_orgs = cfg.get("zoho_available_orgs", [])
 
         is_connected = bool(org_id and (has_refresh_token or settings.MOCK_MODE))
 
@@ -397,6 +946,7 @@ async def get_zoho_connection_status(
             "org_name": org_name,
             "connected_at": connected_at,
             "auth_type": cfg.get("zoho_auth_type", "manual" if not has_refresh_token else "1-click-oauth"),
+            "available_orgs": available_orgs,
         }
 
 
@@ -759,9 +1309,17 @@ async def xero_oauth_callback(
             if conn_res.status_code == 200:
                 conns = conn_res.json()
                 if conns and isinstance(conns, list):
-                    primary_conn = conns[0]
-                    tenant_id = primary_conn.get("tenantId")
-                    tenant_name = primary_conn.get("tenantName")
+                    if len(conns) > 1:
+                        logger.info(f"Xero account for client '{client_slug}' has {len(conns)} connected tenants. Presenting tenant picker.")
+                        return _render_xero_tenant_selection_html(
+                            client_slug=client_slug,
+                            tenants=conns,
+                            refresh_token=refresh_token or "",
+                        )
+                    elif conns:
+                        primary_conn = conns[0]
+                        tenant_id = primary_conn.get("tenantId")
+                        tenant_name = primary_conn.get("tenantName")
 
             if not tenant_id:
                 tenant_id = f"xero_{client_slug}"
@@ -781,6 +1339,15 @@ async def xero_oauth_callback(
                 cfg["xero_refresh_token"] = refresh_token
             if tenant_name:
                 cfg["xero_tenant_name"] = tenant_name
+            if 'conns' in locals() and conns:
+                cfg["xero_available_tenants"] = [
+                    {
+                        "org_id": str(t.get("tenantId", "")),
+                        "name": t.get("tenantName", "Unnamed Organisation"),
+                        "tenant_type": t.get("tenantType", "ORGANISATION"),
+                    }
+                    for t in conns
+                ]
             cfg["xero_connected_at"] = datetime.now(timezone.utc).isoformat()
             cfg["xero_auth_type"] = "1-click-oauth"
             client_obj.custom_config = cfg
@@ -808,6 +1375,146 @@ async def xero_oauth_callback(
     )
 
 
+class XeroConfirmTenantRequest(BaseModel):
+    client_id: str = Field(..., description="Client organization slug")
+    tenant_id: str = Field(..., description="Selected Xero tenant ID")
+    tenant_name: Optional[str] = Field(None, description="Selected Xero tenant name")
+    refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
+    available_tenants: Optional[List[Dict[str, Any]]] = Field(None, description="Discovered Xero tenants")
+
+
+@router.post("/xero/confirm-tenant")
+async def confirm_xero_tenant(payload: XeroConfirmTenantRequest) -> Dict[str, Any]:
+    """Persists user's chosen Xero tenant organization and refreshes client status."""
+    with Session(get_engine()) as session:
+        client_obj = session.exec(
+            select(ClientOrganization).where(
+                (ClientOrganization.id == payload.client_id) | (ClientOrganization.name == payload.client_id)
+            )
+        ).first()
+
+        if not client_obj:
+            raise HTTPException(status_code=404, detail=f"Client organization '{payload.client_id}' not found.")
+
+        cfg = dict(client_obj.custom_config or {})
+        cfg["xero_tenant_id"] = payload.tenant_id
+        if payload.refresh_token:
+            cfg["xero_refresh_token"] = payload.refresh_token
+        if payload.tenant_name:
+            cfg["xero_tenant_name"] = payload.tenant_name
+        if payload.available_tenants:
+            cfg["xero_available_tenants"] = payload.available_tenants
+        cfg["xero_connected_at"] = datetime.now(timezone.utc).isoformat()
+        cfg["xero_auth_type"] = "1-click-oauth"
+        client_obj.custom_config = cfg
+
+        integrations = list(client_obj.active_integrations or [])
+        if "Xero" not in integrations and "xero" not in integrations:
+            integrations.append("Xero")
+        client_obj.active_integrations = integrations
+        client_obj.status = "live"
+        client_obj.status_text = "Production Live"
+        client_obj.updated_at = datetime.now(timezone.utc)
+
+        session.add(client_obj)
+        session.commit()
+
+        logger.info(f"Successfully bound client '{payload.client_id}' to Xero tenant '{payload.tenant_name}' (ID: {payload.tenant_id})")
+
+        return {
+            "success": True,
+            "client_id": payload.client_id,
+            "tenant_id": payload.tenant_id,
+            "tenant_name": payload.tenant_name,
+            "available_tenants": payload.available_tenants or [],
+        }
+
+
+@router.get("/xero/tenants")
+async def get_xero_tenants(
+    client_id: str = Query(..., description="Client organization slug"),
+) -> Dict[str, Any]:
+    """Retrieves all Xero tenants accessible to the client from DB cache or live Xero connections."""
+    with Session(get_engine()) as session:
+        client_obj = session.exec(
+            select(ClientOrganization).where(
+                (ClientOrganization.id == client_id) | (ClientOrganization.name == client_id)
+            )
+        ).first()
+
+        if not client_obj:
+            raise HTTPException(status_code=404, detail=f"Client organization '{client_id}' not found.")
+
+        cfg = client_obj.custom_config or {}
+        cached_tenants = cfg.get("xero_available_tenants", [])
+        active_tenant_id = cfg.get("xero_tenant_id")
+        refresh_token = cfg.get("xero_refresh_token")
+
+        if not refresh_token or settings.MOCK_MODE:
+            return {
+                "client_id": client_id,
+                "active_org_id": active_tenant_id,
+                "organizations": [
+                    {"org_id": t.get("org_id") or t.get("tenantId"), "name": t.get("name") or t.get("tenantName")}
+                    for t in cached_tenants
+                ] if cached_tenants else ([{"org_id": active_tenant_id, "name": cfg.get("xero_tenant_name", client_obj.name)}] if active_tenant_id else []),
+            }
+
+        try:
+            token_url = "https://identity.xero.com/connect/token"
+            async with httpx.AsyncClient(timeout=15.0) as http_client:
+                token_res = await http_client.post(
+                    token_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": settings.XERO_CLIENT_ID,
+                        "client_secret": settings.XERO_CLIENT_SECRET,
+                    },
+                )
+                if token_res.status_code == 200:
+                    token_data = token_res.json()
+                    new_access = token_data.get("access_token")
+                    new_refresh = token_data.get("refresh_token")
+                    conn_res = await http_client.get(
+                        "https://api.xero.com/connections",
+                        headers={"Authorization": f"Bearer {new_access}"},
+                    )
+                    if conn_res.status_code == 200:
+                        raw_conns = conn_res.json()
+                        live_tenants = [
+                            {
+                                "org_id": str(t.get("tenantId", "")),
+                                "name": t.get("tenantName", "Unnamed Organisation"),
+                                "tenant_type": t.get("tenantType", "ORGANISATION"),
+                            }
+                            for t in raw_conns
+                        ]
+                        cfg_copy = dict(cfg)
+                        cfg_copy["xero_available_tenants"] = live_tenants
+                        if new_refresh:
+                            cfg_copy["xero_refresh_token"] = new_refresh
+                        client_obj.custom_config = cfg_copy
+                        session.add(client_obj)
+                        session.commit()
+                        return {
+                            "client_id": client_id,
+                            "active_org_id": active_tenant_id,
+                            "organizations": live_tenants,
+                        }
+        except Exception as e:
+            logger.warning(f"Could not refresh live Xero tenants for '{client_id}': {e}")
+
+        return {
+            "client_id": client_id,
+            "active_org_id": active_tenant_id,
+            "organizations": [
+                {"org_id": t.get("org_id") or t.get("tenantId"), "name": t.get("name") or t.get("tenantName")}
+                for t in cached_tenants
+            ],
+        }
+
+
 @router.get("/xero/status")
 async def get_xero_connection_status(
     client_id: str = Query(..., description="Client organization slug"),
@@ -827,6 +1534,11 @@ async def get_xero_connection_status(
         tenant_id = cfg.get("xero_tenant_id")
         tenant_name = cfg.get("xero_tenant_name")
         connected_at = cfg.get("xero_connected_at")
+        raw_tenants = cfg.get("xero_available_tenants", [])
+        available_orgs = [
+            {"org_id": t.get("org_id") or t.get("tenantId"), "name": t.get("name") or t.get("tenantName")}
+            for t in raw_tenants
+        ]
 
         is_connected = bool(tenant_id and (has_refresh_token or settings.MOCK_MODE))
 
@@ -838,6 +1550,7 @@ async def get_xero_connection_status(
             "org_name": tenant_name,
             "connected_at": connected_at,
             "auth_type": cfg.get("xero_auth_type", "manual" if not has_refresh_token else "1-click-oauth"),
+            "available_orgs": available_orgs,
         }
 
 

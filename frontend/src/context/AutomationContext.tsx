@@ -142,10 +142,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           addLog('error', `Config fetch failed: ${err.message}`);
           return { status: 'ok', config: {} };
         }),
-        fetchSheetsData(selectedMonth, selectedYear).catch((err) => {
-          addLog('error', `Sheets fetch failed: ${err.message}`);
-          return { daily_details: [], monthly_summary: [] };
-        }),
+        Promise.resolve({ daily_details: [], monthly_summary: [] }),
         fetchCatalog().catch((err) => {
           addLog('error', `Zoho catalog fetch failed: ${err.message}`);
           return { contacts_count: 0, items_count: 0, contacts: [], items: [] };

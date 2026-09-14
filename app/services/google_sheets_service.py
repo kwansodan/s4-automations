@@ -153,42 +153,145 @@ class GoogleSheetsService:
         return self._drive
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def find_or_create_workbook(self, month_name: str, year: int, month_folder_id: str) -> Tuple[str, str]:
+    def find_or_create_workbook(
+        self,
+        month_name: str,
+        year: int,
+        month_folder_id: Optional[str] = None,
+        client_name: str = "ANR",
+        client_folder_id: Optional[str] = None,
+        explicit_sheet_id: Optional[str] = None,
+    ) -> Tuple[str, Optional[str]]:
         """
         Locates or creates the Google Sheet review workbook:
-        'ANR_Billing_Review_<Month>_<YYYY>' inside the Month Folder.
+        First checks explicit_sheet_id, then month_folder_id, then client_folder_id,
+        then Drive search for existing workbooks before creating a new empty sheet.
         Returns (spreadsheet_id, spreadsheet_url).
         """
-        workbook_title = f"ANR_Billing_Review_{month_name}_{year}"
-        
-        if settings.MOCK_MODE or not self.sheets or not self.drive or not month_folder_id or month_folder_id.startswith("mock_"):
+        if explicit_sheet_id and not explicit_sheet_id.startswith("mock_"):
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{explicit_sheet_id}/edit"
+            logger.info(f"Using explicitly specified review workbook (ID: {explicit_sheet_id})")
+            return explicit_sheet_id, sheet_url
+
+        safe_client = "".join(c for c in (client_name or "ANR") if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
+        workbook_title = f"{safe_client}_Billing_Review_{month_name}_{year}" if safe_client else f"ANR_Billing_Review_{month_name}_{year}"
+
+        if settings.MOCK_MODE or not self.sheets or not self.drive:
             logger.info(f"[MOCK] Finding or creating review workbook: {workbook_title}")
             mock_id = f"mock_sheet_{month_name.lower()}_{year}"
             return mock_id, None
 
-        try:
-            # 1. Search if already exists in folder
-            query = (
-                f"name = '{workbook_title}' and "
-                f"'{month_folder_id}' in parents and "
-                f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
-                f"trashed = false"
-            )
-            res = self.drive.files().list(
-                q=query,
-                spaces="drive",
-                fields="files(id, name, webViewLink)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-            ).execute()
-            files = res.get("files", [])
-            if files:
-                sheet_id = files[0]["id"]
-                sheet_url = files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
-                logger.info(f"Found existing review workbook '{workbook_title}' (ID: {sheet_id})")
-                return sheet_id, sheet_url
+        parent_folder = month_folder_id if (month_folder_id and not month_folder_id.startswith("mock_") and month_folder_id != "root") else None
+        client_fld = client_folder_id if (client_folder_id and not client_folder_id.startswith("mock_") and client_folder_id != "root") else None
 
-            # 2. Create new spreadsheet
+        try:
+            # 1. Search month_folder_id if provided
+            if parent_folder:
+                query = (
+                    f"'{parent_folder}' in parents and "
+                    f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                    f"trashed = false"
+                )
+                res = self.drive.files().list(
+                    q=query,
+                    spaces="drive",
+                    fields="files(id, name, webViewLink)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=20,
+                ).execute()
+                files = res.get("files", [])
+                if files:
+                    best_file = files[0]
+                    for f in files:
+                        fname = f.get("name", "").lower()
+                        if month_name.lower() in fname or (safe_client and safe_client.lower() in fname):
+                            best_file = f
+                            break
+                    sheet_id = best_file["id"]
+                    sheet_url = best_file.get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                    logger.info(f"Found existing review workbook '{best_file.get('name')}' in month folder (ID: {sheet_id})")
+                    return sheet_id, sheet_url
+
+            # 2. Search client_folder_id if provided
+            if client_fld:
+                # Direct spreadsheets in client folder
+                query = (
+                    f"'{client_fld}' in parents and "
+                    f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                    f"trashed = false"
+                )
+                res = self.drive.files().list(
+                    q=query,
+                    spaces="drive",
+                    fields="files(id, name, webViewLink)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=30,
+                ).execute()
+                files = res.get("files", [])
+                for f in files:
+                    fname = f.get("name", "").lower()
+                    if month_name.lower() in fname or month_name[:3].lower() in fname:
+                        sheet_id = f["id"]
+                        sheet_url = f.get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                        logger.info(f"Found existing review workbook '{f.get('name')}' in client folder (ID: {sheet_id})")
+                        return sheet_id, sheet_url
+
+                # Subfolders inside client folder matching the month
+                try:
+                    subfolders_res = self.drive.files().list(
+                        q=f"'{client_fld}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                        spaces="drive",
+                        fields="files(id, name)",
+                        pageSize=30,
+                    ).execute()
+                    for sf in subfolders_res.get("files", []):
+                        sf_name = sf.get("name", "").lower()
+                        if month_name.lower() in sf_name or month_name[:3].lower() in sf_name:
+                            sf_id = sf["id"]
+                            sf_files = self.drive.files().list(
+                                q=f"'{sf_id}' in parents and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
+                                spaces="drive",
+                                fields="files(id, name, webViewLink)",
+                                pageSize=10,
+                            ).execute().get("files", [])
+                            if sf_files:
+                                sheet_id = sf_files[0]["id"]
+                                sheet_url = sf_files[0].get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                                logger.info(f"Found existing review workbook '{sf_files[0].get('name')}' in client month subfolder (ID: {sheet_id})")
+                                return sheet_id, sheet_url
+                except Exception as sub_err:
+                    logger.debug(f"Notice searching client subfolders: {sub_err}")
+
+            # 3. Search Drive globally for any spreadsheet containing the month and client/billing
+            try:
+                global_query = (
+                    f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
+                    f"trashed = false and "
+                    f"name contains '{month_name}'"
+                )
+                res = self.drive.files().list(
+                    q=global_query,
+                    spaces="drive",
+                    fields="files(id, name, webViewLink)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=30,
+                ).execute()
+                files = res.get("files", [])
+                for f in files:
+                    fname = f.get("name", "").lower()
+                    target_terms = [safe_client.lower(), "anr", "billing", "review"]
+                    if any(term in fname for term in target_terms if term):
+                        sheet_id = f["id"]
+                        sheet_url = f.get("webViewLink", f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+                        logger.info(f"Found existing review workbook globally in Drive: '{f.get('name')}' (ID: {sheet_id})")
+                        return sheet_id, sheet_url
+            except Exception as glob_err:
+                logger.debug(f"Notice during global drive search: {glob_err}")
+
+            # 4. If no existing spreadsheet found anywhere, create a new one
             spreadsheet_body = {
                 "properties": {"title": workbook_title},
                 "sheets": [
@@ -200,17 +303,18 @@ class GoogleSheetsService:
             sheet_id = created["spreadsheetId"]
             sheet_url = created["spreadsheetUrl"]
 
-            # Move to the Month folder if valid
-            if month_folder_id and month_folder_id != "root" and not month_folder_id.startswith("mock_"):
+            # Move to target folder if valid
+            dest_folder = parent_folder or client_fld
+            if dest_folder:
                 try:
                     self.drive.files().update(
                         fileId=sheet_id,
-                        addParents=month_folder_id,
+                        addParents=dest_folder,
                         fields="id, parents",
                         supportsAllDrives=True,
                     ).execute()
                 except Exception as move_err:
-                    logger.warning(f"Could not move sheet {sheet_id} to folder {month_folder_id}: {move_err}")
+                    logger.warning(f"Could not move sheet {sheet_id} to folder {dest_folder}: {move_err}")
 
             # Initialize headers and styling
             self._initialize_tabs(sheet_id)
@@ -546,8 +650,8 @@ class GoogleSheetsService:
         for idx, row in enumerate(existing_values, start=2):
             if not row:
                 continue
-            v_name = row[0].strip().lower() if len(row) > 0 else ""
-            cat_name = row[2].strip().lower() if len(row) > 2 else ""
+            v_name = str(row[0]).strip().lower() if len(row) > 0 else ""
+            cat_name = str(row[2]).strip().lower() if len(row) > 2 else ""
             key = (v_name, cat_name)
             existing_map[key] = (idx, row)
 
@@ -910,9 +1014,9 @@ class GoogleSheetsService:
         for idx, row in enumerate(existing_values, start=2):
             if not row:
                 continue
-            client = row[0].strip().lower() if len(row) > 0 else ""
-            item_id = row[2].strip().lower() if len(row) > 2 else ""
-            std_name = row[3].strip().lower() if len(row) > 3 else ""
+            client = str(row[0]).strip().lower() if len(row) > 0 else ""
+            item_id = str(row[2]).strip().lower() if len(row) > 2 else ""
+            std_name = str(row[3]).strip().lower() if len(row) > 3 else ""
             key = (client, item_id or std_name)
             existing_map[key] = (idx, row)
 
@@ -1038,18 +1142,18 @@ class GoogleSheetsService:
             if is_approved and status_val.upper() in ["PENDING", "APPROVED"]:
                 approved_items.append({
                     "row_index": idx,
-                    "client_name": row[0].strip() if len(row) > 0 else "",
-                    "zoho_contact_id": row[1].strip() if len(row) > 1 else "",
-                    "zoho_item_id": row[2].strip() if len(row) > 2 else "",
-                    "standard_item_name": row[3].strip() if len(row) > 3 else "",
-                    "raw_names_seen": row[4].strip() if len(row) > 4 else "",
-                    "confidence_score": row[5].strip() if len(row) > 5 else "HIGH",
+                    "client_name": str(row[0]).strip() if len(row) > 0 else "",
+                    "zoho_contact_id": str(row[1]).strip() if len(row) > 1 else "",
+                    "zoho_item_id": str(row[2]).strip() if len(row) > 2 else "",
+                    "standard_item_name": str(row[3]).strip() if len(row) > 3 else "",
+                    "raw_names_seen": str(row[4]).strip() if len(row) > 4 else "",
+                    "confidence_score": str(row[5]).strip() if len(row) > 5 else "HIGH",
                     "unit_rate": _parse_float(row[6] if len(row) > 6 else 0.0),
                     "total_picked_up": _parse_int(row[7] if len(row) > 7 else 0),
                     "total_delivered": _parse_int(row[8] if len(row) > 8 else 0),
                     "linen_discrepancy": _parse_int(row[9] if len(row) > 9 else 0),
                     "total_billed": _parse_float(row[10] if len(row) > 10 else 0.0),
-                    "audit_notes": row[11].strip() if len(row) > 11 else "",
+                    "audit_notes": str(row[11]).strip() if len(row) > 11 else "",
                     "reviewed": True,
                     "approved": True,
                     "status": status_val,
@@ -1089,6 +1193,51 @@ class GoogleSheetsService:
         ).execute()
         logger.info(f"Updated {len(row_indices)} rows to INVOICED in {spreadsheet_id}")
 
+    def _resolve_tab_names(self, spreadsheet_id: str, is_ap: bool = False) -> Tuple[str, str]:
+        """Dynamically inspects a workbook to resolve the exact titles of the summary and daily tabs."""
+        default_summary = TAB_AP_MONTHLY_SUMMARY if is_ap else TAB_MONTHLY_SUMMARY
+        default_daily = TAB_AP_DAILY_DETAILS if is_ap else TAB_DAILY_DETAILS
+
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
+            return default_summary, default_daily
+
+        try:
+            meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets_list = meta.get("sheets", [])
+            titles = [s.get("properties", {}).get("title", "") for s in sheets_list]
+            if not titles:
+                return default_summary, default_daily
+
+            resolved_daily = None
+            resolved_summary = None
+
+            # Look for daily tab
+            for t in titles:
+                tl = t.lower()
+                if is_ap and ("daily" in tl or "bill" in tl or "expense" in tl):
+                    resolved_daily = t
+                    break
+                elif not is_ap and ("daily" in tl or "slip" in tl or "detail" in tl):
+                    resolved_daily = t
+                    break
+
+            # Look for summary tab
+            for t in titles:
+                tl = t.lower()
+                if "month" in tl or "summary" in tl or "rollup" in tl or "overview" in tl:
+                    resolved_summary = t
+                    break
+
+            if not resolved_summary:
+                resolved_summary = titles[0] if titles else default_summary
+            if not resolved_daily:
+                resolved_daily = titles[1] if len(titles) > 1 else (titles[0] if titles[0] != resolved_summary else default_daily)
+
+            return resolved_summary, resolved_daily
+        except Exception as e:
+            logger.warning(f"Could not inspect workbook tab titles for {spreadsheet_id}: {e}")
+            return default_summary, default_daily
+
     def fetch_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
         """Fetches all rows from both Tab 1 (Daily Details) and Tab 2 (Monthly Summary) for UI review."""
         if not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
@@ -1102,67 +1251,208 @@ class GoogleSheetsService:
             }
 
         try:
+            tab_summary, tab_daily = self._resolve_tab_names(spreadsheet_id, is_ap=False)
+
             # Retrofit existing historical workbooks with live dynamic formulas if needed
-            self.retrofit_workbook_formulas(spreadsheet_id, is_ap=False)
+            try:
+                self.retrofit_workbook_formulas(spreadsheet_id, is_ap=False, tab_summary=tab_summary, tab_daily=tab_daily)
+            except Exception as r_err:
+                logger.debug(f"Notice during formula retrofit: {r_err}")
 
             # 1. Fetch Daily Details
-            daily_res = self.sheets.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range=f"'{TAB_DAILY_DETAILS}'!A2:K500",
-                valueRenderOption="UNFORMATTED_VALUE",
-            ).execute()
-            daily_rows = daily_res.get("values", [])
+            raw_daily_rows = []
+            try:
+                daily_res = self.sheets.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'{tab_daily}'!A1:Z500",
+                    valueRenderOption="UNFORMATTED_VALUE",
+                ).execute()
+                raw_daily_rows = daily_res.get("values", [])
+            except Exception as d_err:
+                logger.warning(f"Could not read daily tab '{tab_daily}' from {spreadsheet_id}: {d_err}")
+
             daily_details = []
-            for r in daily_rows:
-                if not r:
+            start_row_idx = 0
+            col_map = {}
+            if raw_daily_rows:
+                first_row = [str(cell).strip().lower() for cell in raw_daily_rows[0]]
+                if any(w in first_row for w in ["date", "file", "client", "item", "pickup", "standard", "hotel", "slip"]):
+                    start_row_idx = 1
+                    for c_idx, cell_str in enumerate(first_row):
+                        if "date" in cell_str and "date" not in col_map:
+                            col_map["date"] = c_idx
+                        elif ("file" in cell_str or "slip" in cell_str) and "file" not in col_map:
+                            col_map["file"] = c_idx
+                        elif ("client" in cell_str or "hotel" in cell_str) and "client" not in col_map:
+                            col_map["client"] = c_idx
+                        elif ("standard" in cell_str or "std" in cell_str) and "standard_item" not in col_map:
+                            col_map["standard_item"] = c_idx
+                        elif ("raw" in cell_str or "item" in cell_str) and "raw_item" not in col_map:
+                            col_map["raw_item"] = c_idx
+                        elif "pickup" in cell_str and "pickup" not in col_map:
+                            col_map["pickup"] = c_idx
+                        elif ("deliver" in cell_str or "deliv" in cell_str) and "delivery" not in col_map:
+                            col_map["delivery"] = c_idx
+                        elif ("loss" in cell_str or "discrep" in cell_str) and "loss" not in col_map:
+                            col_map["loss"] = c_idx
+                        elif ("rate" in cell_str or "price" in cell_str) and "rate" not in col_map:
+                            col_map["rate"] = c_idx
+                        elif ("billed" in cell_str or "amount" in cell_str or "total" in cell_str) and "amount" not in col_map:
+                            col_map["amount"] = c_idx
+                        elif ("confidence" in cell_str or "conf" in cell_str) and "conf" not in col_map:
+                            col_map["conf"] = c_idx
+                        elif ("link" in cell_str or "scan" in cell_str or "url" in cell_str) and "link" not in col_map:
+                            col_map["link"] = c_idx
+
+            for r in raw_daily_rows[start_row_idx:]:
+                if not r or not any(r):
                     continue
+                def _get_val(key: str, fallback_idx: int, default: Any = "") -> Any:
+                    idx = col_map.get(key, fallback_idx)
+                    return r[idx] if len(r) > idx else default
+
+                slip_d = str(_get_val("date", 0, "")).strip()
+                file_n = str(_get_val("file", 1, "")).strip()
+                cl_name = str(_get_val("client", 2, "")).strip()
+                raw_item = str(_get_val("raw_item", 3, "")).strip()
+                std_item = str(_get_val("standard_item", 4, "")).strip()
+                item_display = std_item or raw_item
+                p_qty = _parse_int(_get_val("pickup", 5, 0))
+                d_qty = _parse_int(_get_val("delivery", 6, 0))
+                l_qty = _parse_int(_get_val("loss", 7, 0))
+                conf = str(_get_val("conf", 8, "HIGH")).strip()
+                scan_url = str(_get_val("link", 9, "")).strip()
+                u_rate = _parse_float(_get_val("rate", -1, 0.0))
+                t_amt = _parse_float(_get_val("amount", -1, round(d_qty * u_rate, 2)))
+
                 daily_details.append({
-                    "slip_date": r[0] if len(r) > 0 else "",
-                    "file_name": r[1] if len(r) > 1 else "",
-                    "client_name": r[2] if len(r) > 2 else "",
-                    "raw_item_name": r[3] if len(r) > 3 else "",
-                    "standard_item_name": r[4] if len(r) > 4 else "",
-                    "pickup_qty": _parse_int(r[5] if len(r) > 5 else 0),
-                    "delivery_qty": _parse_int(r[6] if len(r) > 6 else 0),
-                    "loss_qty": _parse_int(r[7] if len(r) > 7 else 0),
-                    "confidence_score": r[8] if len(r) > 8 else "HIGH",
-                    "drive_file_url": r[9] if len(r) > 9 else "",
+                    "date": slip_d,
+                    "slip_date": slip_d,
+                    "file_name": file_n,
+                    "client_name": cl_name,
+                    "raw_item_name": raw_item,
+                    "standard_item_name": std_item or item_display,
+                    "item_name": item_display,
+                    "category": raw_item or "Laundry",
+                    "pickup_qty": p_qty,
+                    "pickup_quantity": p_qty,
+                    "delivery_qty": d_qty,
+                    "delivery_quantity": d_qty,
+                    "loss_qty": l_qty,
+                    "discrepancy": l_qty,
+                    "unit_rate": u_rate,
+                    "unit_price": u_rate,
+                    "total_amount": t_amt,
+                    "total_billed": t_amt,
+                    "confidence_score": conf or "HIGH",
+                    "drive_file_url": scan_url,
+                    "source_image_url": scan_url,
                     "processed_at": r[10] if len(r) > 10 else "",
                 })
 
             # 2. Fetch Monthly Summary
-            monthly_res = self.sheets.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500",
-                valueRenderOption="UNFORMATTED_VALUE",
-            ).execute()
-            monthly_rows = monthly_res.get("values", [])
+            raw_summary_rows = []
+            try:
+                summary_res = self.sheets.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'{tab_summary}'!A1:Z500",
+                    valueRenderOption="UNFORMATTED_VALUE",
+                ).execute()
+                raw_summary_rows = summary_res.get("values", [])
+            except Exception as s_err:
+                logger.warning(f"Could not read summary tab '{tab_summary}' from {spreadsheet_id}: {s_err}")
+
             monthly_summary = []
-            for idx, r in enumerate(monthly_rows, start=2):
-                if not r:
+            start_s_idx = 0
+            s_col_map = {}
+            if raw_summary_rows:
+                first_row = [str(cell).strip().lower() for cell in raw_summary_rows[0]]
+                if any(w in first_row for w in ["client", "item", "rate", "pick", "deliver", "billed", "approved"]):
+                    start_s_idx = 1
+                    for c_idx, cell_str in enumerate(first_row):
+                        if ("client" in cell_str or "hotel" in cell_str) and "client" not in s_col_map:
+                            s_col_map["client"] = c_idx
+                        elif "contact" in cell_str and "contact" not in s_col_map:
+                            s_col_map["contact"] = c_idx
+                        elif "item id" in cell_str and "item_id" not in s_col_map:
+                            s_col_map["item_id"] = c_idx
+                        elif ("item" in cell_str or "standard" in cell_str) and "item" not in s_col_map:
+                            s_col_map["item"] = c_idx
+                        elif "raw" in cell_str and "raw" not in s_col_map:
+                            s_col_map["raw"] = c_idx
+                        elif ("confidence" in cell_str or "conf" in cell_str) and "conf" not in s_col_map:
+                            s_col_map["conf"] = c_idx
+                        elif ("rate" in cell_str or "price" in cell_str) and "rate" not in s_col_map:
+                            s_col_map["rate"] = c_idx
+                        elif ("pick" in cell_str) and "pickup" not in s_col_map:
+                            s_col_map["pickup"] = c_idx
+                        elif ("deliver" in cell_str) and "delivery" not in s_col_map:
+                            s_col_map["delivery"] = c_idx
+                        elif ("discrep" in cell_str or "loss" in cell_str) and "discrepancy" not in s_col_map:
+                            s_col_map["discrepancy"] = c_idx
+                        elif ("bill" in cell_str or "amount" in cell_str or "total" in cell_str) and "total" not in s_col_map:
+                            s_col_map["total"] = c_idx
+                        elif ("note" in cell_str or "audit" in cell_str) and "notes" not in s_col_map:
+                            s_col_map["notes"] = c_idx
+                        elif "review" in cell_str and "reviewed" not in s_col_map:
+                            s_col_map["reviewed"] = c_idx
+                        elif "approv" in cell_str and "approved" not in s_col_map:
+                            s_col_map["approved"] = c_idx
+                        elif "status" in cell_str and "status" not in s_col_map:
+                            s_col_map["status"] = c_idx
+
+            for idx, r in enumerate(raw_summary_rows[start_s_idx:], start=start_s_idx + 1):
+                if not r or not any(r):
                     continue
-                rev_val = r[12] if len(r) > 12 else False
-                app_val = r[13] if len(r) > 13 else False
+                def _get_s_val(key: str, fallback_idx: int, default: Any = "") -> Any:
+                    col = s_col_map.get(key, fallback_idx)
+                    return r[col] if len(r) > col else default
+
+                cl_name = str(_get_s_val("client", 0, "")).strip()
+                contact_id = str(_get_s_val("contact", 1, "")).strip()
+                item_id = str(_get_s_val("item_id", 2, "")).strip()
+                item_name = str(_get_s_val("item", 3, "")).strip()
+                raw_names = str(_get_s_val("raw", 4, "")).strip()
+                conf = str(_get_s_val("conf", 5, "HIGH")).strip()
+                unit_rate = _parse_float(_get_s_val("rate", 6, 0.0))
+                p_qty = _parse_int(_get_s_val("pickup", 7, 0))
+                d_qty = _parse_int(_get_s_val("delivery", 8, 0))
+                disc = _parse_int(_get_s_val("discrepancy", 9, 0))
+                t_billed = _parse_float(_get_s_val("total", 10, round(d_qty * unit_rate, 2)))
+                notes = str(_get_s_val("notes", 11, "")).strip()
+                
+                rev_val = _get_s_val("reviewed", 12, False)
+                app_val = _get_s_val("approved", 13, False)
                 is_rev = rev_val if isinstance(rev_val, bool) else str(rev_val).upper() in ["TRUE", "YES", "1"]
                 is_app = app_val if isinstance(app_val, bool) else str(app_val).upper() in ["TRUE", "YES", "1"]
+                status_val = str(_get_s_val("status", 14, "PENDING")).strip() or "PENDING"
 
                 monthly_summary.append({
                     "row_index": idx,
-                    "client_name": r[0].strip() if len(r) > 0 else "",
-                    "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
-                    "zoho_item_id": r[2].strip() if len(r) > 2 else "",
-                    "standard_item_name": r[3].strip() if len(r) > 3 else "",
-                    "raw_names_seen": r[4].strip() if len(r) > 4 else "",
-                    "confidence_score": r[5].strip() if len(r) > 5 else "HIGH",
-                    "unit_rate": _parse_float(r[6] if len(r) > 6 else 0.0),
-                    "total_picked_up": _parse_int(r[7] if len(r) > 7 else 0),
-                    "total_delivered": _parse_int(r[8] if len(r) > 8 else 0),
-                    "linen_discrepancy": _parse_int(r[9] if len(r) > 9 else 0),
-                    "total_billed": _parse_float(r[10] if len(r) > 10 else 0.0),
-                    "audit_notes": r[11].strip() if len(r) > 11 else "",
+                    "client_name": cl_name,
+                    "zoho_contact_id": contact_id,
+                    "zoho_item_id": item_id,
+                    "standard_item_name": item_name,
+                    "item_name": item_name,
+                    "raw_names_seen": raw_names,
+                    "confidence_score": conf or "HIGH",
+                    "unit_rate": unit_rate,
+                    "unit_price": unit_rate,
+                    "total_picked_up": p_qty,
+                    "pickup_qty": p_qty,
+                    "pickup_quantity": p_qty,
+                    "total_delivered": d_qty,
+                    "delivery_qty": d_qty,
+                    "delivery_quantity": d_qty,
+                    "linen_discrepancy": disc,
+                    "discrepancy": disc,
+                    "loss_qty": disc,
+                    "total_billed": t_billed,
+                    "total_amount": t_billed,
+                    "audit_notes": notes,
                     "reviewed": is_rev,
                     "approved": is_app,
-                    "status": r[14].strip() if len(r) > 14 else "PENDING",
+                    "status": status_val,
                 })
 
             return {
@@ -1192,14 +1482,14 @@ class GoogleSheetsService:
             logger.info(f"[MOCK] Toggled row {row_index} field {field} to {value} (is_ap={is_ap})")
             return True
 
+        tab_summary, _ = self._resolve_tab_names(spreadsheet_id, is_ap=is_ap)
+
         if is_ap:
             col_letter = "I" if field == "reviewed" else ("J" if field == "approved" else "K")
-            tab_name = TAB_AP_MONTHLY_SUMMARY
         else:
             col_letter = "M" if field == "reviewed" else ("N" if field == "approved" else "O")
-            tab_name = TAB_MONTHLY_SUMMARY
 
-        cell_range = f"'{tab_name}'!{col_letter}{row_index}"
+        cell_range = f"'{tab_summary}'!{col_letter}{row_index}"
 
         self.sheets.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
@@ -1208,7 +1498,7 @@ class GoogleSheetsService:
             body={"values": [[value]]},
         ).execute()
 
-        logger.info(f"Updated row {row_index} {field} -> {value} in {spreadsheet_id} (tab: {tab_name})")
+        logger.info(f"Updated row {row_index} {field} -> {value} in {spreadsheet_id} (tab: {tab_summary})")
         return True
 
     def fetch_ap_sheets_review_data(self, spreadsheet_id: str, month: str, year: int) -> Dict[str, Any]:
@@ -1288,20 +1578,20 @@ class GoogleSheetsService:
 
                 monthly_summary.append({
                     "row_index": idx,
-                    "client_name": r[0].strip() if len(r) > 0 else "",
-                    "vendor_name": r[0].strip() if len(r) > 0 else "",
-                    "zoho_contact_id": r[1].strip() if len(r) > 1 else "",
-                    "item_name": r[2].strip() if len(r) > 2 else "Operating Expense",
-                    "expense_category": r[2].strip() if len(r) > 2 else "Operating Expense",
+                    "client_name": str(r[0]).strip() if len(r) > 0 else "",
+                    "vendor_name": str(r[0]).strip() if len(r) > 0 else "",
+                    "zoho_contact_id": str(r[1]).strip() if len(r) > 1 else "",
+                    "item_name": str(r[2]).strip() if len(r) > 2 else "Operating Expense",
+                    "expense_category": str(r[2]).strip() if len(r) > 2 else "Operating Expense",
                     "total_bills_count": _parse_int(r[3] if len(r) > 3 else 1),
                     "total_quantity": _parse_float(r[4] if len(r) > 4 else 1.0),
                     "total_billed": _parse_float(r[5] if len(r) > 5 else 0.0),
                     "total_amount": _parse_float(r[5] if len(r) > 5 else 0.0),
-                    "currency": r[6] if len(r) > 6 else "GHS",
-                    "audit_notes": r[7].strip() if len(r) > 7 else "",
+                    "currency": str(r[6]).strip() if len(r) > 6 else "GHS",
+                    "audit_notes": str(r[7]).strip() if len(r) > 7 else "",
                     "reviewed": is_rev,
                     "approved": is_app,
-                    "status": r[10].strip() if len(r) > 10 else "PENDING",
+                    "status": str(r[10]).strip() if len(r) > 10 else "PENDING",
                 })
 
             return {
@@ -1342,7 +1632,7 @@ class GoogleSheetsService:
             logger.info(f"[MOCK] Updated Daily_Details row {row_index} field '{field}' to '{value}' (is_ap={is_ap})")
             return True
 
-        tab_name = TAB_AP_DAILY_DETAILS if is_ap else TAB_DAILY_DETAILS
+        _, tab_name = self._resolve_tab_names(spreadsheet_id, is_ap=is_ap)
 
         if is_ap:
             field_map = {
@@ -1396,7 +1686,13 @@ class GoogleSheetsService:
         logger.info(f"Updated Daily_Details cell {cell_range} to '{value}' (dynamic formulas recalculate).")
         return True
 
-    def retrofit_workbook_formulas(self, spreadsheet_id: str, is_ap: bool = False) -> Dict[str, Any]:
+    def retrofit_workbook_formulas(
+        self,
+        spreadsheet_id: str,
+        is_ap: bool = False,
+        tab_summary: Optional[str] = None,
+        tab_daily: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Retrospectively upgrades an existing spreadsheet so that its Monthly_Summary rows
         use dynamic live Google Sheets formulas linked to Daily_Details.
@@ -1405,8 +1701,8 @@ class GoogleSheetsService:
         if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             return {"status": "MOCK_RETROFITTED", "spreadsheet_id": spreadsheet_id, "rows_upgraded": 0}
 
-        tab_summary = TAB_AP_MONTHLY_SUMMARY if is_ap else TAB_MONTHLY_SUMMARY
-        tab_daily = TAB_AP_DAILY_DETAILS if is_ap else TAB_DAILY_DETAILS
+        if not tab_summary or not tab_daily:
+            tab_summary, tab_daily = self._resolve_tab_names(spreadsheet_id, is_ap=is_ap)
 
         try:
             # Read current formulas to inspect whether retrofit is needed
