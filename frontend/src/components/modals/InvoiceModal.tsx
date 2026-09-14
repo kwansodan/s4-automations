@@ -30,8 +30,8 @@ export const InvoiceModal: React.FC = () => {
 
   if (!isInvoiceModalOpen) return null;
 
-  const totalApproved = stats?.approved_billing_total_ghs || 0;
-  const approvedRowsCount = stats?.approved_rows_count || stats?.pending_approval_count || 0;
+  const totalApproved = stats?.approved_billing_total_ghs ?? 0;
+  const approvedRowsCount = stats?.approved_rows_count ?? stats?.pending_approval_count ?? 0;
 
   const handleClose = () => {
     if (isSubmitting) return;

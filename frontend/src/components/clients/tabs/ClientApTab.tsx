@@ -152,7 +152,7 @@ export const ClientApTab: React.FC = () => {
         approved_count: 0,
         reviewed_count: 0,
         is_fully_approved: false,
-        transaction_ids: [],
+        transaction_ids: [] as number[],
       };
 
       cur.bills_count += 1;
@@ -201,25 +201,11 @@ export const ClientApTab: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Extract supplier invoices via Gemini OCR, populate 2-tab Google Sheets (Daily Details &amp; Monthly Summary), and review for automated accounting bill creation.
+            Audit OCR extracted supplier bills, review vendor expense rollups, and post approved bills directly into the accounting ledger.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* External Google Sheet Button */}
-          {sheetsData?.spreadsheet_url && (
-            <a
-              href={sheetsData.spreadsheet_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
-              title="Open AP Review Spreadsheet in Google Sheets"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>AP Google Sheet</span>
-              <ExternalLink className="w-3 h-3 opacity-70" />
-            </a>
-          )}
 
           {/* Auto Post Toggle */}
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-300 bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl cursor-pointer">

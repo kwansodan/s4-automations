@@ -93,57 +93,111 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
     async def sync_review_workspace(
         self, month: str, year: int, items: List[ExtractedLineItem]
     ) -> Dict[str, Any]:
-        """Syncs extracted line items into Google Sheets Tab 1 & Tab 2."""
-        month_folder_id = self.drive.get_month_folder(month, year)
-        sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
+        """Stages extracted line items into PostgreSQL and optionally syncs Google Sheets if accessible."""
+        from app.models.db_models import StagedTransaction
+        from app.db.session import get_engine
+        from sqlmodel import Session
+        import uuid
 
-        from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
+        batch_id = f"batch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}"
+        staged_count = 0
 
-        detail_rows = []
-        for i in items:
-            raw = i.raw_extracted_data or {}
-            detail_rows.append(
-                DailySlipDetailRow(
-                    slip_date=raw.get("date", datetime.now().strftime("%Y-%m-%d")),
-                    file_name=raw.get("file_name", "slip.jpg"),
-                    client_name=raw.get("hotel_name", "ANR Client"),
-                    raw_item_name=raw.get("raw_item_name", i.item_or_description),
-                    standard_item_name=i.item_or_description,
-                    pickup_qty=int(i.credit_amount),
-                    delivery_qty=int(i.quantity_or_debit),
-                    loss_qty=int(i.discrepancy),
-                    confidence_score=ConfidenceLevel.HIGH,
-                    drive_file_url="",
-                    processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        try:
+            with Session(get_engine()) as session:
+                for i in items:
+                    raw = i.raw_extracted_data or {}
+                    tx_date = raw.get("date") or f"{year}-{month}-01"
+                    file_name = raw.get("file_name") or "slip.jpg"
+                    source_identifier = raw.get("source_identifier")
+
+                    staged = StagedTransaction(
+                        client_id=self.client_id,
+                        batch_id=batch_id,
+                        pipeline_id="pipe_anr_daily_slips",
+                        pipeline_name="Daily Control Slips OCR",
+                        pipeline_type="AR",
+                        entity_type="ar_sales_invoice",
+                        transaction_date=str(tx_date),
+                        source_type="google_drive",
+                        source_file_name=str(file_name),
+                        source_identifier=source_identifier,
+                        item_or_description=i.item_or_description,
+                        category_or_account=i.category_or_account or "Linen Laundry Service",
+                        quantity_or_debit=i.quantity_or_debit,
+                        credit_amount=i.credit_amount,
+                        rate_or_price=i.unit_price,
+                        total_amount=i.total_amount,
+                        reviewed=False,
+                        approved=False,
+                        status="PENDING",
+                        validation_status="VALID",
+                        confidence_score=0.96,
+                        discrepancy_amount=i.discrepancy,
+                        metadata_json=raw,
+                    )
+                    session.add(staged)
+                    staged_count += 1
+                session.commit()
+            logger.info(f"Successfully staged {staged_count} transactions into PostgreSQL for {self.client_name}")
+        except Exception as db_err:
+            logger.error(f"Error staging transactions into database: {db_err}")
+            self.execution_warnings.append(f"Database staging error: {db_err}")
+
+        # Optional Google Sheets sync (non-blocking fallback)
+        sheet_id, sheet_url = None, None
+        try:
+            month_folder_id = self.drive.get_month_folder(month, year)
+            sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
+
+            from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
+
+            detail_rows = []
+            for i in items:
+                raw = i.raw_extracted_data or {}
+                detail_rows.append(
+                    DailySlipDetailRow(
+                        slip_date=raw.get("date", datetime.now().strftime("%Y-%m-%d")),
+                        file_name=raw.get("file_name", "slip.jpg"),
+                        client_name=raw.get("hotel_name", "ANR Client"),
+                        raw_item_name=raw.get("raw_item_name", i.item_or_description),
+                        standard_item_name=i.item_or_description,
+                        pickup_qty=int(i.credit_amount),
+                        delivery_qty=int(i.quantity_or_debit),
+                        loss_qty=int(i.discrepancy),
+                        confidence_score=ConfidenceLevel.HIGH,
+                        drive_file_url="",
+                        processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
                 )
-            )
 
-        self.sheets.append_daily_slip_details(sheet_id, detail_rows)
+            self.sheets.append_daily_slip_details(sheet_id, detail_rows)
 
-        summary_rows = [
-            MonthlySummaryRow(
-                client_name="ANR Client",
-                zoho_contact_id="zoho_contact_anr",
-                zoho_item_id="zoho_item_01",
-                standard_item_name=i.item_or_description,
-                raw_names_seen=i.item_or_description,
-                confidence_score=ConfidenceLevel.HIGH,
-                unit_rate=i.unit_price,
-                total_picked_up=int(i.credit_amount),
-                total_delivered=int(i.quantity_or_debit),
-                linen_discrepancy=int(i.discrepancy),
-                total_billed=i.total_amount,
-                audit_notes="OCR Extracted",
-                status=SlipStatus.PENDING,
-            )
-            for i in items
-        ]
-        self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
+            summary_rows = [
+                MonthlySummaryRow(
+                    client_name="ANR Client",
+                    zoho_contact_id="zoho_contact_anr",
+                    zoho_item_id="zoho_item_01",
+                    standard_item_name=i.item_or_description,
+                    raw_names_seen=i.item_or_description,
+                    confidence_score=ConfidenceLevel.HIGH,
+                    unit_rate=i.unit_price,
+                    total_picked_up=int(i.credit_amount),
+                    total_delivered=int(i.quantity_or_debit),
+                    linen_discrepancy=int(i.discrepancy),
+                    total_billed=i.total_amount,
+                    audit_notes="OCR Extracted",
+                    status=SlipStatus.PENDING,
+                )
+                for i in items
+            ]
+            self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
+        except Exception as sheet_err:
+            logger.info(f"Google Sheets sync skipped (Option 1 In-App Ledger active): {sheet_err}")
 
         return {
             "spreadsheet_id": sheet_id,
             "spreadsheet_url": sheet_url,
-            "daily_rows_written": len(detail_rows),
+            "staged_transactions_count": staged_count,
         }
 
     async def post_to_accounting(

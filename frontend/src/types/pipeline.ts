@@ -22,4 +22,5 @@ export interface DashboardStats {
   pending_approval_count: number;
   active_clients_count: number;
   mock_mode: boolean;
+  approved_rows_count?: number;
 }

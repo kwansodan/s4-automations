@@ -252,7 +252,7 @@ export const SheetsViewer: React.FC = () => {
                     <tr
                       key={row.row_index}
                       className={`hover:bg-slate-850/50 transition-colors ${
-                        row.approved ? 'bg-emerald-950/15' : row.linen_discrepancy > 0 ? 'bg-amber-950/10' : ''
+                        row.approved ? 'bg-emerald-950/15' : (row.linen_discrepancy ?? 0) > 0 ? 'bg-amber-950/10' : ''
                       }`}
                     >
                       <td className="py-3 px-4 font-bold text-white">{row.client_name}</td>
@@ -260,7 +260,7 @@ export const SheetsViewer: React.FC = () => {
                       <td className="py-3 px-4 text-center font-mono">{row.pickup_qty}</td>
                       <td className="py-3 px-4 text-center font-mono">{row.delivery_qty}</td>
                       <td className="py-3 px-4 text-center">
-                        {row.linen_discrepancy > 0 ? (
+                        {(row.linen_discrepancy ?? 0) > 0 ? (
                           <span className="inline-flex items-center gap-1 text-amber-400 font-mono font-bold bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">
                             <AlertTriangle className="w-3 h-3" />
                             <span>+{row.linen_discrepancy}</span>
@@ -269,9 +269,9 @@ export const SheetsViewer: React.FC = () => {
                           <span className="text-slate-500 font-mono">0</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price)}</td>
+                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price ?? 0)}</td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
-                        {formatCurrency(row.total_billed)}
+                        {formatCurrency(row.total_billed ?? 0)}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <input
@@ -346,15 +346,15 @@ export const SheetsViewer: React.FC = () => {
                       <td className="py-3 px-4 text-center font-mono">{row.pickup_quantity}</td>
                       <td className="py-3 px-4 text-center font-mono">{row.delivery_quantity}</td>
                       <td className="py-3 px-4 text-center">
-                        {row.discrepancy > 0 ? (
+                        {(row.discrepancy ?? 0) > 0 ? (
                           <span className="text-amber-400 font-mono font-bold">+{row.discrepancy}</span>
                         ) : (
                           <span className="text-slate-500 font-mono">0</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price)}</td>
+                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price ?? 0)}</td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
-                        {formatCurrency(row.total_amount)}
+                        {formatCurrency(row.total_amount ?? 0)}
                       </td>
                     </tr>
                   ))
