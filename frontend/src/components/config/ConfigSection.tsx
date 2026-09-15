@@ -19,11 +19,12 @@ import {
   Server,
   Eye,
   EyeOff,
-  Layers,
   Globe,
   Bell,
+  Wrench,
+  Check,
 } from 'lucide-react';
-import { testConnections } from '../../lib/api';
+import { testConnections, runSystemAudit, repairSystemAudit } from '../../lib/api';
 import type { DiagnosticsResult } from '../../types/config';
 
 type ConfigCategory = 'ai' | 'notifications' | 'runtime' | 'database';
@@ -37,6 +38,12 @@ export const ConfigSection: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // System Configuration & Placeholder Audit
+  const [auditData, setAuditData] = useState<any | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [repairNotice, setRepairNotice] = useState<string | null>(null);
 
   // Show/hide masked secrets
   const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -90,6 +97,43 @@ export const ConfigSection: React.FC = () => {
     }
   };
 
+  const handleRunAudit = async () => {
+    setIsAuditing(true);
+    setRepairNotice(null);
+    try {
+      addLog('info', 'Executing comprehensive configuration & placeholder audit across database records...');
+      const res = await runSystemAudit();
+      setAuditData(res);
+      if (res.placeholders_found > 0) {
+        addLog('warning', `System audit detected ${res.placeholders_found} placeholder identifier(s).`);
+      } else {
+        addLog('success', 'System audit passed cleanly with zero placeholders.');
+      }
+    } catch (e: any) {
+      console.error('Audit failed:', e);
+      addLog('error', `System audit encountered an error: ${e.message}`);
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  const handleRepairPlaceholders = async () => {
+    setIsRepairing(true);
+    try {
+      addLog('info', 'Initiating 1-Click placeholder auto-repair and synchronization...');
+      const res = await repairSystemAudit();
+      setRepairNotice(res.message);
+      addLog('success', res.message);
+      const updatedAudit = await runSystemAudit();
+      setAuditData(updatedAudit);
+    } catch (e: any) {
+      console.error('Placeholder repair failed:', e);
+      addLog('error', `Placeholder auto-repair failed: ${e.message}`);
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       
@@ -120,14 +164,26 @@ export const ConfigSection: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleRunDiagnostics}
-          disabled={isTesting}
-          className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50 shrink-0"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-          <span>{isTesting ? 'Testing Integrations...' : 'Run Integration Diagnostics'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={handleRunAudit}
+            disabled={isAuditing}
+            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-700/80 text-sky-300 text-xs font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50 shrink-0"
+            title="Scan database for invalid dummy placeholders or missing configurations"
+          >
+            <Wrench className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
+            <span>{isAuditing ? 'Auditing System...' : 'Audit Placeholders & Config'}</span>
+          </button>
+
+          <button
+            onClick={handleRunDiagnostics}
+            disabled={isTesting}
+            className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+            <span>{isTesting ? 'Testing Integrations...' : 'Run Integration Diagnostics'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Diagnostics Results Banner */}
@@ -226,6 +282,125 @@ export const ConfigSection: React.FC = () => {
               <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.database_message || 'Online'}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* System Configuration & Placeholder Audit Report */}
+      {auditData && (
+        <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 animate-in fade-in space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-wider font-mono">
+                <Wrench className="w-4 h-4 text-amber-400" />
+                <span>Deep Database &amp; Placeholder Audit Report</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Evaluates client configurations, pipelines, and environment variables for legacy dummy identifiers.
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
+                auditData.placeholders_found === 0
+                  ? 'bg-emerald-950 text-emerald-400 border-emerald-500/40'
+                  : 'bg-rose-950 text-rose-400 border-rose-500/40'
+              }`}>
+                {auditData.placeholders_found === 0 ? 'Zero Placeholders' : `${auditData.placeholders_found} Placeholder(s) Found`}
+              </span>
+
+              {auditData.placeholders_found > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRepairPlaceholders}
+                  disabled={isRepairing}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50"
+                >
+                  <Wrench className={`w-3.5 h-3.5 ${isRepairing ? 'animate-spin' : ''}`} />
+                  <span>{isRepairing ? 'Repairing...' : '1-Click Auto-Repair'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {repairNotice && (
+            <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-medium flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{repairNotice}</span>
+            </div>
+          )}
+
+          {/* Environment Checks Overview */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+              <div className="text-[11px] text-slate-400 font-medium">Master Drive Folder</div>
+              <div className="font-mono text-xs font-bold text-white mt-1">
+                {auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.value || 'Missing'}
+              </div>
+              <div className={`text-[10px] font-mono mt-1 ${
+                auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.status === 'VALID' ? 'text-emerald-400' : 'text-amber-400'
+              }`}>
+                {auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.status}
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+              <div className="text-[11px] text-slate-400 font-medium">AI Vision Engine</div>
+              <div className="font-mono text-xs font-bold text-white mt-1">
+                {auditData.environment_checks?.GEMINI_API_KEY?.model || 'Gemini'}
+              </div>
+              <div className={`text-[10px] font-mono mt-1 ${
+                auditData.environment_checks?.GEMINI_API_KEY?.status === 'CONFIGURED' ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                {auditData.environment_checks?.GEMINI_API_KEY?.status}
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+              <div className="text-[11px] text-slate-400 font-medium">Accounting Gateway</div>
+              <div className="font-mono text-xs font-bold text-white mt-1">
+                Org: {auditData.environment_checks?.ZOHO_BOOKS?.org_id || 'Not Set'}
+              </div>
+              <div className={`text-[10px] font-mono mt-1 ${
+                auditData.environment_checks?.ZOHO_BOOKS?.status === 'CONFIGURED' ? 'text-emerald-400' : 'text-amber-400'
+              }`}>
+                {auditData.environment_checks?.ZOHO_BOOKS?.status}
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+              <div className="text-[11px] text-slate-400 font-medium">Database Ledger</div>
+              <div className="font-mono text-xs font-bold text-white mt-1">
+                {auditData.database_stats?.total_clients ?? 0} Clients / {auditData.database_stats?.total_staged_transactions ?? 0} Slips
+              </div>
+              <div className="text-[10px] font-mono text-emerald-400 mt-1">ONLINE</div>
+            </div>
+          </div>
+
+          {/* Client & Pipeline Details if Issues Exist */}
+          {auditData.client_audits?.some((c: any) => c.issues?.length > 0) && (
+            <div className="space-y-2 pt-2">
+              <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Client Organizations with Potential Configuration Notices:</span>
+              </div>
+              <div className="space-y-2">
+                {auditData.client_audits
+                  .filter((c: any) => c.issues?.length > 0)
+                  .map((c: any) => (
+                    <div key={c.id} className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between font-bold text-white">
+                        <span>{c.name} <span className="font-mono text-[11px] text-slate-500">({c.id})</span></span>
+                        <span className="text-[10px] font-mono text-amber-400">{c.folder_status}</span>
+                      </div>
+                      <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
+                        {c.issues.map((issue: string, idx: number) => (
+                          <li key={idx}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -659,8 +834,9 @@ export const ConfigSection: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    value={formData.CONTROL_SHEETS_FOLDER_ID || '1Uu_Q3p8s1_anr_laundry_slips'}
+                    value={formData.CONTROL_SHEETS_FOLDER_ID || ''}
                     onChange={(e) => handleChange('CONTROL_SHEETS_FOLDER_ID', e.target.value)}
+                    placeholder="Enter Google Drive Root Folder ID..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">

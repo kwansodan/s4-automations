@@ -303,7 +303,7 @@ DEFAULT_ANR_PIPELINES: List[Dict[str, Any]] = [
         "section": "AR",
         "entity_type": "ar_sales_invoice",
         "source_type": "google_drive",
-        "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
+        "source_identifier": settings.CONTROL_SHEETS_FOLDER_ID or "",
         "schedule": "Daily @ 18:00 UTC",
         "auto_post_draft": False,
         "is_active": True,

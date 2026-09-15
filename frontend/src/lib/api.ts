@@ -500,6 +500,21 @@ export async function runDiagnostics(): Promise<DiagnosticsResult> {
   return handleResponse<DiagnosticsResult>(res, 'Run diagnostics');
 }
 
+export async function runSystemAudit(): Promise<any> {
+  const res = await resilientFetch('/api/config/audit', {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any>(res, 'Run system audit');
+}
+
+export async function repairSystemAudit(): Promise<any> {
+  const res = await resilientFetch('/api/config/audit/repair', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+  });
+  return handleResponse<any>(res, 'Repair system placeholders');
+}
+
 // -------------------------------------------------------------------------
 // Multi-Client API Endpoints
 // -------------------------------------------------------------------------

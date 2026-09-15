@@ -177,10 +177,199 @@ async def get_dashboard_stats(month: Optional[str] = None, year: Optional[int] =
         logger.warning(f"Error querying PostgreSQL ledger stats: {e}")
 
     return {
-        "total_slips_ingested": total_slips or 2,
-        "unreturned_linen_loss_count": total_loss or 3,
-        "approved_billing_total_ghs": round(approved_total, 2) or 1885.00,
-        "pending_approval_count": pending_count or 1,
-        "active_clients_count": active_clients or 2,
+        "total_slips_ingested": total_slips,
+        "unreturned_linen_loss_count": total_loss,
+        "approved_billing_total_ghs": round(approved_total, 2),
+        "pending_approval_count": pending_count,
+        "active_clients_count": active_clients,
         "mock_mode": settings.MOCK_MODE,
     }
+
+
+@router.get("/audit", summary="Comprehensive System Configuration & Placeholder Audit")
+async def run_system_audit() -> Dict[str, Any]:
+    """
+    Performs a deep diagnostic audit of all database records, client organizations,
+    pipeline stream configurations, and external credentials to identify invalid placeholders.
+    """
+    from app.db.session import get_engine
+    from sqlmodel import Session, select
+    from app.models.db_models import ClientOrganization, StagedTransaction
+
+    audit_report = {
+        "timestamp": datetime.now().isoformat(),
+        "overall_status": "HEALTHY",
+        "placeholders_found": 0,
+        "environment_checks": {},
+        "client_audits": [],
+        "database_stats": {},
+        "recommendations": [],
+    }
+
+    # 1. Environment and Storage Checks
+    ctrl_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+    has_valid_folder = bool(ctrl_folder and ctrl_folder != "1Uu_Q3p8s1_anr_laundry_slips")
+    
+    audit_report["environment_checks"] = {
+        "CONTROL_SHEETS_FOLDER_ID": {
+            "status": "VALID" if has_valid_folder else "MISSING_OR_PLACEHOLDER",
+            "value": ctrl_folder[:12] + "..." if ctrl_folder else "NOT_CONFIGURED",
+            "is_placeholder": ctrl_folder == "1Uu_Q3p8s1_anr_laundry_slips",
+        },
+        "GEMINI_API_KEY": {
+            "status": "CONFIGURED" if bool(settings.GEMINI_API_KEY) else "MISSING",
+            "model": settings.GEMINI_MODEL,
+        },
+        "ZOHO_BOOKS": {
+            "status": "CONFIGURED" if bool(settings.ZOHO_REFRESH_TOKEN and settings.ZOHO_ORG_ID) else "PARTIAL_OR_MOCK",
+            "org_id": settings.ZOHO_ORG_ID or "NOT_SET",
+        },
+        "GOOGLE_SERVICE_ACCOUNT": {
+            "status": "CONFIGURED" if bool(settings.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 or settings.GOOGLE_SERVICE_ACCOUNT_FILE) else "MISSING",
+            "email": settings.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        },
+    }
+
+    # 2. Database Clients and Pipelines Audit
+    placeholder_count = 0
+    client_reports = []
+
+    try:
+        with Session(get_engine()) as session:
+            clients = session.exec(select(ClientOrganization)).all()
+            total_staged = session.exec(select(StagedTransaction)).all()
+            
+            audit_report["database_stats"] = {
+                "total_clients": len(clients),
+                "total_staged_transactions": len(total_staged),
+            }
+
+            for c in clients:
+                client_report = {
+                    "id": c.id,
+                    "name": c.name,
+                    "folder_id": c.folder_id,
+                    "folder_status": "VALID",
+                    "issues": [],
+                    "pipelines": [],
+                }
+
+                # Check root folder ID
+                if not c.folder_id:
+                    client_report["issues"].append("Root folder_id is not configured.")
+                    client_report["folder_status"] = "MISSING"
+                elif c.folder_id == "1Uu_Q3p8s1_anr_laundry_slips":
+                    client_report["issues"].append("Root folder_id is holding dummy placeholder '1Uu_Q3p8s1_anr_laundry_slips'.")
+                    client_report["folder_status"] = "PLACEHOLDER_DETECTED"
+                    placeholder_count += 1
+
+                # Audit each configured pipeline
+                pipelines = c.pipelines or []
+                for p in pipelines:
+                    p_id = p.get("id", "unnamed")
+                    p_name = p.get("name", "Unnamed Pipeline")
+                    p_source_id = p.get("source_identifier") or ""
+                    p_source_type = p.get("source_type") or "google_drive"
+                    
+                    p_issues = []
+                    if p_source_type == "google_drive":
+                        if p_source_id == "1Uu_Q3p8s1_anr_laundry_slips":
+                            p_issues.append("Pipeline source_identifier is using dummy placeholder '1Uu_Q3p8s1_anr_laundry_slips'.")
+                            placeholder_count += 1
+                        elif not p_source_id and not has_valid_folder:
+                            p_issues.append("No source folder configured on pipeline and no root folder in environment.")
+
+                    client_report["pipelines"].append({
+                        "id": p_id,
+                        "name": p_name,
+                        "source_type": p_source_type,
+                        "source_identifier": p_source_id,
+                        "has_issues": len(p_issues) > 0,
+                        "issues": p_issues,
+                    })
+                    if p_issues:
+                        client_report["issues"].extend(p_issues)
+
+                client_reports.append(client_report)
+
+    except Exception as e:
+        logger.error(f"Error auditing database records: {e}")
+        audit_report["recommendations"].append(f"Database query error: {str(e)}")
+
+    audit_report["client_audits"] = client_reports
+    audit_report["placeholders_found"] = placeholder_count
+
+    if placeholder_count > 0:
+        audit_report["overall_status"] = "WARNING_PLACEHOLDERS_DETECTED"
+        audit_report["recommendations"].append(
+            f"Detected {placeholder_count} legacy dummy placeholder identifier(s). "
+            f"Trigger the 1-Click Repair tool (/api/config/audit/repair) to replace with production settings."
+        )
+    elif not has_valid_folder:
+        audit_report["overall_status"] = "WARNING_FOLDER_MISSING"
+        audit_report["recommendations"].append(
+            "CONTROL_SHEETS_FOLDER_ID environment variable is missing or empty. Please set your root Google Drive folder ID."
+        )
+
+    return audit_report
+
+
+@router.post("/audit/repair", summary="1-Click Auto-Remediation & Placeholder Scrub")
+async def repair_system_placeholders() -> Dict[str, Any]:
+    """
+    Scans and automatically repairs all legacy dummy placeholder folder IDs in the database,
+    synchronizing them to the active CONTROL_SHEETS_FOLDER_ID environment setting.
+    """
+    from app.db.session import get_engine
+    from sqlmodel import Session, select
+    from app.models.db_models import ClientOrganization
+
+    real_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+    repaired_clients = []
+    repaired_pipelines = []
+
+    try:
+        with Session(get_engine()) as session:
+            clients = session.exec(select(ClientOrganization)).all()
+            for c in clients:
+                updated = False
+                
+                # Auto-heal root folder ID
+                if c.folder_id == "1Uu_Q3p8s1_anr_laundry_slips":
+                    c.folder_id = real_folder or None
+                    updated = True
+                    repaired_clients.append({"client_id": c.id, "name": c.name, "new_folder_id": c.folder_id})
+
+                # Auto-heal pipelines
+                if c.pipelines:
+                    new_pipes = []
+                    for p in c.pipelines:
+                        pipe_dict = dict(p)
+                        if pipe_dict.get("source_identifier") == "1Uu_Q3p8s1_anr_laundry_slips":
+                            pipe_dict["source_identifier"] = real_folder or ""
+                            repaired_pipelines.append({
+                                "client_id": c.id,
+                                "pipeline_id": pipe_dict.get("id"),
+                                "pipeline_name": pipe_dict.get("name"),
+                                "new_source_identifier": pipe_dict["source_identifier"],
+                            })
+                            updated = True
+                        new_pipes.append(pipe_dict)
+                    c.pipelines = new_pipes
+
+                if updated:
+                    session.add(c)
+
+            session.commit()
+            logger.info(f"Auto-remediation completed: {len(repaired_clients)} clients, {len(repaired_pipelines)} pipelines sanitized.")
+
+        return {
+            "success": True,
+            "message": f"Successfully scrubbed placeholders across {len(repaired_clients)} client(s) and {len(repaired_pipelines)} pipeline(s).",
+            "repaired_clients": repaired_clients,
+            "repaired_pipelines": repaired_pipelines,
+            "active_folder_used": real_folder or "CLEARED_EMPTY",
+        }
+    except Exception as e:
+        logger.error(f"Error during placeholder auto-repair: {e}")
+        raise HTTPException(status_code=500, detail=f"Auto-repair failed: {str(e)}")

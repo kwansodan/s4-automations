@@ -233,6 +233,7 @@ def init_db():
             existing = session.exec(select(ClientOrganization)).first()
             if not existing:
                 logger.info("Seeding default accounting client organizations...")
+                real_root_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
                 default_clients = [
                     ClientOrganization(
                         id="anr_group",
@@ -242,11 +243,11 @@ def init_db():
                         status="live",
                         status_text="Production Live",
                         accounting_software="zoho_books",
-                        description="Daily handwritten control slip OCR extraction, linen loss reconciliation, Google Sheets review sync, and Zoho Books draft invoicing.",
-                        folder_id="1Uu_Q3p8s1_anr_laundry_slips",
+                        description="Daily handwritten control slip OCR extraction, linen loss reconciliation, and Zoho Books draft invoicing.",
+                        folder_id=real_root_folder or None,
                         zoho_org_id=settings.ZOHO_ORG_ID or None,
                         source_type="google_drive",
-                        active_integrations=["Google Drive", "Gemini Vision 3.6", "Google Sheets", "Zoho Books", "Inngest"],
+                        active_integrations=["Google Drive", "Gemini Vision 3.6", "Zoho Books", "Inngest"],
                         pipelines=[
                             {
                                 "id": "pipe_anr_daily_slips",
@@ -254,7 +255,7 @@ def init_db():
                                 "section": "AR",
                                 "entity_type": "ar_sales_invoice",
                                 "source_type": "google_drive",
-                                "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
+                                "source_identifier": real_root_folder,
                                 "schedule": "Daily @ 18:00 UTC",
                                 "auto_post_draft": False,
                                 "active": True,
@@ -265,7 +266,7 @@ def init_db():
                                 "section": "AP",
                                 "entity_type": "ap_vendor_bill",
                                 "source_type": "email",
-                                "source_identifier": "bills@anrgroup.com",
+                                "source_identifier": settings.AUTH_EMAIL or "bills@service4gh.com",
                                 "schedule": "Weekly on Friday",
                                 "auto_post_draft": False,
                                 "active": True,
@@ -273,7 +274,7 @@ def init_db():
                         ],
                         blueprints=[
                             {"title": "Vision OCR Extraction", "desc": "Gemini 3.6 Flash structured extraction", "status": "active"},
-                            {"title": "Google Sheets Review Sync", "desc": "Populate Tab 1 & Tab 2", "status": "active"},
+                            {"title": "PostgreSQL Ledger Staging", "desc": "Direct staging into StagedTransaction table", "status": "active"},
                             {"title": "Draft Invoicing Engine", "desc": "1-Click draft invoice appending", "status": "active"},
                         ],
                     ),
@@ -283,59 +284,35 @@ def init_db():
                 session.commit()
                 logger.info("Successfully seeded default accounting client organizations.")
 
-            # Ensure ANR Group has default pipelines populated if empty
-            anr_client = session.exec(select(ClientOrganization).where(ClientOrganization.id == "anr_group")).first()
-            if anr_client and anr_client.pipelines is None:
-                logger.info("Auto-healing ANR Group pipelines in database...")
-                anr_client.pipelines = [
-                    {
-                        "id": "pipe_anr_daily_slips",
-                        "name": "Daily Control Slips OCR",
-                        "section": "AR",
-                        "entity_type": "ar_sales_invoice",
-                        "source_type": "google_drive",
-                        "source_identifier": "1Uu_Q3p8s1_anr_laundry_slips",
-                        "schedule": "Daily @ 18:00 UTC",
-                        "auto_post_draft": False,
-                        "active": True,
-                        "is_active": True,
-                    },
-                    {
-                        "id": "pipe_anr_detergent_bills",
-                        "name": "Chemical & Detergent Vendor Bills",
-                        "section": "AP",
-                        "entity_type": "ap_vendor_bill",
-                        "source_type": "email",
-                        "source_identifier": "bills@anrgroup.com",
-                        "schedule": "Weekly on Friday",
-                        "auto_post_draft": False,
-                        "active": True,
-                        "is_active": True,
-                    },
-                ]
-                session.add(anr_client)
-                session.commit()
-                logger.info("Successfully updated ANR Group pipelines.")
-
-            if anr_client:
-                real_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+            # Universal Auto-Healing across all clients for placeholder folder IDs
+            real_folder = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+            all_db_clients = session.exec(select(ClientOrganization)).all()
+            for db_client in all_db_clients:
                 needs_update = False
-                if real_folder and anr_client.folder_id == "1Uu_Q3p8s1_anr_laundry_slips":
-                    logger.info("Auto-migrating ANR Group placeholder folder ID to real CONTROL_SHEETS_FOLDER_ID...")
-                    anr_client.folder_id = real_folder
+                if db_client.folder_id == "1Uu_Q3p8s1_anr_laundry_slips":
+                    logger.info(f"Auto-healing client '{db_client.id}' placeholder folder ID to real CONTROL_SHEETS_FOLDER_ID...")
+                    db_client.folder_id = real_folder or None
                     needs_update = True
-                if real_folder and anr_client.pipelines:
-                    for p in anr_client.pipelines:
-                        if p.get("source_identifier") == "1Uu_Q3p8s1_anr_laundry_slips":
-                            p["source_identifier"] = real_folder
+                if db_client.pipelines:
+                    new_pipes = []
+                    for p in db_client.pipelines:
+                        p_dict = dict(p)
+                        if p_dict.get("source_identifier") == "1Uu_Q3p8s1_anr_laundry_slips":
+                            logger.info(f"Auto-healing pipeline '{p_dict.get('id')}' placeholder identifier...")
+                            p_dict["source_identifier"] = real_folder
                             needs_update = True
-                if anr_client.zoho_org_id == "782910482":
-                    logger.info(f"Auto-migrating ANR Group legacy dummy org ID 782910482 to dynamic ZOHO_ORG_ID: '{settings.ZOHO_ORG_ID}'...")
-                    anr_client.zoho_org_id = settings.ZOHO_ORG_ID or None
+                        new_pipes.append(p_dict)
+                    db_client.pipelines = new_pipes
+
+                if db_client.zoho_org_id == "782910482":
+                    logger.info(f"Auto-migrating client '{db_client.id}' legacy dummy org ID 782910482 to dynamic ZOHO_ORG_ID: '{settings.ZOHO_ORG_ID}'...")
+                    db_client.zoho_org_id = settings.ZOHO_ORG_ID or None
                     needs_update = True
+
                 if needs_update:
-                    session.add(anr_client)
-                    session.commit()
+                    session.add(db_client)
+
+            session.commit()
 
             # Seed Default Organizations (Accounting Firm & Direct Business) if empty
             from app.models.db_models import Organization, UserOrganizationMembership
