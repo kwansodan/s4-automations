@@ -334,9 +334,6 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
 # Register durable Inngest function
 anr_daily_billing_pipeline = inngest_client.create_function(
     fn_id="anr_daily_billing_pipeline",
-    trigger=[
-        inngest.TriggerCron(cron="0 23 * * *"),  # Daily at 11:00 PM GMT
-        inngest.TriggerEvent(event="anr/pipeline.trigger"),
-    ],
+    trigger=inngest.TriggerEvent(event="anr/pipeline.trigger"),
 )(execute_daily_billing_pipeline)
 
