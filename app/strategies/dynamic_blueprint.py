@@ -173,6 +173,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             p_cfg = (pipeline.get("source_config") if isinstance(pipeline, dict) else {}) or {}
             structure_hint = p_cfg.get("folder_structure", "auto_detect")
             lookback_window = p_cfg.get("enable_lookback_window", True)
+            auto_create = p_cfg.get("auto_create_month_folder", False)
             target_folder = (source_identifier or "").strip()
             if not target_folder or target_folder == "1Uu_Q3p8s1_anr_laundry_slips":
                 target_folder = (settings.CONTROL_SHEETS_FOLDER_ID or getattr(self.client, "folder_id", "") or "").strip()
