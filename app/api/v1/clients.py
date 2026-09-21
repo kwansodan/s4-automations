@@ -797,7 +797,12 @@ async def trigger_pipeline_stream(
 
     post_res = {"status": "SKIPPED", "invoices_created": 0}
     if auto_post:
-        post_res = await strategy.post_to_accounting(month, year, pipeline_id=pipeline_id)
+        try:
+            post_res = await strategy.post_to_accounting(month, year, pipeline_id=pipeline_id)
+        except Exception as post_err:
+            logger.warning(f"Auto-post to accounting notice for '{pipeline_id}': {post_err}")
+            strategy.execution_warnings.append(f"Auto-post to accounting skipped: {post_err}")
+            post_res = {"status": "FAILED", "error": str(post_err), "invoices_created": 0}
 
     discovered_docs = getattr(strategy, "discovered_documents", [])
     skipped_docs = getattr(strategy, "skipped_documents", [])
@@ -866,16 +871,20 @@ async def trigger_pipeline_stream(
     }
 
     # Update pipeline run stats and persist last run summary in database
-    current_pipes = list(client.pipelines or [])
-    for p in current_pipes:
-        if p.get("id") == pipeline_id:
-            p["last_triggered_at"] = datetime.now(timezone.utc).isoformat()
-            p["total_runs_count"] = int(p.get("total_runs_count", 0)) + 1
-            p["last_run_summary"] = last_run_summary
-    client.pipelines = current_pipes
-    client.updated_at = datetime.now(timezone.utc)
-    db.add(client)
-    db.commit()
+    try:
+        current_pipes = list(client.pipelines or [])
+        for p in current_pipes:
+            if p.get("id") == pipeline_id:
+                p["last_triggered_at"] = datetime.now(timezone.utc).isoformat()
+                p["total_runs_count"] = int(p.get("total_runs_count", 0)) + 1
+                p["last_run_summary"] = last_run_summary
+        client.pipelines = current_pipes
+        client.updated_at = datetime.now(timezone.utc)
+        db.add(client)
+        db.commit()
+    except Exception as db_err:
+        logger.warning(f"Notice persisting pipeline run stats: {db_err}")
+        db.rollback()
 
     AuditService.log(
         client_id=client_id,

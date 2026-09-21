@@ -257,6 +257,9 @@ def init_db():
                                 "source_type": "google_drive",
                                 "source_identifier": real_root_folder,
                                 "schedule": "Daily @ 18:00 UTC",
+                                "human_instructions": (
+                                    "Extract all individual linen line items from the control slip. For each linen item, capture the item name (e.g., Bedsheet (queen), Fitted sheet (queen), Duvet cover (queen), Pillow case, Bath towel, Hand towel, Bath mat), unit rate, picked up quantity (pieces collected), delivered quantity (clean pieces returned), and calculate linen loss as max(0, pickup - delivery). Calculate line amount as delivered quantity * rate (or pickup * rate if delivery is 0). Extract customer/client name, exact date on slip, and bag/document number."
+                                ),
                                 "auto_post_draft": False,
                                 "active": True,
                             },
@@ -300,6 +303,12 @@ def init_db():
                         if p_dict.get("source_identifier") == "1Uu_Q3p8s1_anr_laundry_slips":
                             logger.info(f"Auto-healing pipeline '{p_dict.get('id')}' placeholder identifier...")
                             p_dict["source_identifier"] = real_folder
+                            needs_update = True
+                        if p_dict.get("id") == "pipe_anr_daily_slips" and not p_dict.get("human_instructions"):
+                            logger.info("Auto-healing 'pipe_anr_daily_slips' with linen SKU extraction human instructions...")
+                            p_dict["human_instructions"] = (
+                                "Extract all individual linen line items from the control slip. For each linen item, capture the item name (e.g., Bedsheet (queen), Fitted sheet (queen), Duvet cover (queen), Pillow case, Bath towel, Hand towel, Bath mat), unit rate, picked up quantity (pieces collected), delivered quantity (clean pieces returned), and calculate linen loss as max(0, pickup - delivery). Calculate line amount as delivered quantity * rate (or pickup * rate if delivery is 0). Extract customer/client name, exact date on slip, and bag/document number."
+                            )
                             needs_update = True
                         new_pipes.append(p_dict)
                     db_client.pipelines = new_pipes
