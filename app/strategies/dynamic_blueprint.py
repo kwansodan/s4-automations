@@ -322,13 +322,21 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     except Exception as tx_check_err:
                         logger.warning(f"Error checking staged records status: {tx_check_err}")
 
-                    # If not finalized in accounting, check if absent from the active review sheet
+                    # If not finalized in accounting, check if absent from active review sheet or if existing records are corrupted zero-value dummies
                     if not has_posted_tx:
                         if sheet_id and doc_file_lower not in existing_filenames_in_sheet:
                             should_reprocess = True
                             logger.info(
                                 f"🔄 Auto-resync: '{doc.file_name}' was previously staged but is missing from review sheet "
                                 f"(and unposted in accounting). Clearing stale ledger records and re-extracting fresh."
+                            )
+                        elif staged_records and any(
+                            (r.rate_or_price == 0.0 and r.total_amount == 0.0) or (r.item_or_description and " - " in r.item_or_description and r.quantity_or_debit == 1.0)
+                            for r in staged_records
+                        ):
+                            should_reprocess = True
+                            logger.info(
+                                f"🔄 Auto-heal: '{doc.file_name}' contains corrupted zero-value dummy rows. Clearing and re-extracting fresh."
                             )
 
                 if should_reprocess:
@@ -383,57 +391,178 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 or "vendor" in pipeline_name.lower()
             )
 
-            # Run extraction
-            if doc.file_bytes:
+            # Download file bytes if not preloaded
+            if not doc.file_bytes and doc.source_identifier:
                 try:
-                    if is_ap:
-                        bill_extraction = await ocr.extract_vendor_bill(
-                            file_bytes=doc.file_bytes,
-                            mime_type=doc.mime_type,
-                            file_name=doc.file_name,
-                        )
-                        v_name = bill_extraction.vendor_name or self.client_name
-                        extraction = {
-                            "vendor": v_name,
-                            "vendor_name": v_name,
-                            "bill_number": bill_extraction.bill_number or f"BILL-{doc.file_name[:8]}",
-                            "date": bill_extraction.bill_date or doc.metadata.get("date"),
-                            "total_amount": float(bill_extraction.total_amount or 0.0),
-                            "currency": bill_extraction.currency or "GHS",
-                            "confidence_score": 0.95,
-                            "items": [
-                                {
-                                    "item_name": it.item_description or "Vendor Bill Item",
-                                    "description": it.item_description,
-                                    "quantity": float(it.quantity or 1.0),
-                                    "unit_price": float(it.unit_rate or it.amount or 0.0),
-                                    "total_amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
-                                }
-                                for it in bill_extraction.items
-                            ] if bill_extraction.items else [
-                                {
-                                    "item_name": f"Vendor Bill: {v_name}",
-                                    "description": f"Vendor Bill from {v_name}",
-                                    "quantity": 1.0,
-                                    "unit_price": float(bill_extraction.total_amount or 100.0),
-                                    "total_amount": float(bill_extraction.total_amount or 100.0),
-                                }
-                            ],
-                        }
+                    drive = GoogleDriveService()
+                    dl_res = drive.download_file_bytes(doc.source_identifier)
+                    if isinstance(dl_res, tuple):
+                        doc.file_bytes = dl_res[0]
+                        if len(dl_res) > 1 and dl_res[1]:
+                            doc.mime_type = dl_res[1]
                     else:
-                        extraction_obj = await ocr.extract_slip_data(
-                            file_bytes=doc.file_bytes,
-                            mime_type=doc.mime_type,
-                            file_name=doc.file_name,
-                            client_name=self.client_name,
-                            item_catalog=[],
-                        )
-                        extraction = extraction_obj.model_dump()
-                except Exception as e:
-                    logger.warning(f"Vision OCR fallback for {doc.file_name}: {e}")
-                    extraction = {"items": [], "vendor": self.client_name, "total_amount": 150.0}
-            else:
+                        doc.file_bytes = dl_res
+                except Exception as dl_err:
+                    logger.warning(f"Could not download file bytes for {doc.file_name} ({doc.source_identifier}): {dl_err}")
+
+            if not doc.file_bytes:
+                err_msg = f"Cannot process document '{doc.file_name}': file content could not be retrieved from storage."
+                logger.error(err_msg)
+                self.execution_warnings.append(err_msg)
+                continue
+
+            # Run extraction with human transposition or specialized OCR
+            pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
+            human_instructions = (
+                doc.metadata.get("human_instructions")
+                or (pipe_obj.get("human_instructions") if pipe_obj else None)
+            )
+            accounting_software = (
+                doc.metadata.get("accounting_software")
+                or (pipe_obj.get("accounting_software") if pipe_obj else None)
+                or getattr(self.client, "accounting_software", "zoho_books")
+                or "zoho_books"
+            )
+
+            extraction = None
+            try:
+                if human_instructions and human_instructions.strip():
+                    logger.info(f"Applying custom human instructions for '{doc.file_name}' ({len(human_instructions)} chars)...")
+                    sim_res = await ocr.simulate_pipeline_transposition(
+                        file_bytes=doc.file_bytes,
+                        file_name=doc.file_name,
+                        mime_type=doc.mime_type or "image/png",
+                        sample_text=None,
+                        entity_type=entity_type,
+                        client_name=doc.metadata.get("customer_name_hint") or self.client_name,
+                        human_instructions=human_instructions.strip(),
+                        accounting_software=accounting_software,
+                        item_catalog=items_catalog,
+                    )
+                    payload = sim_res.get("transposed_payload", {})
+                    line_items = payload.get("line_items") or payload.get("items") or []
+                    c_score = float(sim_res.get("confidence_score", 0.95))
+                    extraction = {
+                        **payload,
+                        "items": line_items,
+                        "line_items": line_items,
+                        "date": payload.get("date") or doc.metadata.get("date"),
+                        "customer_name": payload.get("customer_id") or doc.metadata.get("customer_name_hint") or self.client_name,
+                        "vendor_name": payload.get("vendor_id") or doc.metadata.get("vendor_name_hint") or self.client_name,
+                        "total_amount": float(payload.get("total_amount") or 0.0),
+                        "confidence_score": c_score,
+                    }
+                elif is_ap:
+                    bill_extraction = await ocr.extract_vendor_bill(
+                        file_bytes=doc.file_bytes,
+                        mime_type=doc.mime_type,
+                        file_name=doc.file_name,
+                    )
+                    v_name = bill_extraction.vendor_name or doc.metadata.get("vendor_name_hint") or self.client_name
+                    extraction = {
+                        "vendor": v_name,
+                        "vendor_name": v_name,
+                        "bill_number": bill_extraction.bill_number or f"BILL-{doc.file_name[:8]}",
+                        "date": bill_extraction.bill_date or doc.metadata.get("date"),
+                        "total_amount": float(bill_extraction.total_amount or 0.0),
+                        "currency": bill_extraction.currency or "GHS",
+                        "confidence_score": 0.95,
+                        "items": [
+                            {
+                                "name": it.item_description or "Vendor Bill Item",
+                                "item_name": it.item_description or "Vendor Bill Item",
+                                "description": it.item_description,
+                                "quantity": float(it.quantity or 1.0),
+                                "unit_price": float(it.unit_rate or it.amount or 0.0),
+                                "rate": float(it.unit_rate or it.amount or 0.0),
+                                "total_amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
+                                "amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
+                            }
+                            for it in bill_extraction.items
+                        ] if bill_extraction.items else [
+                            {
+                                "name": f"Vendor Bill: {v_name}",
+                                "item_name": f"Vendor Bill: {v_name}",
+                                "description": f"Vendor Bill from {v_name}",
+                                "quantity": 1.0,
+                                "unit_price": float(bill_extraction.total_amount or 100.0),
+                                "rate": float(bill_extraction.total_amount or 100.0),
+                                "total_amount": float(bill_extraction.total_amount or 100.0),
+                                "amount": float(bill_extraction.total_amount or 100.0),
+                            }
+                        ],
+                    }
+                else:
+                    extraction_obj = await ocr.extract_slip_data(
+                        file_bytes=doc.file_bytes,
+                        mime_type=doc.mime_type,
+                        file_name=doc.file_name,
+                        client_name=doc.metadata.get("customer_name_hint") or self.client_name,
+                        item_catalog=items_catalog,
+                    )
+                    ext_items = []
+                    total_amt = 0.0
+                    for it in extraction_obj.items:
+                        p_qty = float(it.pickup_qty or 0)
+                        d_qty = float(it.delivery_qty or 0)
+                        loss = float(it.unreturned_loss_qty or max(0, p_qty - d_qty))
+                        u_rate = float(it.unit_rate or 0.0)
+                        billed_qty = d_qty if d_qty > 0 else p_qty
+                        line_tot = float(billed_qty * u_rate)
+                        total_amt += line_tot
+                        ext_items.append({
+                            "name": it.standard_item_name or it.raw_item_name,
+                            "item_name": it.standard_item_name or it.raw_item_name,
+                            "standard_item_name": it.standard_item_name,
+                            "raw_item_name": it.raw_item_name,
+                            "pickup_qty": p_qty,
+                            "delivery_qty": d_qty,
+                            "quantity": billed_qty,
+                            "loss_qty": loss,
+                            "unreturned_loss_qty": loss,
+                            "rate": u_rate,
+                            "unit_rate": u_rate,
+                            "unit_price": u_rate,
+                            "amount": line_tot,
+                            "total_amount": line_tot,
+                            "zoho_item_id": it.zoho_item_id,
+                            "confidence_score": it.confidence_score.value if hasattr(it.confidence_score, "value") else str(it.confidence_score),
+                            "remarks": it.remarks,
+                        })
+                    extraction = {
+                        "items": ext_items,
+                        "line_items": ext_items,
+                        "date": extraction_obj.slip_date,
+                        "slip_date": extraction_obj.slip_date,
+                        "customer_name": extraction_obj.client_name or doc.metadata.get("customer_name_hint") or self.client_name,
+                        "total_amount": total_amt,
+                        "confidence_score": 0.95,
+                    }
+            except Exception as e:
+                logger.warning(f"Vision OCR extraction exception for {doc.file_name}: {e}")
                 extraction = {"items": [], "vendor": self.client_name, "total_amount": 0.0}
+
+            if not extraction:
+                extraction = {"items": [], "vendor": self.client_name, "total_amount": 0.0}
+
+            # Normalize extracted date
+            extracted_date_str = extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date")
+            resolved_tx_date = resolve_transaction_date(
+                extracted_date=extracted_date_str,
+                file_name=doc.file_name,
+                target_month=month or doc.metadata.get("month"),
+                target_year=year or doc.metadata.get("year"),
+            )
+            extraction["date"] = resolved_tx_date
+
+            # Calculate total amount if 0
+            raw_items_list = extraction.get("items") or extraction.get("line_items") or []
+            if float(extraction.get("total_amount") or 0.0) == 0.0 and raw_items_list:
+                calc_tot = sum(
+                    float(it.get("amount") or it.get("total_amount") or (float(it.get("quantity", 1.0) or it.get("delivery_qty", 1.0) or it.get("pickup_qty", 1.0)) * float(it.get("rate") or it.get("unit_price") or it.get("unit_rate") or 0.0)))
+                    for it in raw_items_list
+                )
+                extraction["total_amount"] = calc_tot
 
             # -----------------------------------------------------------------
             # Strict Zoho API Contract Validation
@@ -464,65 +593,93 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     client_id=self.client_id,
                 )
 
-            # Build extracted line item with validation metadata
-            items = extraction.get("items", [])
+            # Build extracted line items with validation metadata
+            items = extraction.get("items") or extraction.get("line_items") or []
             val_status = "VALID" if validation_result.is_valid else "PENDING_VALIDATION_ERROR"
             val_errors = [iss.model_dump() for iss in validation_result.issues]
 
             if not items:
-                tot = float(extraction.get("total_amount", 100.0))
+                tot = float(extraction.get("total_amount", 0.0))
                 item = ExtractedLineItem(
-                    item_or_description=f"{self.client_name} - {doc.file_name}",
+                    item_or_description=f"Unparsed Slip: {doc.file_name}",
                     category_or_account=self.custom_config.get("default_account", "General Operating Account"),
                     quantity_or_debit=1.0,
+                    credit_amount=1.0,
                     unit_price=tot,
                     total_amount=tot,
-                    confidence_score=float(extraction.get("confidence_score", 0.95)),
+                    confidence_score=float(extraction.get("confidence_score", 0.5)),
                     source_checksum=checksum,
                     raw_extracted_data={
                         **extraction,
                         "file_name": doc.file_name,
                         "source_identifier": doc.source_identifier,
                         "drive_file_url": doc.metadata.get("drive_file_url") or (f"https://drive.google.com/file/d/{doc.source_identifier}/view" if doc.source_identifier else ""),
-                        "date": resolve_transaction_date(
-                            extracted_date=extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
-                            file_name=doc.file_name,
-                            target_month=month,
-                            target_year=year,
-                        ),
+                        "date": resolved_tx_date,
                         "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                         "pipeline_id": pipeline_id,
                         "pipeline_name": pipeline_name,
                         "entity_type": entity_type,
-                        "validation_status": val_status,
-                        "validation_errors": val_errors,
+                        "validation_status": "PENDING_VALIDATION_ERROR",
+                        "validation_errors": [{"field_name": "line_items", "message": "No line items could be extracted from slip"}],
                     },
                 )
                 extracted_items.append(item)
             else:
                 for raw_it in items:
-                    qty = float(raw_it.get("quantity", 1.0) or raw_it.get("pickup_qty", 1.0))
-                    rate = float(raw_it.get("unit_price", 0.0) or raw_it.get("rate", 0.0) or raw_it.get("unit_rate", 0.0))
-                    tot = float(raw_it.get("total_amount", qty * rate) or raw_it.get("amount", qty * rate))
+                    item_desc = (
+                        raw_it.get("name")
+                        or raw_it.get("item_name")
+                        or raw_it.get("standard_item_name")
+                        or raw_it.get("raw_item_name")
+                        or raw_it.get("description")
+                        or raw_it.get("item_description")
+                        or f"Line Item ({doc.file_name})"
+                    )
+
+                    raw_qty = raw_it.get("quantity")
+                    raw_pickup = raw_it.get("pickup_qty") or raw_it.get("picked_up") or raw_it.get("pickup")
+                    raw_deliv = raw_it.get("delivery_qty") or raw_it.get("delivered") or raw_it.get("delivery")
+
+                    if raw_pickup is not None or raw_deliv is not None:
+                        p_qty = float(raw_pickup if raw_pickup is not None else (raw_qty if raw_qty is not None else 1.0))
+                        d_qty = float(raw_deliv if raw_deliv is not None else p_qty)
+                    else:
+                        q = float(raw_qty if raw_qty is not None else 1.0)
+                        p_qty = q
+                        d_qty = q
+
+                    loss = float(raw_it.get("loss_qty") or raw_it.get("unreturned_loss_qty") or raw_it.get("discrepancy") or max(0.0, p_qty - d_qty))
+                    rate = float(raw_it.get("rate") or raw_it.get("unit_price") or raw_it.get("unit_rate") or raw_it.get("price") or 0.0)
+
+                    tot = raw_it.get("total_amount") or raw_it.get("amount") or raw_it.get("line_total")
+                    if tot is not None:
+                        tot = float(tot)
+                    else:
+                        tot = float(d_qty * rate) if d_qty > 0 else float(p_qty * rate)
+
+                    category = (
+                        raw_it.get("category")
+                        or raw_it.get("category_or_account")
+                        or self.custom_config.get("default_account")
+                        or ("Cost of Goods Sold" if is_ap else "Linen Laundry Service")
+                    )
+
                     item = ExtractedLineItem(
-                        item_or_description=raw_it.get("item_name") or raw_it.get("description", "Accounting Line Item"),
-                        category_or_account=raw_it.get("category") or self.custom_config.get("default_account"),
-                        quantity_or_debit=qty,
+                        item_or_description=item_desc,
+                        category_or_account=category,
+                        quantity_or_debit=d_qty,
+                        credit_amount=p_qty,
                         unit_price=rate,
                         total_amount=tot,
-                        confidence_score=float(extraction.get("confidence_score", 0.95)),
+                        confidence_score=float(raw_it.get("confidence_score") if isinstance(raw_it.get("confidence_score"), (int, float)) else extraction.get("confidence_score", 0.95)),
+                        discrepancy=loss,
                         source_checksum=checksum,
                         raw_extracted_data={
                             **raw_it,
                             "file_name": doc.file_name,
                             "source_identifier": doc.source_identifier,
                             "drive_file_url": doc.metadata.get("drive_file_url") or (f"https://drive.google.com/file/d/{doc.source_identifier}/view" if doc.source_identifier else ""),
-                            "date": resolve_transaction_date(
-                                extracted_date=extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
-                                file_name=doc.file_name,
-                                target_month=month,
-                                target_year=year,
-                            ),
+                            "date": resolved_tx_date,
                             "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                             "pipeline_id": pipeline_id,
                             "pipeline_name": pipeline_name,

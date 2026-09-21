@@ -399,8 +399,26 @@ def init_db():
             ).all()
             for ls in legacy_staged:
                 session.delete(ls)
-
             session.commit()
+
+            # Purge corrupted dummy records from earlier runs where line items were collapsed into client name
+            try:
+                corrupted_dummy_staged = session.exec(
+                    select(StagedTransaction).where(
+                        (StagedTransaction.client_id.in_(["anr_group", "commercial_laundry"]))
+                        & (StagedTransaction.rate_or_price == 0.0)
+                        & (StagedTransaction.total_amount == 0.0)
+                        & (StagedTransaction.status.in_(["PENDING", "PENDING_VALIDATION_ERROR"]))
+                        & (StagedTransaction.item_or_description.like("% - %"))
+                    )
+                ).all()
+                if corrupted_dummy_staged:
+                    for cds in corrupted_dummy_staged:
+                        session.delete(cds)
+                    session.commit()
+                    logger.info(f"Purged {len(corrupted_dummy_staged)} corrupted dummy StagedTransaction records from previous runs.")
+            except Exception as purge_corrupted_err:
+                logger.debug(f"Notice purging corrupted dummy staged records: {purge_corrupted_err}")
 
             # Ensure the primary firm partner exists
             admin_email = (settings.AUTH_EMAIL or "cdanso@service4gh.com").strip().lower()

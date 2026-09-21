@@ -36,12 +36,22 @@ class StrategyFactory:
         """Returns instantiated automation strategy for the given client_id or resolves DynamicBlueprint."""
         cleaned_id = client_id.strip().lower()
 
-        # 1. Check bespoke code registry
+        # 1. Check Database for ClientOrganization profile with configured pipelines to run Dynamic Blueprint
+        try:
+            with Session(get_engine()) as session:
+                client = session.exec(select(ClientOrganization).where(ClientOrganization.id == cleaned_id)).first()
+                if client and client.pipelines:
+                    logger.info(f"Instantiating Dynamic Blueprint Strategy for client '{client.name}' ({client.id}) with {len(client.pipelines)} pipeline(s)")
+                    return DynamicBlueprintStrategy(client)
+        except Exception as e:
+            logger.warning(f"Error querying client profile from database: {e}")
+
+        # 2. Check bespoke code registry
         strategy_class = cls._REGISTRY.get(cleaned_id)
         if strategy_class:
             return strategy_class()
 
-        # 2. Check Database for ClientOrganization profile to run Dynamic Blueprint
+        # 3. Check Database for ClientOrganization profile without pipelines
         try:
             with Session(get_engine()) as session:
                 client = session.exec(select(ClientOrganization).where(ClientOrganization.id == cleaned_id)).first()

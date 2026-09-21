@@ -99,9 +99,9 @@ class ZohoContractValidator:
                         ValidationIssue(
                             field_name="customer_id",
                             error_type="UNMATCHED_ENTITY",
-                            message=f"Customer '{customer_name}' does not match any active contact in Zoho Books.",
+                            message=f"Customer '{customer_name}' does not match any active contact in Zoho Books. Requires manual mapping.",
                             received_value=customer_name,
-                            severity="CRITICAL",
+                            severity="WARNING",
                         )
                     )
                 else:
@@ -392,6 +392,14 @@ class ZohoContractValidator:
             if cleaned in c.contact_name.strip().lower() or (c.company_name and cleaned in c.company_name.strip().lower()):
                 return c
             if c.contact_name.strip().lower() in cleaned:
+                return c
+
+        # Token overlap match (e.g. "The Embassy" in "Clifton Homes - The Embassy")
+        import re
+        name_words = {w for w in re.split(r"[\s\-_,]+", cleaned) if len(w) > 3}
+        for c in contacts:
+            c_words = {w for w in re.split(r"[\s\-_,]+", c.contact_name.strip().lower()) if len(w) > 3}
+            if name_words and c_words and name_words.intersection(c_words):
                 return c
 
         return None

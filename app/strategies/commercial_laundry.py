@@ -160,6 +160,7 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                         validation_status="VALID",
                         confidence_score=0.96,
                         discrepancy_amount=i.discrepancy,
+                        checksum=i.source_checksum,
                         metadata_json=raw,
                     )
                     session.add(staged)
