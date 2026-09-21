@@ -31,21 +31,34 @@ class ANRLaundryStrategy(BaseAutomationStrategy):
         self.zoho = ZohoBooksService()
 
     async def discover_sources(self, month: str, year: int) -> List[SourceDocument]:
-        """Discovers unparsed control slip images from Google Drive folder."""
-        month_folder_id = self.drive.get_month_folder(month, year)
-        drive_files = self.drive.list_unprocessed_slips(month_folder_id)
+        """Discovers unparsed control slip images from Google Drive folder, checking direct files and subfolders."""
+        from app.config import settings
+        root_id = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
         
-        sources = []
-        for df in drive_files:
-            sources.append(
-                SourceDocument(
-                    file_name=df.get("name", "slip.jpg"),
-                    source_type=SourceType.GOOGLE_DRIVE,
-                    source_identifier=df.get("id"),
-                    mime_type=df.get("mimeType", "image/jpeg"),
-                    metadata={"folder_id": month_folder_id, "drive_file_id": df.get("id")},
-                )
-            )
+        # 1. First attempt deep resilient discovery across root folder
+        sources: List[SourceDocument] = []
+        if root_id:
+            sources = self.drive.discover_pipeline_hierarchy(folder_id=root_id, month=month, year=year)
+            
+        if not sources:
+            # Fallback to direct month folder check
+            month_folder_id = self.drive.get_month_folder(month, year)
+            if month_folder_id:
+                # Check direct files and any customer subfolders inside the month folder
+                sources = self.drive.discover_pipeline_hierarchy(folder_id=month_folder_id, month=month, year=year)
+                if not sources:
+                    drive_files = self.drive.list_unprocessed_slips(month_folder_id)
+                    for df in drive_files:
+                        sources.append(
+                            SourceDocument(
+                                file_name=df.get("name", "slip.jpg"),
+                                source_type=SourceType.GOOGLE_DRIVE,
+                                source_identifier=df.get("id"),
+                                mime_type=df.get("mimeType", "image/jpeg"),
+                                metadata={"folder_id": month_folder_id, "drive_file_id": df.get("id")},
+                            )
+                        )
+        logger.info(f"Discovered {len(sources)} source slip files for ANR Group ({month} {year}).")
         return sources
 
     async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
