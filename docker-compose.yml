@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: s4-backend
+    container_name: anr-backend
     restart: unless-stopped
     expose:
       - "8000"
@@ -18,8 +18,11 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - default
-      - proxy
+      default:
+      proxy:
+        aliases:
+          - anr-backend
+          - s4-backend
 
   postgres:
     image: postgres:16-alpine
