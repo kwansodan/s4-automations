@@ -10,6 +10,7 @@ from app.services.ocr_service import GeminiOCRService
 from app.services.zoho_service import ZohoBooksService
 from app.models.schemas import OCRSlipExtraction
 from app.config import settings
+from app.utils.date_parser import resolve_transaction_date
 from app.utils.logging import get_logger
 
 logger = get_logger("strategy.commercial_laundry")
@@ -95,9 +96,15 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                         discrepancy=float(discrepancy),
                         raw_extracted_data={
                             "hotel_name": extracted_slip.client_name,
-                            "date": extracted_slip.slip_date,
+                            "date": resolve_transaction_date(
+                                extracted_date=extracted_slip.slip_date,
+                                file_name=src.file_name,
+                                target_month=kwargs.get("month"),
+                                target_year=kwargs.get("year"),
+                            ),
                             "file_name": src.file_name,
                             "source_identifier": src.source_identifier,
+                            "drive_file_url": src.metadata.get("drive_file_url") or (f"https://drive.google.com/file/d/{src.source_identifier}/view" if src.source_identifier else ""),
                         },
                     )
                 )
@@ -119,9 +126,16 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
             with Session(get_engine()) as session:
                 for i in items:
                     raw = i.raw_extracted_data or {}
-                    tx_date = raw.get("date") or f"{year}-{month}-01"
                     file_name = raw.get("file_name") or "slip.jpg"
                     source_identifier = raw.get("source_identifier")
+                    tx_date = resolve_transaction_date(
+                        extracted_date=raw.get("date"),
+                        file_name=file_name,
+                        target_month=month,
+                        target_year=year,
+                    )
+                    drive_url = raw.get("drive_file_url") or (f"https://drive.google.com/file/d/{source_identifier}/view" if source_identifier else "")
+                    raw["drive_file_url"] = drive_url
 
                     staged = StagedTransaction(
                         client_id=self.client_id,

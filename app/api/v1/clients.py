@@ -1036,6 +1036,37 @@ async def list_client_transactions(
     query = query.order_by(StagedTransaction.id.desc()).limit(limit)
     transactions = db.exec(query).all()
 
+    # Auto-heal transaction dates and drive file URLs on read
+    try:
+        from app.utils.date_parser import resolve_transaction_date
+        has_healed = False
+        for t in transactions:
+            t_date = str(t.transaction_date or "").strip()
+            if "september" in t_date.lower() or t_date.endswith("-01") or len(t_date) != 10:
+                resolved = resolve_transaction_date(
+                    ocr_date=None,
+                    source_filename=t.source_file_name,
+                    fallback_month=month or "September",
+                    fallback_year=str(year or 2026),
+                )
+                if resolved and resolved != t.transaction_date:
+                    t.transaction_date = resolved
+                    db.add(t)
+                    has_healed = True
+
+            meta = dict(t.metadata_json or {})
+            if not meta.get("drive_file_url") and t.source_identifier:
+                meta["drive_file_url"] = f"https://drive.google.com/file/d/{t.source_identifier}/view"
+                t.metadata_json = meta
+                db.add(t)
+                has_healed = True
+
+        if has_healed:
+            db.commit()
+    except Exception as heal_err:
+        logger.warning(f"Notice auto-healing transactions on read: {heal_err}")
+        db.rollback()
+
     # Filter by month/year in memory if provided
     if month or year:
         filtered = []
@@ -1075,6 +1106,37 @@ async def get_client_transactions_summary(
     ).order_by(StagedTransaction.id.desc())
 
     all_tx = db.exec(query).all()
+
+    # Auto-heal transaction dates on read before summary aggregation
+    try:
+        from app.utils.date_parser import resolve_transaction_date
+        has_healed = False
+        for t in all_tx:
+            t_date = str(t.transaction_date or "").strip()
+            if "september" in t_date.lower() or t_date.endswith("-01") or len(t_date) != 10:
+                resolved = resolve_transaction_date(
+                    ocr_date=None,
+                    source_filename=t.source_file_name,
+                    fallback_month=month or "September",
+                    fallback_year=str(year or 2026),
+                )
+                if resolved and resolved != t.transaction_date:
+                    t.transaction_date = resolved
+                    db.add(t)
+                    has_healed = True
+
+            meta = dict(t.metadata_json or {})
+            if not meta.get("drive_file_url") and t.source_identifier:
+                meta["drive_file_url"] = f"https://drive.google.com/file/d/{t.source_identifier}/view"
+                t.metadata_json = meta
+                db.add(t)
+                has_healed = True
+
+        if has_healed:
+            db.commit()
+    except Exception as heal_err:
+        logger.warning(f"Notice auto-healing in summary: {heal_err}")
+        db.rollback()
 
     # Filter by month/year if provided
     month_num = MONTH_MAP.get(str(month).lower()) if month else None

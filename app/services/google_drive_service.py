@@ -478,6 +478,7 @@ class GoogleDriveService:
                                             "month": month,
                                             "year": year,
                                             "hierarchy_pattern": "month_first_customer_subfolder",
+                                            "drive_file_url": s.get("webViewLink") or (f"https://drive.google.com/file/d/{s.get('id')}/view" if s.get("id") else ""),
                                         },
                                     )
                                 )
@@ -498,6 +499,7 @@ class GoogleDriveService:
                                         "month": month,
                                         "year": year,
                                         "hierarchy_pattern": "month_first_direct_files",
+                                        "drive_file_url": f.get("webViewLink") or (f"https://drive.google.com/file/d/{f.get('id')}/view" if f.get("id") else ""),
                                     },
                                 )
                             )
@@ -546,6 +548,7 @@ class GoogleDriveService:
                                         "month": month,
                                         "year": year,
                                         "hierarchy_pattern": "customer_first_month_subfolder",
+                                        "drive_file_url": s.get("webViewLink") or (f"https://drive.google.com/file/d/{s.get('id')}/view" if s.get("id") else ""),
                                     },
                                 )
                             )
@@ -568,6 +571,7 @@ class GoogleDriveService:
                                     "month": month,
                                     "year": year,
                                     "hierarchy_pattern": "flat_folder",
+                                    "drive_file_url": f.get("webViewLink") or (f"https://drive.google.com/file/d/{f.get('id')}/view" if f.get("id") else ""),
                                 },
                             )
                         )

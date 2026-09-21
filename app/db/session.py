@@ -445,6 +445,42 @@ def init_db():
                     session.delete(dtx)
                 session.commit()
                 logger.info(f"Purged {len(del_txs)} legacy synthetic bank transactions on database init.")
+
+            # Auto-heal staged transaction dates and drive file URLs
+            try:
+                from app.utils.date_parser import resolve_transaction_date
+                staged_records = session.exec(select(StagedTransaction)).all()
+                healed_count = 0
+                for tx in staged_records:
+                    tx_changed = False
+                    cur_date = str(tx.transaction_date or "").strip()
+                    # If date contains month name or is default -01 or not 10 chars, re-resolve
+                    if "september" in cur_date.lower() or cur_date.endswith("-01") or len(cur_date) != 10:
+                        resolved = resolve_transaction_date(
+                            ocr_date=None,
+                            source_filename=tx.source_file_name,
+                            fallback_month="September",
+                            fallback_year="2026",
+                        )
+                        if resolved and resolved != cur_date:
+                            tx.transaction_date = resolved
+                            tx_changed = True
+
+                    meta = dict(tx.metadata_json or {})
+                    if not meta.get("drive_file_url") and tx.source_identifier:
+                        meta["drive_file_url"] = f"https://drive.google.com/file/d/{tx.source_identifier}/view"
+                        tx.metadata_json = meta
+                        tx_changed = True
+
+                    if tx_changed:
+                        session.add(tx)
+                        healed_count += 1
+
+                if healed_count > 0:
+                    session.commit()
+                    logger.info(f"Auto-healed {healed_count} staged transactions with resolved dates and drive file URLs.")
+            except Exception as heal_err:
+                logger.warning(f"Notice during staged transaction auto-healing: {heal_err}")
     except Exception as e:
         logger.warning(f"Database seed notice: {e}")
 

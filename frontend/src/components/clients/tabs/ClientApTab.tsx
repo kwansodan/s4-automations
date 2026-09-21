@@ -18,6 +18,7 @@ import {
   Search,
   CheckCheck,
   Layers,
+  ExternalLink,
 } from 'lucide-react';
 
 export const ClientApTab: React.FC = () => {
@@ -430,7 +431,24 @@ export const ClientApTab: React.FC = () => {
                       <td className="py-3 px-4 text-slate-400 font-mono">{tx.transaction_date}</td>
                       <td className="py-3 px-4 text-white font-semibold">{tx.item_or_description}</td>
                       <td className="py-3 px-4 text-slate-400">{tx.category_or_account || 'Vendor Bill'}</td>
-                      <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{tx.source_file_name}</td>
+                      <td className="py-3 px-4 font-mono text-[11px]">
+                        {tx.metadata_json?.drive_file_url || tx.source_identifier ? (
+                          <a
+                            href={tx.metadata_json?.drive_file_url || `https://drive.google.com/file/d/${tx.source_identifier}/view`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 hover:underline max-w-[180px] truncate"
+                            title={`Open in Google Drive: ${tx.source_file_name}`}
+                          >
+                            <span className="truncate">{tx.source_file_name || 'Bill Document'}</span>
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 truncate max-w-[180px] block" title={tx.source_file_name}>
+                            {tx.source_file_name || 'Bill'}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-right text-indigo-400 font-mono font-bold">
                         {formatCurrency(tx.total_amount)}
                       </td>

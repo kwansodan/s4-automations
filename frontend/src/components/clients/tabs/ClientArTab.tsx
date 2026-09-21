@@ -24,6 +24,13 @@ import {
   Database,
   X,
   Info,
+  ExternalLink,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Building2,
 } from 'lucide-react';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -52,6 +59,17 @@ export const ClientArTab: React.FC = () => {
   const [isRunningOcr, setIsRunningOcr] = useState(false);
   const [runFeedback, setRunFeedback] = useState<{ type: 'success' | 'warning' | 'error'; message: string; details?: string } | null>(null);
   const [activeLedgerView, setActiveLedgerView] = useState<'summary' | 'daily'>('summary');
+
+  // Filters, Sorting & Pagination State
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED'>('ALL');
+  const [dailyPropertyFilter, setDailyPropertyFilter] = useState<string>('ALL');
+  const [dailySortField, setDailySortField] = useState<string>('transaction_date');
+  const [dailySortDirection, setDailySortDirection] = useState<'asc' | 'desc'>('asc');
+  const [dailyPageSize, setDailyPageSize] = useState<number | 'all'>(50);
+  const [dailyCurrentPage, setDailyCurrentPage] = useState<number>(1);
+
+  const [summarySortField, setSummarySortField] = useState<string>('item_name');
+  const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
 
   const loadTransactions = async () => {
     if (!currentClient?.id) return;
@@ -198,19 +216,105 @@ export const ClientArTab: React.FC = () => {
 
   const query = (search || '').trim().toLowerCase();
 
-  const filteredSummaryRows = useMemo(() => {
-    if (!query) return summaryRows;
-    return summaryRows.filter((r) => {
-      const item = (r?.item_name || '').toLowerCase();
-      return item.includes(query);
-    });
-  }, [summaryRows, query]);
+  const extractPropertyName = (filename?: string): string => {
+    if (!filename) return '';
+    let base = filename.replace(/\.[a-zA-Z0-9]+$/, '').trim();
+    base = base.replace(/[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$/i, '').trim();
+    return base;
+  };
 
-  const arStagedTx = transactions.filter((t) => t.pipeline_type !== 'AP');
+  const handleSummarySort = (field: string) => {
+    if (summarySortField === field) {
+      setSummarySortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSummarySortField(field);
+      setSummarySortDirection(field === 'item_name' ? 'asc' : 'desc');
+    }
+  };
+
+  const filteredSummaryRows = useMemo(() => {
+    let rows = summaryRows;
+    if (query) {
+      rows = rows.filter((r) => {
+        const item = (r?.item_name || '').toLowerCase();
+        return item.includes(query);
+      });
+    }
+
+    const list = [...rows];
+    return list.sort((a, b) => {
+      let aVal: any = (a as any)[summarySortField];
+      let bVal: any = (b as any)[summarySortField];
+
+      if (summarySortField === 'status') {
+        aVal = a.is_fully_approved ? 2 : 1;
+        bVal = b.is_fully_approved ? 2 : 1;
+      }
+
+      if (aVal == null) aVal = '';
+      if (bVal == null) bVal = '';
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return summarySortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return summarySortDirection === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [summaryRows, query, summarySortField, summarySortDirection]);
+
+  const arStagedTx = useMemo(() => transactions.filter((t) => t.pipeline_type !== 'AP'), [transactions]);
+
+  const availableProperties = useMemo(() => {
+    const props = new Set<string>();
+    arStagedTx.forEach((tx) => {
+      const p = extractPropertyName(tx.source_file_name);
+      if (p && p.length > 1) props.add(p);
+    });
+    return Array.from(props).sort();
+  }, [arStagedTx]);
+
+  const dailyCounts = useMemo(() => {
+    let pending = 0;
+    let approved = 0;
+    let discrepancy = 0;
+    let invoiced = 0;
+
+    arStagedTx.forEach((tx) => {
+      if (tx.status === 'INVOICED') invoiced++;
+      else if (tx.approved) approved++;
+      else pending++;
+
+      if ((tx.discrepancy_amount || 0) > 0) {
+        discrepancy++;
+      }
+    });
+
+    return {
+      all: arStagedTx.length,
+      pending,
+      approved,
+      discrepancy,
+      invoiced,
+    };
+  }, [arStagedTx]);
 
   const filteredArStagedTx = useMemo(() => {
-    if (!query) return arStagedTx;
     return arStagedTx.filter((t) => {
+      // 1. Status Filter
+      if (dailyStatusFilter === 'PENDING' && (t.approved || t.status === 'INVOICED')) return false;
+      if (dailyStatusFilter === 'APPROVED' && (!t.approved || t.status === 'INVOICED')) return false;
+      if (dailyStatusFilter === 'DISCREPANCY' && (t.discrepancy_amount || 0) <= 0) return false;
+      if (dailyStatusFilter === 'INVOICED' && t.status !== 'INVOICED') return false;
+
+      // 2. Property Filter
+      if (dailyPropertyFilter !== 'ALL') {
+        const prop = extractPropertyName(t.source_file_name);
+        if (prop !== dailyPropertyFilter) return false;
+      }
+
+      // 3. Search Query
+      if (!query) return true;
       const desc = (t?.item_or_description || '').toLowerCase();
       const cat = (t?.category_or_account || '').toLowerCase();
       const date = (t?.transaction_date || '').toLowerCase();
@@ -224,7 +328,71 @@ export const ClientArTab: React.FC = () => {
         file.includes(query)
       );
     });
-  }, [arStagedTx, query]);
+  }, [arStagedTx, dailyStatusFilter, dailyPropertyFilter, query]);
+
+  const handleDailySort = (field: string) => {
+    if (dailySortField === field) {
+      setDailySortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setDailySortField(field);
+      setDailySortDirection(
+        field === 'transaction_date' || field === 'item_or_description' || field === 'source_file_name'
+          ? 'asc'
+          : 'desc'
+      );
+    }
+  };
+
+  const sortedArStagedTx = useMemo(() => {
+    const list = [...filteredArStagedTx];
+    return list.sort((a, b) => {
+      let aVal: any = a[dailySortField];
+      let bVal: any = b[dailySortField];
+
+      if (dailySortField === 'pickQty') {
+        aVal = a.credit_amount || a.quantity_or_debit || 0;
+        bVal = b.credit_amount || b.quantity_or_debit || 0;
+      } else if (dailySortField === 'delivQty') {
+        aVal = a.quantity_or_debit || 0;
+        bVal = b.quantity_or_debit || 0;
+      } else if (dailySortField === 'discrepancy_amount') {
+        aVal = a.discrepancy_amount || 0;
+        bVal = b.discrepancy_amount || 0;
+      } else if (dailySortField === 'rate_or_price') {
+        aVal = a.rate_or_price || 0;
+        bVal = b.rate_or_price || 0;
+      } else if (dailySortField === 'total_amount') {
+        aVal = a.total_amount || 0;
+        bVal = b.total_amount || 0;
+      } else if (dailySortField === 'status') {
+        aVal = a.status === 'INVOICED' ? 3 : a.approved ? 2 : 1;
+        bVal = b.status === 'INVOICED' ? 3 : b.approved ? 2 : 1;
+      }
+
+      if (aVal == null) aVal = '';
+      if (bVal == null) bVal = '';
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return dailySortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      const strA = String(aVal).toLowerCase();
+      const strB = String(bVal).toLowerCase();
+      return dailySortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }, [filteredArStagedTx, dailySortField, dailySortDirection]);
+
+  const totalDailyCount = sortedArStagedTx.length;
+  const totalDailyPages = dailyPageSize === 'all' ? 1 : Math.ceil(totalDailyCount / Number(dailyPageSize)) || 1;
+
+  useEffect(() => {
+    setDailyCurrentPage(1);
+  }, [search, dailyStatusFilter, dailyPropertyFilter, dailyPageSize]);
+
+  const paginatedArStagedTx = useMemo(() => {
+    if (dailyPageSize === 'all') return sortedArStagedTx;
+    const start = (dailyCurrentPage - 1) * Number(dailyPageSize);
+    return sortedArStagedTx.slice(start, start + Number(dailyPageSize));
+  }, [sortedArStagedTx, dailyCurrentPage, dailyPageSize]);
 
   // Approved totals from In-App PostgreSQL Ledger
   const dbApprovedCount = transactions.filter((t) => t.approved && t.status !== 'INVOICED').length;
@@ -248,6 +416,58 @@ export const ClientArTab: React.FC = () => {
     }
     setIsInvoiceModalOpen(true);
   };
+
+  const renderDailySortHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isActive = dailySortField === field;
+    return (
+      <th
+        onClick={() => handleDailySort(field)}
+        className={`py-3 px-4 select-none cursor-pointer hover:text-white transition-colors ${
+          align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
+        } ${isActive ? 'text-sky-400 font-bold' : 'text-slate-400'}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : ''}`}>
+          <span>{label}</span>
+          {isActive ? (
+            dailySortDirection === 'asc' ? (
+              <ChevronUp className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3 h-3 opacity-30 hover:opacity-70 shrink-0" />
+          )}
+        </div>
+      </th>
+    );
+  };
+
+  const renderSummarySortHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isActive = summarySortField === field;
+    return (
+      <th
+        onClick={() => handleSummarySort(field)}
+        className={`py-3 px-4 select-none cursor-pointer hover:text-white transition-colors ${
+          align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
+        } ${isActive ? 'text-sky-400 font-bold' : 'text-slate-400'}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : ''}`}>
+          <span>{label}</span>
+          {isActive ? (
+            summarySortDirection === 'asc' ? (
+              <ChevronUp className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3 h-3 opacity-30 hover:opacity-70 shrink-0" />
+          )}
+        </div>
+      </th>
+    );
+  };
+
+  const sortedSummaryRows = filteredSummaryRows;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -375,7 +595,7 @@ export const ClientArTab: React.FC = () => {
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
           <button
             onClick={() => setActiveLedgerView('summary')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
               activeLedgerView === 'summary'
                 ? 'bg-sky-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
@@ -386,7 +606,7 @@ export const ClientArTab: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveLedgerView('daily')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
               activeLedgerView === 'daily'
                 ? 'bg-sky-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
@@ -421,6 +641,99 @@ export const ClientArTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Daily Slips Filter Toolbar: Status Pills & Property Filter */}
+      {activeLedgerView === 'daily' && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/60 rounded-xl p-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setDailyStatusFilter('ALL')}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                dailyStatusFilter === 'ALL'
+                  ? 'bg-slate-800 text-white border border-slate-600 shadow'
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+              }`}
+            >
+              <span>All Slips</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-700/60 text-slate-300">
+                {dailyCounts.all}
+              </span>
+            </button>
+            <button
+              onClick={() => setDailyStatusFilter('PENDING')}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                dailyStatusFilter === 'PENDING'
+                  ? 'bg-amber-950/80 text-amber-300 border border-amber-500/50 shadow'
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+              }`}
+            >
+              <span>Pending</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-500/30">
+                {dailyCounts.pending}
+              </span>
+            </button>
+            <button
+              onClick={() => setDailyStatusFilter('APPROVED')}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                dailyStatusFilter === 'APPROVED'
+                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 shadow'
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+              }`}
+            >
+              <span>Approved</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+                {dailyCounts.approved}
+              </span>
+            </button>
+            <button
+              onClick={() => setDailyStatusFilter('DISCREPANCY')}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                dailyStatusFilter === 'DISCREPANCY'
+                  ? 'bg-rose-950/80 text-rose-300 border border-rose-500/50 shadow'
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3 text-rose-400" />
+              <span>Loss Discrepancies</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-950 text-rose-400 border border-rose-500/30">
+                {dailyCounts.discrepancy}
+              </span>
+            </button>
+            {dailyCounts.invoiced > 0 && (
+              <button
+                onClick={() => setDailyStatusFilter('INVOICED')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyStatusFilter === 'INVOICED'
+                    ? 'bg-sky-950/80 text-sky-300 border border-sky-500/50 shadow'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                }`}
+              >
+                <span>Invoiced</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-sky-950 text-sky-400 border border-sky-500/30">
+                  {dailyCounts.invoiced}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {availableProperties.length > 0 && (
+            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-500 text-[11px]">Property:</span>
+              <select
+                value={dailyPropertyFilter}
+                onChange={(e) => setDailyPropertyFilter(e.target.value)}
+                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-slate-900 text-white">All Properties ({arStagedTx.length})</option>
+                {availableProperties.map((p) => (
+                  <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Primary In-App PostgreSQL Ledger Notice */}
       <div className="bg-emerald-950/25 border border-emerald-500/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-emerald-300">
         <div className="flex items-center gap-2">
@@ -441,23 +754,23 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 1: IN-APP POSTGRESQL MONTHLY SUMMARY */}
           {activeLedgerView === 'summary' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Standard Item Name</th>
-                  <th className="py-3 px-4 text-center">Total Picked Up</th>
-                  <th className="py-3 px-4 text-center">Total Delivered</th>
-                  <th className="py-3 px-4 text-center">Linen Loss Discrepancy</th>
-                  <th className="py-3 px-4 text-right">Unit Rate</th>
-                  <th className="py-3 px-4 text-right">Total Billed</th>
-                  <th className="py-3 px-4 text-center">Slips Count</th>
+                  {renderSummarySortHeader('Standard Item Name', 'item_name', 'left')}
+                  {renderSummarySortHeader('Total Picked Up', 'total_picked_up', 'center')}
+                  {renderSummarySortHeader('Total Delivered', 'total_delivered', 'center')}
+                  {renderSummarySortHeader('Linen Loss Discrepancy', 'linen_discrepancy', 'center')}
+                  {renderSummarySortHeader('Unit Rate', 'unit_price', 'right')}
+                  {renderSummarySortHeader('Total Billed', 'total_billed', 'right')}
+                  {renderSummarySortHeader('Slips Count', 'slips_count', 'center')}
                   <th className="py-3 px-4 text-center">Reviewed</th>
                   <th className="py-3 px-4 text-center">Approved</th>
-                  <th className="py-3 px-4 text-center">Status</th>
+                  {renderSummarySortHeader('Status', 'status', 'center')}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-                {filteredSummaryRows.length > 0 ? (
-                  filteredSummaryRows.map((row) => {
+                {sortedSummaryRows.length > 0 ? (
+                  sortedSummaryRows.map((row) => {
                     const lossQty = row.linen_discrepancy || 0;
                     return (
                       <tr
@@ -479,22 +792,17 @@ export const ClientArTab: React.FC = () => {
                             <span className="text-slate-500 font-mono">0</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_rate)}</td>
+                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
                           {formatCurrency(row.total_billed)}
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
-                            {row.slips_count} slips
-                          </span>
-                        </td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-400">{row.slips_count}</td>
                         <td className="py-3 px-4 text-center">
                           <input
                             type="checkbox"
                             checked={Boolean(row.is_fully_reviewed)}
                             onChange={() => handleToggleSummaryApproval(row, 'reviewed')}
                             className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                            title={`${row.reviewed_count}/${row.slips_count} slips reviewed`}
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -503,7 +811,6 @@ export const ClientArTab: React.FC = () => {
                             checked={Boolean(row.is_fully_approved)}
                             onChange={() => handleToggleSummaryApproval(row, 'approved')}
                             className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                            title={`${row.approved_count}/${row.slips_count} slips approved`}
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -536,29 +843,32 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 2: IN-APP POSTGRESQL DAILY SLIPS */}
           {activeLedgerView === 'daily' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Slip Filename</th>
-                  <th className="py-3 px-4">Item Description</th>
-                  <th className="py-3 px-4 text-center">Picked Up</th>
-                  <th className="py-3 px-4 text-center">Delivered</th>
-                  <th className="py-3 px-4 text-center">Linen Loss</th>
-                  <th className="py-3 px-4 text-right">Unit Rate</th>
-                  <th className="py-3 px-4 text-right">Total Amount</th>
+                  {renderDailySortHeader('Date', 'transaction_date', 'left')}
+                  {renderDailySortHeader('Slip Filename', 'source_file_name', 'left')}
+                  {renderDailySortHeader('Item Description', 'item_or_description', 'left')}
+                  {renderDailySortHeader('Picked Up', 'pickQty', 'center')}
+                  {renderDailySortHeader('Delivered', 'delivQty', 'center')}
+                  {renderDailySortHeader('Linen Loss', 'discrepancy_amount', 'center')}
+                  {renderDailySortHeader('Unit Rate', 'rate_or_price', 'right')}
+                  {renderDailySortHeader('Total Amount', 'total_amount', 'right')}
                   <th className="py-3 px-4 text-center">Reviewed</th>
                   <th className="py-3 px-4 text-center">Approved</th>
-                  <th className="py-3 px-4 text-center">Status</th>
+                  {renderDailySortHeader('Status', 'status', 'center')}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-                {filteredArStagedTx.length > 0 ? (
-                  filteredArStagedTx.map((tx) => {
+                {paginatedArStagedTx.length > 0 ? (
+                  paginatedArStagedTx.map((tx) => {
                     const lossQty = tx.discrepancy_amount || 0;
                     const pickQty = tx.credit_amount || tx.quantity_or_debit || 0;
                     const delivQty = tx.quantity_or_debit || 0;
                     const rate = tx.rate_or_price || 0;
                     const total = tx.total_amount || 0;
+                    const driveUrl = tx.metadata_json?.drive_file_url ||
+                      (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : null);
+
                     return (
                       <tr
                         key={tx.id}
@@ -566,9 +876,24 @@ export const ClientArTab: React.FC = () => {
                           tx.approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'bg-amber-950/10' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-mono text-slate-400">{tx.transaction_date || '—'}</td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-sky-400 max-w-[160px] truncate" title={tx.source_file_name}>
-                          {tx.source_file_name || 'Slip'}
+                        <td className="py-3 px-4 font-mono text-slate-300 font-semibold">{tx.transaction_date || '—'}</td>
+                        <td className="py-3 px-4">
+                          {driveUrl ? (
+                            <a
+                              href={driveUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-[11px] group max-w-[220px]"
+                              title={`Open original slip in Google Drive: ${tx.source_file_name}`}
+                            >
+                              <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
+                              <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                            </a>
+                          ) : (
+                            <span className="font-mono text-[11px] text-slate-400 max-w-[180px] truncate block" title={tx.source_file_name}>
+                              {tx.source_file_name || 'Slip'}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 font-bold text-white">{tx.item_or_description}</td>
                         <td className="py-3 px-4 text-center font-mono">{pickQty}</td>
@@ -621,7 +946,11 @@ export const ClientArTab: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
-                      {isLoadingTx ? 'Loading daily slips from PostgreSQL...' : 'No daily slips found in database for this period.'}
+                      {isLoadingTx
+                        ? 'Loading daily slips from PostgreSQL...'
+                        : dailyCounts.all === 0
+                        ? 'No daily slips found in database for this period. Click \'Run AR Extraction\' above to process control slips.'
+                        : 'No daily slips match the selected filter criteria.'}
                     </td>
                   </tr>
                 )}
@@ -629,6 +958,69 @@ export const ClientArTab: React.FC = () => {
             </table>
           )}
         </div>
+
+        {/* Pagination Footer for Daily Slips */}
+        {activeLedgerView === 'daily' && totalDailyCount > 0 && (
+          <div className="bg-slate-950/80 border-t border-slate-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Showing{' '}
+                <strong className="text-white font-mono">
+                  {dailyPageSize === 'all' ? 1 : Math.min((dailyCurrentPage - 1) * Number(dailyPageSize) + 1, totalDailyCount)}
+                </strong>{' '}
+                to{' '}
+                <strong className="text-white font-mono">
+                  {dailyPageSize === 'all' ? totalDailyCount : Math.min(dailyCurrentPage * Number(dailyPageSize), totalDailyCount)}
+                </strong>{' '}
+                of <strong className="text-white font-mono">{totalDailyCount}</strong> slips
+              </span>
+
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-slate-500 text-[11px]">Show:</span>
+                {[25, 50, 100, 'all'].map((size) => (
+                  <button
+                    key={String(size)}
+                    onClick={() => setDailyPageSize(size as any)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
+                      dailyPageSize === size
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {size === 'all' ? 'All' : size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {dailyPageSize !== 'all' && totalDailyPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setDailyCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={dailyCurrentPage === 1}
+                  className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <span className="px-2 font-mono text-slate-300 text-xs">
+                  Page <strong className="text-white">{dailyCurrentPage}</strong> of{' '}
+                  <strong className="text-white">{totalDailyPages}</strong>
+                </span>
+
+                <button
+                  onClick={() => setDailyCurrentPage((p) => Math.min(totalDailyPages, p + 1))}
+                  disabled={dailyCurrentPage === totalDailyPages}
+                  className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </div>

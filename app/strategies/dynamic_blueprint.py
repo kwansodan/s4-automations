@@ -29,6 +29,7 @@ from app.services.zoho_service import ZohoBooksService
 from app.services.zoho_contract_validator import ZohoContractValidator
 from app.services.pipeline_alert_service import PipelineAlertService
 from app.config import settings
+from app.utils.date_parser import resolve_transaction_date
 from app.utils.logging import get_logger
 
 logger = get_logger("dynamic_blueprint_strategy")
@@ -482,7 +483,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         **extraction,
                         "file_name": doc.file_name,
                         "source_identifier": doc.source_identifier,
-                        "date": extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                        "drive_file_url": doc.metadata.get("drive_file_url") or (f"https://drive.google.com/file/d/{doc.source_identifier}/view" if doc.source_identifier else ""),
+                        "date": resolve_transaction_date(
+                            extracted_date=extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                            file_name=doc.file_name,
+                            target_month=month,
+                            target_year=year,
+                        ),
                         "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                         "pipeline_id": pipeline_id,
                         "pipeline_name": pipeline_name,
@@ -509,7 +516,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             **raw_it,
                             "file_name": doc.file_name,
                             "source_identifier": doc.source_identifier,
-                            "date": extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                            "drive_file_url": doc.metadata.get("drive_file_url") or (f"https://drive.google.com/file/d/{doc.source_identifier}/view" if doc.source_identifier else ""),
+                            "date": resolve_transaction_date(
+                                extracted_date=extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date"),
+                                file_name=doc.file_name,
+                                target_month=month,
+                                target_year=year,
+                            ),
                             "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                             "pipeline_id": pipeline_id,
                             "pipeline_name": pipeline_name,
@@ -582,7 +595,14 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 pipeline_name = raw_meta.get("pipeline_name") or pipe_name_hint
                 file_name = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
                 source_identifier = raw_meta.get("source_identifier")
-                tx_date = raw_meta.get("date") or f"{year}-{month}-01"
+                drive_url = raw_meta.get("drive_file_url") or (f"https://drive.google.com/file/d/{source_identifier}/view" if source_identifier else "")
+                raw_meta["drive_file_url"] = drive_url
+                tx_date = resolve_transaction_date(
+                    extracted_date=raw_meta.get("date"),
+                    file_name=file_name,
+                    target_month=month,
+                    target_year=year,
+                )
 
                 # If auto_post is active and validation passed, pre-approve for immediate Zoho posting
                 is_valid = val_status == "VALID"
