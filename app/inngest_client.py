@@ -2,15 +2,23 @@ import os
 import inngest
 from app.config import settings
 
-# Detect if a real Inngest Cloud signing key is configured
+# Check if local dev server or dev mode is active
+is_dev_mode = (
+    os.environ.get("INNGEST_DEV") == "1"
+    or bool(settings.INNGEST_DEV_SERVER_URL)
+    or settings.INNGEST_SIGNING_KEY in (None, "", "dev-signing-key", "your_inngest_signing_key")
+)
+
+# Detect if a real Inngest Cloud signing key is explicitly configured for cloud mode
 has_cloud_signing_key = bool(
-    settings.INNGEST_SIGNING_KEY
+    not is_dev_mode
+    and settings.INNGEST_SIGNING_KEY
     and settings.INNGEST_SIGNING_KEY.strip()
-    and settings.INNGEST_SIGNING_KEY.strip() != "dev-signing-key"
+    and settings.INNGEST_SIGNING_KEY.strip() not in ("dev-signing-key", "your_inngest_signing_key")
 )
 
 # Detect if local dev server is explicitly targeted
-has_dev_server = bool(settings.INNGEST_DEV_SERVER_URL and not has_cloud_signing_key)
+has_dev_server = bool(settings.INNGEST_DEV_SERVER_URL or is_dev_mode)
 
 if has_cloud_signing_key:
     # 1. Inngest Cloud Mode (Production / Staging Sync)

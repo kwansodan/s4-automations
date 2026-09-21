@@ -61,6 +61,9 @@ app.add_middleware(
 @app.middleware("http")
 async def ensure_json_content_type(request: Request, call_next):
     """Automatically promotes requests with stringified JSON bodies to application/json if omitted."""
+    if request.url.path.startswith("/api/inngest"):
+        return await call_next(request)
+
     ct = request.headers.get("content-type", "").lower()
     if request.method in ("POST", "PUT", "PATCH") and ("json" not in ct) and ("multipart" not in ct) and ("form" not in ct):
         try:
