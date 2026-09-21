@@ -316,7 +316,6 @@ def init_db():
 
             # Seed Default Organizations (Accounting Firm & Direct Business) if empty
             from app.models.db_models import Organization, UserOrganizationMembership
-            from app.config import settings
 
             existing_org = session.exec(select(Organization)).first()
             if not existing_org:

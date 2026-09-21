@@ -28,6 +28,7 @@ from app.services.ocr_service import GeminiOCRService
 from app.services.zoho_service import ZohoBooksService
 from app.services.zoho_contract_validator import ZohoContractValidator
 from app.services.pipeline_alert_service import PipelineAlertService
+from app.config import settings
 from app.utils.logging import get_logger
 
 logger = get_logger("dynamic_blueprint_strategy")
