@@ -1,4 +1,4 @@
-﻿"Commercial Laundry Automation Strategy for Daily Handwritten Pickup/Delivery Slips."
+"""Commercial Laundry Automation Strategy for Daily Handwritten Pickup/Delivery Slips."""
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -9,21 +9,22 @@ from app.services.google_sheets_service import GoogleSheetsService
 from app.services.ocr_service import GeminiOCRService
 from app.services.zoho_service import ZohoBooksService
 from app.models.schemas import OCRSlipExtraction
+from app.config import settings
 from app.utils.logging import get_logger
 
-logger = get_logger(strategy.commercial_laundry)
+logger = get_logger("strategy.commercial_laundry")
 
 
 class CommercialLaundryStrategy(BaseAutomationStrategy):
-    "
+    """
     Commercial Laundry Industry Strategy:
     1. Scan Drive for daily handwritten pickup/delivery slips (deep hierarchy)
     2. Gemini Flash Vision OCR extraction
     3. PostgreSQL Ledger staging with linen loss reconciliation
     4. Zoho Books Draft Invoicing
-    "
+    """
 
-    def __init__(self, client_id: str = commercial_laundry, client_name: str = Commercial Laundry):
+    def __init__(self, client_id: str = "commercial_laundry", client_name: str = "Commercial Laundry"):
         super().__init__(client_id=client_id, client_name=client_name)
         self.drive = GoogleDriveService()
         self.sheets = GoogleSheetsService()
@@ -31,194 +32,193 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
         self.zoho = ZohoBooksService()
 
     async def discover_sources(self, month: str, year: int) -> List[SourceDocument]:
-        "Discovers unparsed control slip images from Google Drive folder, checking direct files and subfolders."
-        from app.config import settings
-        root_id = (settings.CONTROL_SHEETS_FOLDER_ID or ").strip()
+        """Discovers unparsed control slip images from Google Drive folder, checking direct files and subfolders."""
+        root_id = (settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
 
- # 1. First attempt deep resilient discovery across root folder
- sources: List[SourceDocument] = []
- if root_id:
- sources = self.drive.discover_pipeline_hierarchy(folder_id=root_id, month=month, year=year)
+        # 1. First attempt deep resilient discovery across root folder
+        sources: List[SourceDocument] = []
+        if root_id:
+            sources = self.drive.discover_pipeline_hierarchy(folder_id=root_id, month=month, year=year)
 
- if not sources:
- # Fallback to direct month folder check
- month_folder_id = self.drive.get_month_folder(month, year)
- if month_folder_id:
- # Check direct files and any customer subfolders inside the month folder
- sources = self.drive.discover_pipeline_hierarchy(folder_id=month_folder_id, month=month, year=year)
- if not sources:
- drive_files = self.drive.list_unprocessed_slips(month_folder_id)
- for df in drive_files:
- sources.append(
- SourceDocument(
- file_name=df.get(name, slip.jpg),
- source_type=SourceType.GOOGLE_DRIVE,
- source_identifier=df.get(id),
- mime_type=df.get(mimeType, image/jpeg),
- metadata={folder_id: month_folder_id, drive_file_id: df.get(id)},
- )
- )
- logger.info(fDiscovered {len(sources)} source slip files for {self.client_name} ({month} {year}).)
- return sources
+        if not sources:
+            # Fallback to direct month folder check
+            month_folder_id = self.drive.get_month_folder(month, year)
+            if month_folder_id:
+                # Check direct files and any customer subfolders inside the month folder
+                sources = self.drive.discover_pipeline_hierarchy(folder_id=month_folder_id, month=month, year=year)
+                if not sources:
+                    drive_files = self.drive.list_unprocessed_slips(month_folder_id)
+                    for df in drive_files:
+                        sources.append(
+                            SourceDocument(
+                                file_name=df.get("name", "slip.jpg"),
+                                source_type=SourceType.GOOGLE_DRIVE,
+                                source_identifier=df.get("id"),
+                                mime_type=df.get("mimeType", "image/jpeg"),
+                                metadata={"folder_id": month_folder_id, "drive_file_id": df.get("id")},
+                            )
+                        )
+        logger.info(f"Discovered {len(sources)} source slip files for {self.client_name} ({month} {year}).")
+        return sources
 
- async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
- "Runs Gemini Vision structured OCR extraction."
- items: List[ExtractedLineItem] = []
- catalog = await self.zoho.fetch_item_catalog()
+    async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
+        """Runs Gemini Vision structured OCR extraction."""
+        items: List[ExtractedLineItem] = []
+        catalog = await self.zoho.fetch_item_catalog()
 
- for src in sources:
- file_bytes = src.file_bytes or self.drive.download_file_bytes(src.source_identifier)
- if isinstance(file_bytes, tuple):
- file_bytes = file_bytes[0]
+        for src in sources:
+            file_bytes = src.file_bytes or self.drive.download_file_bytes(src.source_identifier)
+            if isinstance(file_bytes, tuple):
+                file_bytes = file_bytes[0]
 
- extracted_slip: OCRSlipExtraction = await self.ocr.extract_slip_data(
- file_bytes=file_bytes,
- mime_type=src.mime_type,
- file_name=src.file_name,
- client_name=self.client_name,
- item_catalog=catalog,
- )
+            extracted_slip: OCRSlipExtraction = await self.ocr.extract_slip_data(
+                file_bytes=file_bytes,
+                mime_type=src.mime_type,
+                file_name=src.file_name,
+                client_name=self.client_name,
+                item_catalog=catalog,
+            )
 
- for line in extracted_slip.items:
- discrepancy = max(0, (line.pickup_qty or 0) - (line.delivery_qty or 0))
- unit_rate = line.unit_rate or 15.0
- total_billed = (line.delivery_qty or 0) * unit_rate
+            for line in extracted_slip.items:
+                discrepancy = max(0, (line.pickup_qty or 0) - (line.delivery_qty or 0))
+                unit_rate = line.unit_rate or 15.0
+                total_billed = (line.delivery_qty or 0) * unit_rate
 
- items.append(
- ExtractedLineItem(
- item_or_description=line.standard_item_name or line.raw_item_name,
- category_or_account=Linen Laundry Service,
- quantity_or_debit=float(line.delivery_qty or 0),
- credit_amount=float(line.pickup_qty or 0),
- unit_price=float(unit_rate),
- total_amount=float(total_billed),
- discrepancy=float(discrepancy),
- raw_extracted_data={
- hotel_name: extracted_slip.client_name,
- date: extracted_slip.slip_date,
- file_name: src.file_name,
- source_identifier: src.source_identifier,
- },
- )
- )
- return items
+                items.append(
+                    ExtractedLineItem(
+                        item_or_description=line.standard_item_name or line.raw_item_name,
+                        category_or_account="Linen Laundry Service",
+                        quantity_or_debit=float(line.delivery_qty or 0),
+                        credit_amount=float(line.pickup_qty or 0),
+                        unit_price=float(unit_rate),
+                        total_amount=float(total_billed),
+                        discrepancy=float(discrepancy),
+                        raw_extracted_data={
+                            "hotel_name": extracted_slip.client_name,
+                            "date": extracted_slip.slip_date,
+                            "file_name": src.file_name,
+                            "source_identifier": src.source_identifier,
+                        },
+                    )
+                )
+        return items
 
- async def sync_review_workspace(
- self, month: str, year: int, items: List[ExtractedLineItem]
- ) -> Dict[str, Any]:
- "Stages extracted line items into PostgreSQL staged_transactions."
- from app.models.db_models import StagedTransaction
- from app.db.session import get_engine
- from sqlmodel import Session
- import uuid
+    async def sync_review_workspace(
+        self, month: str, year: int, items: List[ExtractedLineItem]
+    ) -> Dict[str, Any]:
+        """Stages extracted line items into PostgreSQL staged_transactions."""
+        from app.models.db_models import StagedTransaction
+        from app.db.session import get_engine
+        from sqlmodel import Session
+        import uuid
 
- batch_id = fbatch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}
- staged_count = 0
+        batch_id = f"batch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}"
+        staged_count = 0
 
- try:
- with Session(get_engine()) as session:
- for i in items:
- raw = i.raw_extracted_data or {}
- tx_date = raw.get(date) or f{year}-{month}-01
- file_name = raw.get(file_name) or slip.jpg
- source_identifier = raw.get(source_identifier)
+        try:
+            with Session(get_engine()) as session:
+                for i in items:
+                    raw = i.raw_extracted_data or {}
+                    tx_date = raw.get("date") or f"{year}-{month}-01"
+                    file_name = raw.get("file_name") or "slip.jpg"
+                    source_identifier = raw.get("source_identifier")
 
- staged = StagedTransaction(
- client_id=self.client_id,
- batch_id=batch_id,
- pipeline_id=pipe_daily_slips,
- pipeline_name=Daily Control Slips OCR,
- pipeline_type=AR,
- entity_type=ar_sales_invoice,
- transaction_date=str(tx_date),
- source_type=google_drive,
- source_file_name=str(file_name),
- source_identifier=source_identifier,
- item_or_description=i.item_or_description,
- category_or_account=i.category_or_account or Linen Laundry Service,
- quantity_or_debit=i.quantity_or_debit,
- credit_amount=i.credit_amount,
- rate_or_price=i.unit_price,
- total_amount=i.total_amount,
- reviewed=False,
- approved=False,
- status=PENDING,
- validation_status=VALID,
- confidence_score=0.96,
- discrepancy_amount=i.discrepancy,
- metadata_json=raw,
- )
- session.add(staged)
- staged_count += 1
- session.commit()
- logger.info(fSuccessfully staged {staged_count} transactions into PostgreSQL for {self.client_name})
- except Exception as db_err:
- logger.error(fError staging transactions into database: {db_err})
- self.execution_warnings.append(fDatabase staging error: {db_err})
+                    staged = StagedTransaction(
+                        client_id=self.client_id,
+                        batch_id=batch_id,
+                        pipeline_id="pipe_daily_slips",
+                        pipeline_name="Daily Control Slips OCR",
+                        pipeline_type="AR",
+                        entity_type="ar_sales_invoice",
+                        transaction_date=str(tx_date),
+                        source_type="google_drive",
+                        source_file_name=str(file_name),
+                        source_identifier=source_identifier,
+                        item_or_description=i.item_or_description,
+                        category_or_account=i.category_or_account or "Linen Laundry Service",
+                        quantity_or_debit=i.quantity_or_debit,
+                        credit_amount=i.credit_amount,
+                        rate_or_price=i.unit_price,
+                        total_amount=i.total_amount,
+                        reviewed=False,
+                        approved=False,
+                        status="PENDING",
+                        validation_status="VALID",
+                        confidence_score=0.96,
+                        discrepancy_amount=i.discrepancy,
+                        metadata_json=raw,
+                    )
+                    session.add(staged)
+                    staged_count += 1
+                session.commit()
+            logger.info(f"Successfully staged {staged_count} transactions into PostgreSQL for {self.client_name}")
+        except Exception as db_err:
+            logger.error(f"Error staging transactions into database: {db_err}")
+            self.execution_warnings.append(f"Database staging error: {db_err}")
 
- # Optional Google Sheets sync (non-blocking fallback)
- sheet_id, sheet_url = None, None
- try:
- month_folder_id = self.drive.get_month_folder(month, year)
- sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
+        # Optional Google Sheets sync (non-blocking fallback)
+        sheet_id, sheet_url = None, None
+        try:
+            month_folder_id = self.drive.get_month_folder(month, year)
+            sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
 
- from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
+            from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
 
- detail_rows = []
- for i in items:
- raw = i.raw_extracted_data or {}
- detail_rows.append(
- DailySlipDetailRow(
- slip_date=raw.get(date, datetime.now().strftime(%Y-%m-%d)),
- file_name=raw.get(file_name, slip.jpg),
- client_name=raw.get(hotel_name, self.client_name),
- raw_item_name=raw.get(raw_item_name, i.item_or_description),
- standard_item_name=i.item_or_description,
- pickup_qty=int(i.credit_amount),
- delivery_qty=int(i.quantity_or_debit),
- loss_qty=int(i.discrepancy),
- confidence_score=ConfidenceLevel.HIGH,
- drive_file_url=,
- processed_at=datetime.now().strftime(%Y-%m-%d %H:%M:%S),
- )
- )
+            detail_rows = []
+            for i in items:
+                raw = i.raw_extracted_data or {}
+                detail_rows.append(
+                    DailySlipDetailRow(
+                        slip_date=raw.get("date", datetime.now().strftime("%Y-%m-%d")),
+                        file_name=raw.get("file_name", "slip.jpg"),
+                        client_name=raw.get("hotel_name", self.client_name),
+                        raw_item_name=raw.get("raw_item_name", i.item_or_description),
+                        standard_item_name=i.item_or_description,
+                        pickup_qty=int(i.credit_amount),
+                        delivery_qty=int(i.quantity_or_debit),
+                        loss_qty=int(i.discrepancy),
+                        confidence_score=ConfidenceLevel.HIGH,
+                        drive_file_url="",
+                        processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                )
 
- self.sheets.append_daily_slip_details(sheet_id, detail_rows)
+            self.sheets.append_daily_slip_details(sheet_id, detail_rows)
 
- summary_rows = [
- MonthlySummaryRow(
- client_name=self.client_name,
- zoho_contact_id=zoho_contact_laundry,
- zoho_item_id=zoho_item_01,
- standard_item_name=i.item_or_description,
- raw_names_seen=i.item_or_description,
- confidence_score=ConfidenceLevel.HIGH,
- unit_rate=i.unit_price,
- total_picked_up=int(i.credit_amount),
- total_delivered=int(i.quantity_or_debit),
- linen_discrepancy=int(i.discrepancy),
- total_billed=i.total_amount,
- audit_notes=OCR Extracted,
- status=SlipStatus.PENDING,
- )
- for i in items
- ]
- self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
- except Exception as sheet_err:
- logger.info(fGoogle Sheets sync skipped (In-App Ledger active): {sheet_err})
+            summary_rows = [
+                MonthlySummaryRow(
+                    client_name=self.client_name,
+                    zoho_contact_id="zoho_contact_laundry",
+                    zoho_item_id="zoho_item_01",
+                    standard_item_name=i.item_or_description,
+                    raw_names_seen=i.item_or_description,
+                    confidence_score=ConfidenceLevel.HIGH,
+                    unit_rate=i.unit_price,
+                    total_picked_up=int(i.credit_amount),
+                    total_delivered=int(i.quantity_or_debit),
+                    linen_discrepancy=int(i.discrepancy),
+                    total_billed=i.total_amount,
+                    audit_notes="OCR Extracted",
+                    status=SlipStatus.PENDING,
+                )
+                for i in items
+            ]
+            self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
+        except Exception as sheet_err:
+            logger.info(f"Google Sheets sync skipped (In-App Ledger active): {sheet_err}")
 
- return {
- spreadsheet_id: sheet_id,
- spreadsheet_url: sheet_url,
- staged_transactions_count: staged_count,
- }
+        return {
+            "spreadsheet_id": sheet_id,
+            "spreadsheet_url": sheet_url,
+            "staged_transactions_count": staged_count,
+        }
 
- async def post_to_accounting(
- self, month: str, year: int, approved_items: Optional[List[Any]] = None
- ) -> Dict[str, Any]:
- "Creates or appends to Zoho Books Draft Invoices."
- from app.workflows.zoho_invoice_generator import run_zoho_invoices_core
- return await run_zoho_invoices_core(target_month=month, target_year=year)
+    async def post_to_accounting(
+        self, month: str, year: int, approved_items: Optional[List[Any]] = None
+    ) -> Dict[str, Any]:
+        """Creates or appends to Zoho Books Draft Invoices."""
+        from app.workflows.zoho_invoice_generator import run_zoho_invoices_core
+        return await run_zoho_invoices_core(target_month=month, target_year=year)
 
 
 # Backwards compatibility alias

@@ -15,6 +15,7 @@ from app.services.onedrive_service import OneDriveService
 from app.services.google_drive_service import GoogleDriveService
 from app.services.email_source_service import EmailSourceService
 from app.services.audit_service import AuditService
+from app.config import settings
 from app.utils.logging import get_logger
 
 logger = get_logger("api.clients")
