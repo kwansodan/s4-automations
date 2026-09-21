@@ -672,6 +672,7 @@ export interface ClientTransactionSummaryRow {
   total_delivered: number;
   linen_discrepancy: number;
   unit_rate: number;
+  unit_price?: number;
   total_billed: number;
   slips_count: number;
   reviewed_count: number;

@@ -792,7 +792,7 @@ export const ClientArTab: React.FC = () => {
                             <span className="text-slate-500 font-mono">0</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price)}</td>
+                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
                           {formatCurrency(row.total_billed)}
                         </td>
