@@ -12,8 +12,8 @@ import inngest.fast_api
 
 from app.config import settings
 from app.inngest_client import inngest_client
-from app.workflows.daily_billing_pipeline import anr_daily_billing_pipeline
-from app.workflows.zoho_invoice_generator import anr_generate_zoho_invoices
+from app.workflows.daily_billing_pipeline import daily_slip_billing_pipeline
+from app.workflows.zoho_invoice_generator import s4_generate_zoho_invoices
 from app.workflows.client_strategy_pipeline import client_strategy_pipeline
 from app.workflows.ap_billing_pipeline import inngest_ap_pipeline_fn
 from app.workflows.bank_statement_pipeline import inngest_bank_statement_fn
@@ -83,8 +83,8 @@ inngest.fast_api.serve(
     app,
     inngest_client,
     [
-        anr_daily_billing_pipeline,
-        anr_generate_zoho_invoices,
+        daily_slip_billing_pipeline,
+        s4_generate_zoho_invoices,
         client_strategy_pipeline,
         inngest_ap_pipeline_fn,
         inngest_bank_statement_fn,
@@ -201,7 +201,7 @@ async def health_check() -> Dict[str, Any]:
     """Returns application health and configuration state."""
     return {
         "status": "healthy",
-        "service": "anr-commercial-laundry-billing",
+        "service": "s4-automations-engine",
         "version": "1.0.0",
         "environment": settings.ENVIRONMENT,
         "mock_mode": settings.MOCK_MODE,

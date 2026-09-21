@@ -4,7 +4,7 @@ from typing import Dict, Type
 from sqlmodel import Session, select
 
 from app.strategies.base import BaseAutomationStrategy
-from app.strategies.anr_laundry import ANRLaundryStrategy
+from app.strategies.commercial_laundry import CommercialLaundryStrategy
 from app.strategies.polaris_advisory import PolarisBankFeedStrategy
 from app.strategies.mr_osei_property import MrOseiPropertyStrategy
 from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
@@ -19,7 +19,8 @@ class StrategyFactory:
     """Resolves and instantiates the appropriate automation strategy for a client."""
 
     _REGISTRY: Dict[str, Type[BaseAutomationStrategy]] = {
-        "anr_group": ANRLaundryStrategy,
+        "commercial_laundry": CommercialLaundryStrategy,
+        "anr_group": CommercialLaundryStrategy,
         "polaris": PolarisBankFeedStrategy,
         "mr_osei": MrOseiPropertyStrategy,
     }
@@ -51,8 +52,8 @@ class StrategyFactory:
             logger.warning(f"Error querying client profile from database: {e}")
 
         # 3. Fallback
-        logger.warning(f"No specific strategy or database profile found for '{client_id}'. Defaulting to ANRLaundryStrategy.")
-        return ANRLaundryStrategy()
+        logger.warning(f"No specific strategy or database profile found for '{client_id}'. Defaulting to CommercialLaundryStrategy.")
+        return CommercialLaundryStrategy(client_id=cleaned_id, client_name=client_id.replace('_', ' ').title())
 
     @classmethod
     def list_available_strategies(cls) -> Dict[str, str]:

@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: anr-backend
+    container_name: s4-backend
     restart: unless-stopped
     expose:
       - "8000"

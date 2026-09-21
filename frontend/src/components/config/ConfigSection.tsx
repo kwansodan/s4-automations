@@ -718,7 +718,7 @@ export const ConfigSection: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">Inngest App Identifier</label>
                   <input
                     type="text"
-                    value={formData.INNGEST_APP_ID || 'anr-laundry-billing'}
+                    value={formData.INNGEST_APP_ID || 's4-automations'}
                     onChange={(e) => handleChange('INNGEST_APP_ID', e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />

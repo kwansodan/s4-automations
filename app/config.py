@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Inngest Configuration
     INNGEST_EVENT_KEY: str = Field(default="dev-event-key", description="Inngest Event Key")
     INNGEST_SIGNING_KEY: str = Field(default="dev-signing-key", description="Inngest Signing Key")
-    INNGEST_APP_ID: str = Field(default="anr-laundry-billing", description="Inngest App Identifier")
+    INNGEST_APP_ID: str = Field(default="s4-automations", description="Inngest App Identifier")
     INNGEST_DEV_SERVER_URL: Optional[str] = Field(default=None, description="Optional Inngest Dev Server URL")
 
     # Google Gemini Vision OCR

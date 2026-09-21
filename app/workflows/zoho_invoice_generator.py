@@ -294,8 +294,13 @@ async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Ste
 
 
 # Register durable Inngest function
-anr_generate_zoho_invoices = inngest_client.create_function(
-    fn_id="anr_generate_zoho_invoices",
-    trigger=inngest.TriggerEvent(event="anr/invoices.generate"),
+s4_generate_zoho_invoices = inngest_client.create_function(
+    fn_id="s4_generate_zoho_invoices",
+    trigger=[
+        inngest.TriggerEvent(event="s4/invoices.generate"),
+        inngest.TriggerEvent(event="anr/invoices.generate"),
+    ],
 )(execute_generate_zoho_invoices)
+
+anr_generate_zoho_invoices = s4_generate_zoho_invoices
 

@@ -3,7 +3,7 @@
 import pytest
 from sqlmodel import Session, select
 from app.strategies.factory import StrategyFactory
-from app.strategies.anr_laundry import ANRLaundryStrategy
+from app.strategies.commercial_laundry import CommercialLaundryStrategy
 from app.strategies.polaris_advisory import PolarisBankFeedStrategy
 from app.strategies.mr_osei_property import MrOseiPropertyStrategy
 from app.strategies.base import BaseAutomationStrategy, SourceDocument, ExtractedLineItem
@@ -18,11 +18,11 @@ def setup_db():
 
 def test_strategy_factory_resolution():
     """Verify factory returns appropriate strategy instance for each client."""
-    assert isinstance(StrategyFactory.get("anr_group"), ANRLaundryStrategy)
+    assert isinstance(StrategyFactory.get("anr_group"), CommercialLaundryStrategy)
     assert isinstance(StrategyFactory.get("polaris"), PolarisBankFeedStrategy)
     assert isinstance(StrategyFactory.get("mr_osei"), MrOseiPropertyStrategy)
     # Default fallback
-    assert isinstance(StrategyFactory.get("unknown_client"), ANRLaundryStrategy)
+    assert isinstance(StrategyFactory.get("unknown_client"), CommercialLaundryStrategy)
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ def test_health_check_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["service"] == "anr-commercial-laundry-billing"
+    assert data["service"] == "s4-automations-engine"
     assert "integrations" in data
 
 

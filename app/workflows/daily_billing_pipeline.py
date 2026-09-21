@@ -332,8 +332,13 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
 
 
 # Register durable Inngest function
-anr_daily_billing_pipeline = inngest_client.create_function(
-    fn_id="anr_daily_billing_pipeline",
-    trigger=inngest.TriggerEvent(event="anr/pipeline.trigger"),
+daily_slip_billing_pipeline = inngest_client.create_function(
+    fn_id="daily_slip_billing_pipeline",
+    trigger=[
+        inngest.TriggerEvent(event="s4/pipeline.trigger"),
+        inngest.TriggerEvent(event="anr/pipeline.trigger"),
+    ],
 )(execute_daily_billing_pipeline)
+
+anr_daily_billing_pipeline = daily_slip_billing_pipeline
 

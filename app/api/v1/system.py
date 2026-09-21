@@ -107,7 +107,7 @@ async def get_system_debug_dump() -> Dict[str, Any]:
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "anr-commercial-laundry-billing",
+        "service": "s4-automations-engine",
         "environment": settings.ENVIRONMENT,
         "mock_mode": settings.MOCK_MODE,
         "gemini_model": settings.GEMINI_MODEL,
