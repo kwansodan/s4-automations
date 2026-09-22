@@ -32,8 +32,18 @@ services:
       - "sh"
       - "-c"
       - |
-        sed -i 's/scram-sha-256/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
-        sed -i 's/md5/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
+        if [ -f /var/lib/postgresql/data/pg_hba.conf ]; then
+          sed -i 's/scram-sha-256/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
+          sed -i 's/md5/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
+        fi
+        if [ -f /var/lib/postgresql/data/PG_VERSION ]; then
+          rm -f /var/lib/postgresql/data/postmaster.pid
+          if [ "$(id -u)" = "0" ]; then
+            echo "ALTER ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';" | su-exec postgres postgres --single -D /var/lib/postgresql/data template1 2>/dev/null || true
+          else
+            echo "ALTER ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';" | postgres --single -D /var/lib/postgresql/data template1 2>/dev/null || true
+          fi
+        fi
         (
           sleep 2
           for i in 1 2 3 4 5 6 7 8 9 10; do

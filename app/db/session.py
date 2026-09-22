@@ -22,12 +22,13 @@ def get_engine() -> Engine:
     raw_urls = []
     if settings.DATABASE_URL:
         raw_urls.append(settings.DATABASE_URL)
-    if settings.POSTGRES_USER or settings.POSTGRES_PASSWORD:
-        u = settings.POSTGRES_USER or "postgres"
-        p = settings.POSTGRES_PASSWORD or "postgres"
-        d = settings.POSTGRES_DB or "s4_automations"
-        raw_urls.append(f"postgresql://{u}:{p}@postgres:5432/{d}")
-        raw_urls.append(f"postgresql://{u}:{p}@localhost:5432/{d}")
+    u = settings.POSTGRES_USER or "postgres"
+    p = settings.POSTGRES_PASSWORD or "postgres"
+    d = settings.POSTGRES_DB or "s4_automations"
+    raw_urls.append(f"postgresql://{u}:{p}@postgres:5432/{d}")
+    raw_urls.append(f"postgresql://{u}@postgres:5432/{d}")
+    raw_urls.append(f"postgresql://{u}:{p}@localhost:5432/{d}")
+    raw_urls.append(f"postgresql://{u}@localhost:5432/{d}")
 
     import time
     for attempt in range(1, 4):
