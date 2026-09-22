@@ -560,7 +560,7 @@ export const ClientArTab: React.FC = () => {
     // Strictly Zoho Books Item Master (Active items only)
     const source = catalogItems.length > 0 ? catalogItems : (catalog?.items || []);
     const map = new Map<string, CatalogItem>();
-    source.forEach((c) => {
+    source.forEach((c: any) => {
       if (c.status && c.status.toLowerCase() !== 'active') {
         return;
       }

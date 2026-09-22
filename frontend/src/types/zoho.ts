@@ -11,6 +11,7 @@ export interface ZohoItem {
   name: string;
   rate: number;
   description: string;
+  status?: string;
 }
 
 export interface ZohoCatalogData {
