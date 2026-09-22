@@ -701,13 +701,15 @@ export async function fetchClientTransactions(
   status?: string,
   month?: string,
   year?: number,
-  pipelineType?: string
+  pipelineType?: string,
+  limit: number = 5000
 ): Promise<any[]> {
   const params = new URLSearchParams();
   if (status) params.append('status', status);
   if (month) params.append('month', month);
   if (year) params.append('year', year.toString());
   if (pipelineType) params.append('pipeline_type', pipelineType);
+  if (limit) params.append('limit', limit.toString());
   const qStr = params.toString() ? `?${params.toString()}` : '';
   const res = await resilientFetch(`/api/clients/${clientId}/transactions${qStr}`, {
     headers: getAuthHeaders(),

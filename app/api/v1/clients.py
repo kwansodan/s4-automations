@@ -1029,7 +1029,7 @@ async def list_client_transactions(
     month: Optional[str] = None,
     year: Optional[int] = None,
     pipeline_type: Optional[str] = None,
-    limit: int = 250,
+    limit: Optional[int] = 5000,
     db: Session = Depends(get_db_session),
 ) -> List[Dict[str, Any]]:
     """Returns staged ledger transactions for review and batch approval."""
@@ -1042,7 +1042,9 @@ async def list_client_transactions(
     if pipeline_type:
         query = query.where(StagedTransaction.pipeline_type == pipeline_type.upper())
 
-    query = query.order_by(StagedTransaction.id.desc()).limit(limit)
+    query = query.order_by(StagedTransaction.id.desc())
+    if limit and not (month or year):
+        query = query.limit(limit)
     transactions = db.exec(query).all()
 
     # Auto-heal transaction dates and drive file URLs on read
@@ -1093,6 +1095,9 @@ async def list_client_transactions(
             if match:
                 filtered.append(t)
         transactions = filtered
+
+    if limit and len(transactions) > limit:
+        transactions = transactions[:limit]
 
     return [t.model_dump() for t in transactions]
 
