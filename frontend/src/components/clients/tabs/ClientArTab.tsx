@@ -557,10 +557,13 @@ export const ClientArTab: React.FC = () => {
   };
 
   const zohoMasterItems = useMemo(() => {
-    // Strictly Zoho Books Item Master
+    // Strictly Zoho Books Item Master (Active items only)
     const source = catalogItems.length > 0 ? catalogItems : (catalog?.items || []);
     const map = new Map<string, CatalogItem>();
     source.forEach((c) => {
+      if (c.status && c.status.toLowerCase() !== 'active') {
+        return;
+      }
       if (c.name && !map.has(c.name.trim().toLowerCase())) {
         map.set(c.name.trim().toLowerCase(), c);
       }

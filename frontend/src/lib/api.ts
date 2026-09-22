@@ -791,6 +791,7 @@ export interface CatalogItem {
   name: string;
   rate?: number;
   description?: string;
+  status?: string;
 }
 
 export async function fetchItemCatalog(orgId?: string): Promise<CatalogItem[]> {

@@ -339,13 +339,16 @@ class ZohoBooksService:
 
             items = []
             for item in raw_items:
+                item_status = str(item.get("status", "active")).strip().lower()
+                if item_status != "active":
+                    continue
                 items.append(
                     ZohoItem(
                         item_id=str(item.get("item_id", "")),
                         name=item.get("name", ""),
                         rate=float(item.get("rate", 0.0)),
                         description=item.get("description", ""),
-                        status=item.get("status", "active"),
+                        status="active",
                     )
                 )
 

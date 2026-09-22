@@ -23,24 +23,29 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Check if current item name matches any item in Zoho Books Item Master
+  // Active items filter (strictly active items from Zoho Books Item Master)
+  const activeItems = useMemo(() => {
+    return items.filter((i) => !i.status || i.status.toLowerCase() === 'active');
+  }, [items]);
+
+  // Check if current item name matches any active item in Zoho Books Item Master
   const matchedZohoItem = useMemo(() => {
     if (!selectedItemName) return null;
     const lower = selectedItemName.trim().toLowerCase();
-    return items.find((i) => i.name?.trim().toLowerCase() === lower) || null;
-  }, [items, selectedItemName]);
+    return activeItems.find((i) => i.name?.trim().toLowerCase() === lower) || null;
+  }, [activeItems, selectedItemName]);
 
   // Filter items strictly from Zoho Books Item Master by search query
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return items;
+    if (!searchQuery.trim()) return activeItems;
     const q = searchQuery.toLowerCase().trim();
-    return items.filter(
+    return activeItems.filter(
       (i) =>
         i.name?.toLowerCase().includes(q) ||
         (i.description && i.description.toLowerCase().includes(q)) ||
         (i.item_id && i.item_id.toLowerCase().includes(q))
     );
-  }, [items, searchQuery]);
+  }, [activeItems, searchQuery]);
 
   // Close dropdown on outside click
   useEffect(() => {
