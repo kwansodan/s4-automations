@@ -40,6 +40,7 @@ import {
   Edit3,
   Save,
 } from 'lucide-react';
+import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027];
@@ -55,6 +56,7 @@ export const ClientArTab: React.FC = () => {
     refreshAll,
     isLoading,
     addLog,
+    catalog,
   } = useAutomation();
 
   const [search, setSearch] = useState('');
@@ -79,11 +81,10 @@ export const ClientArTab: React.FC = () => {
   const [expandedSlips, setExpandedSlips] = useState<Record<string, boolean>>({});
   const [approvingSlipKey, setApprovingSlipKey] = useState<string | null>(null);
 
-  // Line Item Inline Editing State
+  // Line Item Inline Editing State (Strictly Zoho Books Item Master)
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [editingTxId, setEditingTxId] = useState<number | null>(null);
   const [editItemName, setEditItemName] = useState<string>('');
-  const [isCustomItem, setIsCustomItem] = useState<boolean>(false);
   const [editPickQty, setEditPickQty] = useState<number | string>('');
   const [editDelivQty, setEditDelivQty] = useState<number | string>('');
   const [editRate, setEditRate] = useState<number | string>('');
@@ -555,64 +556,22 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
-  const DEFAULT_LINEN_ITEMS: { name: string; rate: number }[] = [
-    { name: 'Bed Sheet (Double / King)', rate: 18.5 },
-    { name: 'Bed Sheet (Single)', rate: 14.0 },
-    { name: 'Duvet Cover (King)', rate: 25.0 },
-    { name: 'Duvet Cover (Single)', rate: 18.0 },
-    { name: 'Pillow Case', rate: 6.5 },
-    { name: 'Bath Towel', rate: 12.0 },
-    { name: 'Hand Towel', rate: 7.0 },
-    { name: 'Face Towel', rate: 4.5 },
-    { name: 'Bath Mat', rate: 9.0 },
-    { name: 'Pool Towel', rate: 15.0 },
-    { name: 'Table Cloth', rate: 22.0 },
-    { name: 'Napkin', rate: 3.5 },
-    { name: 'Bath Robe', rate: 25.0 },
-    { name: 'Mattress Protector', rate: 20.0 },
-  ];
-
-  const allItemOptions = useMemo(() => {
-    const map = new Map<string, { name: string; rate?: number }>();
-
-    // 1. Add catalog items (Zoho Books item master)
-    catalogItems.forEach((c) => {
-      if (c.name) {
-        map.set(c.name.trim().toLowerCase(), { name: c.name.trim(), rate: c.rate });
+  const zohoMasterItems = useMemo(() => {
+    // Strictly Zoho Books Item Master
+    const source = catalogItems.length > 0 ? catalogItems : (catalog?.items || []);
+    const map = new Map<string, CatalogItem>();
+    source.forEach((c) => {
+      if (c.name && !map.has(c.name.trim().toLowerCase())) {
+        map.set(c.name.trim().toLowerCase(), c);
       }
     });
-
-    // 2. Add summary rows from active client ledger
-    summaryRows.forEach((r) => {
-      if (r.item_name) {
-        const trimmed = r.item_name.trim();
-        const key = trimmed.toLowerCase();
-        const rate = r.unit_rate ?? r.unit_price;
-        if (!map.has(key)) {
-          map.set(key, { name: toTitleCase(trimmed), rate });
-        } else if (rate && !map.get(key)!.rate) {
-          map.get(key)!.rate = rate;
-        }
-      }
-    });
-
-    // 3. Add default linen items
-    DEFAULT_LINEN_ITEMS.forEach((d) => {
-      const key = d.name.toLowerCase();
-      if (!map.has(key)) {
-        map.set(key, { name: d.name, rate: d.rate });
-      }
-    });
-
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogItems, summaryRows]);
+  }, [catalogItems, catalog]);
 
   const handleStartEdit = (tx: any) => {
     setEditingTxId(tx.id);
     const desc = (tx.item_or_description || '').trim();
-    const matched = allItemOptions.some((opt) => opt.name.toLowerCase() === desc.toLowerCase());
     setEditItemName(desc);
-    setIsCustomItem(!matched && desc.length > 0);
     setEditPickQty(tx.credit_amount ?? tx.quantity_or_debit ?? 0);
     setEditDelivQty(tx.quantity_or_debit ?? 0);
     setEditRate(tx.rate_or_price ?? 0);
@@ -620,24 +579,16 @@ export const ClientArTab: React.FC = () => {
 
   const handleCancelEdit = () => {
     setEditingTxId(null);
-    setIsCustomItem(false);
     setEditItemName('');
     setEditPickQty('');
     setEditDelivQty('');
     setEditRate('');
   };
 
-  const handleItemSelectChange = (selectedVal: string) => {
-    if (selectedVal === '__CUSTOM__') {
-      setIsCustomItem(true);
-      setEditItemName('');
-    } else {
-      setIsCustomItem(false);
-      setEditItemName(selectedVal);
-      const found = allItemOptions.find((opt) => opt.name.toLowerCase() === selectedVal.toLowerCase());
-      if (found && found.rate != null && found.rate > 0) {
-        setEditRate(found.rate);
-      }
+  const handleZohoItemSelect = (item: CatalogItem) => {
+    setEditItemName(item.name);
+    if (item.rate != null && item.rate > 0) {
+      setEditRate(item.rate);
     }
   };
 
@@ -645,7 +596,18 @@ export const ClientArTab: React.FC = () => {
     if (!currentClient?.id) return;
     const finalDesc = editItemName.trim();
     if (!finalDesc) {
-      addLog('warning', 'Item name cannot be empty.');
+      addLog('warning', 'Item name cannot be empty. Please select an item from the Zoho Books Item Master.');
+      return;
+    }
+
+    const isZohoItem = zohoMasterItems.some(
+      (z) => z.name.trim().toLowerCase() === finalDesc.toLowerCase()
+    );
+    if (!isZohoItem && zohoMasterItems.length > 0) {
+      addLog(
+        'warning',
+        `"${finalDesc}" is not in the Zoho Books Item Master. Please search and select an official catalog item.`
+      );
       return;
     }
 
@@ -1338,34 +1300,13 @@ export const ClientArTab: React.FC = () => {
 
                                   return (
                                     <tr key={tx.id} className="bg-sky-950/30 border-2 border-sky-500/50 shadow-inner">
-                                      <td className="py-2 px-3 min-w-[220px]">
-                                        <div className="flex flex-col gap-1.5">
-                                          <select
-                                            value={isCustomItem ? '__CUSTOM__' : editItemName}
-                                            onChange={(e) => handleItemSelectChange(e.target.value)}
-                                            className="bg-slate-900 border border-sky-500 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 w-full font-medium"
-                                          >
-                                            {!isCustomItem && editItemName && !allItemOptions.some((o) => o.name.toLowerCase() === editItemName.toLowerCase()) && (
-                                              <option value={editItemName}>{editItemName}</option>
-                                            )}
-                                            {allItemOptions.map((opt) => (
-                                              <option key={opt.name} value={opt.name}>
-                                                {opt.name} {opt.rate != null && opt.rate > 0 ? `(GHS ${opt.rate.toFixed(2)})` : ''}
-                                              </option>
-                                            ))}
-                                            <option value="__CUSTOM__">✏️ Custom / Other Item...</option>
-                                          </select>
-                                          {isCustomItem && (
-                                            <input
-                                              type="text"
-                                              value={editItemName}
-                                              onChange={(e) => setEditItemName(e.target.value)}
-                                              placeholder="Enter custom item name..."
-                                              className="bg-slate-950 border border-amber-500/80 rounded-lg px-2 py-1 text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400 w-full"
-                                              autoFocus
-                                            />
-                                          )}
-                                        </div>
+                                      <td className="py-2 px-3 min-w-[280px]">
+                                        <ZohoItemSearchableSelect
+                                          items={zohoMasterItems}
+                                          selectedItemName={editItemName}
+                                          onSelect={handleZohoItemSelect}
+                                          disabled={isSavingTx}
+                                        />
                                       </td>
                                       <td className="py-2 px-3 text-center">
                                         <input
@@ -1613,34 +1554,13 @@ export const ClientArTab: React.FC = () => {
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-4 min-w-[220px]">
-                            <div className="flex flex-col gap-1.5">
-                              <select
-                                value={isCustomItem ? '__CUSTOM__' : editItemName}
-                                onChange={(e) => handleItemSelectChange(e.target.value)}
-                                className="bg-slate-900 border border-sky-500 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 w-full font-medium"
-                              >
-                                {!isCustomItem && editItemName && !allItemOptions.some((o) => o.name.toLowerCase() === editItemName.toLowerCase()) && (
-                                  <option value={editItemName}>{editItemName}</option>
-                                )}
-                                {allItemOptions.map((opt) => (
-                                  <option key={opt.name} value={opt.name}>
-                                    {opt.name} {opt.rate != null && opt.rate > 0 ? `(GHS ${opt.rate.toFixed(2)})` : ''}
-                                  </option>
-                                ))}
-                                <option value="__CUSTOM__">✏️ Custom / Other Item...</option>
-                              </select>
-                              {isCustomItem && (
-                                <input
-                                  type="text"
-                                  value={editItemName}
-                                  onChange={(e) => setEditItemName(e.target.value)}
-                                  placeholder="Enter custom item name..."
-                                  className="bg-slate-950 border border-amber-500/80 rounded-lg px-2 py-1 text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400 w-full"
-                                  autoFocus
-                                />
-                              )}
-                            </div>
+                          <td className="py-2.5 px-4 min-w-[280px]">
+                            <ZohoItemSearchableSelect
+                              items={zohoMasterItems}
+                              selectedItemName={editItemName}
+                              onSelect={handleZohoItemSelect}
+                              disabled={isSavingTx}
+                            />
                           </td>
                           <td className="py-2.5 px-4 text-center">
                             <input
