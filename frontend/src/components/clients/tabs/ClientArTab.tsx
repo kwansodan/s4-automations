@@ -91,12 +91,12 @@ export const ClientArTab: React.FC = () => {
   const [isSavingTx, setIsSavingTx] = useState<boolean>(false);
 
   useEffect(() => {
-    fetchItemCatalog().then((items) => {
+    fetchItemCatalog(currentClient?.zoho_org_id || currentClient?.id).then((items) => {
       if (items && items.length > 0) {
         setCatalogItems(items);
       }
     });
-  }, []);
+  }, [currentClient?.id, currentClient?.zoho_org_id]);
 
   const [summarySortField, setSummarySortField] = useState<string>('item_name');
   const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
@@ -565,11 +565,32 @@ export const ClientArTab: React.FC = () => {
         return;
       }
       if (c.name && !map.has(c.name.trim().toLowerCase())) {
-        map.set(c.name.trim().toLowerCase(), c);
+        map.set(c.name.trim().toLowerCase(), {
+          item_id: c.item_id || `item_${c.name.toLowerCase().replace(/\s+/g, '_')}`,
+          name: c.name.trim(),
+          rate: Number(c.rate) || 0,
+          description: c.description || '',
+          status: 'active',
+        });
       }
     });
+
+    // Ensure distinct active items from client staged transactions are available as fallback
+    transactions.forEach((tx: any) => {
+      const name = (tx.item_or_description || '').trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          item_id: `staged_${name.toLowerCase().replace(/\s+/g, '_')}`,
+          name,
+          rate: Number(tx.rate_or_price) || 0,
+          description: 'Client Control Slip Item',
+          status: 'active',
+        });
+      }
+    });
+
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogItems, catalog]);
+  }, [catalogItems, catalog, transactions]);
 
   const handleStartEdit = (tx: any) => {
     setEditingTxId(tx.id);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Search, ChevronDown, Check, AlertCircle, Package, X } from 'lucide-react';
 import { CatalogItem } from '../../../lib/api';
 import { formatCurrency } from '../../../lib/utils';
@@ -47,6 +47,11 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
     );
   }, [activeItems, searchQuery]);
 
+  // Safe window of items to render (prevents DOM thrashing on large catalogs)
+  const visibleItems = useMemo(() => {
+    return filteredItems.slice(0, 100);
+  }, [filteredItems]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -58,26 +63,28 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Reset highlight index on filter changes
+  // Reset highlight index when filter results change length
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [filteredItems]);
+  }, [filteredItems.length]);
 
-  // Scroll highlighted item into view
-  useEffect(() => {
-    if (isOpen && listRef.current) {
-      const activeEl = listRef.current.children[highlightedIndex] as HTMLElement;
-      if (activeEl) {
-        activeEl.scrollIntoView({ block: 'nearest' });
-      }
+  const handleSelect = useCallback(
+    (item: CatalogItem) => {
+      onSelect(item);
+      setSearchQuery('');
+      setIsOpen(false);
+    },
+    [onSelect]
+  );
+
+  // Scroll active element into view ONLY on explicit keyboard navigation (never on mouse hover)
+  const scrollIndexIntoView = useCallback((index: number) => {
+    if (!listRef.current) return;
+    const targetEl = listRef.current.children[index] as HTMLElement | undefined;
+    if (targetEl && typeof targetEl.scrollIntoView === 'function') {
+      targetEl.scrollIntoView({ block: 'nearest' });
     }
-  }, [highlightedIndex, isOpen]);
-
-  const handleSelect = (item: CatalogItem) => {
-    onSelect(item);
-    setSearchQuery('');
-    setIsOpen(false);
-  };
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
@@ -90,27 +97,49 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
       return;
     }
 
+    if (visibleItems.length === 0) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsOpen(false);
+      }
+      return;
+    }
+
     switch (e.key) {
-      case 'ArrowDown':
+      case 'ArrowDown': {
         e.preventDefault();
-        setHighlightedIndex((prev) => (prev < filteredItems.length - 1 ? prev + 1 : 0));
+        const next = highlightedIndex < visibleItems.length - 1 ? highlightedIndex + 1 : 0;
+        setHighlightedIndex(next);
+        scrollIndexIntoView(next);
         break;
-      case 'ArrowUp':
+      }
+      case 'ArrowUp': {
         e.preventDefault();
-        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredItems.length - 1));
+        const prev = highlightedIndex > 0 ? highlightedIndex - 1 : visibleItems.length - 1;
+        setHighlightedIndex(prev);
+        scrollIndexIntoView(prev);
         break;
-      case 'Enter':
+      }
+      case 'Enter': {
         e.preventDefault();
-        if (filteredItems[highlightedIndex]) {
-          handleSelect(filteredItems[highlightedIndex]);
+        if (visibleItems[highlightedIndex]) {
+          handleSelect(visibleItems[highlightedIndex]);
         }
         break;
-      case 'Escape':
+      }
+      case 'Escape': {
         e.preventDefault();
         setIsOpen(false);
         break;
+      }
       default:
         break;
+    }
+  };
+
+  const handleInputFocus = () => {
+    if (!isOpen) {
+      setIsOpen(true);
     }
   };
 
@@ -144,13 +173,10 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                 setSearchQuery(e.target.value);
                 if (!isOpen) setIsOpen(true);
               }}
-              onFocus={() => {
-                setIsOpen(true);
-                setSearchQuery('');
-              }}
+              onFocus={handleInputFocus}
               onKeyDown={handleKeyDown}
-              placeholder="Search Zoho Books item master..."
-              className="w-full bg-transparent text-white placeholder-slate-500 text-xs font-medium focus:outline-none"
+              placeholder={matchedZohoItem?.name || selectedItemName || 'Search Zoho Books item master...'}
+              className="w-full bg-transparent text-white placeholder-slate-400 text-xs font-medium focus:outline-none"
             />
           </div>
 
@@ -179,7 +205,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
         {!matchedZohoItem && selectedItemName && !isOpen && (
           <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-400 font-medium">
             <AlertCircle className="w-3 h-3 shrink-0 text-amber-400" />
-            <span className="truncate">Not in Zoho Master - select a catalog item</span>
+            <span className="truncate">Not in Zoho Master - click to select catalog item</span>
           </div>
         )}
       </div>
@@ -194,14 +220,14 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
               <span>Zoho Books Item Master</span>
             </div>
             <span className="font-mono text-slate-400 text-[10px]">
-              {filteredItems.length} of {items.length} items
+              {filteredItems.length} of {activeItems.length} active items
             </span>
           </div>
 
           {/* Items List */}
           <div ref={listRef} className="overflow-y-auto max-h-56 p-1.5 space-y-1 custom-scrollbar">
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item, index) => {
+            {visibleItems.length > 0 ? (
+              visibleItems.map((item, index) => {
                 const isSelected =
                   matchedZohoItem?.item_id === item.item_id ||
                   matchedZohoItem?.name.toLowerCase() === item.name.toLowerCase();
@@ -233,7 +259,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                         </p>
                       )}
                       {item.item_id && (
-                        <span className="font-mono text-[9px] text-slate-500 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800 inline-block mt-0.5">
+                        <span className="font-mono text-[9px] text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 inline-block mt-0.5">
                           SKU: {item.item_id}
                         </span>
                       )}
@@ -250,7 +276,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
             ) : (
               <div className="py-6 px-3 text-center text-xs">
                 <p className="text-slate-400 font-medium">
-                  No Zoho Books items match "{searchQuery}"
+                  {searchQuery ? `No Zoho Books items match "${searchQuery}"` : 'No active items registered in Zoho Books'}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-1">
                   Only active items registered in your Zoho Books Item Master are available.
