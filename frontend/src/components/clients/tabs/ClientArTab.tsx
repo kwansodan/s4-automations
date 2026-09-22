@@ -645,6 +645,27 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
+  // Reconciled Zoho Books Customer Contact resolution
+  const matchedZohoContact = useMemo(() => {
+    const contacts = catalog?.contacts || [];
+    if (!contacts.length || !currentClient) return null;
+
+    const explicitId = (currentClient as any).zoho_contact_id || (currentClient as any).zohoContactId;
+    if (explicitId) {
+      const found = contacts.find((c) => c.contact_id === explicitId);
+      if (found) return found;
+    }
+
+    const clientName = (currentClient?.name || '').trim().toLowerCase();
+    for (const c of contacts) {
+      const cName = (c.contact_name || '').trim().toLowerCase();
+      const compName = (c.company_name || '').trim().toLowerCase();
+      if (cName === clientName || compName === clientName) return c;
+      if (clientName && (cName.includes(clientName) || compName.includes(clientName) || clientName.includes(cName))) return c;
+    }
+    return null;
+  }, [catalog?.contacts, currentClient]);
+
   // Approved totals from In-App PostgreSQL Ledger
   const dbApprovedCount = transactions.filter((t) => t.approved && t.status !== 'INVOICED').length;
   const dbApprovedAmount = summaryRows
@@ -726,7 +747,7 @@ export const ClientArTab: React.FC = () => {
       {/* Header & Controls Toolbar */}
       <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Receipt className="w-5 h-5 text-sky-400" />
             <h2 className="text-base font-bold text-white tracking-tight">
               Accounts Receivable &amp; Review Sheets
@@ -734,6 +755,24 @@ export const ClientArTab: React.FC = () => {
             <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
               {currentClient.name}
             </span>
+            {matchedZohoContact ? (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 rounded-full shadow-sm"
+                title={`Reconciled with Zoho Books Customer: ${matchedZohoContact.contact_name} (${matchedZohoContact.contact_id})`}
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Zoho Customer: {matchedZohoContact.company_name || matchedZohoContact.contact_name}</span>
+                <span className="font-mono text-emerald-400/80">({matchedZohoContact.contact_id})</span>
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full"
+                title="Will match automatically during Zoho invoice creation using name similarity"
+              >
+                <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>Auto-reconciles to Zoho Customer</span>
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             Audit OCR extracted laundry/sales control slips, reconcile linen losses, and generate Zoho Books invoices.
