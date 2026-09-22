@@ -31,6 +31,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
+  FolderKanban,
+  List,
+  CheckCircle2,
 } from 'lucide-react';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -67,6 +70,9 @@ export const ClientArTab: React.FC = () => {
   const [dailySortDirection, setDailySortDirection] = useState<'asc' | 'desc'>('asc');
   const [dailyPageSize, setDailyPageSize] = useState<number | 'all'>(50);
   const [dailyCurrentPage, setDailyCurrentPage] = useState<number>(1);
+  const [dailyViewMode, setDailyViewMode] = useState<'grouped' | 'flat'>('grouped');
+  const [expandedSlips, setExpandedSlips] = useState<Record<string, boolean>>({});
+  const [approvingSlipKey, setApprovingSlipKey] = useState<string | null>(null);
 
   const [summarySortField, setSummarySortField] = useState<string>('item_name');
   const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
@@ -221,6 +227,11 @@ export const ClientArTab: React.FC = () => {
     let base = filename.replace(/\.[a-zA-Z0-9]+$/, '').trim();
     base = base.replace(/[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$/i, '').trim();
     return base;
+  };
+
+  const toTitleCase = (str?: string): string => {
+    if (!str) return '—';
+    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
   };
 
   const handleSummarySort = (field: string) => {
@@ -393,6 +404,133 @@ export const ClientArTab: React.FC = () => {
     const start = (dailyCurrentPage - 1) * Number(dailyPageSize);
     return sortedArStagedTx.slice(start, start + Number(dailyPageSize));
   }, [sortedArStagedTx, dailyCurrentPage, dailyPageSize]);
+
+  interface SlipGroup {
+    slipKey: string;
+    sourceFileName: string;
+    propertyName: string;
+    slipDate: string;
+    driveUrl?: string | null;
+    items: any[];
+    txIds: number[];
+    totalPickQty: number;
+    totalDelivQty: number;
+    totalLossQty: number;
+    totalAmount: number;
+    isFullyApproved: boolean;
+    isPartiallyApproved: boolean;
+    isFullyReviewed: boolean;
+    status: string;
+  }
+
+  const groupedSlips = useMemo<SlipGroup[]>(() => {
+    const map = new Map<string, SlipGroup>();
+
+    filteredArStagedTx.forEach((tx) => {
+      const key = tx.source_file_name || `slip-${tx.transaction_date || 'unknown'}`;
+      let group = map.get(key);
+      if (!group) {
+        const prop = extractPropertyName(tx.source_file_name) || currentClient?.name || 'Slip';
+        const driveUrl = tx.metadata_json?.drive_file_url ||
+          (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : null);
+        group = {
+          slipKey: key,
+          sourceFileName: tx.source_file_name || 'Slip Document',
+          propertyName: prop,
+          slipDate: tx.transaction_date || '—',
+          driveUrl,
+          items: [],
+          txIds: [],
+          totalPickQty: 0,
+          totalDelivQty: 0,
+          totalLossQty: 0,
+          totalAmount: 0,
+          isFullyApproved: true,
+          isPartiallyApproved: false,
+          isFullyReviewed: true,
+          status: 'PENDING',
+        };
+        map.set(key, group);
+      }
+
+      group.items.push(tx);
+      group.txIds.push(tx.id);
+      group.totalPickQty += (tx.credit_amount || tx.quantity_or_debit || 0);
+      group.totalDelivQty += (tx.quantity_or_debit || 0);
+      group.totalLossQty += (tx.discrepancy_amount || 0);
+      group.totalAmount += (tx.total_amount || 0);
+      if (!tx.approved) group.isFullyApproved = false;
+      if (tx.approved) group.isPartiallyApproved = true;
+      if (!tx.reviewed) group.isFullyReviewed = false;
+    });
+
+    const list = Array.from(map.values());
+    list.forEach((g) => {
+      const allInvoiced = g.items.every((i) => i.status === 'INVOICED');
+      if (allInvoiced) g.status = 'INVOICED';
+      else if (g.isFullyApproved) g.status = 'APPROVED';
+      else g.status = 'PENDING';
+    });
+
+    list.sort((a, b) => {
+      const dateA = a.slipDate || '';
+      const dateB = b.slipDate || '';
+      if (dateA !== dateB) {
+        return dailySortDirection === 'asc' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+      }
+      return a.sourceFileName.localeCompare(b.sourceFileName);
+    });
+
+    return list;
+  }, [filteredArStagedTx, currentClient, dailySortDirection]);
+
+  const isSlipExpanded = (key: string) => {
+    return expandedSlips[key] !== undefined ? expandedSlips[key] : true;
+  };
+
+  const toggleSlipExpanded = (key: string) => {
+    setExpandedSlips((prev) => ({
+      ...prev,
+      [key]: !isSlipExpanded(key),
+    }));
+  };
+
+  const handleExpandAll = () => {
+    const next: Record<string, boolean> = {};
+    groupedSlips.forEach((s) => {
+      next[s.slipKey] = true;
+    });
+    setExpandedSlips(next);
+  };
+
+  const handleCollapseAll = () => {
+    const next: Record<string, boolean> = {};
+    groupedSlips.forEach((s) => {
+      next[s.slipKey] = false;
+    });
+    setExpandedSlips(next);
+  };
+
+  const handleToggleSlipApproval = async (slip: SlipGroup) => {
+    if (!currentClient?.id || !slip.txIds.length) return;
+    const targetApproved = !slip.isFullyApproved;
+    setApprovingSlipKey(slip.slipKey);
+    try {
+      await batchToggleTransactions(currentClient.id, slip.txIds, 'approved', targetApproved);
+      if (targetApproved) {
+        await batchToggleTransactions(currentClient.id, slip.txIds, 'reviewed', true);
+      }
+      addLog(
+        'success',
+        `${targetApproved ? 'Approved' : 'Unapproved'} all ${slip.txIds.length} items for ${slip.sourceFileName}`
+      );
+      await Promise.all([loadTransactions(), loadSummaryData()]);
+    } catch (err: any) {
+      addLog('error', `Failed approving slip ${slip.sourceFileName}: ${err.message}`);
+    } finally {
+      setApprovingSlipKey(null);
+    }
+  };
 
   // Approved totals from In-App PostgreSQL Ledger
   const dbApprovedCount = transactions.filter((t) => t.approved && t.status !== 'INVOICED').length;
@@ -731,6 +869,55 @@ export const ClientArTab: React.FC = () => {
               </select>
             </div>
           )}
+
+          {/* Sub-toolbar: View Mode Switcher (Group by Slip vs Flat Table) & Accordion Actions */}
+          <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 mt-1">
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setDailyViewMode('grouped')}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyViewMode === 'grouped'
+                    ? 'bg-sky-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Organize transactions by daily control slip with 1-click slip approval"
+              >
+                <FolderKanban className="w-3.5 h-3.5" />
+                <span>Group by Slip ({groupedSlips.length})</span>
+              </button>
+              <button
+                onClick={() => setDailyViewMode('flat')}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyViewMode === 'flat'
+                    ? 'bg-sky-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="View all transactions in a single flat ledger table"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Flat Table ({filteredArStagedTx.length})</span>
+              </button>
+            </div>
+
+            {dailyViewMode === 'grouped' && groupedSlips.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExpandAll}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-white bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-lg transition cursor-pointer"
+                  title="Expand all daily slips"
+                >
+                  Expand All
+                </button>
+                <button
+                  onClick={handleCollapseAll}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-white bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-lg transition cursor-pointer"
+                  title="Collapse all daily slips"
+                >
+                  Collapse All
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -776,27 +963,27 @@ export const ClientArTab: React.FC = () => {
                       <tr
                         key={row.item_name}
                         className={`hover:bg-slate-850/50 transition-colors ${
-                          row.is_fully_approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'bg-amber-950/10' : ''
+                          row.is_fully_approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-bold text-white">{row.item_name}</td>
-                        <td className="py-3 px-4 text-center font-mono">{row.total_picked_up}</td>
-                        <td className="py-3 px-4 text-center font-mono">{row.total_delivered}</td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{toTitleCase(row.item_name)}</td>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_picked_up}</td>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_delivered}</td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
                           {lossQty > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-amber-400 font-mono font-bold bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>+{lossQty}</span>
+                            <span className="inline-flex items-center gap-1 text-rose-300 font-mono font-bold bg-rose-950/80 border border-rose-500/50 px-2 py-0.5 rounded-full text-[11px] shadow-sm">
+                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                              <span>-{lossQty} missing</span>
                             </span>
                           ) : (
-                            <span className="text-slate-500 font-mono">0</span>
+                            <span className="text-slate-600 font-mono text-xs">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
                           {formatCurrency(row.total_billed)}
                         </td>
-                        <td className="py-3 px-4 text-center font-mono text-slate-400">{row.slips_count}</td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-400 whitespace-nowrap">{row.slips_count}</td>
                         <td className="py-3 px-4 text-center">
                           <input
                             type="checkbox"
@@ -840,8 +1027,250 @@ export const ClientArTab: React.FC = () => {
             </table>
           )}
 
-          {/* VIEW 2: IN-APP POSTGRESQL DAILY SLIPS */}
-          {activeLedgerView === 'daily' && (
+          {/* VIEW 2A: IN-APP POSTGRESQL DAILY SLIPS - GROUPED BY SLIP */}
+          {activeLedgerView === 'daily' && dailyViewMode === 'grouped' && (
+            <div className="divide-y divide-slate-800/80">
+              {groupedSlips.length > 0 ? (
+                groupedSlips.map((slip) => {
+                  const expanded = isSlipExpanded(slip.slipKey);
+                  return (
+                    <div key={slip.slipKey} className="transition-colors">
+                      {/* Slip Card Header */}
+                      <div
+                        className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
+                          slip.isFullyApproved
+                            ? 'bg-emerald-950/20 hover:bg-emerald-950/30'
+                            : slip.totalLossQty > 0
+                            ? 'border-l-4 border-l-rose-500 bg-rose-950/15 hover:bg-rose-950/25'
+                            : 'bg-slate-900/40 hover:bg-slate-850/60'
+                        }`}
+                      >
+                        {/* Left: Expand Chevron, Property, Date, File Name Link, Item Count */}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <button
+                            onClick={() => toggleSlipExpanded(slip.slipKey)}
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer shrink-0"
+                            title={expanded ? 'Collapse slip line items' : 'Expand slip line items'}
+                          >
+                            {expanded ? (
+                              <ChevronUp className="w-4 h-4 text-slate-300" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-slate-300" />
+                            )}
+                          </button>
+
+                          <div className="flex flex-wrap items-center gap-2 min-w-0">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-950/80 text-sky-300 border border-sky-500/30 shrink-0">
+                              <Building2 className="w-3 h-3 text-sky-400" />
+                              <span>{slip.propertyName}</span>
+                            </span>
+
+                            <span className="font-mono text-xs font-bold text-white bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/60 shrink-0 whitespace-nowrap">
+                              {slip.slipDate}
+                            </span>
+
+                            {slip.driveUrl ? (
+                              <a
+                                href={slip.driveUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-xs group max-w-[280px] truncate"
+                                title={`Open original slip in Google Drive: ${slip.sourceFileName}`}
+                              >
+                                <span className="truncate">{slip.sourceFileName}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs text-slate-300 max-w-[280px] truncate block" title={slip.sourceFileName}>
+                                {slip.sourceFileName}
+                              </span>
+                            )}
+
+                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                              ({slip.items.length} {slip.items.length === 1 ? 'item' : 'items'})
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Right: Aggregated Totals & 1-Click Approve Entire Slip Button */}
+                        <div className="flex flex-wrap items-center gap-2.5 shrink-0 justify-between lg:justify-end">
+                          <div className="flex items-center gap-1.5 text-xs font-mono">
+                            <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Picked Up">
+                              <span className="text-slate-500 text-[10px] mr-1">PICK</span>
+                              <span className="text-slate-200 font-semibold">{slip.totalPickQty}</span>
+                            </div>
+                            <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Delivered">
+                              <span className="text-slate-500 text-[10px] mr-1">DELIV</span>
+                              <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
+                            </div>
+                            {slip.totalLossQty > 0 ? (
+                              <div
+                                className="bg-rose-950/80 px-2 py-1 rounded border border-rose-500/50 text-rose-300 flex items-center gap-1 font-bold shadow-sm whitespace-nowrap"
+                                title="Linen Loss Discrepancy"
+                              >
+                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span className="text-[10px] text-rose-400 uppercase">Loss</span>
+                                <span>-{slip.totalLossQty} missing</span>
+                              </div>
+                            ) : (
+                              <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 text-slate-500 whitespace-nowrap" title="No Loss">
+                                <span className="text-[10px] mr-1">LOSS</span>
+                                <span>—</span>
+                              </div>
+                            )}
+                            <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-right whitespace-nowrap" title="Total Amount">
+                              <span className="font-bold text-emerald-400">{formatCurrency(slip.totalAmount)}</span>
+                            </div>
+                          </div>
+
+                          {/* 1-Click Approve Entire Slip Button */}
+                          <button
+                            onClick={() => handleToggleSlipApproval(slip)}
+                            disabled={approvingSlipKey === slip.slipKey}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-sm disabled:opacity-40 whitespace-nowrap ${
+                              slip.isFullyApproved
+                                ? 'bg-emerald-950 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/60'
+                                : slip.isPartiallyApproved
+                                ? 'bg-amber-950/80 border border-amber-500/60 text-amber-300 hover:bg-amber-900/80'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            }`}
+                            title={slip.isFullyApproved ? 'Click to unapprove all items on this slip' : '1-Click Approve all line items on this slip'}
+                          >
+                            {approvingSlipKey === slip.slipKey ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Updating...</span>
+                              </>
+                            ) : slip.isFullyApproved ? (
+                              <>
+                                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Slip Approved</span>
+                              </>
+                            ) : slip.isPartiallyApproved ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Approve Rest ({slip.items.filter((i) => !i.approved).length})</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Approve Slip ({slip.items.length})</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Nested Slip Items Table (when expanded) */}
+                      {expanded && (
+                        <div className="bg-slate-950/60 border-t border-slate-800/80 px-2 py-1.5 overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-left text-xs">
+                            <thead className="text-slate-500 uppercase tracking-wider font-semibold text-[10px] border-b border-slate-800/60">
+                              <tr>
+                                <th className="py-2 px-3 text-left">Item Description</th>
+                                <th className="py-2 px-3 text-center">Picked Up</th>
+                                <th className="py-2 px-3 text-center">Delivered</th>
+                                <th className="py-2 px-3 text-center">Linen Loss</th>
+                                <th className="py-2 px-3 text-right">Unit Rate</th>
+                                <th className="py-2 px-3 text-right">Total Amount</th>
+                                <th className="py-2 px-3 text-center">Reviewed</th>
+                                <th className="py-2 px-3 text-center">Approved</th>
+                                <th className="py-2 px-3 text-center">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/40 text-slate-300 font-medium">
+                              {slip.items.map((tx) => {
+                                const lossQty = tx.discrepancy_amount || 0;
+                                const pickQty = tx.credit_amount || tx.quantity_or_debit || 0;
+                                const delivQty = tx.quantity_or_debit || 0;
+                                const rate = tx.rate_or_price || 0;
+                                const total = tx.total_amount || 0;
+
+                                return (
+                                  <tr
+                                    key={tx.id}
+                                    className={`hover:bg-slate-850/40 transition-colors ${
+                                      tx.approved
+                                        ? 'bg-emerald-950/10'
+                                        : lossQty > 0
+                                        ? 'border-l-2 border-l-rose-500 bg-rose-950/15'
+                                        : ''
+                                    }`}
+                                  >
+                                    <td className="py-2.5 px-3 font-bold text-white whitespace-nowrap">
+                                      {toTitleCase(tx.item_or_description)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{pickQty}</td>
+                                    <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                      {lossQty > 0 ? (
+                                        <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                          <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                          <span>-{lossQty} missing</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-600 font-mono text-xs">—</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-slate-300">
+                                      {formatCurrency(rate)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                                      {formatCurrency(total)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(tx.reviewed)}
+                                        onChange={() => handleToggleTx(tx.id, 'reviewed', tx.reviewed)}
+                                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                      />
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(tx.approved)}
+                                        onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
+                                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                      />
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span
+                                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          tx.status === 'INVOICED'
+                                            ? 'bg-sky-950 border border-sky-500/40 text-sky-300'
+                                            : tx.approved
+                                            ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
+                                            : 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
+                                        }`}
+                                      >
+                                        {tx.status === 'INVOICED' ? 'INVOICED' : tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-12 text-center text-slate-500 text-xs">
+                  {isLoadingTx
+                    ? 'Loading daily slips from PostgreSQL...'
+                    : dailyCounts.all === 0
+                    ? "No daily slips found in database for this period. Click 'Run AR Extraction' above to process control slips."
+                    : 'No daily slips match the selected filter criteria.'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW 2B: IN-APP POSTGRESQL DAILY SLIPS - FLAT TABLE */}
+          {activeLedgerView === 'daily' && dailyViewMode === 'flat' && (
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
@@ -873,11 +1302,11 @@ export const ClientArTab: React.FC = () => {
                       <tr
                         key={tx.id}
                         className={`hover:bg-slate-850/50 transition-colors ${
-                          tx.approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'bg-amber-950/10' : ''
+                          tx.approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-mono text-slate-300 font-semibold">{tx.transaction_date || '—'}</td>
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 font-mono text-slate-300 font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                        <td className="py-3 px-4 whitespace-nowrap">
                           {driveUrl ? (
                             <a
                               href={driveUrl}
@@ -895,20 +1324,21 @@ export const ClientArTab: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 font-bold text-white">{tx.item_or_description}</td>
-                        <td className="py-3 px-4 text-center font-mono">{pickQty}</td>
-                        <td className="py-3 px-4 text-center font-mono">{delivQty}</td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{toTitleCase(tx.item_or_description)}</td>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{pickQty}</td>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
                           {lossQty > 0 ? (
-                            <span className="text-amber-400 font-mono font-bold bg-amber-950/60 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                              +{lossQty}
+                            <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                              <span>-{lossQty} missing</span>
                             </span>
                           ) : (
-                            <span className="text-slate-500 font-mono">0</span>
+                            <span className="text-slate-600 font-mono text-xs">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono">{formatCurrency(rate)}</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(rate)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
                           {formatCurrency(total)}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -949,7 +1379,7 @@ export const ClientArTab: React.FC = () => {
                       {isLoadingTx
                         ? 'Loading daily slips from PostgreSQL...'
                         : dailyCounts.all === 0
-                        ? 'No daily slips found in database for this period. Click \'Run AR Extraction\' above to process control slips.'
+                        ? "No daily slips found in database for this period. Click 'Run AR Extraction' above to process control slips."
                         : 'No daily slips match the selected filter criteria.'}
                     </td>
                   </tr>
@@ -959,65 +1389,83 @@ export const ClientArTab: React.FC = () => {
           )}
         </div>
 
-        {/* Pagination Footer for Daily Slips */}
+        {/* Footer for Daily Slips (Pagination for Flat Table or Count for Grouped) */}
         {activeLedgerView === 'daily' && totalDailyCount > 0 && (
           <div className="bg-slate-950/80 border-t border-slate-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-            <div className="flex flex-wrap items-center gap-3">
-              <span>
-                Showing{' '}
-                <strong className="text-white font-mono">
-                  {dailyPageSize === 'all' ? 1 : Math.min((dailyCurrentPage - 1) * Number(dailyPageSize) + 1, totalDailyCount)}
-                </strong>{' '}
-                to{' '}
-                <strong className="text-white font-mono">
-                  {dailyPageSize === 'all' ? totalDailyCount : Math.min(dailyCurrentPage * Number(dailyPageSize), totalDailyCount)}
-                </strong>{' '}
-                of <strong className="text-white font-mono">{totalDailyCount}</strong> slips
-              </span>
-
-              <div className="flex items-center gap-1.5 ml-2">
-                <span className="text-slate-500 text-[11px]">Show:</span>
-                {[25, 50, 100, 'all'].map((size) => (
-                  <button
-                    key={String(size)}
-                    onClick={() => setDailyPageSize(size as any)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
-                      dailyPageSize === size
-                        ? 'bg-sky-600 text-white shadow'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
-                  >
-                    {size === 'all' ? 'All' : size}
-                  </button>
-                ))}
+            {dailyViewMode === 'grouped' ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-2">
+                <div className="flex items-center gap-2">
+                  <FolderKanban className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>
+                    Showing <strong className="text-white font-mono">{groupedSlips.length}</strong> daily control slips (<strong className="text-white font-mono">{filteredArStagedTx.length}</strong> total line items)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-slate-500 text-[11px]">
+                  <span>Tip: Click</span>
+                  <strong className="text-emerald-400 font-semibold">Approve Slip</strong>
+                  <span>on any slip header to approve all items at once.</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>
+                    Showing{' '}
+                    <strong className="text-white font-mono">
+                      {dailyPageSize === 'all' ? 1 : Math.min((dailyCurrentPage - 1) * Number(dailyPageSize) + 1, totalDailyCount)}
+                    </strong>{' '}
+                    to{' '}
+                    <strong className="text-white font-mono">
+                      {dailyPageSize === 'all' ? totalDailyCount : Math.min(dailyCurrentPage * Number(dailyPageSize), totalDailyCount)}
+                    </strong>{' '}
+                    of <strong className="text-white font-mono">{totalDailyCount}</strong> items
+                  </span>
 
-            {dailyPageSize !== 'all' && totalDailyPages > 1 && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setDailyCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={dailyCurrentPage === 1}
-                  className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
-                  title="Previous page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-slate-500 text-[11px]">Show:</span>
+                    {[25, 50, 100, 'all'].map((size) => (
+                      <button
+                        key={String(size)}
+                        onClick={() => setDailyPageSize(size as any)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
+                          dailyPageSize === size
+                            ? 'bg-sky-600 text-white shadow'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {size === 'all' ? 'All' : size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                <span className="px-2 font-mono text-slate-300 text-xs">
-                  Page <strong className="text-white">{dailyCurrentPage}</strong> of{' '}
-                  <strong className="text-white">{totalDailyPages}</strong>
-                </span>
+                {dailyPageSize !== 'all' && totalDailyPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setDailyCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={dailyCurrentPage === 1}
+                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Previous page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
 
-                <button
-                  onClick={() => setDailyCurrentPage((p) => Math.min(totalDailyPages, p + 1))}
-                  disabled={dailyCurrentPage === totalDailyPages}
-                  className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
-                  title="Next page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+                    <span className="px-2 font-mono text-slate-300 text-xs">
+                      Page <strong className="text-white">{dailyCurrentPage}</strong> of{' '}
+                      <strong className="text-white">{totalDailyPages}</strong>
+                    </span>
+
+                    <button
+                      onClick={() => setDailyCurrentPage((p) => Math.min(totalDailyPages, p + 1))}
+                      disabled={dailyCurrentPage === totalDailyPages}
+                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Next page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
