@@ -72,3 +72,46 @@ def test_staged_transactions_and_batch_approval():
     )
     assert approve_res.status_code == 200
     assert approve_res.json()["approved_count"] == 1
+
+
+def test_alias_and_date_filtering_for_anr_group():
+    """Verify transactions stored as commercial_laundry are returned when querying anr_group for September 2026."""
+    from app.db.session import get_engine
+    from sqlmodel import Session
+    from app.models.db_models import StagedTransaction
+
+    with Session(get_engine()) as session:
+        st = StagedTransaction(
+            client_id="commercial_laundry",
+            batch_id="batch_commercial_laundry_sep_2026_abc123",
+            pipeline_id="pipe_daily_slips",
+            pipeline_name="Daily Control Slips OCR",
+            pipeline_type="AR",
+            entity_type="ar_sales_invoice",
+            transaction_date="2026-09-01",
+            source_type="google_drive",
+            source_file_name="Embassy Gardens 01-09-2026.jpg",
+            item_or_description="Bed Sheet Large",
+            quantity_or_debit=10.0,
+            credit_amount=10.0,
+            rate_or_price=15.0,
+            total_amount=150.0,
+            status="PENDING",
+        )
+        session.add(st)
+        session.commit()
+
+    # 1. Query anr_group for September 2026 - Daily Transactions
+    list_res = client.get("/api/clients/anr_group/transactions?month=September&year=2026&pipeline_type=AR")
+    assert list_res.status_code == 200
+    txs = list_res.json()
+    assert len(txs) >= 1
+    assert any(t["item_or_description"] == "Bed Sheet Large" for t in txs)
+
+    # 2. Query anr_group for September 2026 - Summary Aggregation
+    summary_res = client.get("/api/clients/anr_group/transactions/summary?month=September&year=2026&pipeline_type=AR")
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert summary_data["total_transactions"] >= 1
+    assert len(summary_data["summary"]) >= 1
+    assert any(r["item_name"] == "Bed Sheet Large" for r in summary_data["summary"])

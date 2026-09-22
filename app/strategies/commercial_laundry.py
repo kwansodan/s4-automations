@@ -25,7 +25,7 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
     4. Zoho Books Draft Invoicing
     """
 
-    def __init__(self, client_id: str = "commercial_laundry", client_name: str = "Commercial Laundry"):
+    def __init__(self, client_id: str = "anr_group", client_name: str = "ANR Group (Commercial Laundry)"):
         super().__init__(client_id=client_id, client_name=client_name)
         self.drive = GoogleDriveService()
         self.sheets = GoogleSheetsService()

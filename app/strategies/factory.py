@@ -49,7 +49,11 @@ class StrategyFactory:
         # 2. Check bespoke code registry
         strategy_class = cls._REGISTRY.get(cleaned_id)
         if strategy_class:
-            return strategy_class()
+            c_name = "ANR Group (Commercial Laundry)" if "anr" in cleaned_id or "commercial" in cleaned_id else cleaned_id.replace('_', ' ').title()
+            try:
+                return strategy_class(client_id=cleaned_id, client_name=c_name)
+            except TypeError:
+                return strategy_class()
 
         # 3. Check Database for ClientOrganization profile without pipelines
         try:

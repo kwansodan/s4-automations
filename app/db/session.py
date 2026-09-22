@@ -209,6 +209,20 @@ def run_schema_migrations(active_engine: Engine):
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+            # Step 4: Unify legacy 'commercial_laundry' client_id to 'anr_group'
+            try:
+                conn.execute(text("UPDATE staged_transactions SET client_id = 'anr_group' WHERE client_id IN ('commercial_laundry', 'commercial-laundry', 'anr_group_direct', 'anr-group', 'anr')"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+            # Step 5: Ensure pipeline_type is 'AR' if NULL, empty or legacy blueprint
+            try:
+                conn.execute(text("UPDATE staged_transactions SET pipeline_type = 'AR' WHERE pipeline_type IS NULL OR pipeline_type = '' OR pipeline_type = 'ar_sales_invoice'"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
     except Exception as batch_err:
         logger.warning(f"Notice during schema migration batch: {batch_err}")
 

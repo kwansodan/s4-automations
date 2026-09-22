@@ -82,10 +82,9 @@ async def run_zoho_invoices_core(
                     StagedTransaction.pipeline_type != "AP",
                 )
                 if filter_client_name:
-                    c_slug = filter_client_name.lower().replace(" ", "_")
-                    query = query.where(
-                        (StagedTransaction.client_id == c_slug) | (StagedTransaction.client_id == filter_client_name)
-                    )
+                    from app.api.v1.clients import get_client_id_aliases
+                    aliases = get_client_id_aliases(filter_client_name)
+                    query = query.where(StagedTransaction.client_id.in_(aliases))
                 staged_approved = session.exec(query).all()
                 if staged_approved:
                     logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger.")
