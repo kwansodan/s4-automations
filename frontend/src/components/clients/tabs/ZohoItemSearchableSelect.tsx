@@ -52,16 +52,28 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
     return filteredItems.slice(0, 100);
   }, [filteredItems]);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click and window blur (ONLY when open)
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleOutsideClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
+
+    const handleWindowBlur = () => {
+      setIsOpen(false);
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [isOpen]);
 
   // Reset highlight index when filter results change length
   useEffect(() => {
@@ -212,7 +224,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
 
       {/* Dropdown Popover (Strictly Zoho Books Item Master) */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-80 sm:w-96 max-h-72 bg-slate-900 border border-sky-500/50 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute top-full left-0 mt-1 w-80 sm:w-96 max-h-72 bg-slate-900 border border-sky-500/60 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col">
           {/* Header Badge */}
           <div className="bg-slate-950 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between text-[11px]">
             <div className="flex items-center gap-1.5 text-sky-400 font-bold">

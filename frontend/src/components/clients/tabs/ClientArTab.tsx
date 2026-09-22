@@ -77,6 +77,8 @@ export const ClientArTab: React.FC = () => {
   const [dailySortDirection, setDailySortDirection] = useState<'asc' | 'desc'>('asc');
   const [dailyPageSize, setDailyPageSize] = useState<number | 'all'>(50);
   const [dailyCurrentPage, setDailyCurrentPage] = useState<number>(1);
+  const [groupedPageSize, setGroupedPageSize] = useState<number | 'all'>(20);
+  const [groupedCurrentPage, setGroupedCurrentPage] = useState<number>(1);
   const [dailyViewMode, setDailyViewMode] = useState<'grouped' | 'flat'>('grouped');
   const [expandedSlips, setExpandedSlips] = useState<Record<string, boolean>>({});
   const [approvingSlipKey, setApprovingSlipKey] = useState<string | null>(null);
@@ -421,7 +423,8 @@ export const ClientArTab: React.FC = () => {
 
   useEffect(() => {
     setDailyCurrentPage(1);
-  }, [search, dailyStatusFilter, dailyPropertyFilter, dailyPageSize]);
+    setGroupedCurrentPage(1);
+  }, [search, dailyStatusFilter, dailyPropertyFilter, dailyPageSize, groupedPageSize]);
 
   const paginatedArStagedTx = useMemo(() => {
     if (dailyPageSize === 'all') return sortedArStagedTx;
@@ -507,6 +510,15 @@ export const ClientArTab: React.FC = () => {
 
     return list;
   }, [filteredArStagedTx, currentClient, dailySortDirection]);
+
+  const totalGroupedCount = groupedSlips.length;
+  const totalGroupedPages = groupedPageSize === 'all' ? 1 : Math.ceil(totalGroupedCount / Number(groupedPageSize)) || 1;
+
+  const paginatedGroupedSlips = useMemo(() => {
+    if (groupedPageSize === 'all') return groupedSlips;
+    const start = (groupedCurrentPage - 1) * Number(groupedPageSize);
+    return groupedSlips.slice(start, start + Number(groupedPageSize));
+  }, [groupedSlips, groupedCurrentPage, groupedPageSize]);
 
   const isSlipExpanded = (key: string) => {
     return expandedSlips[key] !== undefined ? expandedSlips[key] : true;
@@ -599,6 +611,8 @@ export const ClientArTab: React.FC = () => {
     setEditPickQty(tx.credit_amount ?? tx.quantity_or_debit ?? 0);
     setEditDelivQty(tx.quantity_or_debit ?? 0);
     setEditRate(tx.rate_or_price ?? 0);
+    const key = tx.source_file_name || `slip-${tx.transaction_date || 'unknown'}`;
+    setExpandedSlips((prev) => ({ ...prev, [key]: true }));
   };
 
   const handleCancelEdit = () => {
@@ -1203,8 +1217,8 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 2A: IN-APP POSTGRESQL DAILY SLIPS - GROUPED BY SLIP */}
           {activeLedgerView === 'daily' && dailyViewMode === 'grouped' && (
             <div className="divide-y divide-slate-800/80">
-              {groupedSlips.length > 0 ? (
-                groupedSlips.map((slip) => {
+              {paginatedGroupedSlips.length > 0 ? (
+                paginatedGroupedSlips.map((slip) => {
                   const expanded = isSlipExpanded(slip.slipKey);
                   return (
                     <div key={slip.slipKey} className="transition-colors">
@@ -1832,18 +1846,64 @@ export const ClientArTab: React.FC = () => {
         {activeLedgerView === 'daily' && totalDailyCount > 0 && (
           <div className="bg-slate-950/80 border-t border-slate-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
             {dailyViewMode === 'grouped' ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-2">
-                <div className="flex items-center gap-2">
-                  <FolderKanban className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span>
-                    Showing <strong className="text-white font-mono">{groupedSlips.length}</strong> daily control slips (<strong className="text-white font-mono">{filteredArStagedTx.length}</strong> total line items)
-                  </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <FolderKanban className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>
+                      Showing slips{' '}
+                      <strong className="text-white font-mono">
+                        {groupedPageSize === 'all' ? 1 : Math.min((groupedCurrentPage - 1) * Number(groupedPageSize) + 1, totalGroupedCount)}
+                      </strong>{' '}
+                      to{' '}
+                      <strong className="text-white font-mono">
+                        {groupedPageSize === 'all' ? totalGroupedCount : Math.min(groupedCurrentPage * Number(groupedPageSize), totalGroupedCount)}
+                      </strong>{' '}
+                      of <strong className="text-white font-mono">{totalGroupedCount}</strong> slips
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-slate-500 text-[11px]">Slips per page:</span>
+                    {[10, 20, 50, 'all'].map((size) => (
+                      <button
+                        key={String(size)}
+                        onClick={() => setGroupedPageSize(size as any)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
+                          groupedPageSize === size
+                            ? 'bg-sky-600 text-white shadow'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {size === 'all' ? 'All' : size}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-slate-500 text-[11px]">
-                  <span>Tip: Click</span>
-                  <strong className="text-emerald-400 font-semibold">Approve Slip</strong>
-                  <span>on any slip header to approve all items at once.</span>
-                </div>
+
+                {groupedPageSize !== 'all' && totalGroupedPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setGroupedCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={groupedCurrentPage === 1}
+                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Previous slips page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-slate-400 font-mono text-xs px-2">
+                      Page {groupedCurrentPage} of {totalGroupedPages}
+                    </span>
+                    <button
+                      onClick={() => setGroupedCurrentPage((p) => Math.min(totalGroupedPages, p + 1))}
+                      disabled={groupedCurrentPage >= totalGroupedPages}
+                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Next slips page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <>
