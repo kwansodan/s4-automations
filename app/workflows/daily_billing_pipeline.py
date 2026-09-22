@@ -62,10 +62,8 @@ async def run_daily_pipeline_core(
             items = await zoho.fetch_item_catalog()
 
             drive = GoogleDriveService()
-            sheets = GoogleSheetsService()
-
             month_folder_id = drive.get_month_folder(target_month, target_year)
-            sheet_id, sheet_url = sheets.find_or_create_workbook(target_month, target_year, month_folder_id)
+            sheet_id, sheet_url = None, None
             clients = drive.list_client_folders(month_folder_id)
 
             # Filter clients if requested in event
@@ -122,7 +120,6 @@ async def run_daily_pipeline_core(
                 nonlocal total_items_extracted, total_discrepancies
                 logger.info(f"Processing client folder: {client_name} ({client_slug})")
                 drive = GoogleDriveService()
-                sheets = GoogleSheetsService()
                 ocr = GeminiOCRService()
 
                 zoho_org_id = None
@@ -227,43 +224,12 @@ async def run_daily_pipeline_core(
                         logger.error(f"Error processing slip file {file_name}: {file_err}")
                         pipeline_tracker.add_log("error", f"⚠️ Error processing {file_name}: {file_err}")
 
-                # Tab 1: Append Daily_Slip_Details
-                if detail_rows:
-                    sheets.append_daily_slip_details(sheet_id, detail_rows)
-                    pipeline_tracker.add_log("info", f"📋 Appended {len(detail_rows)} rows to Daily_Slip_Details in review sheet.")
-
-                # Tab 2: Aggregate & Sync Monthly_Summary
                 sku_summaries = ocr.aggregate_monthly_skus(
                     client_name=client_name,
                     zoho_contact_id=zoho_contact_id,
                     extractions=extractions,
                     item_catalog=items,
                 )
-
-                monthly_rows = [
-                    MonthlySummaryRow(
-                        client_name=s.client_name,
-                        zoho_contact_id=s.zoho_contact_id,
-                        zoho_item_id=s.zoho_item_id,
-                        standard_item_name=s.standard_item_name,
-                        raw_names_seen=s.raw_names_display,
-                        confidence_score=s.confidence_score,
-                        unit_rate=s.unit_rate,
-                        total_picked_up=s.total_pickup_qty,
-                        total_delivered=s.total_delivery_qty,
-                        linen_discrepancy=s.total_loss_qty,
-                        total_billed=s.line_total_amount,
-                        audit_notes=s.audit_notes,
-                        reviewed=s.reviewed,
-                        approved=s.approved,
-                        status=s.status,
-                    )
-                    for s in sku_summaries
-                ]
-
-                if monthly_rows:
-                    sheets.sync_monthly_summaries(sheet_id, monthly_rows)
-                    pipeline_tracker.add_log("info", f"📊 Synced Monthly_Summary rollup ({len(monthly_rows)} SKUs) for {client_name}.")
 
                 return ClientProcessingResult(
                     client_name=client_name,

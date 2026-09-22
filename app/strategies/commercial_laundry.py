@@ -171,56 +171,8 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
             logger.error(f"Error staging transactions into database: {db_err}")
             self.execution_warnings.append(f"Database staging error: {db_err}")
 
-        # Optional Google Sheets sync (non-blocking fallback)
+        # Database ledger staging complete (Google Sheets eliminated)
         sheet_id, sheet_url = None, None
-        try:
-            month_folder_id = self.drive.get_month_folder(month, year)
-            sheet_id, sheet_url = self.sheets.find_or_create_workbook(month, year, month_folder_id)
-
-            from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
-
-            detail_rows = []
-            for i in items:
-                raw = i.raw_extracted_data or {}
-                detail_rows.append(
-                    DailySlipDetailRow(
-                        slip_date=raw.get("date", datetime.now().strftime("%Y-%m-%d")),
-                        file_name=raw.get("file_name", "slip.jpg"),
-                        client_name=raw.get("hotel_name", self.client_name),
-                        raw_item_name=raw.get("raw_item_name", i.item_or_description),
-                        standard_item_name=i.item_or_description,
-                        pickup_qty=int(i.credit_amount),
-                        delivery_qty=int(i.quantity_or_debit),
-                        loss_qty=int(i.discrepancy),
-                        confidence_score=ConfidenceLevel.HIGH,
-                        drive_file_url="",
-                        processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    )
-                )
-
-            self.sheets.append_daily_slip_details(sheet_id, detail_rows)
-
-            summary_rows = [
-                MonthlySummaryRow(
-                    client_name=self.client_name,
-                    zoho_contact_id="zoho_contact_laundry",
-                    zoho_item_id="zoho_item_01",
-                    standard_item_name=i.item_or_description,
-                    raw_names_seen=i.item_or_description,
-                    confidence_score=ConfidenceLevel.HIGH,
-                    unit_rate=i.unit_price,
-                    total_picked_up=int(i.credit_amount),
-                    total_delivered=int(i.quantity_or_debit),
-                    linen_discrepancy=int(i.discrepancy),
-                    total_billed=i.total_amount,
-                    audit_notes="OCR Extracted",
-                    status=SlipStatus.PENDING,
-                )
-                for i in items
-            ]
-            self.sheets.sync_monthly_summaries(sheet_id, summary_rows)
-        except Exception as sheet_err:
-            logger.info(f"Google Sheets sync skipped (In-App Ledger active): {sheet_err}")
 
         return {
             "spreadsheet_id": sheet_id,

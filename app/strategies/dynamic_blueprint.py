@@ -234,54 +234,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             "info",
         )
 
-        # Resolve target Google Review Sheet for client to verify if files are absent from sheet
-        sheet_id = None
-        is_pipe_ap = False
-        try:
-            drive = GoogleDriveService()
-            sheets = GoogleSheetsService()
-            month_folder_id = self.client.folder_id or "root"
-            target_m = month or (sources[0].metadata.get("month") if sources else None) or datetime.now().strftime("%B")
-            target_y = year or (sources[0].metadata.get("year") if sources else None) or datetime.now().year
-
-            pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
-            pipe_folder = (
-                pipe_obj.get("source_identifier")
-                or (pipe_obj.get("source_config") or {}).get("folder_id")
-                if pipe_obj else None
-            )
-            if pipe_folder and not str(pipe_folder).startswith("mock_"):
-                month_folder_id = str(pipe_folder)
-            else:
-                try:
-                    m_fid = drive.get_month_folder(target_m, target_y)
-                    if m_fid and not str(m_fid).startswith("mock_"):
-                        month_folder_id = m_fid
-                except Exception:
-                    pass
-
-            pipe_type = (pipe_obj.get("pipeline_type") if pipe_obj else None) or "AR"
-            is_pipe_ap = (
-                pipe_type == "AP"
-                or any(k in str(pipe_obj.get("name", "")).lower() for k in ["ap", "bill", "vendor", "payable"])
-                if pipe_obj else False
-            )
-
-            if is_pipe_ap:
-                sheet_id, _ = sheets.find_or_create_ap_workbook(target_m, target_y, month_folder_id, client_name=self.client_name)
-            else:
-                sheet_id, _ = sheets.find_or_create_workbook(target_m, target_y, month_folder_id)
-        except Exception as e:
-            logger.debug(f"Notice resolving review sheet for pre-check: {e}")
-
-        existing_filenames_in_sheet = set()
-        if sheet_id and not sheet_id.startswith("mock_"):
-            try:
-                sheets = GoogleSheetsService()
-                existing_filenames_in_sheet = sheets.get_existing_filenames_in_workbook(sheet_id, is_ap=is_pipe_ap)
-                logger.info(f"Pre-check: Found {len(existing_filenames_in_sheet)} recorded file(s) in review sheet '{sheet_id}'")
-            except Exception as sheet_err:
-                logger.debug(f"Sheet pre-check read notice: {sheet_err}")
 
         # Query existing processed checksums in DB to ensure idempotency
         existing_checksums = set()
@@ -820,129 +772,9 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 staged_count += 1
             session.commit()
 
-        # Log file entries into Google Sheets review workbook
+        # Stage 4: Database Ledger Finalization (Google Sheets eliminated)
         sheet_url = None
         sheet_id = None
-        try:
-            from app.services.google_sheets_service import GoogleSheetsService
-            drive = GoogleDriveService()
-            sheets = GoogleSheetsService()
-            pipe_source_type = (pipe_obj.get("source_type") if pipe_obj else "") or getattr(self.client, "source_type", "google_drive")
-            is_gdrive_source = pipe_source_type == "google_drive"
-
-            month_folder_id = None
-            try:
-                m_fid = drive.get_month_folder(month, year)
-                if m_fid and not str(m_fid).startswith("mock_"):
-                    month_folder_id = m_fid
-            except Exception:
-                pass
-
-            pipe_folder = (
-                pipe_obj.get("source_identifier")
-                or (pipe_obj.get("source_config") or {}).get("folder_id")
-                if pipe_obj
-                else None
-            )
-            # Only use pipe_folder as Google Drive folder if source is explicitly google_drive
-            if is_gdrive_source and pipe_folder and not str(pipe_folder).startswith("mock_"):
-                month_folder_id = str(pipe_folder)
-
-            client_gdrive_folder = getattr(self.client, "folder_id", None) if is_gdrive_source else None
-            explicit_sheet_id = (
-                (self.custom_config or {}).get("ap_spreadsheet_id" if is_ap else "ar_spreadsheet_id")
-                or (self.custom_config or {}).get("spreadsheet_id")
-            )
-
-            if is_ap:
-                # Dedicated 2-Tab AP Vendor Bills Review Workbook (Daily_Details + Monthly_Summary)
-                sheet_id, sheet_url = await asyncio.to_thread(
-                    sheets.find_or_create_ap_workbook,
-                    month, year, month_folder_id, client_name=self.client_name
-                )
-                if sheet_id and not sheet_id.startswith("mock_"):
-                    sync_stats = await asyncio.to_thread(sheets.sync_ap_review_workspace, sheet_id, items, auto_post=auto_post, client_name=self.client_name)
-                    self.log_step(
-                        "SPREADSHEET_SYNC",
-                        f"Logged {len(items)} AP bill(s) into 2-Tab AP Review Sheet '{sheet_id[:15]}...' (Daily Details: {sync_stats.get('daily_rows_written', 0)}, Monthly Summary: {sync_stats.get('summary_rows_synced', 0)}).",
-                        "info",
-                        {"sheet_id": sheet_id, "sheet_url": sheet_url},
-                    )
-                    logger.info(f"📊 Logged {len(items)} AP bills into 2-Tab AP Google Sheet '{sheet_id}' (auto_post={auto_post})")
-                else:
-                    sheet_url = None
-            else:
-                # AR Customer Control Slips & Billing Review Workbook
-                from app.models.schemas import DailySlipDetailRow, MonthlySummaryRow, ConfidenceLevel, SlipStatus
-                sheet_id, sheet_url = await asyncio.to_thread(
-                    sheets.find_or_create_workbook,
-                    month,
-                    year,
-                    month_folder_id,
-                    client_name=self.client_name,
-                    client_folder_id=client_gdrive_folder,
-                    explicit_sheet_id=explicit_sheet_id,
-                )
-                if sheet_id and not sheet_id.startswith("mock_"):
-                    detail_rows = []
-                    for it in items:
-                        raw_meta = it.raw_extracted_data or {}
-                        fn = raw_meta.get("file_name") or f"{self.client_id}_{month}_{year}"
-                        c_name = raw_meta.get("vendor") or raw_meta.get("hotel_name") or raw_meta.get("client_name") or self.client_name
-                        slip_d = raw_meta.get("date") or f"{year}-{month}-01"
-                        detail_rows.append(
-                            DailySlipDetailRow(
-                                slip_date=str(slip_d),
-                                file_name=str(fn),
-                                client_name=str(c_name),
-                                raw_item_name=it.item_or_description,
-                                standard_item_name=it.item_or_description,
-                                pickup_qty=int(it.credit_amount or 0),
-                                delivery_qty=int(it.quantity_or_debit or 1),
-                                loss_qty=int(it.discrepancy or 0),
-                                confidence_score=ConfidenceLevel.HIGH,
-                                drive_file_url=str(raw_meta.get("drive_file_url") or drive_url or ""),
-                                processed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            )
-                        )
-                    if detail_rows:
-                        await asyncio.to_thread(sheets.append_daily_slip_details, sheet_id, detail_rows)
-
-                    summary_status = SlipStatus.APPROVED if auto_post else SlipStatus.PENDING
-                    summary_rows = []
-                    for it in items:
-                        raw_meta = it.raw_extracted_data or {}
-                        c_name = raw_meta.get("vendor") or raw_meta.get("client_name") or self.client_name
-                        summary_rows.append(
-                            MonthlySummaryRow(
-                                client_name=str(c_name),
-                                zoho_contact_id=str(self.client.zoho_contact_id or ""),
-                                zoho_item_id="",
-                                standard_item_name=it.item_or_description,
-                                raw_names_seen=it.item_or_description,
-                                confidence_score=ConfidenceLevel.HIGH,
-                                unit_rate=it.unit_price or 0.0,
-                                total_picked_up=int(it.credit_amount or 0),
-                                total_delivered=int(it.quantity_or_debit or 1),
-                                linen_discrepancy=int(it.discrepancy or 0),
-                                total_billed=it.total_amount or 0.0,
-                                audit_notes="Auto-Posted Live" if auto_post else "Pending Human Review",
-                                status=summary_status,
-                            )
-                        )
-                    if summary_rows:
-                        await asyncio.to_thread(sheets.sync_monthly_summaries, sheet_id, summary_rows)
-                    self.log_step(
-                        "SPREADSHEET_SYNC",
-                        f"Logged {len(detail_rows)} record(s) into AR Google Sheet '{sheet_id[:15]}...'.",
-                        "info",
-                        {"sheet_id": sheet_id, "sheet_url": sheet_url},
-                    )
-                    logger.info(f"📊 Logged {len(detail_rows)} file entries into AR Google Sheet '{sheet_id}' (auto_post={auto_post})")
-                else:
-                    sheet_url = None
-        except Exception as gs_err:
-            logger.warning(f"Google Sheets sync notice: {gs_err}")
 
         self.log_step(
             "LEDGER_COMPLETE",
@@ -1037,18 +869,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     {"doc_ref": doc_ref, "type": "INVOICE"},
                 )
 
-                # Update status in Google Sheets review workbook to INVOICED
-                try:
-                    from app.services.google_sheets_service import GoogleSheetsService
-                    drive = GoogleDriveService()
-                    sheets = GoogleSheetsService()
-                    m_fid = drive.get_month_folder(month, year) or self.client.folder_id or "root"
-                    sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
-                    if sheet_id and not sheet_id.startswith("mock_"):
-                        sheets.update_invoice_status(sheet_id, list(range(2, 2 + len(inv_items))), doc_ref, "")
-                        logger.info(f"Updated Google Sheets to INVOICED with ref '{doc_ref}'")
-                except Exception as gs_err:
-                    logger.warning(f"Could not update Google Sheets invoice status: {gs_err}")
 
             # 2. Post Vendor Bills (AP)
             if AccountingEntityType.AP_VENDOR_BILL.value in grouped:
@@ -1083,18 +903,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     {"doc_ref": doc_ref, "type": "BILL"},
                 )
 
-                # Update status in Google Sheets review workbook to BILLED
-                try:
-                    from app.services.google_sheets_service import GoogleSheetsService
-                    drive = GoogleDriveService()
-                    sheets = GoogleSheetsService()
-                    m_fid = drive.get_month_folder(month, year) or self.client.folder_id or "root"
-                    sheet_id, _ = sheets.find_or_create_workbook(month, year, m_fid)
-                    if sheet_id and not sheet_id.startswith("mock_"):
-                        sheets.update_invoice_status(sheet_id, list(range(2, 2 + len(bill_items))), doc_ref, "")
-                        logger.info(f"Updated Google Sheets to BILLED with ref '{doc_ref}'")
-                except Exception as gs_err:
-                    logger.warning(f"Could not update Google Sheets bill status: {gs_err}")
+
 
             # 3. Post Customer Payments (AR)
             if AccountingEntityType.AR_CUSTOMER_PAYMENT.value in grouped:
