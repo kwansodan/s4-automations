@@ -10,7 +10,7 @@ services:
     environment:
       - PORT=8000
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/s4_automations}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-s4_automations}}
       - INNGEST_DEV_SERVER_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_BASE_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_DEV=1
@@ -28,6 +28,8 @@ services:
     image: postgres:16-alpine
     container_name: s4-postgres
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -37,7 +39,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d s4_automations"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-s4_automations}"]
       interval: 5s
       timeout: 5s
       retries: 5

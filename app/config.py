@@ -88,6 +88,9 @@ class Settings(BaseSettings):
         default="postgresql://postgres:postgres@localhost:5432/s4_automations",
         description="PostgreSQL or SQLite database connection URL",
     )
+    POSTGRES_USER: Optional[str] = Field(default=None, description="PostgreSQL Username")
+    POSTGRES_PASSWORD: Optional[str] = Field(default=None, description="PostgreSQL Password")
+    POSTGRES_DB: Optional[str] = Field(default=None, description="PostgreSQL Database Name")
 
     # System & Notification
     NOTIFICATION_EMAIL: str = Field(default="cdanso@service4gh.com", description="Notification email address")
