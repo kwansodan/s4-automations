@@ -786,6 +786,31 @@ export async function updateClientTransaction(
   return handleResponse<{ success: boolean; transaction: any }>(res, `Update transaction ${transactionId}`);
 }
 
+export interface CatalogItem {
+  item_id: string;
+  name: string;
+  rate?: number;
+  description?: string;
+}
+
+export async function fetchItemCatalog(orgId?: string): Promise<CatalogItem[]> {
+  try {
+    const qStr = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : '';
+    const res = await resilientFetch(`/api/v1/catalog${qStr}`, {
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.items)) {
+        return data.items;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch item catalog:', err);
+  }
+  return [];
+}
+
 export async function batchApproveTransactions(clientId: string, transactionIds: number[], notes?: string): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-approve`, {
     method: 'POST',

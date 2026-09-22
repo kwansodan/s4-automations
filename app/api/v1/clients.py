@@ -1395,6 +1395,12 @@ async def update_staged_transaction(
         tx.discrepancy_amount = max(0.0, tx.credit_amount - tx.quantity_or_debit)
     if "item_or_description" in payload:
         tx.item_or_description = str(payload["item_or_description"])
+    if "reviewed" in payload:
+        tx.reviewed = bool(payload["reviewed"])
+    if "approved" in payload:
+        tx.approved = bool(payload["approved"])
+    if "status" in payload:
+        tx.status = str(payload["status"]).upper()
 
     db.add(tx)
     db.commit()

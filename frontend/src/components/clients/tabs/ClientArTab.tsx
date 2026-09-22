@@ -7,6 +7,9 @@ import {
   toggleClientTransaction,
   batchToggleTransactions,
   batchApproveTransactions,
+  updateClientTransaction,
+  fetchItemCatalog,
+  CatalogItem,
   runClientStrategy,
   ClientTransactionSummaryRow,
 } from '../../../lib/api';
@@ -34,6 +37,8 @@ import {
   FolderKanban,
   List,
   CheckCircle2,
+  Edit3,
+  Save,
 } from 'lucide-react';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -73,6 +78,24 @@ export const ClientArTab: React.FC = () => {
   const [dailyViewMode, setDailyViewMode] = useState<'grouped' | 'flat'>('grouped');
   const [expandedSlips, setExpandedSlips] = useState<Record<string, boolean>>({});
   const [approvingSlipKey, setApprovingSlipKey] = useState<string | null>(null);
+
+  // Line Item Inline Editing State
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [editingTxId, setEditingTxId] = useState<number | null>(null);
+  const [editItemName, setEditItemName] = useState<string>('');
+  const [isCustomItem, setIsCustomItem] = useState<boolean>(false);
+  const [editPickQty, setEditPickQty] = useState<number | string>('');
+  const [editDelivQty, setEditDelivQty] = useState<number | string>('');
+  const [editRate, setEditRate] = useState<number | string>('');
+  const [isSavingTx, setIsSavingTx] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchItemCatalog().then((items) => {
+      if (items && items.length > 0) {
+        setCatalogItems(items);
+      }
+    });
+  }, []);
 
   const [summarySortField, setSummarySortField] = useState<string>('item_name');
   const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
@@ -529,6 +552,131 @@ export const ClientArTab: React.FC = () => {
       addLog('error', `Failed approving slip ${slip.sourceFileName}: ${err.message}`);
     } finally {
       setApprovingSlipKey(null);
+    }
+  };
+
+  const DEFAULT_LINEN_ITEMS: { name: string; rate: number }[] = [
+    { name: 'Bed Sheet (Double / King)', rate: 18.5 },
+    { name: 'Bed Sheet (Single)', rate: 14.0 },
+    { name: 'Duvet Cover (King)', rate: 25.0 },
+    { name: 'Duvet Cover (Single)', rate: 18.0 },
+    { name: 'Pillow Case', rate: 6.5 },
+    { name: 'Bath Towel', rate: 12.0 },
+    { name: 'Hand Towel', rate: 7.0 },
+    { name: 'Face Towel', rate: 4.5 },
+    { name: 'Bath Mat', rate: 9.0 },
+    { name: 'Pool Towel', rate: 15.0 },
+    { name: 'Table Cloth', rate: 22.0 },
+    { name: 'Napkin', rate: 3.5 },
+    { name: 'Bath Robe', rate: 25.0 },
+    { name: 'Mattress Protector', rate: 20.0 },
+  ];
+
+  const allItemOptions = useMemo(() => {
+    const map = new Map<string, { name: string; rate?: number }>();
+
+    // 1. Add catalog items (Zoho Books item master)
+    catalogItems.forEach((c) => {
+      if (c.name) {
+        map.set(c.name.trim().toLowerCase(), { name: c.name.trim(), rate: c.rate });
+      }
+    });
+
+    // 2. Add summary rows from active client ledger
+    summaryRows.forEach((r) => {
+      if (r.item_name) {
+        const trimmed = r.item_name.trim();
+        const key = trimmed.toLowerCase();
+        const rate = r.unit_rate ?? r.unit_price;
+        if (!map.has(key)) {
+          map.set(key, { name: toTitleCase(trimmed), rate });
+        } else if (rate && !map.get(key)!.rate) {
+          map.get(key)!.rate = rate;
+        }
+      }
+    });
+
+    // 3. Add default linen items
+    DEFAULT_LINEN_ITEMS.forEach((d) => {
+      const key = d.name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { name: d.name, rate: d.rate });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [catalogItems, summaryRows]);
+
+  const handleStartEdit = (tx: any) => {
+    setEditingTxId(tx.id);
+    const desc = (tx.item_or_description || '').trim();
+    const matched = allItemOptions.some((opt) => opt.name.toLowerCase() === desc.toLowerCase());
+    setEditItemName(desc);
+    setIsCustomItem(!matched && desc.length > 0);
+    setEditPickQty(tx.credit_amount ?? tx.quantity_or_debit ?? 0);
+    setEditDelivQty(tx.quantity_or_debit ?? 0);
+    setEditRate(tx.rate_or_price ?? 0);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTxId(null);
+    setIsCustomItem(false);
+    setEditItemName('');
+    setEditPickQty('');
+    setEditDelivQty('');
+    setEditRate('');
+  };
+
+  const handleItemSelectChange = (selectedVal: string) => {
+    if (selectedVal === '__CUSTOM__') {
+      setIsCustomItem(true);
+      setEditItemName('');
+    } else {
+      setIsCustomItem(false);
+      setEditItemName(selectedVal);
+      const found = allItemOptions.find((opt) => opt.name.toLowerCase() === selectedVal.toLowerCase());
+      if (found && found.rate != null && found.rate > 0) {
+        setEditRate(found.rate);
+      }
+    }
+  };
+
+  const handleSaveEdit = async (txId: number) => {
+    if (!currentClient?.id) return;
+    const finalDesc = editItemName.trim();
+    if (!finalDesc) {
+      addLog('warning', 'Item name cannot be empty.');
+      return;
+    }
+
+    const pick = Math.max(0, Number(editPickQty) || 0);
+    const deliv = Math.max(0, Number(editDelivQty) || 0);
+    const rate = Math.max(0, Number(editRate) || 0);
+    const total = Math.round(deliv * rate * 100) / 100;
+    const loss = Math.max(0, pick - deliv);
+
+    setIsSavingTx(true);
+    try {
+      await updateClientTransaction(currentClient.id, txId, {
+        item_or_description: finalDesc,
+        credit_amount: pick,
+        quantity_or_debit: deliv,
+        rate_or_price: rate,
+        total_amount: total,
+        discrepancy_amount: loss,
+        reviewed: true,
+      });
+
+      addLog(
+        'success',
+        `Saved changes to "${toTitleCase(finalDesc)}": Picked ${pick}, Deliv ${deliv}, Rate GHS ${rate.toFixed(2)}, Loss ${loss}`
+      );
+      await Promise.all([loadTransactions(), loadSummaryData()]);
+      setEditingTxId(null);
+    } catch (err: any) {
+      addLog('error', `Failed updating transaction: ${err.message}`);
+    } finally {
+      setIsSavingTx(false);
     }
   };
 
@@ -1176,10 +1324,134 @@ export const ClientArTab: React.FC = () => {
                                 <th className="py-2 px-3 text-center">Reviewed</th>
                                 <th className="py-2 px-3 text-center">Approved</th>
                                 <th className="py-2 px-3 text-center">Status</th>
+                                <th className="py-2 px-3 text-center">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800/40 text-slate-300 font-medium">
                               {slip.items.map((tx) => {
+                                if (editingTxId === tx.id) {
+                                  const livePick = Math.max(0, Number(editPickQty) || 0);
+                                  const liveDeliv = Math.max(0, Number(editDelivQty) || 0);
+                                  const liveLoss = Math.max(0, livePick - liveDeliv);
+                                  const liveRate = Math.max(0, Number(editRate) || 0);
+                                  const liveTotal = Math.round(liveDeliv * liveRate * 100) / 100;
+
+                                  return (
+                                    <tr key={tx.id} className="bg-sky-950/30 border-2 border-sky-500/50 shadow-inner">
+                                      <td className="py-2 px-3 min-w-[220px]">
+                                        <div className="flex flex-col gap-1.5">
+                                          <select
+                                            value={isCustomItem ? '__CUSTOM__' : editItemName}
+                                            onChange={(e) => handleItemSelectChange(e.target.value)}
+                                            className="bg-slate-900 border border-sky-500 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 w-full font-medium"
+                                          >
+                                            {!isCustomItem && editItemName && !allItemOptions.some((o) => o.name.toLowerCase() === editItemName.toLowerCase()) && (
+                                              <option value={editItemName}>{editItemName}</option>
+                                            )}
+                                            {allItemOptions.map((opt) => (
+                                              <option key={opt.name} value={opt.name}>
+                                                {opt.name} {opt.rate != null && opt.rate > 0 ? `(GHS ${opt.rate.toFixed(2)})` : ''}
+                                              </option>
+                                            ))}
+                                            <option value="__CUSTOM__">✏️ Custom / Other Item...</option>
+                                          </select>
+                                          {isCustomItem && (
+                                            <input
+                                              type="text"
+                                              value={editItemName}
+                                              onChange={(e) => setEditItemName(e.target.value)}
+                                              placeholder="Enter custom item name..."
+                                              className="bg-slate-950 border border-amber-500/80 rounded-lg px-2 py-1 text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400 w-full"
+                                              autoFocus
+                                            />
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={editPickQty}
+                                          onChange={(e) => setEditPickQty(e.target.value)}
+                                          className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={editDelivQty}
+                                          onChange={(e) => setEditDelivQty(e.target.value)}
+                                          className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        {liveLoss > 0 ? (
+                                          <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                            <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                            <span>-{liveLoss} missing</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-600 font-mono text-xs">—</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-3 text-right">
+                                        <div className="inline-flex items-center justify-end gap-1">
+                                          <span className="text-slate-500 text-[10px]">GHS</span>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={editRate}
+                                            onChange={(e) => setEditRate(e.target.value)}
+                                            className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-right font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                          />
+                                        </div>
+                                      </td>
+                                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                                        {formatCurrency(liveTotal)}
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <span className="text-sky-400 text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(tx.approved)}
+                                          onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
+                                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950 border border-sky-500/40 text-sky-300">
+                                          EDITING
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <button
+                                            onClick={() => handleSaveEdit(tx.id)}
+                                            disabled={isSavingTx}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white transition shadow cursor-pointer disabled:opacity-50"
+                                            title="Save changes"
+                                          >
+                                            <Save className="w-3.5 h-3.5" />
+                                            <span>{isSavingTx ? 'Saving...' : 'Save'}</span>
+                                          </button>
+                                          <button
+                                            onClick={handleCancelEdit}
+                                            disabled={isSavingTx}
+                                            className="inline-flex items-center p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                                            title="Cancel editing"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+
                                 const lossQty = tx.discrepancy_amount || 0;
                                 const pickQty = tx.credit_amount || tx.quantity_or_debit || 0;
                                 const delivQty = tx.quantity_or_debit || 0;
@@ -1198,7 +1470,16 @@ export const ClientArTab: React.FC = () => {
                                     }`}
                                   >
                                     <td className="py-2.5 px-3 font-bold text-white whitespace-nowrap">
-                                      {toTitleCase(tx.item_or_description)}
+                                      <div className="flex items-center gap-1.5 group">
+                                        <span>{toTitleCase(tx.item_or_description)}</span>
+                                        <button
+                                          onClick={() => handleStartEdit(tx)}
+                                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-800 rounded text-slate-400 hover:text-sky-400 transition"
+                                          title="Edit item name or details"
+                                        >
+                                          <Edit3 className="w-3 h-3" />
+                                        </button>
+                                      </div>
                                     </td>
                                     <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{pickQty}</td>
                                     <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{delivQty}</td>
@@ -1247,6 +1528,16 @@ export const ClientArTab: React.FC = () => {
                                         {tx.status === 'INVOICED' ? 'INVOICED' : tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
                                       </span>
                                     </td>
+                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                      <button
+                                        onClick={() => handleStartEdit(tx)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                                        title="Edit item name, quantities, or rate"
+                                      >
+                                        <Edit3 className="w-3 h-3 text-sky-400" />
+                                        <span>Edit</span>
+                                      </button>
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -1285,18 +1576,162 @@ export const ClientArTab: React.FC = () => {
                   <th className="py-3 px-4 text-center">Reviewed</th>
                   <th className="py-3 px-4 text-center">Approved</th>
                   {renderDailySortHeader('Status', 'status', 'center')}
+                  <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
                 {paginatedArStagedTx.length > 0 ? (
                   paginatedArStagedTx.map((tx) => {
+                    const driveUrl = tx.metadata_json?.drive_file_url ||
+                      (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : null);
+
+                    if (editingTxId === tx.id) {
+                      const livePick = Math.max(0, Number(editPickQty) || 0);
+                      const liveDeliv = Math.max(0, Number(editDelivQty) || 0);
+                      const liveLoss = Math.max(0, livePick - liveDeliv);
+                      const liveRate = Math.max(0, Number(editRate) || 0);
+                      const liveTotal = Math.round(liveDeliv * liveRate * 100) / 100;
+
+                      return (
+                        <tr key={tx.id} className="bg-sky-950/30 border-2 border-sky-500/50 shadow-inner">
+                          <td className="py-3 px-4 font-mono text-slate-300 font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {driveUrl ? (
+                              <a
+                                href={driveUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-[11px] group max-w-[220px]"
+                                title={`Open original slip in Google Drive: ${tx.source_file_name}`}
+                              >
+                                <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-[11px] text-slate-400 max-w-[180px] truncate block" title={tx.source_file_name}>
+                                {tx.source_file_name || 'Slip'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 min-w-[220px]">
+                            <div className="flex flex-col gap-1.5">
+                              <select
+                                value={isCustomItem ? '__CUSTOM__' : editItemName}
+                                onChange={(e) => handleItemSelectChange(e.target.value)}
+                                className="bg-slate-900 border border-sky-500 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 w-full font-medium"
+                              >
+                                {!isCustomItem && editItemName && !allItemOptions.some((o) => o.name.toLowerCase() === editItemName.toLowerCase()) && (
+                                  <option value={editItemName}>{editItemName}</option>
+                                )}
+                                {allItemOptions.map((opt) => (
+                                  <option key={opt.name} value={opt.name}>
+                                    {opt.name} {opt.rate != null && opt.rate > 0 ? `(GHS ${opt.rate.toFixed(2)})` : ''}
+                                  </option>
+                                ))}
+                                <option value="__CUSTOM__">✏️ Custom / Other Item...</option>
+                              </select>
+                              {isCustomItem && (
+                                <input
+                                  type="text"
+                                  value={editItemName}
+                                  onChange={(e) => setEditItemName(e.target.value)}
+                                  placeholder="Enter custom item name..."
+                                  className="bg-slate-950 border border-amber-500/80 rounded-lg px-2 py-1 text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400 w-full"
+                                  autoFocus
+                                />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editPickQty}
+                              onChange={(e) => setEditPickQty(e.target.value)}
+                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                            />
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editDelivQty}
+                              onChange={(e) => setEditDelivQty(e.target.value)}
+                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                            />
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            {liveLoss > 0 ? (
+                              <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span>-{liveLoss} missing</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-600 font-mono text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <span className="text-slate-500 text-[10px]">GHS</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editRate}
+                                onChange={(e) => setEditRate(e.target.value)}
+                                className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-right font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                            {formatCurrency(liveTotal)}
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className="text-sky-400 text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(tx.approved)}
+                              onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
+                              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950 border border-sky-500/40 text-sky-300">
+                              EDITING
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => handleSaveEdit(tx.id)}
+                                disabled={isSavingTx}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white transition shadow cursor-pointer disabled:opacity-50"
+                                title="Save changes"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>{isSavingTx ? 'Saving...' : 'Save'}</span>
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                disabled={isSavingTx}
+                                className="inline-flex items-center p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                                title="Cancel editing"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const lossQty = tx.discrepancy_amount || 0;
                     const pickQty = tx.credit_amount || tx.quantity_or_debit || 0;
                     const delivQty = tx.quantity_or_debit || 0;
                     const rate = tx.rate_or_price || 0;
                     const total = tx.total_amount || 0;
-                    const driveUrl = tx.metadata_json?.drive_file_url ||
-                      (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : null);
 
                     return (
                       <tr
@@ -1324,7 +1759,18 @@ export const ClientArTab: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{toTitleCase(tx.item_or_description)}</td>
+                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 group">
+                            <span>{toTitleCase(tx.item_or_description)}</span>
+                            <button
+                              onClick={() => handleStartEdit(tx)}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-800 rounded text-slate-400 hover:text-sky-400 transition"
+                              title="Edit item name or details"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{pickQty}</td>
                         <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{delivQty}</td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
@@ -1370,12 +1816,22 @@ export const ClientArTab: React.FC = () => {
                             {tx.status === 'INVOICED' ? 'INVOICED' : tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
                           </span>
                         </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => handleStartEdit(tx)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                            title="Edit item name, quantities, or rate"
+                          >
+                            <Edit3 className="w-3 h-3 text-sky-400" />
+                            <span>Edit</span>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
+                    <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
                       {isLoadingTx
                         ? 'Loading daily slips from PostgreSQL...'
                         : dailyCounts.all === 0
