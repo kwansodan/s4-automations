@@ -537,56 +537,90 @@ class GoogleSheetsService:
                 spreadsheetId=spreadsheet_id, body={"requests": requests}
             ).execute()
 
-    def _ensure_ap_tab_exists(self, spreadsheet_id: str, tab_title: str, headers: List[str]):
-        """Ensures the specified AP tab exists in spreadsheet, creating and adding headers if absent."""
+    def _ensure_tab_exists(
+        self,
+        spreadsheet_id: str,
+        tab_title: str,
+        headers: List[str],
+        fallback_candidates: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Ensures the specified tab exists in spreadsheet.
+        If any fallback_candidates already exist in the spreadsheet, returns the existing candidate's title.
+        If neither tab_title nor any fallback candidates exist, creates tab_title with formatted headers.
+        Returns the resolved tab title.
+        """
         if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
-            return
+            return tab_title
         try:
             sheet_meta = self.sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
             titles = [s["properties"]["title"] for s in sheet_meta.get("sheets", [])]
-            if tab_title not in titles:
-                add_res = self.sheets.spreadsheets().batchUpdate(
-                    spreadsheetId=spreadsheet_id,
-                    body={"requests": [{"addSheet": {"properties": {"title": tab_title}}}]}
-                ).execute()
-                new_sheet_id = add_res.get("replies", [{}])[0].get("addSheet", {}).get("properties", {}).get("sheetId")
-                end_col = chr(ord('A') + len(headers) - 1)
-                self.sheets.spreadsheets().values().batchUpdate(
+            if tab_title in titles:
+                return tab_title
+
+            # Check fallbacks
+            candidates = fallback_candidates or []
+            norm_preferred = tab_title.lower().replace("_", " ").strip()
+            for cand in candidates:
+                if cand in titles:
+                    logger.info(f"Using existing tab '{cand}' for '{tab_title}' in {spreadsheet_id}")
+                    return cand
+                norm_cand = cand.lower().replace("_", " ").strip()
+                for t in titles:
+                    norm_t = t.lower().replace("_", " ").strip()
+                    if norm_t == norm_cand or norm_t == norm_preferred:
+                        logger.info(f"Using existing tab '{t}' for '{tab_title}' in {spreadsheet_id}")
+                        return t
+
+            add_res = self.sheets.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {"title": tab_title}}}]}
+            ).execute()
+            new_sheet_id = add_res.get("replies", [{}])[0].get("addSheet", {}).get("properties", {}).get("sheetId")
+            end_col = chr(ord('A') + len(headers) - 1) if len(headers) <= 26 else "Z"
+            self.sheets.spreadsheets().values().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={
+                    "valueInputOption": "RAW",
+                    "data": [{"range": f"'{tab_title}'!A1:{end_col}1", "values": [headers]}],
+                }
+            ).execute()
+            if new_sheet_id is not None:
+                self.sheets.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id,
                     body={
-                        "valueInputOption": "RAW",
-                        "data": [{"range": f"'{tab_title}'!A1:{end_col}1", "values": [headers]}],
+                        "requests": [
+                            {
+                                "repeatCell": {
+                                    "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "backgroundColor": {"red": 0.10, "green": 0.21, "blue": 0.36},
+                                            "textFormat": {"bold": True, "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "fontSize": 10},
+                                            "horizontalAlignment": "CENTER",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+                                }
+                            },
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {"sheetId": new_sheet_id, "gridProperties": {"frozenRowCount": 1}},
+                                    "fields": "gridProperties.frozenRowCount",
+                                }
+                            }
+                        ]
                     }
                 ).execute()
-                if new_sheet_id is not None:
-                    self.sheets.spreadsheets().batchUpdate(
-                        spreadsheetId=spreadsheet_id,
-                        body={
-                            "requests": [
-                                {
-                                    "repeatCell": {
-                                        "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-                                        "cell": {
-                                            "userEnteredFormat": {
-                                                "backgroundColor": {"red": 0.10, "green": 0.21, "blue": 0.36},
-                                                "textFormat": {"bold": True, "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "fontSize": 10},
-                                                "horizontalAlignment": "CENTER",
-                                            }
-                                        },
-                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
-                                    }
-                                },
-                                {
-                                    "updateSheetProperties": {
-                                        "properties": {"sheetId": new_sheet_id, "gridProperties": {"frozenRowCount": 1}},
-                                        "fields": "gridProperties.frozenRowCount",
-                                    }
-                                }
-                            ]
-                        }
-                    ).execute()
+            logger.info(f"Created and initialized tab '{tab_title}' in {spreadsheet_id}")
+            return tab_title
         except Exception as err:
             logger.debug(f"Notice ensuring tab '{tab_title}' exists: {err}")
+            return tab_title
+
+    def _ensure_ap_tab_exists(self, spreadsheet_id: str, tab_title: str, headers: List[str]):
+        """Legacy wrapper pointing to _ensure_tab_exists."""
+        return self._ensure_tab_exists(spreadsheet_id, tab_title, headers)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def append_ap_daily_details(self, spreadsheet_id: str, rows: List[APDailyDetailRow]) -> int:
@@ -925,24 +959,31 @@ class GoogleSheetsService:
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def append_daily_slip_details(self, spreadsheet_id: str, rows: List[DailySlipDetailRow]) -> int:
-        """Appends individual line items to Tab 1: Daily_Details."""
+        """Appends individual line items to Tab 1: Daily_Details or Daily_Slip_Details."""
         if not rows:
             return 0
 
-        if settings.MOCK_MODE or not self.sheets:
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             logger.info(f"[MOCK] Appended {len(rows)} rows to {TAB_DAILY_DETAILS}")
             return len(rows)
 
-        # Determine starting row in TAB_DAILY_DETAILS
+        target_tab = self._ensure_tab_exists(
+            spreadsheet_id=spreadsheet_id,
+            tab_title=TAB_DAILY_DETAILS,
+            headers=DAILY_DETAILS_HEADERS,
+            fallback_candidates=["Daily Details", "Daily_Details", "Slip Details", "Daily_Slip_Details", "Slips"],
+        )
+
+        # Determine starting row in target_tab
         res = self.sheets.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f"'{TAB_DAILY_DETAILS}'!A:A"
+            range=f"'{target_tab}'!A:A"
         ).execute()
         existing_count = len(res.get("values", []))
         start_row = max(2, existing_count + 1)
 
         values = [row.to_sheet_row(row_index=start_row + i) for i, row in enumerate(rows)]
-        range_name = f"'{TAB_DAILY_DETAILS}'!A:K"
+        range_name = f"'{target_tab}'!A:K"
 
         self.sheets.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
@@ -951,7 +992,7 @@ class GoogleSheetsService:
             body={"values": values},
         ).execute()
 
-        logger.info(f"Successfully appended {len(rows)} detail rows (starting at row {start_row}) to {TAB_DAILY_DETAILS}")
+        logger.info(f"Successfully appended {len(rows)} detail rows (starting at row {start_row}) to {target_tab}")
         return len(rows)
 
     def get_existing_filenames_in_workbook(self, spreadsheet_id: str, is_ap: bool = False) -> Set[str]:
@@ -992,20 +1033,34 @@ class GoogleSheetsService:
         """
         Synchronizes monthly SKU summary rows to Tab 2: Monthly_Summary.
         Upserts rows matching (Client Name + Zoho Item ID).
-        Uses dynamic Google Sheets formulas (SUMIFS, MAX, ROUND) referencing Tab 1: Daily_Details.
+        Uses dynamic Google Sheets formulas (SUMIFS, MAX, ROUND) referencing Tab 1 (Daily_Details or Daily_Slip_Details).
         Preserves user 'Reviewed?' and 'Approved?' checkboxes if already checked.
         """
         if not summary_rows:
             return 0
 
-        if settings.MOCK_MODE or not self.sheets:
+        if settings.MOCK_MODE or not self.sheets or not spreadsheet_id or spreadsheet_id.startswith("mock_"):
             logger.info(f"[MOCK] Synchronized {len(summary_rows)} SKU rows to {TAB_MONTHLY_SUMMARY}")
             return len(summary_rows)
 
-        # Read existing rows from Monthly_Summary
+        target_tab = self._ensure_tab_exists(
+            spreadsheet_id=spreadsheet_id,
+            tab_title=TAB_MONTHLY_SUMMARY,
+            headers=MONTHLY_SUMMARY_HEADERS,
+            fallback_candidates=["Monthly Summary", "Monthly_Summary", "Summary", "Monthly"],
+        )
+
+        detail_tab = self._ensure_tab_exists(
+            spreadsheet_id=spreadsheet_id,
+            tab_title=TAB_DAILY_DETAILS,
+            headers=DAILY_DETAILS_HEADERS,
+            fallback_candidates=["Daily Details", "Daily_Details", "Slip Details", "Daily_Slip_Details", "Slips"],
+        )
+
+        # Read existing rows from target_tab
         res = self.sheets.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f"'{TAB_MONTHLY_SUMMARY}'!A2:O500"
+            range=f"'{target_tab}'!A2:O500"
         ).execute()
         existing_values = res.get("values", [])
 
@@ -1046,12 +1101,12 @@ class GoogleSheetsService:
                     summary.status = SlipStatus(old_status)
 
                 updates.append({
-                    "range": f"'{TAB_MONTHLY_SUMMARY}'!A{row_idx}:O{row_idx}",
-                    "values": [summary.to_sheet_row(row_index=row_idx)],
+                    "range": f"'{target_tab}'!A{row_idx}:O{row_idx}",
+                    "values": [summary.to_sheet_row(row_index=row_idx, daily_tab_name=detail_tab)],
                 })
             else:
                 row_idx = start_append_row + len(appends)
-                appends.append(summary.to_sheet_row(row_index=row_idx))
+                appends.append(summary.to_sheet_row(row_index=row_idx, daily_tab_name=detail_tab))
 
         if updates:
             self.sheets.spreadsheets().values().batchUpdate(
@@ -1062,11 +1117,11 @@ class GoogleSheetsService:
         if appends:
             self.sheets.spreadsheets().values().append(
                 spreadsheetId=spreadsheet_id,
-                range=f"'{TAB_MONTHLY_SUMMARY}'!A:O",
+                range=f"'{target_tab}'!A:O",
                 valueInputOption="USER_ENTERED",
                 body={"values": appends},
             ).execute()
-        logger.info(f"Successfully synced {len(summary_rows)} SKU summary rows with dynamic formulas ({len(updates)} updated, {len(appends)} appended) to {TAB_MONTHLY_SUMMARY}")
+        logger.info(f"Successfully synced {len(summary_rows)} SKU summary rows with dynamic formulas ({len(updates)} updated, {len(appends)} appended) to {target_tab}")
         return len(summary_rows)
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))

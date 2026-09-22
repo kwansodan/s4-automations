@@ -129,15 +129,15 @@ class MonthlySummaryRow(BaseModel):
     approved: bool = False
     status: SlipStatus = SlipStatus.PENDING
 
-    def to_sheet_row(self, row_index: Optional[int] = None) -> List[Any]:
+    def to_sheet_row(self, row_index: Optional[int] = None, daily_tab_name: str = "Daily_Details") -> List[Any]:
         """
         Convert to Google Sheets 15-column row values array.
-        When row_index is passed, generates dynamic formulas that automatically link to Tab 1: Daily_Details.
+        When row_index is passed, generates dynamic formulas that automatically link to Tab 1 (Daily_Details or Daily_Slip_Details).
         """
         if row_index is not None:
-            # Dynamic formulas referencing Daily_Details
-            picked_up: Any = f"=SUMIFS('Daily_Details'!F:F, 'Daily_Details'!C:C, A{row_index}, 'Daily_Details'!E:E, D{row_index})"
-            delivered: Any = f"=SUMIFS('Daily_Details'!G:G, 'Daily_Details'!C:C, A{row_index}, 'Daily_Details'!E:E, D{row_index})"
+            # Dynamic formulas referencing daily_tab_name
+            picked_up: Any = f"=SUMIFS('{daily_tab_name}'!F:F, '{daily_tab_name}'!C:C, A{row_index}, '{daily_tab_name}'!E:E, D{row_index})"
+            delivered: Any = f"=SUMIFS('{daily_tab_name}'!G:G, '{daily_tab_name}'!C:C, A{row_index}, '{daily_tab_name}'!E:E, D{row_index})"
             discrepancy: Any = f"=MAX(0, H{row_index} - I{row_index})"
             total_billed: Any = f"=ROUND(I{row_index} * G{row_index}, 2)"
         else:
