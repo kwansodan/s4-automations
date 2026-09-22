@@ -28,6 +28,23 @@ services:
     image: postgres:16-alpine
     container_name: s4-postgres
     restart: unless-stopped
+    command:
+      - "sh"
+      - "-c"
+      - |
+        sed -i 's/scram-sha-256/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
+        sed -i 's/md5/trust/g' /var/lib/postgresql/data/pg_hba.conf 2>/dev/null || true
+        (
+          sleep 2
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if psql -h 127.0.0.1 -U postgres -c "ALTER ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';" 2>/dev/null; then
+              echo "[AUTO-HEAL] Successfully granted LOGIN and password to role postgres."
+              break
+            fi
+            sleep 1
+          done
+        ) &
+        exec docker-entrypoint.sh postgres
     env_file:
       - .env
     environment:

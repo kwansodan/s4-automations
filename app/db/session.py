@@ -29,25 +29,29 @@ def get_engine() -> Engine:
         raw_urls.append(f"postgresql://{u}:{p}@postgres:5432/{d}")
         raw_urls.append(f"postgresql://{u}:{p}@localhost:5432/{d}")
 
-    for db_url in raw_urls:
-        if db_url.startswith("postgres"):
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://", 1)
-            try:
-                temp_engine = create_engine(
-                    db_url,
-                    pool_pre_ping=True,
-                    pool_size=10,
-                    max_overflow=20,
-                    connect_args={"connect_timeout": 5},
-                )
-                with temp_engine.connect() as conn:
-                    pass
-                _engine = temp_engine
-                logger.info(f"Connected to PostgreSQL database successfully.")
-                return _engine
-            except Exception as e:
-                logger.warning(f"PostgreSQL connection to {db_url} failed: {e}")
+    import time
+    for attempt in range(1, 4):
+        for db_url in raw_urls:
+            if db_url.startswith("postgres"):
+                if db_url.startswith("postgres://"):
+                    db_url = db_url.replace("postgres://", "postgresql://", 1)
+                try:
+                    temp_engine = create_engine(
+                        db_url,
+                        pool_pre_ping=True,
+                        pool_size=10,
+                        max_overflow=20,
+                        connect_args={"connect_timeout": 5},
+                    )
+                    with temp_engine.connect() as conn:
+                        pass
+                    _engine = temp_engine
+                    logger.info(f"Connected to PostgreSQL database successfully.")
+                    return _engine
+                except Exception as e:
+                    logger.warning(f"PostgreSQL connection to {db_url} failed (attempt {attempt}/3): {e}")
+        if attempt < 3:
+            time.sleep(2)
 
     # SQLite fallback
     os.makedirs("data", exist_ok=True)
