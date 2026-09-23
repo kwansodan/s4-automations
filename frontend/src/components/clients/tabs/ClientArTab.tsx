@@ -50,6 +50,24 @@ import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027];
 
+export interface SlipGroup {
+  slipKey: string;
+  sourceFileName: string;
+  propertyName: string;
+  slipDate: string;
+  driveUrl?: string | null;
+  items: any[];
+  txIds: number[];
+  totalPickQty: number;
+  totalDelivQty: number;
+  totalLossQty: number;
+  totalAmount: number;
+  isFullyApproved: boolean;
+  isPartiallyApproved: boolean;
+  isFullyReviewed: boolean;
+  status: string;
+}
+
 export const ClientArTab: React.FC = () => {
   const { currentClient } = useClient();
   const {
@@ -108,7 +126,7 @@ export const ClientArTab: React.FC = () => {
   // vs Universal Accounting Primitives (Quantity, Unit Rate, Total Amount)
   const isCustodyTracking = useMemo(() => {
     if (!currentClient) return false;
-    if (currentClient.custom_config?.enable_custody_tracking) return true;
+    if (currentClient.customConfig?.enable_custody_tracking) return true;
     if (currentClient.id === 'anr_group' || currentClient.id === 'anr') return true;
     const ind = (currentClient.industry || '').toLowerCase();
     return ind.includes('laundry') || ind.includes('linen');
@@ -178,7 +196,7 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
-  const handleDeleteSlip = async (slip: DailySlipGroup) => {
+  const handleDeleteSlip = async (slip: SlipGroup) => {
     if (!currentClient?.id) return;
     const docName = slip.sourceFileName || slip.slipKey;
     if (
@@ -190,7 +208,7 @@ export const ClientArTab: React.FC = () => {
     }
     setDeletingSlipKey(slip.slipKey);
     try {
-      const ids = slip.items.map((i) => i.id);
+      const ids = slip.items.map((i: any) => i.id);
       await batchDeleteStagedTransactions(currentClient.id, { transaction_ids: ids, file_name: slip.sourceFileName });
       setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
       loadSummaryData();
@@ -498,24 +516,6 @@ export const ClientArTab: React.FC = () => {
     const start = (dailyCurrentPage - 1) * Number(dailyPageSize);
     return sortedArStagedTx.slice(start, start + Number(dailyPageSize));
   }, [sortedArStagedTx, dailyCurrentPage, dailyPageSize]);
-
-  interface SlipGroup {
-    slipKey: string;
-    sourceFileName: string;
-    propertyName: string;
-    slipDate: string;
-    driveUrl?: string | null;
-    items: any[];
-    txIds: number[];
-    totalPickQty: number;
-    totalDelivQty: number;
-    totalLossQty: number;
-    totalAmount: number;
-    isFullyApproved: boolean;
-    isPartiallyApproved: boolean;
-    isFullyReviewed: boolean;
-    status: string;
-  }
 
   const groupedSlips = useMemo<SlipGroup[]>(() => {
     const map = new Map<string, SlipGroup>();
