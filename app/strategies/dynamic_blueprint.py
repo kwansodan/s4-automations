@@ -426,75 +426,31 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     or "zoho_books"
                 )
 
+                is_custody = bool(
+                    self.custom_config.get("enable_custody_tracking")
+                    or self.client_id in ["anr_group", "anr"]
+                    or "laundry" in (getattr(self.client, "industry", "") or "").lower()
+                    or "linen" in (getattr(self.client, "industry", "") or "").lower()
+                )
+
+                # Detect tabular/CSV/text source documents
+                is_csv_or_text = (
+                    doc.file_name.lower().endswith((".csv", ".tsv", ".txt", ".tab"))
+                    or (doc.mime_type and any(t in str(doc.mime_type).lower() for t in ["csv", "text", "tab"]))
+                )
+                sample_text = None
+                if is_csv_or_text and doc.file_bytes:
+                    for enc in ["utf-8", "latin-1", "cp1252"]:
+                        try:
+                            sample_text = doc.file_bytes.decode(enc)
+                            break
+                        except Exception:
+                            continue
+
                 extraction = None
                 try:
-                    if human_instructions and human_instructions.strip():
-                        logger.info(f"Applying custom human instructions for '{doc.file_name}' ({len(human_instructions)} chars)...")
-                        sim_res = await ocr.simulate_pipeline_transposition(
-                            file_bytes=doc.file_bytes,
-                            file_name=doc.file_name,
-                            mime_type=doc.mime_type or "image/png",
-                            sample_text=None,
-                            entity_type=entity_type,
-                            client_name=doc.metadata.get("customer_name_hint") or self.client_name,
-                            human_instructions=human_instructions.strip(),
-                            accounting_software=accounting_software,
-                            item_catalog=items_catalog,
-                        )
-                        payload = sim_res.get("transposed_payload", {})
-                        line_items = payload.get("line_items") or payload.get("items") or []
-                        c_score = float(sim_res.get("confidence_score", 0.95))
-                        extraction = {
-                            **payload,
-                            "items": line_items,
-                            "line_items": line_items,
-                            "date": payload.get("date") or doc.metadata.get("date"),
-                            "customer_name": payload.get("customer_id") or doc.metadata.get("customer_name_hint") or self.client_name,
-                            "vendor_name": payload.get("vendor_id") or doc.metadata.get("vendor_name_hint") or self.client_name,
-                            "total_amount": float(payload.get("total_amount") or 0.0),
-                            "confidence_score": c_score,
-                        }
-                    elif is_ap:
-                        bill_extraction = await ocr.extract_vendor_bill(
-                            file_bytes=doc.file_bytes,
-                            mime_type=doc.mime_type,
-                            file_name=doc.file_name,
-                        )
-                        v_name = bill_extraction.vendor_name or doc.metadata.get("vendor_name_hint") or self.client_name
-                        extraction = {
-                            "vendor": v_name,
-                            "vendor_name": v_name,
-                            "bill_number": bill_extraction.bill_number or f"BILL-{doc.file_name[:8]}",
-                            "date": bill_extraction.bill_date or doc.metadata.get("date"),
-                            "total_amount": float(bill_extraction.total_amount or 0.0),
-                            "currency": bill_extraction.currency or "GHS",
-                            "confidence_score": 0.95,
-                            "items": [
-                                {
-                                    "name": it.item_description or "Vendor Bill Item",
-                                    "item_name": it.item_description or "Vendor Bill Item",
-                                    "description": it.item_description,
-                                    "quantity": float(it.quantity or 1.0),
-                                    "unit_price": float(it.unit_rate or it.amount or 0.0),
-                                    "rate": float(it.unit_rate or it.amount or 0.0),
-                                    "total_amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
-                                    "amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
-                                }
-                                for it in bill_extraction.items
-                            ] if bill_extraction.items else [
-                                {
-                                    "name": f"Vendor Bill: {v_name}",
-                                    "item_name": f"Vendor Bill: {v_name}",
-                                    "description": f"Vendor Bill from {v_name}",
-                                    "quantity": 1.0,
-                                    "unit_price": float(bill_extraction.total_amount or 100.0),
-                                    "rate": float(bill_extraction.total_amount or 100.0),
-                                    "total_amount": float(bill_extraction.total_amount or 100.0),
-                                    "amount": float(bill_extraction.total_amount or 100.0),
-                                }
-                            ],
-                        }
-                    else:
+                    if is_custody and not is_csv_or_text:
+                        logger.info(f"Using commercial laundry slip extractor for custody client '{self.client_name}' ({doc.file_name})...")
                         extraction_obj = await ocr.extract_slip_data(
                             file_bytes=doc.file_bytes,
                             mime_type=doc.mime_type,
@@ -540,12 +496,132 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             "total_amount": total_amt,
                             "confidence_score": 0.95,
                         }
+                    elif is_ap and not (human_instructions and human_instructions.strip()) and not is_csv_or_text:
+                        logger.info(f"Extracting AP vendor bill for '{self.client_name}' ({doc.file_name})...")
+                        bill_extraction = await ocr.extract_vendor_bill(
+                            file_bytes=doc.file_bytes,
+                            mime_type=doc.mime_type,
+                            file_name=doc.file_name,
+                        )
+                        v_name = bill_extraction.vendor_name or doc.metadata.get("vendor_name_hint") or self.client_name
+                        extraction = {
+                            "vendor": v_name,
+                            "vendor_name": v_name,
+                            "bill_number": bill_extraction.bill_number or f"BILL-{doc.file_name[:8]}",
+                            "date": bill_extraction.bill_date or doc.metadata.get("date"),
+                            "total_amount": float(bill_extraction.total_amount or 0.0),
+                            "currency": bill_extraction.currency or "GHS",
+                            "confidence_score": 0.95,
+                            "items": [
+                                {
+                                    "name": it.item_description or "Vendor Bill Item",
+                                    "item_name": it.item_description or "Vendor Bill Item",
+                                    "description": it.item_description,
+                                    "quantity": float(it.quantity or 1.0),
+                                    "unit_price": float(it.unit_rate or it.amount or 0.0),
+                                    "rate": float(it.unit_rate or it.amount or 0.0),
+                                    "total_amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
+                                    "amount": float(it.amount or (it.quantity * it.unit_rate) or 0.0),
+                                }
+                                for it in bill_extraction.items
+                            ] if bill_extraction.items else [
+                                {
+                                    "name": f"Vendor Bill: {v_name}",
+                                    "item_name": f"Vendor Bill: {v_name}",
+                                    "description": f"Vendor Bill from {v_name}",
+                                    "quantity": 1.0,
+                                    "unit_price": float(bill_extraction.total_amount or 100.0),
+                                    "rate": float(bill_extraction.total_amount or 100.0),
+                                    "total_amount": float(bill_extraction.total_amount or 100.0),
+                                    "amount": float(bill_extraction.total_amount or 100.0),
+                                }
+                            ],
+                        }
+                    else:
+                        logger.info(f"Applying universal pipeline transposition for '{doc.file_name}' (Entity: {entity_type}, Client: {self.client_name})...")
+                        effective_instructions = human_instructions.strip() if (human_instructions and human_instructions.strip()) else ""
+                        if not effective_instructions:
+                            if entity_type in [AccountingEntityType.AR_SALES_INVOICE.value, "ar_sales_invoice"]:
+                                effective_instructions = (
+                                    f"Extract all sales, services, products, or revenue transactions for client '{self.client_name}'. "
+                                    "For each line item, extract item or service description, quantity, unit rate or price, and line total amount. "
+                                    "Extract transaction date (in YYYY-MM-DD) and document/invoice reference number. "
+                                    "If the document is a retail POS, register export, or CSV sales summary where individual customer names are not provided, "
+                                    "default customer_id to 'Walk-in Customer' or the business name."
+                                )
+                            elif is_ap:
+                                effective_instructions = (
+                                    f"Extract all vendor bill line items, vendor name, bill date, bill number, and amounts."
+                                )
+                            else:
+                                effective_instructions = (
+                                    f"Extract all transaction line items, description, quantities, unit prices, date, and document reference for {entity_type}."
+                                )
+
+                        sim_res = await ocr.simulate_pipeline_transposition(
+                            file_bytes=doc.file_bytes if not sample_text else None,
+                            file_name=doc.file_name,
+                            mime_type=doc.mime_type or ("text/csv" if is_csv_or_text else "image/png"),
+                            sample_text=sample_text,
+                            entity_type=entity_type,
+                            client_name=doc.metadata.get("customer_name_hint") or self.client_name,
+                            human_instructions=effective_instructions,
+                            accounting_software=accounting_software,
+                            item_catalog=items_catalog,
+                        )
+                        payload = sim_res.get("transposed_payload", {})
+                        line_items = payload.get("line_items") or payload.get("items") or []
+                        c_score = float(sim_res.get("confidence_score", 0.95))
+
+                        inferred_cust = (
+                            payload.get("customer_id")
+                            or payload.get("customer_name")
+                            or doc.metadata.get("customer_name_hint")
+                            or ("Walk-in Customer" if not is_ap else None)
+                            or self.client_name
+                        )
+                        inferred_vendor = (
+                            payload.get("vendor_id")
+                            or payload.get("vendor_name")
+                            or doc.metadata.get("vendor_name_hint")
+                            or self.client_name
+                        )
+
+                        extraction = {
+                            **payload,
+                            "items": line_items,
+                            "line_items": line_items,
+                            "date": payload.get("date") or doc.metadata.get("date"),
+                            "customer_name": inferred_cust,
+                            "customer_id": inferred_cust,
+                            "vendor_name": inferred_vendor,
+                            "vendor_id": inferred_vendor,
+                            "vendor": inferred_vendor,
+                            "total_amount": float(payload.get("total_amount") or 0.0),
+                            "confidence_score": c_score,
+                        }
                 except Exception as e:
                     logger.warning(f"Vision OCR extraction exception for {doc.file_name}: {e}")
-                    extraction = {"items": [], "vendor": self.client_name, "total_amount": 0.0}
+                    default_cust = doc.metadata.get("customer_name_hint") or ("Walk-in Customer" if not is_ap else self.client_name)
+                    extraction = {
+                        "items": [],
+                        "customer_name": default_cust,
+                        "customer_id": default_cust,
+                        "vendor": self.client_name,
+                        "vendor_name": self.client_name,
+                        "total_amount": 0.0,
+                    }
 
                 if not extraction:
-                    extraction = {"items": [], "vendor": self.client_name, "total_amount": 0.0}
+                    default_cust = doc.metadata.get("customer_name_hint") or ("Walk-in Customer" if not is_ap else self.client_name)
+                    extraction = {
+                        "items": [],
+                        "customer_name": default_cust,
+                        "customer_id": default_cust,
+                        "vendor": self.client_name,
+                        "vendor_name": self.client_name,
+                        "total_amount": 0.0,
+                    }
 
                 # Normalize extracted date and document level fields
                 raw_items_list = extraction.get("items") or extraction.get("line_items") or []

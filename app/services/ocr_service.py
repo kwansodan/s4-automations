@@ -520,7 +520,22 @@ Return strictly valid JSON conforming to the schema.
         if not self.api_key:
             raise ValueError("Gemini API key is not configured for document transposition.")
 
-        # Build Multi-Modal AI Prompt
+        # Robust CSV / TSV / Text handling: decode bytes to text string directly for LLM tabular comprehension
+        lower_name = (file_name or "").lower()
+        is_text_doc = (
+            lower_name.endswith((".csv", ".tsv", ".txt", ".tab", ".json"))
+            or (mime_type and any(t in str(mime_type).lower() for t in ["csv", "text", "tab"]))
+        )
+        if not sample_text and file_bytes and is_text_doc:
+            for enc in ["utf-8", "latin-1", "cp1252"]:
+                try:
+                    sample_text = file_bytes.decode(enc)
+                    file_bytes = None
+                    break
+                except Exception:
+                    continue
+
+        # Build Multi-Modal AI Prompt with domain intelligence
         prompt = f"""
 You are an expert AI Document Transposition Engine for S4 Automations.
 Your task is to analyze the provided document/text and transpose raw extracted datapoints into the strict target accounting entity schema for {accounting_software.upper()}.
@@ -528,14 +543,25 @@ Your task is to analyze the provided document/text and transpose raw extracted d
 ### Target Entity Type:
 {entity_type}
 
-### Client Name:
+### Client Business / Organization:
 {client_name}
 
 ### Human-Written Transposition Instructions:
 "{instructions_text}"
 
 ### Standard Item Catalog (Reference):
-{', '.join([it.name for it in catalog[:15]]) if catalog else 'No custom catalog provided. Infer standard SKU/service names.'}
+{', '.join([it.name for it in catalog[:25]]) if catalog else 'No custom catalog provided. Infer standard SKU/service names.'}
+
+### Critical Domain & Extraction Guidelines:
+1. Sales Invoices & POS Reports ({entity_type}):
+   - The document may be a POS register report, salon/spa/retail export, CSV file, sales invoice, or periodic summary (even if the file name contains 'tax' like GRA tax exports).
+   - Extract each product, service, or transaction as a distinct item in "line_items".
+   - For each line item, extract: "name" (service or product name), "rate" (unit price), "quantity" (default 1 if unspecified), and "amount" (line total).
+   - If individual customer names are not provided in the document (e.g. retail walk-in salon/store transactions), set "customer_id" to "Walk-in Customer" (or "{client_name} Walk-in"). NEVER leave customer_id empty or null.
+   - For "date", extract the transaction date or period end date in YYYY-MM-DD format.
+   - For "document_number", extract the receipt/invoice number, or generate a clean reference e.g. "POS-YYYYMMDD".
+2. Strict Math:
+   - Ensure "total_amount" equals the sum of line items.
 
 ### Required JSON Output Structure:
 {{
@@ -543,10 +569,10 @@ Your task is to analyze the provided document/text and transpose raw extracted d
     {{ "key": "Field Label", "value": "Extracted Value", "confidence": 0.95, "source_snippet": "exact text from doc" }}
   ],
   "transposed_payload": {{
-    "customer_id": "string or contact name",
+    "customer_id": "string or contact name (e.g. 'Walk-in Customer' if walk-in)",
     "vendor_id": "string (for AP)",
     "date": "YYYY-MM-DD",
-    "document_number": "INV-xxx or BILL-xxx",
+    "document_number": "INV-xxx or BILL-xxx or POS-xxx",
     "line_items": [
       {{ "name": "Item Description", "rate": 0.0, "quantity": 1, "amount": 0.0 }}
     ],
@@ -566,10 +592,16 @@ Analyze thoroughly and return JSON output only.
 
             client = genai.Client(api_key=self.api_key)
             contents = [prompt]
-            if file_bytes:
-                contents.insert(0, types.Part.from_bytes(data=file_bytes, mime_type=mime_type))
-            elif sample_text:
-                contents.insert(0, f"### Sample Document Text Content:\n{sample_text}")
+            if sample_text:
+                if len(sample_text) > 150000:
+                    lines = sample_text.splitlines()
+                    trimmed = "\n".join(lines[:1200]) + f"\n... [Truncated {len(lines) - 1300} intermediate rows] ...\n" + "\n".join(lines[-100:])
+                    contents.insert(0, f"### Document Data / CSV Content ({file_name}):\n```\n{trimmed}\n```")
+                else:
+                    contents.insert(0, f"### Document Data / CSV Content ({file_name}):\n```\n{sample_text}\n```")
+            elif file_bytes:
+                safe_mime = mime_type if mime_type in ["image/png", "image/jpeg", "image/webp", "image/heic", "application/pdf"] else "image/png"
+                contents.insert(0, types.Part.from_bytes(data=file_bytes, mime_type=safe_mime))
 
             response = client.models.generate_content(
                 model=self.model_name,

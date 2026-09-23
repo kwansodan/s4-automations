@@ -459,6 +459,12 @@ class ZohoContractValidator:
     @classmethod
     def _try_parse_date(cls, val: str) -> Optional[str]:
         """Tries to parse date strings and returns standard YYYY-MM-DD."""
+        if not val:
+            return None
+        val_cleaned = str(val).strip()
+        # If timestamp contains space or T, also extract the date portion
+        val_date_part = val_cleaned.split()[0] if " " in val_cleaned else (val_cleaned.split("T")[0] if "T" in val_cleaned else val_cleaned)
+
         formats = [
             "%Y-%m-%d",
             "%d/%m/%Y",
@@ -468,11 +474,11 @@ class ZohoContractValidator:
             "%d %B %Y",
             "%d %b %Y",
         ]
-        val_cleaned = val.strip()
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(val_cleaned, fmt)
-                return dt.strftime("%Y-%m-%d")
-            except ValueError:
-                continue
+        for candidate in [val_date_part, val_cleaned]:
+            for fmt in formats:
+                try:
+                    dt = datetime.strptime(candidate, fmt)
+                    return dt.strftime("%Y-%m-%d")
+                except (ValueError, TypeError):
+                    continue
         return None
