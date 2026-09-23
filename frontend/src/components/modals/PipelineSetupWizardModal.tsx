@@ -35,6 +35,7 @@ import {
   Code,
   Wand2,
   FileSpreadsheet,
+  RotateCcw,
 } from 'lucide-react';
 
 interface PipelineSetupWizardModalProps {
@@ -195,11 +196,20 @@ const DOMAIN_TEMPLATES: {
 11. Tax Handling: [e.g. Extract VAT / NHIL / GETFund if printed; otherwise treat as exempt]
 12. Review Thresholds: [e.g. Flag if total > GHS 5,000, signature missing, or handwriting is unclear]`,
   },
+  {
+    id: 'blank_canvas',
+    title: '✨ Blank / Custom Prompt',
+    badge: 'Empty Canvas (From Scratch)',
+    entities: [],
+    template: '',
+  },
 ];
 
 const getTailoredTemplate = (entity: AccountingEntityType): string => {
   const match = DOMAIN_TEMPLATES.find((t) => t.entities.includes(entity));
-  return match ? match.template : DOMAIN_TEMPLATES[DOMAIN_TEMPLATES.length - 1].template;
+  if (match) return match.template;
+  const universal = DOMAIN_TEMPLATES.find((t) => t.id === 'universal_questionnaire');
+  return universal ? universal.template : '';
 };
 
 const formatAccountOptionValue = (acc: ChartOfAccountItem): string => {
@@ -1403,25 +1413,38 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       Human Transposition Instructions (Guided Prompt)
                     </label>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const tailored = getTailoredTemplate(entityType);
-                      setHumanInstructions(tailored);
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-2.5 py-1 rounded-lg shadow transition cursor-pointer"
-                    title="Insert structured questionnaire tailored to this entity type"
-                  >
-                    <Sparkles className="w-3 h-3 text-sky-400" />
-                    <span>Auto-Fill Questionnaire for {entityType.replace(/_/g, ' ')}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {humanInstructions.trim().length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setHumanInstructions('')}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 border border-rose-600/40 px-2 py-1 rounded-lg transition cursor-pointer"
+                        title="Clear instructions to start with a blank template"
+                      >
+                        <RotateCcw className="w-3 h-3 text-rose-400" />
+                        <span>Clear to Blank</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tailored = getTailoredTemplate(entityType);
+                        setHumanInstructions(tailored);
+                      }}
+                      className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 px-2.5 py-1 rounded-lg shadow transition cursor-pointer"
+                      title="Insert structured questionnaire tailored to this entity type"
+                    >
+                      <Sparkles className="w-3 h-3 text-sky-400" />
+                      <span>Auto-Fill for {entityType.replace(/_/g, ' ')}</span>
+                    </button>
+                  </div>
                 </div>
 
                 <textarea
                   rows={8}
                   value={humanInstructions}
                   onChange={(e) => setHumanInstructions(e.target.value)}
-                  placeholder="Paste or fill in your transposition instructions here. You can also click any of the tailored templates below to get guided questions."
+                  placeholder="Paste or fill in your transposition instructions here. You can also click any of the tailored templates below to get guided questions, or leave it blank to use default accounting schema."
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono leading-relaxed placeholder-slate-600 focus:outline-none focus:border-sky-500"
                 />
 
@@ -1432,30 +1455,39 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       Tailored Pipeline Questionnaire Templates:
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      Click to insert template into editor
+                      Click any card to load or start with a blank template
                     </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                     {DOMAIN_TEMPLATES.map((tmpl) => {
                       const isRecommended = tmpl.entities.includes(entityType);
+                      const isSelected = tmpl.id === 'blank_canvas'
+                        ? humanInstructions.trim() === ''
+                        : humanInstructions.trim() === tmpl.template.trim();
                       return (
                         <button
                           key={tmpl.id}
                           type="button"
                           onClick={() => setHumanInstructions(tmpl.template)}
                           className={`text-left p-2 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
-                            isRecommended
-                              ? 'bg-sky-950/60 border-sky-500/60 hover:border-sky-400 shadow-sm'
+                            isSelected
+                              ? 'bg-sky-950/80 border-sky-400 shadow-md ring-1 ring-sky-400/40'
+                              : isRecommended
+                              ? 'bg-sky-950/40 border-sky-500/50 hover:border-sky-400 shadow-sm'
                               : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-white truncate">{tmpl.title}</span>
-                            {isRecommended && (
+                            {isSelected ? (
+                              <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/90 px-1.5 py-0.2 rounded border border-emerald-500/40 shrink-0 ml-1">
+                                Active
+                              </span>
+                            ) : isRecommended ? (
                               <span className="text-[9px] font-bold text-sky-400 bg-sky-900/60 px-1.5 py-0.2 rounded border border-sky-500/30 shrink-0 ml-1">
                                 Recommended
                               </span>
-                            )}
+                            ) : null}
                           </div>
                           <span className="text-[10px] text-slate-400 mt-0.5">{tmpl.badge}</span>
                         </button>
