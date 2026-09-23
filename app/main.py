@@ -3,11 +3,12 @@
 import os
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status, HTTPException
+from fastapi import FastAPI, Request, status, HTTPException, Response
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import ClientDisconnect
 import inngest.fast_api
 
 from app.config import settings
@@ -61,7 +62,10 @@ app.add_middleware(
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     """Enforces essential defensive HTTP security headers on all responses."""
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except ClientDisconnect:
+        return Response(status_code=499)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -75,7 +79,10 @@ async def security_headers_middleware(request: Request, call_next):
 async def ensure_json_content_type(request: Request, call_next):
     """Automatically promotes requests with stringified JSON bodies to application/json if omitted."""
     if request.url.path.startswith("/api/inngest"):
-        return await call_next(request)
+        try:
+            return await call_next(request)
+        except ClientDisconnect:
+            return Response(status_code=499)
 
     ct = request.headers.get("content-type", "").lower()
     if request.method in ("POST", "PUT", "PATCH") and ("json" not in ct) and ("multipart" not in ct) and ("form" not in ct):
@@ -89,9 +96,14 @@ async def ensure_json_content_type(request: Request, call_next):
                         new_headers.append((name, value))
                 new_headers.append((b"content-type", b"application/json"))
                 request.scope["headers"] = new_headers
+        except ClientDisconnect:
+            return Response(status_code=499)
         except Exception:
             pass
-    return await call_next(request)
+    try:
+        return await call_next(request)
+    except ClientDisconnect:
+        return Response(status_code=499)
 
 
 # Mount durable Inngest functions (disable unauthed sync in production)
