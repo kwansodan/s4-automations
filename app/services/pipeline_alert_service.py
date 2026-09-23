@@ -96,7 +96,7 @@ class PipelineAlertService:
                     </ul>
 
                     <div style="text-align: center; margin-top: 24px;">
-                        <a href="http://localhost:5173" class="btn">Open S4 Ledger & Fix Discrepancies →</a>
+                        <a href="{settings.APP_BASE_URL}" class="btn">Open S4 Ledger & Fix Discrepancies →</a>
                     </div>
                 </div>
                 <div class="footer">

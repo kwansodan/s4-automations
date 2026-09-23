@@ -101,6 +101,12 @@ class Settings(BaseSettings):
     # Mock / Dry-Run Mode
     MOCK_MODE: bool = Field(default=False, description="Enable mock mode for testing without real credentials")
 
+    # Application Frontend URL
+    APP_BASE_URL: str = Field(
+        default="https://s4automations.service4gh.com",
+        description="Public base URL of the frontend application (used for email alerts and magic links)",
+    )
+
     # CORS Allowed Origins
     ALLOWED_ORIGINS: str = Field(
         default="https://s4automations.service4gh.com,https://autapi.service4gh.com,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8000",
