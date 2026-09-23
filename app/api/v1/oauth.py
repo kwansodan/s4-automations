@@ -74,6 +74,8 @@ def _render_success_html(
 ) -> HTMLResponse:
     """Renders a high-aesthetic popup completion bridge with window.opener postMessage and auto-redirect."""
     display_name = org_name or client_slug.replace("_", " ").title()
+    cors_origins_json = json.dumps(settings.get_cors_origins())
+    safe_refresh_token = refresh_token or ""
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
@@ -114,7 +116,7 @@ def _render_success_html(
                 align-items: center;
                 justify-content: center;
                 font-size: 28px;
-                margin: 0 auto 18px auto;
+                margin: 0 auto 20px auto;
               }}
               h2 {{
                 color: #fff;
@@ -154,42 +156,42 @@ def _render_success_html(
               <p class="footer">Closing window and returning to S4 Automations...</p>
             </div>
             <script>
-              try {
-                var allowedOrigins = """ + json.dumps(settings.get_cors_origins()) + """;
+              try {{
+                var allowedOrigins = {cors_origins_json};
                 var targetOrigin = null;
-                try {
-                  if (document.referrer) {
+                try {{
+                  if (document.referrer) {{
                     var ref = new URL(document.referrer).origin;
-                    if (allowedOrigins.indexOf(ref) !== -1) {
+                    if (allowedOrigins.indexOf(ref) !== -1) {{
                       targetOrigin = ref;
-                    }
-                  }
-                } catch (err) {}
+                    }}
+                  }}
+                }} catch (err) {{}}
 
-                if (window.opener) {
-                  var payload = {
-                    type: '""" + event_type + """',
-                    clientId: '""" + client_slug + """',
-                    orgId: '""" + org_id + """',
-                    orgName: '""" + display_name + """',
-                    refreshToken: '""" + (refresh_token or "") + """'
-                  };
-                  if (targetOrigin) {
+                if (window.opener) {{
+                  var payload = {{
+                    type: '{event_type}',
+                    clientId: '{client_slug}',
+                    orgId: '{org_id}',
+                    orgName: '{display_name}',
+                    refreshToken: '{safe_refresh_token}'
+                  }};
+                  if (targetOrigin) {{
                     window.opener.postMessage(payload, targetOrigin);
-                  } else {
-                    for (var i = 0; i < allowedOrigins.length; i++) {
+                  }} else {{
+                    for (var i = 0; i < allowedOrigins.length; i++) {{
                       window.opener.postMessage(payload, allowedOrigins[i]);
-                    }
-                  }
-                  setTimeout(function() { window.close(); }, 1600);
-                } else {
-                  setTimeout(function() {
-                    window.location.href = '/?connected=true&client_id=""" + client_slug + """&platform=""" + platform_name + """';
-                  }, 1800);
-                }
-              } catch (e) {
+                    }}
+                  }}
+                  setTimeout(function() {{ window.close(); }}, 1600);
+                }} else {{
+                  setTimeout(function() {{
+                    window.location.href = '/?connected=true&client_id={client_slug}&platform={platform_name}';
+                  }}, 1800);
+                }}
+              }} catch (e) {{
                 console.error(e);
-              }
+              }}
             </script>
           </body>
         </html>
