@@ -194,18 +194,80 @@ class GoogleDriveService:
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def archive_file(self, file_id: str, client_folder_id: str, processed_folder_id: str) -> bool:
-        """Moves a processed file from the client folder root into client_folder/Processed/."""
+        """Moves a processed file from its source folder into the target processed_folder_id."""
         if not self.service:
             raise ValueError("Google Drive service is not connected.")
 
-        self.service.files().update(
-            fileId=file_id,
-            addParents=processed_folder_id,
-            removeParents=client_folder_id,
-            fields="id, parents"
-        ).execute()
+        if client_folder_id == processed_folder_id:
+            return True
+
+        # Resolve actual current parents to prevent 400 if client_folder_id is mismatched
+        remove_parents_str = client_folder_id
+        try:
+            f_info = self.service.files().get(fileId=file_id, fields="parents").execute()
+            current_parents = f_info.get("parents", [])
+            if current_parents:
+                if processed_folder_id in current_parents:
+                    return True
+                remove_parents_str = ",".join([p for p in current_parents if p != processed_folder_id])
+        except Exception as e:
+            logger.debug(f"Could not fetch current parents for file {file_id}: {e}")
+
+        kwargs = {"fileId": file_id, "addParents": processed_folder_id, "fields": "id, parents"}
+        if remove_parents_str:
+            kwargs["removeParents"] = remove_parents_str
+
+        self.service.files().update(**kwargs).execute()
         logger.info(f"Archived file {file_id} into Processed folder {processed_folder_id}")
         return True
+
+    def relocate_root_processed_to_month(
+        self, root_folder_id: str, month_folder_id: str, processed_name: str = "Processed"
+    ) -> None:
+        """
+        Detects if a 'Processed' folder was mistakenly created at the root level (sibling to Month folder).
+        If found:
+        1. Ensures month_folder/Processed exists.
+        2. Moves any files from root_folder/Processed into month_folder/Processed.
+        3. Trashes the empty root_folder/Processed.
+        """
+        if not self.service or not root_folder_id or not month_folder_id:
+            return
+
+        try:
+            clean_rfid = root_folder_id.replace("'", "\\'")
+            q = f"'{clean_rfid}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '{processed_name}' and trashed = false"
+            res = self.service.files().list(q=q, spaces="drive", fields="files(id, name)").execute()
+            root_processed_folders = res.get("files", [])
+
+            if not root_processed_folders:
+                return
+
+            # Ensure month_folder has its Processed folder
+            target_processed_id = self.find_or_create_folder(processed_name, month_folder_id)
+
+            for rpf in root_processed_folders:
+                rpf_id = rpf["id"]
+                if rpf_id == target_processed_id:
+                    continue
+
+                # Check files in root/Processed
+                q_files = f"'{rpf_id}' in parents and trashed = false"
+                f_res = self.service.files().list(q=q_files, spaces="drive", fields="files(id, name)").execute()
+                files_to_move = f_res.get("files", [])
+
+                for f in files_to_move:
+                    self.archive_file(f["id"], rpf_id, target_processed_id)
+                    logger.info(f"🚚 Auto-migrated stray file '{f.get('name')}' from root/{processed_name} to month/{processed_name}")
+
+                # Trash the root Processed folder
+                try:
+                    self.service.files().update(fileId=rpf_id, body={"trashed": True}).execute()
+                    logger.info(f"🧹 Successfully trashed misplaced root '{processed_name}' folder (ID: {rpf_id})")
+                except Exception as te:
+                    logger.warning(f"Could not trash root processed folder: {te}")
+        except Exception as e:
+            logger.warning(f"Note during misplaced Processed folder cleanup: {e}")
 
     async def test_folder_access(self, folder_id: str) -> Dict[str, Any]:
         """Tests whether a Google Drive folder exists, is accessible, and inspects child hierarchy."""
@@ -430,6 +492,17 @@ class GoogleDriveService:
                 except Exception as ce:
                     logger.warning(f"Could not auto-create month folder: {ce}")
 
+            active_month_folder_id = matching_month_folders[0]["id"] if matching_month_folders else None
+            active_month_folder_name = matching_month_folders[0]["name"] if matching_month_folders else None
+
+            # Self-healing: if auto_create_month_folder is active, ensure root-level Processed folder
+            # is migrated inside the active month folder so it doesn't pollute the client root
+            if auto_create_month_folder and active_month_folder_id:
+                try:
+                    self.relocate_root_processed_to_month(folder_id, active_month_folder_id)
+                except Exception as r_err:
+                    logger.debug(f"Root processed folder migration note: {r_err}")
+
             # If structure_hint is party_then_month, we skip Pass 1 initially to let Pass 2 check first
             should_run_pass1 = structure_hint != "party_then_month" and structure_hint != "flat_root"
 
@@ -469,6 +542,7 @@ class GoogleDriveService:
                                         mime_type=s.get("mimeType", "image/jpeg"),
                                         metadata={
                                             "folder_id": cust_id,
+                                            "root_folder_id": folder_id,
                                             "month_folder_id": m_id,
                                             "month_folder_name": m_name,
                                             "customer_name_hint": cust_name,
@@ -494,6 +568,7 @@ class GoogleDriveService:
                                     mime_type=f.get("mimeType", "application/pdf"),
                                     metadata={
                                         "folder_id": m_id,
+                                        "root_folder_id": folder_id,
                                         "month_folder_id": m_id,
                                         "month_folder_name": m_name,
                                         "month": month,
@@ -540,6 +615,9 @@ class GoogleDriveService:
                                     mime_type=s.get("mimeType", "image/jpeg"),
                                     metadata={
                                         "folder_id": mf["id"],
+                                        "root_folder_id": folder_id,
+                                        "month_folder_id": mf["id"],
+                                        "month_folder_name": mf.get("name"),
                                         "parent_customer_id": cust_id,
                                         "customer_name_hint": cust_name,
                                         "vendor_name_hint": cust_name,
@@ -568,6 +646,9 @@ class GoogleDriveService:
                                 mime_type=f.get("mimeType", "application/pdf"),
                                 metadata={
                                     "folder_id": folder_id,
+                                    "root_folder_id": folder_id,
+                                    "month_folder_id": active_month_folder_id,
+                                    "month_folder_name": active_month_folder_name,
                                     "month": month,
                                     "year": year,
                                     "hierarchy_pattern": "flat_folder",

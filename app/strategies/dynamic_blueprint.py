@@ -67,27 +67,65 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         self.step_logs.append(entry)
 
     def _archive_file_if_needed(self, doc: SourceDocument, pipeline_id: Optional[str] = None):
-        """Archives document into 'Processed/' subfolder if configured on the pipeline."""
+        """Archives document into 'Processed/' subfolder inside Month folder if configured on the pipeline."""
         pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
         p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
         should_move = p_cfg.get("move_processed_files", False) or (pipe_obj.get("move_processed_files", False) if pipe_obj else False)
+        auto_create_month = p_cfg.get("auto_create_month_folder", False) or (pipe_obj.get("auto_create_month_folder", False) if pipe_obj else False)
 
         if should_move and doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
-            parent_fid = doc.metadata.get("folder_id")
-            if parent_fid:
-                try:
-                    drive = GoogleDriveService()
-                    processed_name = p_cfg.get("processed_folder_name", "Processed")
-                    processed_fid = drive.find_or_create_folder(processed_name, parent_fid)
-                    drive.archive_file(doc.source_identifier, parent_fid, processed_fid)
-                    self.archived_documents.append({"file_name": doc.file_name, "destination": f"{processed_name}/"})
-                    self.log_step("ARCHIVE", f"Archived '{doc.file_name}' to '{processed_name}/' subfolder.", "info")
-                    logger.info(f"📦 Archived file '{doc.file_name}' to '{processed_name}/' inside '{parent_fid}'")
-                except Exception as arch_err:
-                    logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
+            current_parent_fid = doc.metadata.get("folder_id")
+            if not current_parent_fid:
+                return
+
+            try:
+                drive = GoogleDriveService()
+                processed_name = p_cfg.get("processed_folder_name", "Processed")
+
+                # The destination container for Processed/ subfolder:
+                # If auto_create_month_folder is enabled or month_folder_id is set,
+                # Processed/ MUST be created INSIDE the month folder (e.g. "August 2026/Processed"),
+                # NOT at the client root level.
+                target_container_fid = doc.metadata.get("month_folder_id")
+
+                root_fid = (
+                    doc.metadata.get("root_folder_id")
+                    or p_cfg.get("source_identifier")
+                    or (pipe_obj.get("source_identifier") if pipe_obj else None)
+                    or current_parent_fid
+                )
+
+                if not target_container_fid and auto_create_month:
+                    doc_month = doc.metadata.get("month") or getattr(self, "current_run_month", None)
+                    doc_year = doc.metadata.get("year") or getattr(self, "current_run_year", None)
+                    if doc_month and doc_year and root_fid:
+                        m_name = f"{str(doc_month).capitalize()} {doc_year}"
+                        target_container_fid = drive.find_or_create_folder(m_name, root_fid)
+                        logger.info(f"📁 Resolved month container '{m_name}' (ID: {target_container_fid}) for Processed archive")
+
+                # Fallback to current parent folder if no month container applies
+                if not target_container_fid:
+                    target_container_fid = current_parent_fid
+
+                processed_fid = drive.find_or_create_folder(processed_name, target_container_fid)
+                drive.archive_file(doc.source_identifier, current_parent_fid, processed_fid)
+
+                # Clean up any misplaced root-level Processed folder
+                if auto_create_month and root_fid and root_fid != target_container_fid:
+                    drive.relocate_root_processed_to_month(root_fid, target_container_fid, processed_name=processed_name)
+
+                m_label = doc.metadata.get("month_folder_name")
+                dest_label = f"{m_label}/{processed_name}/" if m_label else f"{processed_name}/"
+                self.archived_documents.append({"file_name": doc.file_name, "destination": dest_label})
+                self.log_step("ARCHIVE", f"Archived '{doc.file_name}' to '{dest_label}' subfolder.", "info")
+                logger.info(f"📦 Archived file '{doc.file_name}' into '{processed_fid}' (container: '{target_container_fid}')")
+            except Exception as arch_err:
+                logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
 
     async def discover_sources(self, month: str, year: int, pipeline_id: Optional[str] = None) -> List[SourceDocument]:
         """Discovers files based on the client's configured pipelines or fallback root source."""
+        self.current_run_month = month
+        self.current_run_year = year
         self.execution_errors = []
         self.execution_warnings = []
         self.discovered_documents = []
@@ -175,7 +213,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             p_cfg = (pipeline.get("source_config") if isinstance(pipeline, dict) else {}) or {}
             structure_hint = p_cfg.get("folder_structure", "auto_detect")
             lookback_window = p_cfg.get("enable_lookback_window", True)
-            auto_create = p_cfg.get("auto_create_month_folder", False)
+            auto_create = p_cfg.get("auto_create_month_folder", False) or (pipeline.get("auto_create_month_folder", False) if isinstance(pipeline, dict) else False)
             target_folder = (source_identifier or "").strip()
             if not target_folder or target_folder == "1Uu_Q3p8s1_anr_laundry_slips":
                 target_folder = (settings.CONTROL_SHEETS_FOLDER_ID or getattr(self.client, "folder_id", "") or "").strip()
@@ -220,6 +258,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         **kwargs,
     ) -> List[ExtractedLineItem]:
         """Extracts structured line items with SHA-256 de-duplication check, sheet-aware auto-resync, and Zoho contract validation."""
+        if month:
+            self.current_run_month = month
+        if year:
+            self.current_run_year = year
         logger.info(f"[{self.client_name}] Stage 2: Extracting data from {len(sources)} source documents (force_reprocess={force_reprocess})...")
         extracted_items: List[ExtractedLineItem] = []
         ocr = GeminiOCRService()
@@ -363,10 +405,20 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
                 # Run extraction with human transposition or specialized OCR
                 pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == doc_pipeline_id), None)
+                field_mappings = (pipe_obj.get("field_mappings") or {}) if pipe_obj else {}
                 human_instructions = (
                     doc.metadata.get("human_instructions")
                     or (pipe_obj.get("human_instructions") if pipe_obj else None)
                 )
+                if field_mappings and isinstance(field_mappings, dict):
+                    mapping_clauses = [
+                        f"- Map extracted field '{src_f}' to accounting primitive '{prim}'"
+                        for prim, src_f in field_mappings.items() if src_f
+                    ]
+                    if mapping_clauses:
+                        directives_block = "\n[FIELD MAPPING DIRECTIVES]\n" + "\n".join(mapping_clauses)
+                        human_instructions = (human_instructions or "") + directives_block
+
                 accounting_software = (
                     doc.metadata.get("accounting_software")
                     or (pipe_obj.get("accounting_software") if pipe_obj else None)
@@ -495,8 +547,26 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 if not extraction:
                     extraction = {"items": [], "vendor": self.client_name, "total_amount": 0.0}
 
-                # Normalize extracted date
-                extracted_date_str = extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date")
+                # Normalize extracted date and document level fields
+                raw_items_list = extraction.get("items") or extraction.get("line_items") or []
+                mapped_date_col = field_mappings.get("transaction_date") if field_mappings else None
+                mapped_cust_col = field_mappings.get("customer") if field_mappings else None
+                mapped_ref_col = field_mappings.get("source_file_name") if field_mappings else None
+
+                if mapped_date_col and (extraction.get(mapped_date_col) or (raw_items_list and raw_items_list[0].get(mapped_date_col))):
+                    extracted_date_str = str(extraction.get(mapped_date_col) or (raw_items_list and raw_items_list[0].get(mapped_date_col)))
+                else:
+                    extracted_date_str = extraction.get("date") or extraction.get("slip_date") or doc.metadata.get("date")
+
+                if mapped_cust_col and (extraction.get(mapped_cust_col) or (raw_items_list and raw_items_list[0].get(mapped_cust_col))):
+                    c_val = str(extraction.get(mapped_cust_col) or (raw_items_list and raw_items_list[0].get(mapped_cust_col)))
+                    extraction["customer_name"] = c_val
+                    extraction["vendor_name"] = c_val
+
+                if mapped_ref_col and (extraction.get(mapped_ref_col) or (raw_items_list and raw_items_list[0].get(mapped_ref_col))):
+                    r_val = str(extraction.get(mapped_ref_col) or (raw_items_list and raw_items_list[0].get(mapped_ref_col)))
+                    doc.metadata["document_reference"] = r_val
+
                 resolved_tx_date = resolve_transaction_date(
                     extracted_date=extracted_date_str,
                     file_name=doc.file_name,
@@ -506,7 +576,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 extraction["date"] = resolved_tx_date
 
                 # Calculate total amount if 0
-                raw_items_list = extraction.get("items") or extraction.get("line_items") or []
                 if float(extraction.get("total_amount") or 0.0) == 0.0 and raw_items_list:
                     calc_tot = sum(
                         float(it.get("amount") or it.get("total_amount") or (float(it.get("quantity", 1.0) or it.get("delivery_qty", 1.0) or it.get("pickup_qty", 1.0)) * float(it.get("rate") or it.get("unit_price") or it.get("unit_rate") or 0.0)))
@@ -517,11 +586,18 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 # -----------------------------------------------------------------
                 # Strict Zoho API Contract Validation
                 # -----------------------------------------------------------------
+                pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == doc_pipeline_id), None)
+                p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
+                auto_create_contacts = p_cfg.get("auto_create_missing_contacts", False) or (pipe_obj.get("auto_create_missing_contacts", False) if pipe_obj else False)
+                auto_create_items = p_cfg.get("auto_create_missing_items", False) or (pipe_obj.get("auto_create_missing_items", False) if pipe_obj else False)
+
                 validation_result = ZohoContractValidator.validate_entity(
                     entity_type=entity_type,
                     extracted_data=extraction,
                     zoho_contacts=contacts,
                     zoho_items=items_catalog,
+                    auto_create_contacts=auto_create_contacts,
+                    auto_create_items=auto_create_items,
                 )
 
                 # Check if validation passed
@@ -583,20 +659,29 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     )
                     doc_items.append(item)
                 else:
-                    for raw_it in items:
-                        item_desc = (
-                            raw_it.get("name")
-                            or raw_it.get("item_name")
-                            or raw_it.get("standard_item_name")
-                            or raw_it.get("raw_item_name")
-                            or raw_it.get("description")
-                            or raw_it.get("item_description")
-                            or f"Line Item ({doc.file_name})"
-                        )
+                    mapped_desc_col = field_mappings.get("item_or_description") if field_mappings else None
+                    mapped_qty_col = field_mappings.get("quantity") if field_mappings else None
+                    mapped_rate_col = field_mappings.get("rate_or_price") if field_mappings else None
+                    mapped_total_col = field_mappings.get("total_amount") if field_mappings else None
+                    mapped_custody_col = field_mappings.get("custody_quantity") if field_mappings else None
 
-                        raw_qty = raw_it.get("quantity")
-                        raw_pickup = raw_it.get("pickup_qty") or raw_it.get("picked_up") or raw_it.get("pickup")
-                        raw_deliv = raw_it.get("delivery_qty") or raw_it.get("delivered") or raw_it.get("delivery")
+                    for raw_it in items:
+                        if mapped_desc_col and raw_it.get(mapped_desc_col):
+                            item_desc = str(raw_it.get(mapped_desc_col))
+                        else:
+                            item_desc = (
+                                raw_it.get("name")
+                                or raw_it.get("item_name")
+                                or raw_it.get("standard_item_name")
+                                or raw_it.get("raw_item_name")
+                                or raw_it.get("description")
+                                or raw_it.get("item_description")
+                                or f"Line Item ({doc.file_name})"
+                            )
+
+                        raw_qty = raw_it.get(mapped_qty_col) if (mapped_qty_col and raw_it.get(mapped_qty_col) is not None) else raw_it.get("quantity")
+                        raw_pickup = raw_it.get(mapped_custody_col) if (mapped_custody_col and raw_it.get(mapped_custody_col) is not None) else (raw_it.get("pickup_qty") or raw_it.get("picked_up") or raw_it.get("pickup"))
+                        raw_deliv = raw_it.get(mapped_qty_col) if (mapped_qty_col and raw_it.get(mapped_qty_col) is not None) else (raw_it.get("delivery_qty") or raw_it.get("delivered") or raw_it.get("delivery"))
 
                         if raw_pickup is not None or raw_deliv is not None:
                             p_qty = float(raw_pickup if raw_pickup is not None else (raw_qty if raw_qty is not None else 1.0))
@@ -607,9 +692,23 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             d_qty = q
 
                         loss = float(raw_it.get("loss_qty") or raw_it.get("unreturned_loss_qty") or raw_it.get("discrepancy") or max(0.0, p_qty - d_qty))
-                        rate = float(raw_it.get("rate") or raw_it.get("unit_price") or raw_it.get("unit_rate") or raw_it.get("price") or 0.0)
 
-                        tot = raw_it.get("total_amount") or raw_it.get("amount") or raw_it.get("line_total")
+                        if mapped_rate_col and raw_it.get(mapped_rate_col) is not None:
+                            try:
+                                rate = float(raw_it.get(mapped_rate_col) or 0.0)
+                            except (ValueError, TypeError):
+                                rate = 0.0
+                        else:
+                            rate = float(raw_it.get("rate") or raw_it.get("unit_price") or raw_it.get("unit_rate") or raw_it.get("price") or 0.0)
+
+                        if mapped_total_col and raw_it.get(mapped_total_col) is not None:
+                            try:
+                                tot = float(raw_it.get(mapped_total_col) or 0.0)
+                            except (ValueError, TypeError):
+                                tot = None
+                        else:
+                            tot = raw_it.get("total_amount") or raw_it.get("amount") or raw_it.get("line_total")
+
                         if tot is not None:
                             tot = float(tot)
                         else:
@@ -619,7 +718,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             raw_it.get("category")
                             or raw_it.get("category_or_account")
                             or self.custom_config.get("default_account")
-                            or ("Cost of Goods Sold" if is_ap else "Linen Laundry Service")
+                            or ("Cost of Goods Sold" if is_ap else "General Sales Revenue")
                         )
 
                         item = ExtractedLineItem(
@@ -641,6 +740,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                                 "vendor": extraction.get("vendor") or extraction.get("client_name") or self.client_name,
                                 "pipeline_id": doc_pipeline_id,
                                 "pipeline_name": pipeline_name,
+                                "field_mappings_applied": field_mappings,
                                 "entity_type": entity_type,
                                 "validation_status": val_status,
                                 "validation_errors": val_errors,
@@ -838,18 +938,65 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             # 1. Post Customer Invoices (AR)
             if AccountingEntityType.AR_SALES_INVOICE.value in grouped:
                 inv_items = grouped[AccountingEntityType.AR_SALES_INVOICE.value]
+                first_pipe_id = inv_items[0].pipeline_id
+                pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == first_pipe_id), None)
+                p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
+                auto_create_contacts = p_cfg.get("auto_create_missing_contacts", False) or (pipe_obj.get("auto_create_missing_contacts", False) if pipe_obj else False)
+                auto_create_items = p_cfg.get("auto_create_missing_items", False) or (pipe_obj.get("auto_create_missing_items", False) if pipe_obj else False)
+
+                zoho = ZohoBooksService(org_id=self.client.zoho_org_id)
+                target_customer_id = self.client.zoho_contact_id or "generic_customer_01"
+
+                # Check customer contact
+                raw_cust_name = (
+                    inv_items[0].metadata_json.get("customer_name")
+                    or inv_items[0].metadata_json.get("metadata", {}).get("customer")
+                    or inv_items[0].metadata_json.get("metadata", {}).get("client_name")
+                )
+                if raw_cust_name and auto_create_contacts:
+                    matched = zoho.find_contact_by_name(raw_cust_name)
+                    if matched:
+                        target_customer_id = matched.contact_id
+                    else:
+                        try:
+                            new_contact = await zoho.create_customer_contact(raw_cust_name)
+                            target_customer_id = new_contact.contact_id
+                            self.log_step(
+                                "AUTO_PROVISION",
+                                f"Auto-created missing Customer '{raw_cust_name}' in Zoho Books (ID: {target_customer_id}).",
+                                "success",
+                            )
+                        except Exception as c_err:
+                            logger.warning(f"Could not auto-create customer contact '{raw_cust_name}': {c_err}")
+
                 include_desc = (self.custom_config or {}).get("include_line_item_description", True)
-                line_items = [
-                    {
+                line_items = []
+                for t in inv_items:
+                    li_dict = {
                         "name": t.item_or_description,
                         "description": f"Auto-processed ({t.transaction_date})" if include_desc else "",
                         "rate": t.rate_or_price or t.total_amount,
                         "quantity": int(t.quantity_or_debit) or 1,
                     }
-                    for t in inv_items
-                ]
+                    if auto_create_items:
+                        matched_i = zoho.find_item_by_name(t.item_or_description)
+                        if matched_i:
+                            li_dict["item_id"] = matched_i.item_id
+                        else:
+                            try:
+                                new_i = await zoho.create_item(t.item_or_description, rate=t.rate_or_price or 0.0)
+                                li_dict["item_id"] = new_i.item_id
+                                self.log_step(
+                                    "AUTO_PROVISION",
+                                    f"Auto-created missing Item '{t.item_or_description}' in Zoho Books (ID: {new_i.item_id}).",
+                                    "success",
+                                )
+                            except Exception as i_err:
+                                logger.warning(f"Could not auto-create item '{t.item_or_description}': {i_err}")
+                    line_items.append(li_dict)
+
                 post_res = await adapter.post_invoice({
-                    "customer_id": self.client.zoho_contact_id or "generic_customer_01",
+                    "customer_id": target_customer_id,
                     "date": f"{year}-{month}-28",
                     "line_items": line_items,
                     "total_amount": sum(t.total_amount for t in inv_items),
@@ -873,16 +1020,62 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             # 2. Post Vendor Bills (AP)
             if AccountingEntityType.AP_VENDOR_BILL.value in grouped:
                 bill_items = grouped[AccountingEntityType.AP_VENDOR_BILL.value]
-                line_items = [
-                    {
+                first_pipe_id = bill_items[0].pipeline_id
+                pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == first_pipe_id), None)
+                p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
+                auto_create_contacts = p_cfg.get("auto_create_missing_contacts", False) or (pipe_obj.get("auto_create_missing_contacts", False) if pipe_obj else False)
+                auto_create_items = p_cfg.get("auto_create_missing_items", False) or (pipe_obj.get("auto_create_missing_items", False) if pipe_obj else False)
+
+                zoho = ZohoBooksService(org_id=self.client.zoho_org_id)
+                target_vendor_id = self.client.zoho_contact_id or "generic_vendor_01"
+
+                raw_vendor_name = (
+                    bill_items[0].metadata_json.get("vendor_name")
+                    or bill_items[0].metadata_json.get("metadata", {}).get("vendor")
+                    or "Vendor"
+                )
+                if raw_vendor_name and auto_create_contacts:
+                    matched_v = zoho.find_contact_by_name(raw_vendor_name)
+                    if matched_v:
+                        target_vendor_id = matched_v.contact_id
+                    else:
+                        try:
+                            new_v = await zoho.create_vendor_contact(raw_vendor_name)
+                            target_vendor_id = new_v.contact_id
+                            self.log_step(
+                                "AUTO_PROVISION",
+                                f"Auto-created missing Vendor '{raw_vendor_name}' in Zoho Books (ID: {target_vendor_id}).",
+                                "success",
+                            )
+                        except Exception as v_err:
+                            logger.warning(f"Could not auto-create vendor contact '{raw_vendor_name}': {v_err}")
+
+                line_items = []
+                for t in bill_items:
+                    li_dict = {
                         "name": t.item_or_description,
                         "rate": t.rate_or_price or t.total_amount,
                         "quantity": t.quantity_or_debit or 1,
                     }
-                    for t in bill_items
-                ]
+                    if auto_create_items:
+                        matched_i = zoho.find_item_by_name(t.item_or_description)
+                        if matched_i:
+                            li_dict["item_id"] = matched_i.item_id
+                        else:
+                            try:
+                                new_i = await zoho.create_item(t.item_or_description, rate=t.rate_or_price or 0.0)
+                                li_dict["item_id"] = new_i.item_id
+                                self.log_step(
+                                    "AUTO_PROVISION",
+                                    f"Auto-created missing Item '{t.item_or_description}' in Zoho Books (ID: {new_i.item_id}).",
+                                    "success",
+                                )
+                            except Exception as i_err:
+                                logger.warning(f"Could not auto-create item '{t.item_or_description}': {i_err}")
+                    line_items.append(li_dict)
+
                 bill_res = await adapter.post_vendor_bill({
-                    "vendor_id": self.client.zoho_contact_id or "generic_vendor_01",
+                    "vendor_id": target_vendor_id,
                     "bill_number": f"BILL-{self.client_id[:4].upper()}-{month[:3].upper()}-{year}",
                     "date": f"{year}-{month}-28",
                     "line_items": line_items,

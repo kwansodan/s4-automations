@@ -25,6 +25,8 @@ class ZohoContractValidator:
         zoho_contacts: Optional[List[ZohoContact]] = None,
         zoho_items: Optional[List[ZohoItem]] = None,
         variance_tolerance: float = 1.0,
+        auto_create_contacts: bool = False,
+        auto_create_items: bool = False,
     ) -> ContractValidationResult:
         """
         Validates extracted_data against the specific requirements of entity_type.
@@ -95,15 +97,27 @@ class ZohoContractValidator:
             elif contacts:
                 matched = cls._match_contact(customer_name, contacts)
                 if not matched:
-                    issues.append(
-                        ValidationIssue(
-                            field_name="customer_id",
-                            error_type="UNMATCHED_ENTITY",
-                            message=f"Customer '{customer_name}' does not match any active contact in Zoho Books. Requires manual mapping.",
-                            received_value=customer_name,
-                            severity="WARNING",
+                    if auto_create_contacts:
+                        norm["customer_id"] = f"auto_create:{customer_name}"
+                        issues.append(
+                            ValidationIssue(
+                                field_name="customer_id",
+                                error_type="AUTO_PROVISION_PENDING",
+                                message=f"Customer '{customer_name}' will be automatically created in Zoho Books upon posting.",
+                                received_value=customer_name,
+                                severity="INFO",
+                            )
                         )
-                    )
+                    else:
+                        issues.append(
+                            ValidationIssue(
+                                field_name="customer_id",
+                                error_type="UNMATCHED_ENTITY",
+                                message=f"Customer '{customer_name}' does not match any active contact in Zoho Books. Requires manual mapping or enabling 'Auto-Create Missing Contacts'.",
+                                received_value=customer_name,
+                                severity="WARNING",
+                            )
+                        )
                 else:
                     norm["customer_id"] = matched.contact_id
 
@@ -142,15 +156,27 @@ class ZohoContractValidator:
             elif contacts:
                 matched = cls._match_contact(customer_name, contacts)
                 if not matched:
-                    issues.append(
-                        ValidationIssue(
-                            field_name="customer_id",
-                            error_type="UNMATCHED_ENTITY",
-                            message=f"Payer '{customer_name}' not found in Zoho customer contacts.",
-                            received_value=customer_name,
-                            severity="CRITICAL",
+                    if auto_create_contacts:
+                        norm["customer_id"] = f"auto_create:{customer_name}"
+                        issues.append(
+                            ValidationIssue(
+                                field_name="customer_id",
+                                error_type="AUTO_PROVISION_PENDING",
+                                message=f"Payer '{customer_name}' will be automatically created in Zoho Books upon posting.",
+                                received_value=customer_name,
+                                severity="INFO",
+                            )
                         )
-                    )
+                    else:
+                        issues.append(
+                            ValidationIssue(
+                                field_name="customer_id",
+                                error_type="UNMATCHED_ENTITY",
+                                message=f"Payer '{customer_name}' not found in Zoho customer contacts.",
+                                received_value=customer_name,
+                                severity="CRITICAL",
+                            )
+                        )
                 else:
                     norm["customer_id"] = matched.contact_id
 
@@ -202,6 +228,32 @@ class ZohoContractValidator:
                         severity="CRITICAL",
                     )
                 )
+            elif contacts:
+                matched = cls._match_contact(vendor_name, contacts)
+                if not matched:
+                    if auto_create_contacts:
+                        norm["vendor_id"] = f"auto_create:{vendor_name}"
+                        issues.append(
+                            ValidationIssue(
+                                field_name="vendor_id",
+                                error_type="AUTO_PROVISION_PENDING",
+                                message=f"Vendor '{vendor_name}' will be automatically created in Zoho Books upon posting.",
+                                received_value=vendor_name,
+                                severity="INFO",
+                            )
+                        )
+                    else:
+                        issues.append(
+                            ValidationIssue(
+                                field_name="vendor_id",
+                                error_type="UNMATCHED_ENTITY",
+                                message=f"Vendor '{vendor_name}' does not match any active vendor in Zoho Books. Requires manual mapping or enabling 'Auto-Create Missing Contacts'.",
+                                received_value=vendor_name,
+                                severity="WARNING",
+                            )
+                        )
+                else:
+                    norm["vendor_id"] = matched.contact_id
 
             if not bill_number:
                 issues.append(

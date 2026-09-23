@@ -7,8 +7,11 @@ import {
   toggleClientTransaction,
   batchToggleTransactions,
   batchApproveTransactions,
+  deleteStagedTransaction,
+  batchDeleteStagedTransactions,
   updateClientTransaction,
   fetchItemCatalog,
+  fetchClientCatalog,
   CatalogItem,
   runClientStrategy,
   ClientTransactionSummaryRow,
@@ -39,8 +42,10 @@ import {
   CheckCircle2,
   Edit3,
   Save,
+  Trash2,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
+import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027];
@@ -70,6 +75,10 @@ export const ClientArTab: React.FC = () => {
   const [runFeedback, setRunFeedback] = useState<{ type: 'success' | 'warning' | 'error'; message: string; details?: string } | null>(null);
   const [activeLedgerView, setActiveLedgerView] = useState<'summary' | 'daily'>('summary');
 
+  // Purge Mistaken Ingestion Modal State
+  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState<boolean>(false);
+  const [purgeTargetFileName, setPurgeTargetFileName] = useState<string>('');
+
   // Filters, Sorting & Pagination State
   const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED'>('ALL');
   const [dailyPropertyFilter, setDailyPropertyFilter] = useState<string>('ALL');
@@ -85,18 +94,34 @@ export const ClientArTab: React.FC = () => {
 
   // Line Item Inline Editing State (Strictly Zoho Books Item Master)
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [clientContacts, setClientContacts] = useState<any[]>([]);
   const [editingTxId, setEditingTxId] = useState<number | null>(null);
   const [editItemName, setEditItemName] = useState<string>('');
   const [editPickQty, setEditPickQty] = useState<number | string>('');
   const [editDelivQty, setEditDelivQty] = useState<number | string>('');
   const [editRate, setEditRate] = useState<number | string>('');
   const [isSavingTx, setIsSavingTx] = useState<boolean>(false);
+  const [deletingSlipKey, setDeletingSlipKey] = useState<string | null>(null);
+  const [deletingTxId, setDeletingTxId] = useState<number | null>(null);
+
+  // Determine if this client uses specialized 2-stage custody / linen loss tracking (e.g. laundry)
+  // vs Universal Accounting Primitives (Quantity, Unit Rate, Total Amount)
+  const isCustodyTracking = useMemo(() => {
+    if (!currentClient) return false;
+    if (currentClient.custom_config?.enable_custody_tracking) return true;
+    if (currentClient.id === 'anr_group' || currentClient.id === 'anr') return true;
+    const ind = (currentClient.industry || '').toLowerCase();
+    return ind.includes('laundry') || ind.includes('linen');
+  }, [currentClient]);
 
   useEffect(() => {
-    fetchItemCatalog(currentClient?.zoho_org_id || currentClient?.id).then((items) => {
-      if (items && items.length > 0) {
-        setCatalogItems(items);
-      }
+    // Clear catalog when switching client workspace to prevent cross-client leakage
+    setCatalogItems([]);
+    setClientContacts([]);
+    if (!currentClient?.id) return;
+    fetchClientCatalog(currentClient.id, currentClient.zoho_org_id).then((res) => {
+      setCatalogItems(Array.isArray(res?.items) ? res.items : []);
+      setClientContacts(Array.isArray(res?.contacts) ? res.contacts : []);
     });
   }, [currentClient?.id, currentClient?.zoho_org_id]);
 
@@ -134,6 +159,48 @@ export const ClientArTab: React.FC = () => {
     loadTransactions();
     loadSummaryData();
   }, [currentClient?.id, selectedMonth, selectedYear]);
+
+  const handleDeleteRow = async (txId: number) => {
+    if (!currentClient?.id) return;
+    if (!window.confirm('Are you sure you want to delete this staged line item from the ledger? This will purge the mistakenly ingested record.')) {
+      return;
+    }
+    setDeletingTxId(txId);
+    try {
+      await deleteStagedTransaction(currentClient.id, txId);
+      setTransactions((prev) => prev.filter((t) => t.id !== txId));
+      loadSummaryData();
+      addLog('success', `Deleted staged transaction #${txId} from database.`);
+    } catch (err: any) {
+      addLog('error', `Failed to delete transaction: ${err.message}`);
+    } finally {
+      setDeletingTxId(null);
+    }
+  };
+
+  const handleDeleteSlip = async (slip: DailySlipGroup) => {
+    if (!currentClient?.id) return;
+    const docName = slip.sourceFileName || slip.slipKey;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete all ${slip.items.length} unposted line items extracted from "${docName}"? This will purge the mistakenly ingested document data from PostgreSQL.`
+      )
+    ) {
+      return;
+    }
+    setDeletingSlipKey(slip.slipKey);
+    try {
+      const ids = slip.items.map((i) => i.id);
+      await batchDeleteStagedTransactions(currentClient.id, { transaction_ids: ids, file_name: slip.sourceFileName });
+      setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
+      loadSummaryData();
+      addLog('success', `Purged ${ids.length} staged line item(s) for "${docName}".`);
+    } catch (err: any) {
+      addLog('error', `Failed to purge document: ${err.message}`);
+    } finally {
+      setDeletingSlipKey(null);
+    }
+  };
 
   const handleToggleSummaryApproval = async (row: ClientTransactionSummaryRow, field: 'reviewed' | 'approved') => {
     if (!currentClient?.id || !row.transaction_ids || row.transaction_ids.length === 0) return;
@@ -569,10 +636,9 @@ export const ClientArTab: React.FC = () => {
   };
 
   const zohoMasterItems = useMemo(() => {
-    // Strictly Zoho Books Item Master (Active items only)
-    const source = catalogItems.length > 0 ? catalogItems : (catalog?.items || []);
+    // Strictly Zoho Books Item Master (Active items only) scoped to this client
     const map = new Map<string, CatalogItem>();
-    source.forEach((c: any) => {
+    catalogItems.forEach((c: any) => {
       if (c.status && c.status.toLowerCase() !== 'active') {
         return;
       }
@@ -587,7 +653,7 @@ export const ClientArTab: React.FC = () => {
       }
     });
 
-    // Ensure distinct active items from client staged transactions are available as fallback
+    // Ensure distinct active items from THIS client's staged transactions are available as fallback
     transactions.forEach((tx: any) => {
       const name = (tx.item_or_description || '').trim();
       if (name && !map.has(name.toLowerCase())) {
@@ -595,14 +661,14 @@ export const ClientArTab: React.FC = () => {
           item_id: `staged_${name.toLowerCase().replace(/\s+/g, '_')}`,
           name,
           rate: Number(tx.rate_or_price) || 0,
-          description: 'Client Control Slip Item',
+          description: `${currentClient?.name || 'Client'} Staged Item`,
           status: 'active',
         });
       }
     });
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogItems, catalog, transactions]);
+  }, [catalogItems, transactions, currentClient?.name]);
 
   const handleStartEdit = (tx: any) => {
     setEditingTxId(tx.id);
@@ -682,7 +748,7 @@ export const ClientArTab: React.FC = () => {
 
   // Reconciled Zoho Books Customer Contact resolution
   const matchedZohoContact = useMemo(() => {
-    const contacts = catalog?.contacts || [];
+    const contacts = clientContacts.length > 0 ? clientContacts : (catalog?.contacts || []);
     if (!contacts.length || !currentClient) return null;
 
     const explicitId = (currentClient as any).zoho_contact_id || (currentClient as any).zohoContactId;
@@ -699,7 +765,7 @@ export const ClientArTab: React.FC = () => {
       if (clientName && (cName.includes(clientName) || compName.includes(clientName) || clientName.includes(cName))) return c;
     }
     return null;
-  }, [catalog?.contacts, currentClient]);
+  }, [clientContacts, catalog?.contacts, currentClient]);
 
   // Approved totals from In-App PostgreSQL Ledger
   const dbApprovedCount = transactions.filter((t) => t.approved && t.status !== 'INVOICED').length;
@@ -810,7 +876,9 @@ export const ClientArTab: React.FC = () => {
             )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Audit OCR extracted laundry/sales control slips, reconcile linen losses, and generate Zoho Books invoices.
+            {isCustodyTracking
+              ? 'Audit OCR extracted laundry/sales control slips, reconcile linen losses, and generate Zoho Books invoices.'
+              : 'Audit OCR extracted revenue & sales documents, review line items, and generate Zoho Books invoices.'}
           </p>
         </div>
 
@@ -851,6 +919,19 @@ export const ClientArTab: React.FC = () => {
           >
             <PlayCircle className={`w-3.5 h-3.5 ${isRunningOcr ? 'animate-spin' : ''}`} />
             <span>{isRunningOcr ? 'Extracting Slips...' : 'Run AR Extraction'}</span>
+          </button>
+
+          {/* Delete Ingested File */}
+          <button
+            onClick={() => {
+              setPurgeTargetFileName('');
+              setIsPurgeModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+            title="Delete mistakenly ingested files or clear erroneous document data"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Delete Ingested File</span>
           </button>
 
           {/* Refresh */}
@@ -1009,20 +1090,22 @@ export const ClientArTab: React.FC = () => {
                 {dailyCounts.approved}
               </span>
             </button>
-            <button
-              onClick={() => setDailyStatusFilter('DISCREPANCY')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                dailyStatusFilter === 'DISCREPANCY'
-                  ? 'bg-rose-950/80 text-rose-300 border border-rose-500/50 shadow'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
-              }`}
-            >
-              <AlertTriangle className="w-3 h-3 text-rose-400" />
-              <span>Loss Discrepancies</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-950 text-rose-400 border border-rose-500/30">
-                {dailyCounts.discrepancy}
-              </span>
-            </button>
+            {isCustodyTracking && (
+              <button
+                onClick={() => setDailyStatusFilter('DISCREPANCY')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyStatusFilter === 'DISCREPANCY'
+                    ? 'bg-rose-950/80 text-rose-300 border border-rose-500/50 shadow'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3 text-rose-400" />
+                <span>Loss Discrepancies</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-950 text-rose-400 border border-rose-500/30">
+                  {dailyCounts.discrepancy}
+                </span>
+              </button>
+            )}
             {dailyCounts.invoiced > 0 && (
               <button
                 onClick={() => setDailyStatusFilter('INVOICED')}
@@ -1043,13 +1126,15 @@ export const ClientArTab: React.FC = () => {
           {availableProperties.length > 0 && (
             <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs shrink-0">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-500 text-[11px]">Property:</span>
+              <span className="text-slate-500 text-[11px]">{isCustodyTracking ? 'Property:' : 'Customer / Site:'}</span>
               <select
                 value={dailyPropertyFilter}
                 onChange={(e) => setDailyPropertyFilter(e.target.value)}
                 className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
               >
-                <option value="ALL" className="bg-slate-900 text-white">All Properties ({arStagedTx.length})</option>
+                <option value="ALL" className="bg-slate-900 text-white">
+                  {isCustodyTracking ? 'All Properties' : 'All Customers / Sites'} ({arStagedTx.length})
+                </option>
                 {availableProperties.map((p) => (
                   <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>
                 ))}
@@ -1102,6 +1187,17 @@ export const ClientArTab: React.FC = () => {
                 >
                   Collapse All
                 </button>
+                <button
+                  onClick={() => {
+                    setPurgeTargetFileName('');
+                    setIsPurgeModalOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:text-white bg-rose-950/50 hover:bg-rose-900 border border-rose-600/50 rounded-lg transition cursor-pointer"
+                  title="Purge mistakenly uploaded document or file from PostgreSQL"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-400" />
+                  <span>Purge File</span>
+                </button>
               </div>
             )}
           </div>
@@ -1116,10 +1212,43 @@ export const ClientArTab: React.FC = () => {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span>
-            <strong>Native In-App PostgreSQL Ledger Active:</strong> Daily control slips, linen loss reconciliations, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.
+            <strong>Native In-App PostgreSQL Ledger Active:</strong>{' '}
+            {isCustodyTracking
+              ? 'Daily control slips, linen loss reconciliations, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'
+              : 'Daily revenue documents, quantities, rates, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'}
           </span>
         </div>
       </div>
+
+      {/* Summary View Notice & Quick-Switch */}
+      {activeLedgerView === 'summary' && (
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <Info className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>
+              Viewing aggregated monthly totals. To inspect, edit, or delete individual ingested slips and files, switch to <strong className="text-white">Daily Slips</strong> or use <strong className="text-rose-400">Delete Ingested File</strong>.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setActiveLedgerView('daily')}
+              className="px-2.5 py-1 text-xs font-bold bg-sky-950 text-sky-300 border border-sky-500/40 hover:bg-sky-900/60 rounded-lg transition cursor-pointer"
+            >
+              Open Daily Slips ({arStagedTx.length})
+            </button>
+            <button
+              onClick={() => {
+                setPurgeTargetFileName('');
+                setIsPurgeModalOpen(true);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-rose-950/60 text-rose-300 border border-rose-500/40 hover:bg-rose-900 rounded-lg transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Delete Ingested File</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Table Views */}
       <div className="glass-panel rounded-2xl overflow-hidden shadow-xl border border-slate-800">
@@ -1130,13 +1259,19 @@ export const ClientArTab: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
-                  {renderSummarySortHeader('Standard Item Name', 'item_name', 'left')}
-                  {renderSummarySortHeader('Total Picked Up', 'total_picked_up', 'center')}
-                  {renderSummarySortHeader('Total Delivered', 'total_delivered', 'center')}
-                  {renderSummarySortHeader('Linen Loss Discrepancy', 'linen_discrepancy', 'center')}
+                  {renderSummarySortHeader(isCustodyTracking ? 'Standard Item Name' : 'Item / Service Description', 'item_name', 'left')}
+                  {isCustodyTracking ? (
+                    <>
+                      {renderSummarySortHeader('Total Picked Up', 'total_picked_up', 'center')}
+                      {renderSummarySortHeader('Total Delivered', 'total_delivered', 'center')}
+                      {renderSummarySortHeader('Linen Loss Discrepancy', 'linen_discrepancy', 'center')}
+                    </>
+                  ) : (
+                    renderSummarySortHeader('Total Quantity', 'total_delivered', 'center')
+                  )}
                   {renderSummarySortHeader('Unit Rate', 'unit_price', 'right')}
                   {renderSummarySortHeader('Total Billed', 'total_billed', 'right')}
-                  {renderSummarySortHeader('Slips Count', 'slips_count', 'center')}
+                  {renderSummarySortHeader(isCustodyTracking ? 'Slips Count' : 'Documents Count', 'slips_count', 'center')}
                   <th className="py-3 px-4 text-center">Reviewed</th>
                   <th className="py-3 px-4 text-center">Approved</th>
                   {renderSummarySortHeader('Status', 'status', 'center')}
@@ -1150,22 +1285,28 @@ export const ClientArTab: React.FC = () => {
                       <tr
                         key={row.item_name}
                         className={`hover:bg-slate-850/50 transition-colors ${
-                          row.is_fully_approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
+                          row.is_fully_approved ? 'bg-emerald-950/15' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
                         }`}
                       >
                         <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{toTitleCase(row.item_name)}</td>
-                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_picked_up}</td>
-                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_delivered}</td>
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {lossQty > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-rose-300 font-mono font-bold bg-rose-950/80 border border-rose-500/50 px-2 py-0.5 rounded-full text-[11px] shadow-sm">
-                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                              <span>-{lossQty} missing</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-600 font-mono text-xs">—</span>
-                          )}
-                        </td>
+                        {isCustodyTracking ? (
+                          <>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_picked_up}</td>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_delivered}</td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                              {lossQty > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-rose-300 font-mono font-bold bg-rose-950/80 border border-rose-500/50 px-2 py-0.5 rounded-full text-[11px] shadow-sm">
+                                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                  <span>-{lossQty} missing</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 font-mono text-xs">—</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="py-3 px-4 text-center font-mono font-bold text-white whitespace-nowrap">{row.total_delivered}</td>
+                        )}
                         <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
                           {formatCurrency(row.total_billed)}
@@ -1282,27 +1423,36 @@ export const ClientArTab: React.FC = () => {
                         {/* Right: Aggregated Totals & 1-Click Approve Entire Slip Button */}
                         <div className="flex flex-wrap items-center gap-2.5 shrink-0 justify-between lg:justify-end">
                           <div className="flex items-center gap-1.5 text-xs font-mono">
-                            <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Picked Up">
-                              <span className="text-slate-500 text-[10px] mr-1">PICK</span>
-                              <span className="text-slate-200 font-semibold">{slip.totalPickQty}</span>
-                            </div>
-                            <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Delivered">
-                              <span className="text-slate-500 text-[10px] mr-1">DELIV</span>
-                              <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
-                            </div>
-                            {slip.totalLossQty > 0 ? (
-                              <div
-                                className="bg-rose-950/80 px-2 py-1 rounded border border-rose-500/50 text-rose-300 flex items-center gap-1 font-bold shadow-sm whitespace-nowrap"
-                                title="Linen Loss Discrepancy"
-                              >
-                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                                <span className="text-[10px] text-rose-400 uppercase">Loss</span>
-                                <span>-{slip.totalLossQty} missing</span>
-                              </div>
+                            {isCustodyTracking ? (
+                              <>
+                                <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Picked Up">
+                                  <span className="text-slate-500 text-[10px] mr-1">PICK</span>
+                                  <span className="text-slate-200 font-semibold">{slip.totalPickQty}</span>
+                                </div>
+                                <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Delivered">
+                                  <span className="text-slate-500 text-[10px] mr-1">DELIV</span>
+                                  <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
+                                </div>
+                                {slip.totalLossQty > 0 ? (
+                                  <div
+                                    className="bg-rose-950/80 px-2 py-1 rounded border border-rose-500/50 text-rose-300 flex items-center gap-1 font-bold shadow-sm whitespace-nowrap"
+                                    title="Linen Loss Discrepancy"
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                    <span className="text-[10px] text-rose-400 uppercase">Loss</span>
+                                    <span>-{slip.totalLossQty} missing</span>
+                                  </div>
+                                ) : (
+                                  <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 text-slate-500 whitespace-nowrap" title="No Loss">
+                                    <span className="text-[10px] mr-1">LOSS</span>
+                                    <span>—</span>
+                                  </div>
+                                )}
+                              </>
                             ) : (
-                              <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 text-slate-500 whitespace-nowrap" title="No Loss">
-                                <span className="text-[10px] mr-1">LOSS</span>
-                                <span>—</span>
+                              <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Quantity">
+                                <span className="text-slate-500 text-[10px] mr-1.5 uppercase font-sans">Total Qty:</span>
+                                <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
                               </div>
                             )}
                             <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-right whitespace-nowrap" title="Total Amount">
@@ -1345,6 +1495,26 @@ export const ClientArTab: React.FC = () => {
                               </>
                             )}
                           </button>
+
+                          {/* Purge / Delete Mistakenly Uploaded Slip */}
+                          <button
+                            onClick={() => handleDeleteSlip(slip)}
+                            disabled={deletingSlipKey === slip.slipKey}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-600/60 hover:border-rose-500 transition cursor-pointer shadow-sm disabled:opacity-40 shrink-0"
+                            title={`Delete all ${slip.items.length} unposted line items extracted from "${slip.sourceFileName || 'this slip'}"`}
+                          >
+                            {deletingSlipKey === slip.slipKey ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                <span>Deleting...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Delete Slip</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
 
@@ -1354,10 +1524,16 @@ export const ClientArTab: React.FC = () => {
                           <table className="w-full text-left text-xs">
                             <thead className="text-slate-500 uppercase tracking-wider font-semibold text-[10px] border-b border-slate-800/60">
                               <tr>
-                                <th className="py-2 px-3 text-left">Item Description</th>
-                                <th className="py-2 px-3 text-center">Picked Up</th>
-                                <th className="py-2 px-3 text-center">Delivered</th>
-                                <th className="py-2 px-3 text-center">Linen Loss</th>
+                                <th className="py-2 px-3 text-left">{isCustodyTracking ? 'Item Description' : 'Item / Service Description'}</th>
+                                {isCustodyTracking ? (
+                                  <>
+                                    <th className="py-2 px-3 text-center">Picked Up</th>
+                                    <th className="py-2 px-3 text-center">Delivered</th>
+                                    <th className="py-2 px-3 text-center">Linen Loss</th>
+                                  </>
+                                ) : (
+                                  <th className="py-2 px-3 text-center">Quantity</th>
+                                )}
                                 <th className="py-2 px-3 text-right">Unit Rate</th>
                                 <th className="py-2 px-3 text-right">Total Amount</th>
                                 <th className="py-2 px-3 text-center">Reviewed</th>
@@ -1385,34 +1561,51 @@ export const ClientArTab: React.FC = () => {
                                           disabled={isSavingTx}
                                         />
                                       </td>
-                                      <td className="py-2 px-3 text-center">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={editPickQty}
-                                          onChange={(e) => setEditPickQty(e.target.value)}
-                                          className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3 text-center">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={editDelivQty}
-                                          onChange={(e) => setEditDelivQty(e.target.value)}
-                                          className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3 text-center">
-                                        {liveLoss > 0 ? (
-                                          <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                            <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                                            <span>-{liveLoss} missing</span>
-                                          </span>
-                                        ) : (
-                                          <span className="text-slate-600 font-mono text-xs">—</span>
-                                        )}
-                                      </td>
+                                      {isCustodyTracking ? (
+                                        <>
+                                          <td className="py-2 px-3 text-center">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={editPickQty}
+                                              onChange={(e) => setEditPickQty(e.target.value)}
+                                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                          </td>
+                                          <td className="py-2 px-3 text-center">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={editDelivQty}
+                                              onChange={(e) => setEditDelivQty(e.target.value)}
+                                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                            />
+                                          </td>
+                                          <td className="py-2 px-3 text-center">
+                                            {liveLoss > 0 ? (
+                                              <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                                <span>-{liveLoss} missing</span>
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-600 font-mono text-xs">—</span>
+                                            )}
+                                          </td>
+                                        </>
+                                      ) : (
+                                        <td className="py-2 px-3 text-center">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={editDelivQty}
+                                            onChange={(e) => {
+                                              setEditDelivQty(e.target.value);
+                                              setEditPickQty(e.target.value);
+                                            }}
+                                            className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                          />
+                                        </td>
+                                      )}
                                       <td className="py-2 px-3 text-right">
                                         <div className="inline-flex items-center justify-end gap-1">
                                           <span className="text-slate-500 text-[10px]">GHS</span>
@@ -1464,6 +1657,18 @@ export const ClientArTab: React.FC = () => {
                                           >
                                             <X className="w-3.5 h-3.5" />
                                           </button>
+                                          <button
+                                            onClick={() => handleDeleteRow(tx.id)}
+                                            disabled={deletingTxId === tx.id}
+                                            className="inline-flex items-center p-1 rounded-md text-rose-400 hover:text-white hover:bg-rose-900/60 border border-rose-800/40 transition cursor-pointer"
+                                            title="Delete this mistakenly ingested row"
+                                          >
+                                            {deletingTxId === tx.id ? (
+                                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                            ) : (
+                                              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                            )}
+                                          </button>
                                         </div>
                                       </td>
                                     </tr>
@@ -1499,18 +1704,24 @@ export const ClientArTab: React.FC = () => {
                                         </button>
                                       </div>
                                     </td>
-                                    <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{pickQty}</td>
-                                    <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{delivQty}</td>
-                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                      {lossQty > 0 ? (
-                                        <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                          <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                                          <span>-{lossQty} missing</span>
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-600 font-mono text-xs">—</span>
-                                      )}
-                                    </td>
+                                    {isCustodyTracking ? (
+                                      <>
+                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{pickQty}</td>
+                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                          {lossQty > 0 ? (
+                                            <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                              <span>-{lossQty} missing</span>
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-600 font-mono text-xs">—</span>
+                                          )}
+                                        </td>
+                                      </>
+                                    ) : (
+                                      <td className="py-2.5 px-3 text-center font-mono font-bold text-white whitespace-nowrap">{delivQty}</td>
+                                    )}
                                     <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-slate-300">
                                       {formatCurrency(rate)}
                                     </td>
@@ -1547,14 +1758,31 @@ export const ClientArTab: React.FC = () => {
                                       </span>
                                     </td>
                                     <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                      <button
-                                        onClick={() => handleStartEdit(tx)}
-                                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
-                                        title="Edit item name, quantities, or rate"
-                                      >
-                                        <Edit3 className="w-3 h-3 text-sky-400" />
-                                        <span>Edit</span>
-                                      </button>
+                                      <div className="inline-flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleStartEdit(tx)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                                          title="Edit item name, quantities, or rate"
+                                        >
+                                          <Edit3 className="w-3 h-3 text-sky-400" />
+                                          <span>Edit</span>
+                                        </button>
+                                        {tx.status !== 'INVOICED' && (
+                                          <button
+                                            onClick={() => handleDeleteRow(tx.id)}
+                                            disabled={deletingTxId === tx.id}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                                            title="Delete this line item from database"
+                                          >
+                                            {deletingTxId === tx.id ? (
+                                              <RefreshCw className="w-3 h-3 animate-spin text-rose-400" />
+                                            ) : (
+                                              <Trash2 className="w-3 h-3 text-rose-400" />
+                                            )}
+                                            <span>Delete</span>
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                   </tr>
                                 );
@@ -1584,11 +1812,17 @@ export const ClientArTab: React.FC = () => {
               <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   {renderDailySortHeader('Date', 'transaction_date', 'left')}
-                  {renderDailySortHeader('Slip Filename', 'source_file_name', 'left')}
-                  {renderDailySortHeader('Item Description', 'item_or_description', 'left')}
-                  {renderDailySortHeader('Picked Up', 'pickQty', 'center')}
-                  {renderDailySortHeader('Delivered', 'delivQty', 'center')}
-                  {renderDailySortHeader('Linen Loss', 'discrepancy_amount', 'center')}
+                  {renderDailySortHeader(isCustodyTracking ? 'Slip Filename' : 'Document Reference', 'source_file_name', 'left')}
+                  {renderDailySortHeader(isCustodyTracking ? 'Item Description' : 'Item / Service Description', 'item_or_description', 'left')}
+                  {isCustodyTracking ? (
+                    <>
+                      {renderDailySortHeader('Picked Up', 'pickQty', 'center')}
+                      {renderDailySortHeader('Delivered', 'delivQty', 'center')}
+                      {renderDailySortHeader('Linen Loss', 'discrepancy_amount', 'center')}
+                    </>
+                  ) : (
+                    renderDailySortHeader('Quantity', 'delivQty', 'center')
+                  )}
                   {renderDailySortHeader('Unit Rate', 'rate_or_price', 'right')}
                   {renderDailySortHeader('Total Amount', 'total_amount', 'right')}
                   <th className="py-3 px-4 text-center">Reviewed</th>
@@ -1639,34 +1873,51 @@ export const ClientArTab: React.FC = () => {
                               disabled={isSavingTx}
                             />
                           </td>
-                          <td className="py-2.5 px-4 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              value={editPickQty}
-                              onChange={(e) => setEditPickQty(e.target.value)}
-                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
-                            />
-                          </td>
-                          <td className="py-2.5 px-4 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              value={editDelivQty}
-                              onChange={(e) => setEditDelivQty(e.target.value)}
-                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
-                            />
-                          </td>
-                          <td className="py-2.5 px-4 text-center">
-                            {liveLoss > 0 ? (
-                              <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                                <span>-{liveLoss} missing</span>
-                              </span>
-                            ) : (
-                              <span className="text-slate-600 font-mono text-xs">—</span>
-                            )}
-                          </td>
+                          {isCustodyTracking ? (
+                            <>
+                              <td className="py-2.5 px-4 text-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editPickQty}
+                                  onChange={(e) => setEditPickQty(e.target.value)}
+                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                />
+                              </td>
+                              <td className="py-2.5 px-4 text-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editDelivQty}
+                                  onChange={(e) => setEditDelivQty(e.target.value)}
+                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                />
+                              </td>
+                              <td className="py-2.5 px-4 text-center">
+                                {liveLoss > 0 ? (
+                                  <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                    <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                    <span>-{liveLoss} missing</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600 font-mono text-xs">—</span>
+                                )}
+                              </td>
+                            </>
+                          ) : (
+                            <td className="py-2.5 px-4 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                value={editDelivQty}
+                                onChange={(e) => {
+                                  setEditDelivQty(e.target.value);
+                                  setEditPickQty(e.target.value);
+                                }}
+                                className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                              />
+                            </td>
+                          )}
                           <td className="py-2.5 px-4 text-right">
                             <div className="inline-flex items-center justify-end gap-1">
                               <span className="text-slate-500 text-[10px]">GHS</span>
@@ -1718,6 +1969,18 @@ export const ClientArTab: React.FC = () => {
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
+                              <button
+                                onClick={() => handleDeleteRow(tx.id)}
+                                disabled={deletingTxId === tx.id}
+                                className="inline-flex items-center p-1 rounded-md text-rose-400 hover:text-white hover:bg-rose-900/60 border border-rose-800/40 transition cursor-pointer"
+                                title="Delete this mistakenly ingested row"
+                              >
+                                {deletingTxId === tx.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                )}
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1734,7 +1997,7 @@ export const ClientArTab: React.FC = () => {
                       <tr
                         key={tx.id}
                         className={`hover:bg-slate-850/50 transition-colors ${
-                          tx.approved ? 'bg-emerald-950/15' : lossQty > 0 ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
+                          tx.approved ? 'bg-emerald-950/15' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
                         }`}
                       >
                         <td className="py-3 px-4 font-mono text-slate-300 font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
@@ -1768,18 +2031,24 @@ export const ClientArTab: React.FC = () => {
                             </button>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{pickQty}</td>
-                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{delivQty}</td>
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {lossQty > 0 ? (
-                            <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                              <span>-{lossQty} missing</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-600 font-mono text-xs">—</span>
-                          )}
-                        </td>
+                        {isCustodyTracking ? (
+                          <>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{pickQty}</td>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                              {lossQty > 0 ? (
+                                <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
+                                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                  <span>-{lossQty} missing</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 font-mono text-xs">—</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="py-3 px-4 text-center font-mono font-bold text-white whitespace-nowrap">{delivQty}</td>
+                        )}
                         <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(rate)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
                           {formatCurrency(total)}
@@ -1814,21 +2083,38 @@ export const ClientArTab: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => handleStartEdit(tx)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
-                            title="Edit item name, quantities, or rate"
-                          >
-                            <Edit3 className="w-3 h-3 text-sky-400" />
-                            <span>Edit</span>
-                          </button>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleStartEdit(tx)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                              title="Edit item name, quantities, or rate"
+                            >
+                              <Edit3 className="w-3 h-3 text-sky-400" />
+                              <span>Edit</span>
+                            </button>
+                            {tx.status !== 'INVOICED' && (
+                              <button
+                                onClick={() => handleDeleteRow(tx.id)}
+                                disabled={deletingTxId === tx.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                                title="Delete this line item from database"
+                              >
+                                {deletingTxId === tx.id ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin text-rose-400" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3 text-rose-400" />
+                                )}
+                                <span>Delete</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
+                    <td colSpan={isCustodyTracking ? 12 : 10} className="py-12 text-center text-slate-500 text-xs">
                       {isLoadingTx
                         ? 'Loading daily slips from PostgreSQL...'
                         : dailyCounts.all === 0
@@ -1970,6 +2256,21 @@ export const ClientArTab: React.FC = () => {
         )}
       </div>
 
+      {/* Purge Ingested File Modal */}
+      <PurgeIngestedFileModal
+        isOpen={isPurgeModalOpen}
+        onClose={() => setIsPurgeModalOpen(false)}
+        clientId={currentClient?.id || ''}
+        clientName={currentClient?.name || 'Client'}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        transactions={arStagedTx}
+        initialFileName={purgeTargetFileName}
+        onSuccess={() => {
+          loadTransactions();
+          loadSummaryData();
+        }}
+      />
     </div>
   );
 };

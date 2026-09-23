@@ -47,15 +47,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for internal dashboards & client portals (dynamic origin reflection with credentials)
+# Configure strict CORS for internal dashboards & verified client portals
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Enforces essential defensive HTTP security headers on all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    if settings.ENVIRONMENT.lower() == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.middleware("http")
@@ -81,7 +94,7 @@ async def ensure_json_content_type(request: Request, call_next):
     return await call_next(request)
 
 
-# Mount durable Inngest functions
+# Mount durable Inngest functions (disable unauthed sync in production)
 inngest.fast_api.serve(
     app,
     inngest_client,
@@ -92,7 +105,7 @@ inngest.fast_api.serve(
         inngest_ap_pipeline_fn,
         inngest_bank_statement_fn,
     ],
-    enable_unauthed_sync=True,
+    enable_unauthed_sync=(settings.ENVIRONMENT.lower() != "production"),
 )
 
 

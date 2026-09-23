@@ -132,6 +132,7 @@ async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:
     client_name = "General Client"
     accounting_software = "zoho_books"
     human_instructions = None
+    field_mappings_dict = {}
 
     # Handle Content Types (Multipart Form-Data or JSON)
     content_type = request.headers.get("content-type", "")
@@ -143,6 +144,13 @@ async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:
         client_name = form.get("client_name") or client_name
         accounting_software = form.get("accounting_software") or accounting_software
         human_instructions = form.get("human_instructions")
+        raw_fm = form.get("field_mappings")
+        if raw_fm:
+            try:
+                import json
+                field_mappings_dict = json.loads(raw_fm) if isinstance(raw_fm, str) else dict(raw_fm)
+            except Exception:
+                field_mappings_dict = {}
 
         file_obj = form.get("file")
         if file_obj and hasattr(file_obj, "read"):
@@ -158,8 +166,19 @@ async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:
             client_name = body.get("client_name") or client_name
             accounting_software = body.get("accounting_software") or accounting_software
             human_instructions = body.get("human_instructions")
+            field_mappings_dict = body.get("field_mappings") or {}
         except Exception:
             pass
+
+    # Append field mappings directives to human instructions
+    if field_mappings_dict and isinstance(field_mappings_dict, dict):
+        mapping_directives = [
+            f"- Map extracted field '{src_f}' to accounting primitive '{prim}'"
+            for prim, src_f in field_mappings_dict.items() if src_f
+        ]
+        if mapping_directives:
+            directives_block = "\n[FIELD MAPPING DIRECTIVES]\n" + "\n".join(mapping_directives)
+            human_instructions = (human_instructions or "") + directives_block
 
     # Fetch catalog for client if available
     catalog = []

@@ -22,18 +22,60 @@ async def get_configuration() -> Dict[str, Any]:
     }
 
 
+ALLOWED_CONFIG_KEYS = {
+    "INNGEST_DEV_SERVER_URL",
+    "GEMINI_API_KEY",
+    "GEMINI_MODEL",
+    "ZOHO_CLIENT_ID",
+    "ZOHO_CLIENT_SECRET",
+    "ZOHO_REFRESH_TOKEN",
+    "ZOHO_ORG_ID",
+    "ZOHO_ACCOUNTS_URL",
+    "ZOHO_BOOKS_API_URL",
+    "CONTROL_SHEETS_FOLDER_ID",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+    "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64",
+    "MAILJET_API_KEY",
+    "MAILJET_SECRET_KEY",
+    "MAILJET_FROM_EMAIL",
+    "MAILJET_FROM_NAME",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SMTP_FROM",
+    "NOTIFICATION_EMAIL",
+    "LINKEDIN_ACCESS_TOKEN",
+    "LINKEDIN_AUTHOR_URN",
+    "LINKEDIN_ORGANIZATION_ID",
+    "LINKEDIN_PAGE_NAME",
+    "LINKEDIN_POSTING_MODE",
+    "LINKEDIN_CLIENT_ID",
+    "LINKEDIN_CLIENT_SECRET",
+    "LINKEDIN_REDIRECT_URI",
+    "TWITTER_API_KEY",
+    "TWITTER_API_SECRET",
+    "TWITTER_ACCESS_TOKEN",
+    "TWITTER_ACCESS_SECRET",
+    "MOCK_MODE",
+    "ALLOWED_ORIGINS",
+}
+
+
 @router.post("/config", summary="Update System Configuration")
 async def update_configuration(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Updates system configuration dynamically in memory and persists to .env file.
+    Only whitelisted keys are accepted.
     """
-    logger.info("Received configuration update from frontend UI.")
+    logger.info("Received configuration update from authenticated admin.")
     persist = payload.pop("persist_to_file", True)
-    
-    settings.update_values(payload)
+
+    sanitized_payload = {k: v for k, v in payload.items() if k in ALLOWED_CONFIG_KEYS}
+    settings.update_values(sanitized_payload)
     if persist:
         settings.save_to_env_file()
-        logger.info("Successfully persisted updated configuration to .env file.")
+        logger.info("Successfully persisted sanitized configuration to .env file.")
 
     return {
         "status": "UPDATED",

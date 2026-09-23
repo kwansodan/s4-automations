@@ -101,6 +101,16 @@ class Settings(BaseSettings):
     # Mock / Dry-Run Mode
     MOCK_MODE: bool = Field(default=False, description="Enable mock mode for testing without real credentials")
 
+    # CORS Allowed Origins
+    ALLOWED_ORIGINS: str = Field(
+        default="https://s4automations.service4gh.com,https://autapi.service4gh.com,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8000",
+        description="Comma-separated list of allowed CORS origins",
+    )
+
+    def get_cors_origins(self) -> list[str]:
+        """Returns parsed list of allowed CORS origins."""
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
     def get_masked_dict(self) -> dict:
         """Returns configuration dictionary with secrets masked for safe frontend display."""
         def mask(val: str) -> str:
@@ -221,3 +231,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.ENVIRONMENT.lower() == "production":
+    if settings.AUTH_SECRET_KEY == "s4-bookkeeping-otp-secret-key-2026":
+        import warnings
+        warnings.warn(
+            "CRITICAL SECURITY ALERT: AUTH_SECRET_KEY is using the default development key in PRODUCTION! "
+            "Configure a strong random AUTH_SECRET_KEY in your hosting environment variables immediately.",
+            RuntimeWarning,
+        )

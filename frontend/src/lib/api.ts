@@ -174,6 +174,17 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
     headersRecord['Content-Type'] = 'application/json';
   }
 
+  // Automatically attach Bearer token from localStorage if not explicitly supplied
+  const hasAuth = Object.keys(headersRecord).some(
+    (k) => k.toLowerCase() === 'authorization'
+  );
+  if (!hasAuth && typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('S4_AUTH_TOKEN');
+    if (token) {
+      headersRecord['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
   const effectiveOptions: RequestInit = {
     ...options,
     headers: headersRecord,
@@ -794,9 +805,12 @@ export interface CatalogItem {
   status?: string;
 }
 
-export async function fetchItemCatalog(orgId?: string): Promise<CatalogItem[]> {
+export async function fetchItemCatalog(clientId?: string, orgId?: string): Promise<CatalogItem[]> {
   try {
-    const qStr = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : '';
+    const params = new URLSearchParams();
+    if (clientId) params.append('client_id', clientId);
+    if (orgId) params.append('organization_id', orgId);
+    const qStr = params.toString() ? `?${params.toString()}` : '';
     const res = await resilientFetch(`/api/v1/catalog${qStr}`, {
       headers: getAuthHeaders(),
     });
@@ -812,6 +826,28 @@ export async function fetchItemCatalog(orgId?: string): Promise<CatalogItem[]> {
   return [];
 }
 
+export async function fetchClientCatalog(clientId?: string, orgId?: string): Promise<{ items: CatalogItem[]; contacts: any[] }> {
+  try {
+    const params = new URLSearchParams();
+    if (clientId) params.append('client_id', clientId);
+    if (orgId) params.append('organization_id', orgId);
+    const qStr = params.toString() ? `?${params.toString()}` : '';
+    const res = await resilientFetch(`/api/v1/catalog${qStr}`, {
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        items: Array.isArray(data?.items) ? data.items : [],
+        contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to fetch client catalog:', err);
+  }
+  return { items: [], contacts: [] };
+}
+
 export async function batchApproveTransactions(clientId: string, transactionIds: number[], notes?: string): Promise<any> {
   const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-approve`, {
     method: 'POST',
@@ -819,6 +855,26 @@ export async function batchApproveTransactions(clientId: string, transactionIds:
     body: JSON.stringify({ transaction_ids: transactionIds, notes }),
   });
   return handleResponse<any>(res, `Batch approve transactions for ${clientId}`);
+}
+
+export async function deleteStagedTransaction(clientId: string, txId: number): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/${txId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<any>(res, `Delete staged transaction ${txId}`);
+}
+
+export async function batchDeleteStagedTransactions(
+  clientId: string,
+  payload: { transaction_ids?: number[]; file_name?: string }
+): Promise<any> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-delete`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<any>(res, `Batch delete transactions for ${clientId}`);
 }
 
 export async function fetchAuditLogs(limit = 50, clientId?: string): Promise<any[]> {

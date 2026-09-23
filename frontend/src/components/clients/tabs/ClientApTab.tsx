@@ -5,6 +5,7 @@ import {
   fetchClientTransactions,
   toggleClientTransaction,
   batchApproveTransactions,
+  deleteStagedTransaction,
   triggerApPipeline,
 } from '../../../lib/api';
 import { formatCurrency } from '../../../lib/utils';
@@ -19,7 +20,10 @@ import {
   CheckCheck,
   Layers,
   ExternalLink,
+  Trash2,
+  Info,
 } from 'lucide-react';
+import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 
 export const ClientApTab: React.FC = () => {
   const { currentClient } = useClient();
@@ -33,6 +37,9 @@ export const ClientApTab: React.FC = () => {
   const [search, setSearch] = useState('');
   const [runResult, setRunResult] = useState<any | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'summary' | 'bills'>('summary');
+  const [deletingTxId, setDeletingTxId] = useState<number | null>(null);
+  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState<boolean>(false);
+  const [purgeTargetFileName, setPurgeTargetFileName] = useState<string>('');
 
   const loadTransactions = async () => {
     if (!currentClient?.id) return;
@@ -111,6 +118,23 @@ export const ClientApTab: React.FC = () => {
       addLog('error', `Failed approving transactions: ${err.message}`);
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleDeleteApTx = async (txId: number) => {
+    if (!currentClient?.id) return;
+    if (!window.confirm('Are you sure you want to delete this staged vendor bill from the ledger? This will purge the mistakenly ingested transaction.')) {
+      return;
+    }
+    setDeletingTxId(txId);
+    try {
+      await deleteStagedTransaction(currentClient.id, txId);
+      setTransactions((prev) => prev.filter((t) => t.id !== txId));
+      addLog('success', `Deleted staged vendor bill #${txId}`);
+    } catch (err: any) {
+      addLog('error', `Failed to delete bill: ${err.message}`);
+    } finally {
+      setDeletingTxId(null);
     }
   };
 
@@ -240,6 +264,18 @@ export const ClientApTab: React.FC = () => {
             )}
             <span>Run AP Bill Pipeline</span>
           </button>
+
+          <button
+            onClick={() => {
+              setPurgeTargetFileName('');
+              setIsPurgeModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
+            title="Delete mistakenly ingested files or clear erroneous document data"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Delete Ingested File</span>
+          </button>
         </div>
       </div>
 
@@ -331,6 +367,36 @@ export const ClientApTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Summary View Notice & Quick-Switch */}
+      {activeSubTab === 'summary' && (
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>
+              Viewing aggregated vendor totals. To review, approve, or delete individual supplier bills and files, switch to <strong className="text-white">Vendor Bills</strong> or use <strong className="text-rose-400">Delete Ingested File</strong>.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setActiveSubTab('bills')}
+              className="px-2.5 py-1 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/60 rounded-lg transition cursor-pointer"
+            >
+              Open Vendor Bills ({transactions.length})
+            </button>
+            <button
+              onClick={() => {
+                setPurgeTargetFileName('');
+                setIsPurgeModalOpen(true);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-rose-950/60 text-rose-300 border border-rose-500/40 hover:bg-rose-900 rounded-lg transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Delete Ingested File</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className="glass-panel rounded-2xl overflow-hidden shadow-xl border border-slate-800">
         <div className="overflow-x-auto custom-scrollbar">
@@ -420,6 +486,7 @@ export const ClientApTab: React.FC = () => {
                     <th className="py-3 px-4 text-center">Reviewed</th>
                     <th className="py-3 px-4 text-center">Approved</th>
                     <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300">
@@ -481,6 +548,23 @@ export const ClientApTab: React.FC = () => {
                           {tx.status === 'INVOICED' ? 'Draft Bill Posted' : tx.approved ? 'APPROVED' : 'Pending Review'}
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-center">
+                        {tx.status !== 'INVOICED' && tx.status !== 'BILLED' && (
+                          <button
+                            onClick={() => handleDeleteApTx(tx.id)}
+                            disabled={deletingTxId === tx.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                            title="Delete this staged vendor bill"
+                          >
+                            {deletingTxId === tx.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                            )}
+                            <span>Delete</span>
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -490,6 +574,20 @@ export const ClientApTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Purge Ingested File Modal */}
+      <PurgeIngestedFileModal
+        isOpen={isPurgeModalOpen}
+        onClose={() => setIsPurgeModalOpen(false)}
+        clientId={currentClient?.id || ''}
+        clientName={currentClient?.name || 'Client'}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        transactions={transactions}
+        initialFileName={purgeTargetFileName}
+        onSuccess={() => {
+          loadTransactions();
+        }}
+      />
     </div>
   );
 };

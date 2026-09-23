@@ -154,24 +154,42 @@ def _render_success_html(
               <p class="footer">Closing window and returning to S4 Automations...</p>
             </div>
             <script>
-              try {{
-                if (window.opener) {{
-                  window.opener.postMessage({{
-                    type: '{event_type}',
-                    clientId: '{client_slug}',
-                    orgId: '{org_id}',
-                    orgName: '{display_name}',
-                    refreshToken: '{refresh_token or ""}'
-                  }}, '*');
-                  setTimeout(() => window.close(), 1600);
-                }} else {{
-                  setTimeout(() => {{
-                    window.location.href = '/?connected=true&client_id={client_slug}&platform={platform_name}';
-                  }}, 1800);
-                }}
-              }} catch (e) {{
+              try {
+                var allowedOrigins = """ + json.dumps(settings.get_cors_origins()) + """;
+                var targetOrigin = null;
+                try {
+                  if (document.referrer) {
+                    var ref = new URL(document.referrer).origin;
+                    if (allowedOrigins.indexOf(ref) !== -1) {
+                      targetOrigin = ref;
+                    }
+                  }
+                } catch (err) {}
+
+                if (window.opener) {
+                  var payload = {
+                    type: '""" + event_type + """',
+                    clientId: '""" + client_slug + """',
+                    orgId: '""" + org_id + """',
+                    orgName: '""" + display_name + """',
+                    refreshToken: '""" + (refresh_token or "") + """'
+                  };
+                  if (targetOrigin) {
+                    window.opener.postMessage(payload, targetOrigin);
+                  } else {
+                    for (var i = 0; i < allowedOrigins.length; i++) {
+                      window.opener.postMessage(payload, allowedOrigins[i]);
+                    }
+                  }
+                  setTimeout(function() { window.close(); }, 1600);
+                } else {
+                  setTimeout(function() {
+                    window.location.href = '/?connected=true&client_id=""" + client_slug + """&platform=""" + platform_name + """';
+                  }, 1800);
+                }
+              } catch (e) {
                 console.error(e);
-              }}
+              }
             </script>
           </body>
         </html>
@@ -362,8 +380,28 @@ def _render_org_selection_html(
               async function selectOrg(orgId, orgName) {{
                 const btns = document.querySelectorAll('.btn-select');
                 btns.forEach(b => {{ b.disabled = true; b.innerText = 'Linking...'; }});
+
+                const postPayload = {{
+                  type: 'ZOHO_OAUTH_SUCCESS',
+                  clientId: '{client_slug}',
+                  orgId: orgId,
+                  orgName: orgName,
+                  refreshToken: '{refresh_token}',
+                  availableOrgs: availableOrgs
+                }};
+
+                // Immediately notify opener window so setup wizard receives entity selection
+                if (window.opener) {{
+                  try {{
+                    window.opener.postMessage(postPayload, '*');
+                  }} catch (pErr) {{
+                    console.warn('postMessage notice:', pErr);
+                  }}
+                }}
+
+                // Persist selection to backend
                 try {{
-                  const res = await fetch('/api/v1/oauth/zoho/confirm-org', {{
+                  await fetch('/api/v1/oauth/zoho/confirm-org', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
@@ -374,25 +412,15 @@ def _render_org_selection_html(
                       available_orgs: availableOrgs
                     }})
                   }});
-                  if (!res.ok) throw new Error('Status ' + res.status);
-                  if (window.opener) {{
-                    window.opener.postMessage({{
-                      type: 'ZOHO_OAUTH_SUCCESS',
-                      clientId: '{client_slug}',
-                      orgId: orgId,
-                      orgName: orgName,
-                      refreshToken: '{refresh_token}',
-                      availableOrgs: availableOrgs
-                    }}, '*');
-                  }}
-                  document.getElementById('picker-view').style.display = 'none';
-                  document.getElementById('success-view').style.display = 'block';
-                  document.getElementById('confirmed-label').innerText = orgName + ' (ID: ' + orgId + ')';
-                  setTimeout(() => window.close(), 1600);
-                }} catch (e) {{
-                  alert('Failed to connect entity: ' + e.message);
-                  btns.forEach(b => {{ b.disabled = false; b.innerText = 'Select Entity →'; }});
+                }} catch (syncErr) {{
+                  console.warn('Backend confirmation sync notice:', syncErr);
                 }}
+
+                // Transition to confirmed success view and close popup
+                document.getElementById('picker-view').style.display = 'none';
+                document.getElementById('success-view').style.display = 'block';
+                document.getElementById('confirmed-label').innerText = orgName + ' (ID: ' + orgId + ')';
+                setTimeout(() => window.close(), 1600);
               }}
             </script>
           </body>
@@ -560,8 +588,28 @@ def _render_xero_tenant_selection_html(
               async function selectTenant(tenantId, tenantName) {{
                 const btns = document.querySelectorAll('.btn-select');
                 btns.forEach(b => {{ b.disabled = true; b.innerText = 'Linking...'; }});
+
+                const postPayload = {{
+                  type: 'XERO_OAUTH_SUCCESS',
+                  clientId: '{client_slug}',
+                  orgId: tenantId,
+                  orgName: tenantName,
+                  refreshToken: '{refresh_token}',
+                  availableOrgs: availableTenants
+                }};
+
+                // Immediately notify opener window so setup wizard receives entity selection
+                if (window.opener) {{
+                  try {{
+                    window.opener.postMessage(postPayload, '*');
+                  }} catch (pErr) {{
+                    console.warn('postMessage notice:', pErr);
+                  }}
+                }}
+
+                // Persist selection to backend
                 try {{
-                  const res = await fetch('/api/v1/oauth/xero/confirm-tenant', {{
+                  await fetch('/api/v1/oauth/xero/confirm-tenant', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
@@ -572,25 +620,15 @@ def _render_xero_tenant_selection_html(
                       available_tenants: availableTenants
                     }})
                   }});
-                  if (!res.ok) throw new Error('Status ' + res.status);
-                  if (window.opener) {{
-                    window.opener.postMessage({{
-                      type: 'XERO_OAUTH_SUCCESS',
-                      clientId: '{client_slug}',
-                      orgId: tenantId,
-                      orgName: tenantName,
-                      refreshToken: '{refresh_token}',
-                      availableOrgs: availableTenants
-                    }}, '*');
-                  }}
-                  document.getElementById('picker-view').style.display = 'none';
-                  document.getElementById('success-view').style.display = 'block';
-                  document.getElementById('confirmed-label').innerText = tenantName + ' (ID: ' + tenantId + ')';
-                  setTimeout(() => window.close(), 1600);
-                }} catch (e) {{
-                  alert('Failed to connect Xero organisation: ' + e.message);
-                  btns.forEach(b => {{ b.disabled = false; b.innerText = 'Select Organisation →'; }});
+                }} catch (syncErr) {{
+                  console.warn('Backend confirmation sync notice:', syncErr);
                 }}
+
+                // Transition to confirmed success view and close popup
+                document.getElementById('picker-view').style.display = 'none';
+                document.getElementById('success-view').style.display = 'block';
+                document.getElementById('confirmed-label').innerText = tenantName + ' (ID: ' + tenantId + ')';
+                setTimeout(() => window.close(), 1600);
               }}
             </script>
           </body>
@@ -806,7 +844,17 @@ async def confirm_zoho_org(payload: ZohoConfirmOrgRequest) -> Dict[str, Any]:
         ).first()
 
         if not client_obj:
-            raise HTTPException(status_code=404, detail=f"Client organization '{payload.client_id}' not found.")
+            logger.info(f"Client '{payload.client_id}' not found during OAuth confirm-org. Auto-provisioning onboarding draft client.")
+            client_obj = ClientOrganization(
+                id=payload.client_id,
+                name=payload.client_id.replace("_", " ").title(),
+                industry="General",
+                status="dev",
+                status_text="Onboarding Draft",
+                accounting_software="zoho_books",
+                zoho_org_id=payload.org_id,
+            )
+            session.add(client_obj)
 
         client_obj.zoho_org_id = payload.org_id
         cfg = dict(client_obj.custom_config or {})
@@ -1394,7 +1442,16 @@ async def confirm_xero_tenant(payload: XeroConfirmTenantRequest) -> Dict[str, An
         ).first()
 
         if not client_obj:
-            raise HTTPException(status_code=404, detail=f"Client organization '{payload.client_id}' not found.")
+            logger.info(f"Client '{payload.client_id}' not found during Xero confirm-tenant. Auto-provisioning onboarding draft client.")
+            client_obj = ClientOrganization(
+                id=payload.client_id,
+                name=payload.client_id.replace("_", " ").title(),
+                industry="General",
+                status="dev",
+                status_text="Onboarding Draft",
+                accounting_software="xero",
+            )
+            session.add(client_obj)
 
         cfg = dict(client_obj.custom_config or {})
         cfg["xero_tenant_id"] = payload.tenant_id

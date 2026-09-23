@@ -261,6 +261,20 @@ export const ClientPipelinesTab: React.FC = () => {
                         <span className="text-emerald-400 font-mono text-[11px]">{pipe.default_account_code}</span>
                       </p>
                     )}
+                    {(pipe.auto_create_missing_contacts || pipe.source_config?.auto_create_missing_contacts || pipe.auto_create_missing_items || pipe.source_config?.auto_create_missing_items) && (
+                      <div className="flex flex-wrap gap-1 pt-1.5">
+                        {(pipe.auto_create_missing_contacts || pipe.source_config?.auto_create_missing_contacts) && (
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-950/80 text-sky-300 border border-sky-800/60">
+                            Auto Contacts
+                          </span>
+                        )}
+                        {(pipe.auto_create_missing_items || pipe.source_config?.auto_create_missing_items) && (
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">
+                            Auto Items
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Last Run Summary Preview Card */}
@@ -372,6 +386,7 @@ export const ClientPipelinesTab: React.FC = () => {
         isOpen={!!activeRunSummary}
         onClose={() => setActiveRunSummary(null)}
         runSummary={activeRunSummary}
+        clientId={currentClient.id}
         onTriggerAgain={
           activeRunSummary?.pipeline_id
             ? (forceReprocess?: boolean) =>

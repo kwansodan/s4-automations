@@ -68,10 +68,11 @@ class SocialBroadcasterService:
 
         # 1. Try local git subprocess
         try:
-            cmd = ["git", "log", f"-n {max_commits}", "--pretty=format:%H|%an|%ad|%s", "--date=short"]
+            safe_limit = int(max_commits)
+            cmd = ["git", "log", "-n", str(safe_limit), "--pretty=format:%H|%an|%ad|%s", "--date=short"]
             res = subprocess.run(
-                " ".join(cmd),
-                shell=True,
+                cmd,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=5,

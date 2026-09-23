@@ -209,6 +209,73 @@ const formatAccountOptionValue = (acc: ChartOfAccountItem): string => {
   return acc.account_name;
 };
 
+export const UNIVERSAL_ACCOUNTING_PRIMITIVES = [
+  {
+    key: 'item_or_description',
+    label: 'Item / Service Description',
+    required: true,
+    description: 'Product name, service description, or line item label',
+    badge: 'Line Item',
+    heuristics: ['item', 'description', 'name', 'product', 'particulars', 'article', 'title', 'goods', 'service'],
+  },
+  {
+    key: 'quantity',
+    label: 'Quantity / Units (Debit)',
+    required: true,
+    description: 'Units billed, delivered count, or primary quantity',
+    badge: 'Quantity',
+    heuristics: ['quantity', 'qty', 'delivered', 'units', 'pieces', 'count', 'hrs', 'hours', 'delivered_qty'],
+  },
+  {
+    key: 'rate_or_price',
+    label: 'Unit Rate / Price',
+    required: false,
+    description: 'Price per individual unit or service rate',
+    badge: 'Price / Rate',
+    heuristics: ['rate', 'price', 'unit_price', 'unit_rate', 'cost', 'unitprice'],
+  },
+  {
+    key: 'total_amount',
+    label: 'Line Total Amount',
+    required: true,
+    description: 'Line total financial charge (Quantity × Rate)',
+    badge: 'Amount',
+    heuristics: ['total', 'amount', 'total_amount', 'line_total', 'net_amount', 'subtotal', 'gross'],
+  },
+  {
+    key: 'transaction_date',
+    label: 'Transaction / Document Date',
+    required: false,
+    description: 'Document date, bill date, or service date (YYYY-MM-DD)',
+    badge: 'Header Date',
+    heuristics: ['date', 'invoice_date', 'bill_date', 'slip_date', 'document_date', 'tx_date'],
+  },
+  {
+    key: 'source_file_name',
+    label: 'Document / Reference #',
+    required: false,
+    description: 'Invoice #, control slip #, bill #, or receipt reference',
+    badge: 'Reference',
+    heuristics: ['invoice_number', 'bill_number', 'slip_number', 'reference', 'ref', 'doc_no', 'receipt_no', 'number', 'slip_no'],
+  },
+  {
+    key: 'customer',
+    label: 'Customer / Counterparty',
+    required: false,
+    description: 'Customer, vendor, supplier, or hotel name',
+    badge: 'Counterparty',
+    heuristics: ['customer', 'vendor', 'client', 'supplier', 'hotel', 'tenant', 'party_name', 'counterparty'],
+  },
+  {
+    key: 'custody_quantity',
+    label: 'Secondary / Custody Qty (Optional)',
+    required: false,
+    description: 'Pickup / return count for 2-stage custody tracking',
+    badge: 'Custody Only',
+    heuristics: ['pickup', 'picked_up', 'return', 'inward', 'custody', 'pickup_qty'],
+  },
+];
+
 export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> = ({
   isOpen,
   onClose,
@@ -251,6 +318,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [simulationResult, setSimulationResult] = useState<PipelineSimulationResult | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
 
+  // Universal Accounting Primitive Field Mappings
+  const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
+
   // Trigger State
   const [triggerType, setTriggerType] = useState<TriggerType>('scheduled_cron');
   const [cronExpression, setCronExpression] = useState<string>('0 20 * * *');
@@ -267,6 +337,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [enableLookbackWindow, setEnableLookbackWindow] = useState<boolean>(true);
   const [autoCreateMonthFolder, setAutoCreateMonthFolder] = useState<boolean>(false);
   const [moveProcessedFiles, setMoveProcessedFiles] = useState<boolean>(false);
+
+  // Accounting Master Data Auto-Provisioning State (Zoho)
+  const [autoCreateMissingContacts, setAutoCreateMissingContacts] = useState<boolean>(false);
+  const [autoCreateMissingItems, setAutoCreateMissingItems] = useState<boolean>(false);
 
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
@@ -410,6 +484,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setEnableLookbackWindow(initialPipeline.source_config?.enable_lookback_window !== false);
         setAutoCreateMonthFolder(!!initialPipeline.source_config?.auto_create_month_folder);
         setMoveProcessedFiles(Boolean(initialPipeline.source_config?.move_processed_files));
+        setAutoCreateMissingContacts(Boolean(initialPipeline.auto_create_missing_contacts ?? initialPipeline.source_config?.auto_create_missing_contacts));
+        setAutoCreateMissingItems(Boolean(initialPipeline.auto_create_missing_items ?? initialPipeline.source_config?.auto_create_missing_items));
+        setFieldMappings(initialPipeline.field_mappings || {});
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -432,7 +509,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setEnableLookbackWindow(true);
         setAutoCreateMonthFolder(false);
         setMoveProcessedFiles(false);
+        setAutoCreateMissingContacts(false);
+        setAutoCreateMissingItems(false);
         setHumanInstructions('');
+        setFieldMappings({});
       }
       setStep(1);
       setProbeResult(null);
@@ -442,6 +522,49 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       setSimulationError(null);
     }
   }, [isOpen, initialPipeline]);
+
+  // Detected field keys from sample document simulation
+  const detectedKeys = React.useMemo(() => {
+    const keys = new Set<string>();
+    if (simulationResult?.raw_datapoints) {
+      simulationResult.raw_datapoints.forEach((dp) => {
+        if (dp.key) keys.add(dp.key.trim());
+      });
+    }
+    const payload = simulationResult?.transposed_payload;
+    if (payload) {
+      Object.keys(payload).forEach((k) => {
+        if (typeof payload[k] !== 'object' && payload[k] !== null) keys.add(k);
+      });
+      const items = (payload as any).line_items || (payload as any).items || [];
+      if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object' && items[0] !== null) {
+        Object.keys(items[0]).forEach((k) => keys.add(k));
+      }
+    }
+    return Array.from(keys);
+  }, [simulationResult]);
+
+  // Auto-map detected sample keys to universal accounting primitives
+  useEffect(() => {
+    if (detectedKeys.length > 0) {
+      setFieldMappings((prev) => {
+        const next = { ...prev };
+        let hasChanges = false;
+        UNIVERSAL_ACCOUNTING_PRIMITIVES.forEach((prim) => {
+          if (!next[prim.key]) {
+            const found = detectedKeys.find((dk) =>
+              prim.heuristics.some((h) => dk.toLowerCase().includes(h))
+            );
+            if (found) {
+              next[prim.key] = found;
+              hasChanges = true;
+            }
+          }
+        });
+        return hasChanges ? next : prev;
+      });
+    }
+  }, [detectedKeys]);
 
   if (!isOpen) return null;
 
@@ -510,6 +633,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       if (humanInstructions.trim()) {
         formData.append('human_instructions', humanInstructions.trim());
       }
+      if (Object.keys(fieldMappings).length > 0) {
+        formData.append('field_mappings', JSON.stringify(fieldMappings));
+      }
 
       const res = await simulatePipelineExtraction(formData);
       setSimulationResult(res);
@@ -539,6 +665,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         default_account_code: defaultAccountCode.trim(),
         auto_post_to_zoho: autoPostToZoho,
         auto_post_draft: autoPostToZoho,
+        auto_create_missing_contacts: autoCreateMissingContacts,
+        auto_create_missing_items: autoCreateMissingItems,
         is_active: isActive,
         active: isActive,
         trigger_type: triggerType,
@@ -547,11 +675,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         schedule: triggerType === 'scheduled_cron' ? (cronScheduleHuman || 'Daily') : (triggerType === 'realtime_webhook' ? 'Realtime Webhook' : 'Manual Only'),
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
         human_instructions: humanInstructions.trim() || undefined,
+        field_mappings: Object.keys(fieldMappings).length > 0 ? fieldMappings : undefined,
         source_config: {
           folder_structure: folderStructure,
           enable_lookback_window: enableLookbackWindow,
           auto_create_month_folder: autoCreateMonthFolder,
           move_processed_files: moveProcessedFiles,
+          auto_create_missing_contacts: autoCreateMissingContacts,
+          auto_create_missing_items: autoCreateMissingItems,
           allowed_senders: allowedSenders.trim() || undefined,
           tenant_id: oneDriveTenantId.trim() || undefined,
           client_id: oneDriveClientId.trim() || undefined,
@@ -1491,6 +1622,127 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   </div>
                 </div>
               )}
+
+              {/* Universal Accounting Primitive Mapping Studio */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3.5 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
+                      <SlidersHorizontal className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-white">Universal Accounting Primitive Mapping</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/30 text-emerald-300">
+                          ⚡ Saved for All Future Runs
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                        Map the raw extracted data points from sample documents into universal accounting primitives.
+                        These mappings are permanently saved and automatically enforced whenever this pipeline processes documents.
+                      </p>
+                    </div>
+                  </div>
+                  {Object.keys(fieldMappings).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFieldMappings({})}
+                      className="text-[10px] text-slate-400 hover:text-rose-400 underline transition cursor-pointer self-start sm:self-auto shrink-0"
+                    >
+                      Reset Mappings
+                    </button>
+                  )}
+                </div>
+
+                {detectedKeys.length > 0 ? (
+                  <div className="flex items-center gap-2 text-[11px] text-sky-300 bg-sky-950/40 border border-sky-500/20 px-3 py-1.5 rounded-lg">
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span>
+                      Auto-detected <strong>{detectedKeys.length} field keys</strong> from test document. Review or adjust assignments below.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/50 border border-slate-800 px-3 py-1.5 rounded-lg">
+                    <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>
+                      Upload a sample document above to auto-detect field keys, or select default heuristics below.
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {UNIVERSAL_ACCOUNTING_PRIMITIVES.map((prim) => {
+                    const currentVal = fieldMappings[prim.key] || '';
+                    return (
+                      <div
+                        key={prim.key}
+                        className={`p-2.5 rounded-xl border transition ${
+                          currentVal
+                            ? 'bg-slate-900/90 border-sky-500/40 shadow-inner'
+                            : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-bold text-slate-200 truncate">
+                              {prim.label}
+                            </span>
+                            {prim.required && (
+                              <span className="text-rose-400 text-xs font-bold" title="Core universal accounting field">*</span>
+                            )}
+                          </div>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">
+                            {prim.badge}
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 mb-2 truncate" title={prim.description}>
+                          {prim.description}
+                        </p>
+
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={currentVal}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFieldMappings((prev) => {
+                                const next = { ...prev };
+                                if (!val) {
+                                  delete next[prim.key];
+                                } else {
+                                  next[prim.key] = val;
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`w-full text-xs rounded-lg px-2.5 py-1.5 font-mono focus:outline-none focus:border-sky-500 border transition cursor-pointer ${
+                              currentVal
+                                ? 'bg-sky-950/60 border-sky-500/50 text-sky-200 font-semibold'
+                                : 'bg-slate-950 border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <option value="">-- Auto-Infer by AI --</option>
+                            {detectedKeys.length > 0 && (
+                              <optgroup label="Detected in Sample Document">
+                                {detectedKeys.map((dk) => (
+                                  <option key={dk} value={dk}>
+                                    📄 {dk}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {currentVal && !detectedKeys.includes(currentVal) && (
+                              <optgroup label="Configured / Custom Field">
+                                <option value={currentVal}>⚙️ {currentVal}</option>
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1596,6 +1848,57 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     </span>
                   </div>
                 </label>
+
+                {/* Master Data Auto-Provisioning Toggles */}
+                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-sky-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white">
+                        Master Data Auto-Provisioning ({ACCOUNTING_PLATFORMS.find((p) => p.id === targetAccountingSoftware)?.name || 'Zoho Books'})
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Allow the ingestion pipeline to automatically create missing master records in Zoho Books when new customers, vendors, or items are detected.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    <label className="flex items-start gap-3 bg-slate-900/80 border border-slate-800 rounded-lg p-2.5 cursor-pointer hover:border-slate-700 transition">
+                      <input
+                        type="checkbox"
+                        checked={autoCreateMissingContacts}
+                        onChange={(e) => setAutoCreateMissingContacts(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                      />
+                      <div className="text-xs">
+                        <span className="font-semibold text-white block">
+                          Auto-Create Missing Customers &amp; Vendors
+                        </span>
+                        <span className="text-slate-400 block text-[11px] mt-0.5">
+                          If an extracted document references a customer or vendor that does not yet exist in Zoho, the pipeline will provision them in Zoho Books and link them.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 bg-slate-900/80 border border-slate-800 rounded-lg p-2.5 cursor-pointer hover:border-slate-700 transition">
+                      <input
+                        type="checkbox"
+                        checked={autoCreateMissingItems}
+                        onChange={(e) => setAutoCreateMissingItems(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                      />
+                      <div className="text-xs">
+                        <span className="font-semibold text-white block">
+                          Auto-Create Missing Items &amp; Services
+                        </span>
+                        <span className="text-slate-400 block text-[11px] mt-0.5">
+                          If an invoice or bill item is not found in your Zoho Item Master, the pipeline will create the item in Zoho with the detected rate and link it.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
 
                 <label className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-3.5 cursor-pointer hover:border-slate-700 transition">
                   <input

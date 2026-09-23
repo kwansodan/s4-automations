@@ -178,6 +178,8 @@ export interface IngestionPipeline {
     tenant_id?: string;
     client_id?: string;
     secret?: string;
+    auto_create_missing_contacts?: boolean;
+    auto_create_missing_items?: boolean;
     [key: string]: any;
   };
   default_account_code?: string;
@@ -185,6 +187,8 @@ export interface IngestionPipeline {
   default_tax_rate?: string;
   auto_post_to_zoho?: boolean;
   auto_post_draft?: boolean;
+  auto_create_missing_contacts?: boolean;
+  auto_create_missing_items?: boolean;
   is_active?: boolean;
   active?: boolean;
   trigger_type?: TriggerType;
@@ -195,6 +199,7 @@ export interface IngestionPipeline {
   last_triggered_at?: string;
   total_runs_count?: number;
   human_instructions?: string;
+  field_mappings?: Record<string, string>;
   sample_preview?: any;
   notes?: string;
   last_run_summary?: PipelineRunSummary;

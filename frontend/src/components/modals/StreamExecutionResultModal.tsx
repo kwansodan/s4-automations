@@ -16,13 +16,18 @@ import {
   Info,
   ShieldAlert,
   Zap,
+  Trash2,
 } from 'lucide-react';
+import { batchDeleteStagedTransactions } from '../../lib/api';
+import { useAutomation } from '../../context/AutomationContext';
 
 interface StreamExecutionResultModalProps {
   isOpen: boolean;
   onClose: () => void;
   runSummary: PipelineRunSummary | null;
   onTriggerAgain?: (forceReprocess?: boolean) => void;
+  clientId?: string;
+  onPurgeSuccess?: () => void;
 }
 
 export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProps> = ({
@@ -30,8 +35,31 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
   onClose,
   runSummary,
   onTriggerAgain,
+  clientId,
+  onPurgeSuccess,
 }) => {
+  const { addLog } = useAutomation();
   const [showStepLogs, setShowStepLogs] = useState(false);
+  const [purgingFile, setPurgingFile] = useState<string | null>(null);
+  const [purgedFiles, setPurgedFiles] = useState<Record<string, boolean>>({});
+
+  const handlePurgeDoc = async (fileName: string) => {
+    if (!clientId || !fileName) return;
+    if (!window.confirm(`Are you sure you want to purge all staged transactions extracted from "${fileName}"? This will delete the mistakenly ingested data.`)) {
+      return;
+    }
+    setPurgingFile(fileName);
+    try {
+      const res = await batchDeleteStagedTransactions(clientId, { file_name: fileName });
+      addLog('success', `🗑️ Purged ${res.deleted_count} staged transaction(s) for "${fileName}".`);
+      setPurgedFiles((prev) => ({ ...prev, [fileName]: true }));
+      if (onPurgeSuccess) onPurgeSuccess();
+    } catch (err: any) {
+      addLog('error', `Failed purging file "${fileName}": ${err.message}`);
+    } finally {
+      setPurgingFile(null);
+    }
+  };
 
   if (!isOpen || !runSummary) return null;
 
@@ -295,9 +323,35 @@ export const StreamExecutionResultModal: React.FC<StreamExecutionResultModalProp
                         </p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
-                      Extracted & Staged
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {purgedFiles[doc.file_name] ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/30">
+                          Data Purged
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            Extracted & Staged
+                          </span>
+                          {clientId && (
+                            <button
+                              type="button"
+                              onClick={() => handlePurgeDoc(doc.file_name)}
+                              disabled={purgingFile === doc.file_name}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/40 transition cursor-pointer"
+                              title="Delete mistakenly ingested data from this file"
+                            >
+                              {purgingFile === doc.file_name ? (
+                                <RefreshCw className="w-3 h-3 animate-spin text-rose-400" />
+                              ) : (
+                                <Trash2 className="w-3 h-3 text-rose-400" />
+                              )}
+                              <span>Purge File</span>
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
 

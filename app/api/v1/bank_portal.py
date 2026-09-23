@@ -25,10 +25,20 @@ from app.services.accounting.factory import AccountingAdapterFactory
 from app.services.audit_service import AuditService
 from app.services.mailjet_service import MailjetService
 from app.workflows.bank_statement_pipeline import run_bank_pipeline_core
+from app.api.deps import (
+    require_admin_user,
+    enforce_otp_request_rate_limit,
+    enforce_otp_verify_rate_limit,
+)
 from app.utils.logging import get_logger
 
 logger = get_logger("bank_portal_api")
 router = APIRouter(tags=["Bank Reconciliation & Portal"])
+bank_accountant_router = APIRouter(
+    prefix="/bank",
+    tags=["Accountant Bank Management"],
+    dependencies=[Depends(require_admin_user)],
+)
 
 PORTAL_TOKEN_SECRET = settings.AUTH_SECRET_KEY + "_portal"
 
@@ -154,7 +164,11 @@ async def client_portal_magic_access(token: str = Query(..., description="Signed
     }
 
 
-@router.post("/portal/auth/request-otp", summary="Client Portal: Request OTP via Email/Identifier")
+@router.post(
+    "/portal/auth/request-otp",
+    summary="Client Portal: Request OTP via Email/Identifier",
+    dependencies=[Depends(enforce_otp_request_rate_limit)],
+)
 async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]:
     cleaned = payload.identifier.strip().lower()
     
@@ -172,7 +186,7 @@ async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]
                 break
     
     if not client_org:
-        if settings.MOCK_MODE:
+        if settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE:
             client_org = ClientOrganization(id=cleaned or "demo_client", name=payload.identifier or "Demo Client", industry="General")
         else:
             raise HTTPException(status_code=404, detail="Client organization not found for this identifier.")
@@ -203,7 +217,7 @@ async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]
     except Exception as e:
         logger.error(f"Error saving portal OTP: {e}")
 
-    logger.info(f"🔑 [PORTAL OTP] Client '{client_org.name}' ({client_org.id}) OTP: {otp}")
+    logger.info(f"🔑 [PORTAL OTP] Client '{client_org.name}' ({client_org.id}) OTP generated (Expires in 15 mins)")
 
     return {
         "success": True,
@@ -211,11 +225,15 @@ async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]
         "client_id": client_org.id,
         "client_name": client_org.name,
         "expires_in_seconds": 900,
-        "dev_hint": f"OTP Code: {otp}",
+        "dev_hint": f"OTP Code: {otp}" if (settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE) else None,
     }
 
 
-@router.post("/portal/auth/verify-otp", summary="Client Portal: Verify OTP & Login")
+@router.post(
+    "/portal/auth/verify-otp",
+    summary="Client Portal: Verify OTP & Login",
+    dependencies=[Depends(enforce_otp_verify_rate_limit)],
+)
 async def client_portal_verify_otp(payload: PortalOtpVerify) -> Dict[str, Any]:
     cleaned = payload.identifier.strip().lower()
     cleaned_otp = payload.otp.strip()
@@ -232,7 +250,7 @@ async def client_portal_verify_otp(payload: PortalOtpVerify) -> Dict[str, Any]:
                 client_org = c
                 break
         
-        if not client_org and settings.MOCK_MODE:
+        if not client_org and settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE:
             client_org = ClientOrganization(id=cleaned, name=cleaned.title(), industry="General")
 
         if not client_org:
@@ -246,7 +264,7 @@ async def client_portal_verify_otp(payload: PortalOtpVerify) -> Dict[str, Any]:
         ).first()
 
         if not record:
-            if settings.MOCK_MODE and len(cleaned_otp) == 6:
+            if settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE and len(cleaned_otp) == 6:
                 token = generate_portal_token(client_org.id, client_org.name)
                 return {"success": True, "token": token, "client": {"id": client_org.id, "name": client_org.name}}
             raise HTTPException(status_code=400, detail="No active OTP found. Please request a new code.")
@@ -371,10 +389,10 @@ async def client_portal_explain_transaction(
 
 
 # -------------------------------------------------------------------------
-# Accountant & Internal Banking Management Endpoints
+# Accountant & Internal Banking Management Endpoints (Requires Admin)
 # -------------------------------------------------------------------------
 
-@router.get("/bank/clients/{client_id}/accounts", summary="Accountant: Get Live Chart of Accounts & Watched Status")
+@bank_accountant_router.get("/clients/{client_id}/accounts", summary="Accountant: Get Live Chart of Accounts & Watched Status")
 async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
     """Returns the Chart of Accounts with watched status flags for this client."""
     with Session(get_engine()) as session:
@@ -453,7 +471,7 @@ async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
         }
 
 
-@router.put("/bank/clients/{client_id}/watched-accounts", summary="Accountant: Update Watched Accounts")
+@bank_accountant_router.put("/clients/{client_id}/watched-accounts", summary="Accountant: Update Watched Accounts")
 async def accountant_update_watched_accounts(client_id: str, payload: WatchedAccountsUpdate) -> Dict[str, Any]:
     """Updates the list of Chart of Accounts IDs monitored for uncategorized transactions."""
     with Session(get_engine()) as session:
@@ -610,7 +628,7 @@ def purge_legacy_mock_bank_transactions(session: Session, client_id: Optional[st
     return 0
 
 
-@router.post("/bank/clients/{client_id}/purge-test-transactions", summary="Accountant: Purge Legacy Test / Simulated Bank Transactions")
+@bank_accountant_router.post("/clients/{client_id}/purge-test-transactions", summary="Accountant: Purge Legacy Test / Simulated Bank Transactions")
 async def accountant_purge_test_transactions(client_id: str) -> Dict[str, Any]:
     """Explicitly deletes any legacy mock/synthetic transactions for this client from the database."""
     with Session(get_engine()) as session:
@@ -623,7 +641,7 @@ async def accountant_purge_test_transactions(client_id: str) -> Dict[str, Any]:
         }
 
 
-@router.get("/bank/clients/{client_id}/transactions", summary="Accountant: List & Filter Bank Transactions in Watched Accounts")
+@bank_accountant_router.get("/clients/{client_id}/transactions", summary="Accountant: List & Filter Bank Transactions in Watched Accounts")
 async def accountant_list_bank_transactions(
     client_id: str,
     status: Optional[str] = Query("ALL", description="ALL, UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED"),
@@ -631,42 +649,43 @@ async def accountant_list_bank_transactions(
     month: Optional[str] = Query("ALL", description="ALL, month name ('September'), month number ('09'), or 'YYYY-MM'"),
     year: Optional[str] = Query(None, description="Filter by year e.g. 2026 or ALL"),
 ) -> Dict[str, Any]:
-    """Returns transactions in watched accounts with summary metrics for the Information Requests dashboard."""
+    """Lists bank transactions residing in watched accounts requiring classification or client attention."""
     with Session(get_engine()) as session:
-        # Guarantee no legacy test transactions exist
-        purge_legacy_mock_bank_transactions(session, client_id=client_id)
+        client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+        if not client:
+            client = ClientOrganization(id=client_id, name=client_id.replace("_", " ").title())
+
+        # Purge synthetic demo data in production
+        if not settings.MOCK_MODE:
+            purge_legacy_mock_bank_transactions(session, client_id=client_id)
 
         query = select(BankTransaction).where(BankTransaction.client_id == client_id)
-        all_txs = session.exec(query.order_by(BankTransaction.transaction_date.desc())).all()
 
-        # Compute distinct available months in YYYY-MM format
+        if status and status.upper() != "ALL":
+            query = query.where(BankTransaction.status == status.upper())
+
+        transactions = session.exec(query.order_by(BankTransaction.transaction_date.desc(), BankTransaction.id.desc())).all()
+
+        # Compute metric aggregates
+        all_for_client = session.exec(select(BankTransaction).where(BankTransaction.client_id == client_id)).all()
+        total_count = len(all_for_client)
+        total_uncategorized = sum(1 for t in all_for_client if t.status == "UNMAPPED")
+        total_pending_client = sum(1 for t in all_for_client if t.status == "CLARIFICATION_REQUESTED")
+        total_client_answered = sum(1 for t in all_for_client if t.status == "CLIENT_ANSWERED")
+        total_mapped = sum(1 for t in all_for_client if t.status == "MAPPED")
+
+        # Discover distinct periods
         available_months = sorted(
-            list({ym for t in all_txs if (ym := _extract_year_month(t.transaction_date))}),
+            list(set(_extract_year_month(t.transaction_date) for t in all_for_client if _extract_year_month(t.transaction_date))),
             reverse=True,
         )
 
-        target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
+        # Apply in-memory month/year filter
+        filtered = [t for t in transactions if _matches_month_and_year(t.transaction_date, month, year)]
 
-        # Filter by month and year first to scope metrics to the selected period
-        month_scoped_txs = [
-            t for t in all_txs
-            if _matches_month_and_year(t.transaction_date, month, target_year_int)
-        ]
-
-        # Compute summary metrics based on the scoped period
-        total_count = len(month_scoped_txs)
-        total_uncategorized = sum(1 for t in month_scoped_txs if t.status == "UNMAPPED")
-        total_pending_client = sum(1 for t in month_scoped_txs if t.status == "CLARIFICATION_REQUESTED")
-        total_client_answered = sum(1 for t in month_scoped_txs if t.status == "CLIENT_ANSWERED")
-        total_mapped = sum(1 for t in month_scoped_txs if t.status in ["MAPPED", "POSTED"])
-
-        # Filter items by status and search query
-        filtered = month_scoped_txs
-        if status and status != "ALL":
-            filtered = [t for t in filtered if t.status == status]
-
+        # Search filter
         if search:
-            s_low = search.lower().strip()
+            s_low = search.lower()
             filtered = [
                 t for t in filtered
                 if s_low in t.description.lower()
@@ -692,7 +711,7 @@ async def accountant_list_bank_transactions(
         }
 
 
-@router.post("/bank/transactions/{tx_id}/categorize", summary="Accountant: Classify & Categorize Bank Transaction")
+@bank_accountant_router.post("/transactions/{tx_id}/categorize", summary="Accountant: Classify & Categorize Bank Transaction")
 async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransactionCategorizeRequest) -> Dict[str, Any]:
     """Assigns Chart of Accounts category and syncs to accounting platform."""
     with Session(get_engine()) as session:
@@ -743,7 +762,7 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
         }
 
 
-@router.post("/bank/transactions/{tx_id}/query", summary="Accountant: Draw Client Attention (Send Query)")
+@bank_accountant_router.post("/transactions/{tx_id}/query", summary="Accountant: Draw Client Attention (Send Query)")
 async def accountant_query_transaction(tx_id: int, payload: BankTransactionQueryRequest) -> Dict[str, Any]:
     """Draws client attention, sets status to CLARIFICATION_REQUESTED, and dispatches Magic Link notification."""
     with Session(get_engine()) as session:
@@ -764,7 +783,7 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
 
         # Generate Magic Link for 1-click response
         magic_token = generate_magic_link_token(tx.client_id, client_name, tx.id)
-        magic_url = f"http://localhost:5173/?portal_magic={magic_token}"
+        magic_url = f"https://s4automations.service4gh.com/?portal_magic={magic_token}"
 
         # Target recipient
         target_email = payload.recipient_email
@@ -826,7 +845,7 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
         }
 
 
-@router.post("/bank/transactions/bulk-categorize", summary="Accountant: Bulk Categorize Multiple Transactions")
+@bank_accountant_router.post("/transactions/bulk-categorize", summary="Accountant: Bulk Categorize Multiple Transactions")
 async def accountant_bulk_categorize(payload: BankTransactionBulkCategorizeRequest) -> Dict[str, Any]:
     """Applies the same Chart of Accounts category to a list of selected transactions."""
     with Session(get_engine()) as session:
@@ -851,7 +870,7 @@ async def accountant_bulk_categorize(payload: BankTransactionBulkCategorizeReque
         }
 
 
-@router.post("/bank/transactions/bulk-query", summary="Accountant: Bulk Query Client on Multiple Transactions")
+@bank_accountant_router.post("/transactions/bulk-query", summary="Accountant: Bulk Query Client on Multiple Transactions")
 async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dict[str, Any]:
     """Dispatches a consolidated digest email for multiple selected transactions."""
     with Session(get_engine()) as session:
@@ -872,7 +891,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         session.commit()
 
         magic_token = generate_magic_link_token(client_id, client_name, None)
-        magic_url = f"http://localhost:5173/?portal_magic={magic_token}"
+        magic_url = f"https://s4automations.service4gh.com/?portal_magic={magic_token}"
 
         target_email = payload.recipient_email or settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
         subject = f"❓ [Action Required] Clarification requested on {len(txs)} transactions in watched accounts ({client_name})"
@@ -919,7 +938,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         }
 
 
-@router.post("/bank/clients/{client_id}/sync-accounting", summary="Accountant: Pull Transactions in Watched Accounts from Accounting Platform")
+@bank_accountant_router.post("/clients/{client_id}/sync-accounting", summary="Accountant: Pull Transactions in Watched Accounts from Accounting Platform")
 async def accountant_sync_bank_feeds(
     client_id: str,
     month: Optional[str] = Query(None, description="Filter sync by target month (e.g. September, 09, YYYY-MM)"),
@@ -1003,14 +1022,34 @@ async def accountant_sync_bank_feeds(
         }
 
 
-@router.post("/bank/upload", summary="Accountant: Ingest Bank Statement (CSV / PDF)")
+MAX_BANK_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+ALLOWED_BANK_UPLOAD_EXTS = {".csv", ".pdf", ".txt", ".xlsx", ".xls"}
+
+
+@bank_accountant_router.post("/upload", summary="Accountant: Ingest Bank Statement (CSV / PDF)")
 async def accountant_upload_bank_statement(
     client_id: str = Form(...),
     month: str = Form(default=datetime.now().strftime("%B")),
     year: int = Form(default=datetime.now().year),
     file: UploadFile = File(...),
 ) -> Dict[str, Any]:
-    content = await file.read()
+    """Ingests uploaded bank statement with file-size and extension verification."""
+    import os
+    if file.filename:
+        _, ext = os.path.splitext(file.filename)
+        if ext.lower() not in ALLOWED_BANK_UPLOAD_EXTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported statement format '{ext}'. Allowed formats: CSV, PDF, TXT, Excel.",
+            )
+
+    content = await file.read(MAX_BANK_UPLOAD_BYTES + 1)
+    if len(content) > MAX_BANK_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File too large. Maximum statement size is 15MB.",
+        )
+
     res = await run_bank_pipeline_core(
         target_month=month,
         target_year=year,
@@ -1020,3 +1059,7 @@ async def accountant_upload_bank_statement(
         mime_type=file.content_type,
     )
     return res
+
+
+# Mount accountant routes into bank portal router
+router.include_router(bank_accountant_router)

@@ -1,10 +1,13 @@
-"""Authentication & Email OTP API endpoints."""
-
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 
 from app.services.auth_service import AuthService
+from app.api.deps import (
+    require_admin_user,
+    enforce_otp_request_rate_limit,
+    enforce_otp_verify_rate_limit,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -18,7 +21,11 @@ class OtpVerifyPayload(BaseModel):
     otp: str = Field(description="6-digit verification code")
 
 
-@router.post("/otp/request", summary="Request 6-digit Email OTP")
+@router.post(
+    "/otp/request",
+    summary="Request 6-digit Email OTP",
+    dependencies=[Depends(enforce_otp_request_rate_limit)],
+)
 async def request_login_otp(payload: OtpRequestPayload) -> Dict[str, Any]:
     """Generates a secure 6-digit OTP and sends it to s4bookkeeping@service4gh.com."""
     result = AuthService.request_otp(payload.email)
@@ -27,7 +34,11 @@ async def request_login_otp(payload: OtpRequestPayload) -> Dict[str, Any]:
     return result
 
 
-@router.post("/otp/verify", summary="Verify 6-digit Email OTP")
+@router.post(
+    "/otp/verify",
+    summary="Verify 6-digit Email OTP",
+    dependencies=[Depends(enforce_otp_verify_rate_limit)],
+)
 async def verify_login_otp(payload: OtpVerifyPayload) -> Dict[str, Any]:
     """Verifies the 6-digit OTP and returns a signed bearer access token."""
     result = AuthService.verify_otp(payload.email, payload.otp)
@@ -37,13 +48,8 @@ async def verify_login_otp(payload: OtpVerifyPayload) -> Dict[str, Any]:
 
 
 @router.get("/me", summary="Get Current Authenticated User")
-async def get_current_user(request: Request) -> Dict[str, Any]:
+async def get_current_user(user: Dict[str, Any] = Depends(require_admin_user)) -> Dict[str, Any]:
     """Validates the authorization bearer token and returns current user info."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
-    user = AuthService.validate_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired session token")
     return {"authenticated": True, "user": user}
 
 
@@ -52,17 +58,14 @@ class SwitchOrgPayload(BaseModel):
 
 
 @router.post("/switch-org", summary="Switch Active Organization Context")
-async def switch_active_organization(payload: SwitchOrgPayload, request: Request) -> Dict[str, Any]:
+async def switch_active_organization(
+    payload: SwitchOrgPayload,
+    user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Switches the active primary organization context for the authenticated user."""
     from sqlmodel import Session, select
     from app.db.session import get_engine
     from app.models.db_models import UserOrganizationMembership, Organization
-
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
-    user = AuthService.validate_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired session token")
 
     target_org_id = payload.organization_id.strip()
     with Session(get_engine()) as session:
@@ -108,14 +111,10 @@ async def switch_active_organization(payload: SwitchOrgPayload, request: Request
 
 
 @router.get("/organizations", summary="List User Organizations")
-async def list_user_organizations(request: Request) -> Dict[str, Any]:
+async def list_user_organizations(
+    user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Returns the list of organizations accessible by the authenticated user."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
-    user = AuthService.validate_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired session token")
-
     current_org, orgs = AuthService.get_user_organizations(user["email"])
     return {
         "active_organization": current_org,

@@ -303,8 +303,54 @@ class ZohoBooksService:
                 status=c.get("status", "active"),
             )
             self._cached_contacts.append(new_vendor)
+            ZohoBooksService._tenant_contacts[self._tenant_key] = self._cached_contacts
             logger.info(f"Created new Vendor in Zoho Books: {vendor_name}")
             return new_vendor
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_customer_contact(self, customer_name: str, email: str = "") -> ZohoContact:
+        """Creates a new Customer contact in Zoho Books."""
+        if not self.org_id:
+            raise ValueError("Cannot create customer contact: Zoho Organization ID is not configured.")
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/contacts"
+        params = {"organization_id": self.org_id}
+        payload = {
+            "contact_name": customer_name,
+            "company_name": customer_name,
+            "contact_type": "customer",
+        }
+        if email:
+            payload["email"] = email
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            c = data.get("contact", {})
+            new_customer = ZohoContact(
+                contact_id=str(c.get("contact_id", "")),
+                contact_name=c.get("contact_name", customer_name),
+                company_name=c.get("company_name", customer_name),
+                email=c.get("email", email),
+                status=c.get("status", "active"),
+            )
+            self._cached_contacts.append(new_customer)
+            ZohoBooksService._tenant_contacts[self._tenant_key] = self._cached_contacts
+            logger.info(f"Created new Customer in Zoho Books: {customer_name} (ID: {new_customer.contact_id})")
+            return new_customer
 
     @retry(
         reraise=True,
@@ -356,6 +402,87 @@ class ZohoBooksService:
             ZohoBooksService._tenant_items[self._tenant_key] = items
             logger.info(f"Fetched {len(items)} active items from Zoho Books catalog for tenant {self._tenant_key}.")
             return items
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def create_item(
+        self,
+        name: str,
+        rate: float = 0.0,
+        description: str = "",
+        item_type: str = "sales_and_purchases",
+    ) -> ZohoItem:
+        """Creates a new Item in Zoho Books Item Master catalog."""
+        if not self.org_id:
+            raise ValueError("Cannot create item: Zoho Organization ID is not configured.")
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/items"
+        params = {"organization_id": self.org_id}
+        payload = {
+            "name": name,
+            "rate": float(rate or 0.0),
+            "description": description or f"Auto-created by S4 Automations for {name}",
+            "item_type": item_type,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=payload)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.post(url, headers=headers, params=params, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            it = data.get("item", {})
+            new_item = ZohoItem(
+                item_id=str(it.get("item_id", "")),
+                name=it.get("name", name),
+                rate=float(it.get("rate", rate)),
+                description=it.get("description", description),
+                status=it.get("status", "active"),
+            )
+            self._cached_items.append(new_item)
+            ZohoBooksService._tenant_items[self._tenant_key] = self._cached_items
+            logger.info(f"Created new Item in Zoho Books catalog: {name} (ID: {new_item.item_id}, Rate: {new_item.rate})")
+            return new_item
+
+    def find_item_by_name(self, item_name: str) -> Optional[ZohoItem]:
+        """Matches an item name against the Zoho Items cache using exact, substring, and fuzzy matching."""
+        if not item_name:
+            return None
+        cleaned_item = item_name.strip().lower()
+
+        # 1. Exact match
+        for item in self._cached_items:
+            if item.name.strip().lower() == cleaned_item:
+                return item
+
+        # 2. Substring match
+        for item in self._cached_items:
+            i_name = item.name.strip().lower()
+            if cleaned_item in i_name or i_name in cleaned_item:
+                return item
+
+        # 3. Fuzzy similarity match (>= 0.80)
+        best_match = None
+        highest_ratio = 0.0
+        for item in self._cached_items:
+            ratio = SequenceMatcher(None, cleaned_item, item.name.strip().lower()).ratio()
+            if ratio > highest_ratio:
+                highest_ratio = ratio
+                best_match = item
+
+        if highest_ratio >= 0.80 and best_match:
+            return best_match
+
+        return None
 
     def find_contact_by_name(self, client_name: str) -> Optional[ZohoContact]:
         """Matches a client folder name against the Zoho Contacts cache."""

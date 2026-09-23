@@ -1,7 +1,8 @@
-"""API v1 master router aggregating all sub-routers."""
+"""API v1 master router aggregating all sub-routers with role-based guardrails."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import require_admin_user
 from app.api.v1.auth import router as auth_router
 from app.api.v1.pipeline import router as pipeline_router
 from app.api.v1.invoices import router as invoices_router
@@ -20,21 +21,26 @@ from app.api.v1.billing import router as billing_router
 
 api_sub_router = APIRouter()
 
+# 1. Public & Hybrid Routers (Enforce dependencies internally per endpoint)
 api_sub_router.include_router(auth_router)
-api_sub_router.include_router(pipeline_router)
-api_sub_router.include_router(invoices_router)
-api_sub_router.include_router(sheets_router)
-api_sub_router.include_router(catalog_router)
-api_sub_router.include_router(config_router)
-api_sub_router.include_router(clients_router)
-api_sub_router.include_router(audit_router)
 api_sub_router.include_router(bank_portal_router)
 api_sub_router.include_router(oauth_router)
-api_sub_router.include_router(system_router)
-api_sub_router.include_router(social_router)
-api_sub_router.include_router(marketing_router)
-api_sub_router.include_router(contacts_router)
-api_sub_router.include_router(billing_router)
+
+# 2. Strict Admin-Only Routers (All endpoints globally guarded by require_admin_user)
+admin_deps = [Depends(require_admin_user)]
+
+api_sub_router.include_router(pipeline_router, dependencies=admin_deps)
+api_sub_router.include_router(invoices_router, dependencies=admin_deps)
+api_sub_router.include_router(sheets_router, dependencies=admin_deps)
+api_sub_router.include_router(catalog_router, dependencies=admin_deps)
+api_sub_router.include_router(config_router, dependencies=admin_deps)
+api_sub_router.include_router(clients_router, dependencies=admin_deps)
+api_sub_router.include_router(audit_router, dependencies=admin_deps)
+api_sub_router.include_router(system_router, dependencies=admin_deps)
+api_sub_router.include_router(social_router, dependencies=admin_deps)
+api_sub_router.include_router(marketing_router, dependencies=admin_deps)
+api_sub_router.include_router(contacts_router, dependencies=admin_deps)
+api_sub_router.include_router(billing_router, dependencies=admin_deps)
 
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(api_sub_router)

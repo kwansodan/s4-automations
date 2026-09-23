@@ -1533,6 +1533,95 @@ async def update_staged_transaction(
     }
 
 
+@router.delete("/{client_id}/transactions/{tx_id}", summary="Delete Staged Transaction")
+async def delete_staged_transaction(
+    client_id: str,
+    tx_id: int,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Deletes an unposted staged transaction from PostgreSQL."""
+    aliases = get_client_id_aliases(client_id)
+    tx = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.id == tx_id,
+            StagedTransaction.client_id.in_(aliases),
+        )
+    ).first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail=f"Transaction {tx_id} not found.")
+
+    if tx.status in ["INVOICED", "BILLED", "JOURNAL_POSTED", "PAID"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete transaction {tx_id} because it has already been posted to accounting ({tx.status})."
+        )
+
+    file_name = tx.source_file_name
+    item_desc = tx.item_or_description
+    db.delete(tx)
+    db.commit()
+
+    AuditService.log(
+        client_id=client_id,
+        action="STAGED_TRANSACTION_DELETED",
+        details={"tx_id": tx_id, "file_name": file_name, "item": item_desc},
+    )
+
+    return {
+        "success": True,
+        "message": f"Staged transaction {tx_id} deleted successfully.",
+        "tx_id": tx_id,
+    }
+
+
+@router.post("/{client_id}/transactions/batch-delete", summary="Batch Delete Staged Transactions")
+async def batch_delete_staged_transactions(
+    client_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Deletes multiple unposted staged transactions by IDs or by source_file_name.
+    Used when a user mistakenly uploads an erroneous document to Drive and runs extraction.
+    """
+    aliases = get_client_id_aliases(client_id)
+    tx_ids = payload.get("transaction_ids") or []
+    file_name = payload.get("file_name")
+
+    query = select(StagedTransaction).where(StagedTransaction.client_id.in_(aliases))
+
+    if tx_ids:
+        query = query.where(StagedTransaction.id.in_(tx_ids))
+    elif file_name:
+        query = query.where(StagedTransaction.source_file_name == file_name)
+    else:
+        raise HTTPException(status_code=400, detail="Must provide transaction_ids or file_name to delete.")
+
+    # Guard: only delete unposted records
+    unposted_query = query.where(
+        StagedTransaction.status.notin_(["INVOICED", "BILLED", "JOURNAL_POSTED", "PAID"])
+    )
+    records = db.exec(unposted_query).all()
+    deleted_count = len(records)
+
+    for r in records:
+        db.delete(r)
+    db.commit()
+
+    AuditService.log(
+        client_id=client_id,
+        action="BATCH_STAGED_TRANSACTIONS_DELETED",
+        details={"deleted_count": deleted_count, "file_name": file_name, "tx_ids": tx_ids},
+    )
+
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Successfully deleted {deleted_count} unposted staged transactions.",
+    }
+
+
 @router.post("/{client_id}/transactions/batch-approve", summary="1-Click Batch Approval for CPA")
 async def batch_approve_transactions(
     client_id: str,
