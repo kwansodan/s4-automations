@@ -1195,6 +1195,18 @@ export async function syncBankFeedsFromAccounting(
   return handleResponse(res, 'Sync transactions in watched accounts');
 }
 
+export async function fetchBankTransactionMatches(txId: number): Promise<{
+  success: boolean;
+  transaction_id: number;
+  external_transaction_id?: string;
+  matches: any[];
+}> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/matches`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch transaction matches');
+}
+
 // Aliases explicitly denoting Watched Accounts
 export const syncWatchedAccountsFromAccounting = syncBankFeedsFromAccounting;
 export const fetchWatchedAccountTransactions = fetchBankTransactions;

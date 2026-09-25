@@ -222,6 +222,49 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         seen_keys = set()
 
         try:
+            # 0. Fetch native uncategorized bank feed transactions from Zoho Books (/banktransactions?transaction_status=uncategorized)
+            try:
+                raw_uncat_feed = await self.zoho.fetch_uncategorized_bank_transactions(
+                    date_start=date_start,
+                    date_end=date_end,
+                )
+                for tx in (raw_uncat_feed or []):
+                    tx_id = str(tx.get("transaction_id", ""))
+                    tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
+                    amt = abs(float(tx.get("amount", 0.0)))
+                    desc = (
+                        tx.get("description")
+                        or tx.get("payee")
+                        or tx.get("reference_number")
+                        or "Uncategorized Bank Feed Transaction"
+                    )
+                    tx_t = str(tx.get("transaction_type") or "DEBIT").upper()
+                    if tx_t not in ["DEBIT", "CREDIT"]:
+                        tx_t = "DEBIT" if float(tx.get("amount", 0.0)) < 0 else "CREDIT"
+
+                    u_key = f"zoho_uncat:{tx_id}:{amt}:{desc}"
+                    if u_key not in seen_keys:
+                        seen_keys.add(u_key)
+                        results.append({
+                            "transaction_date": tx_date,
+                            "description": desc,
+                            "amount": amt,
+                            "transaction_type": tx_t,
+                            "bank_account_name": tx.get("from_account_name") or "Zoho Bank Feed",
+                            "account_name": tx.get("account_name") or "Uncategorized Feed",
+                            "source_file_name": "Zoho_Live_Bank_Feed",
+                            "mapped_account_id": None,
+                            "ai_suggested_account": tx.get("account_name"),
+                            "category_confidence": 0.95,
+                            "watched_account": "uncategorized",
+                            "external_transaction_id": tx_id,
+                            "zoho_transaction_id": tx_id,
+                            "zoho_account_id": str(tx.get("from_account_id") or ""),
+                            "raw_transaction": tx,
+                        })
+            except Exception as uncat_err:
+                logger.warning(f"Could not fetch native uncategorized bank feeds from Zoho: {uncat_err}")
+
             # 1. Fetch Chart of Accounts and Bank Accounts from Zoho
             chart_accounts = await self.zoho.fetch_chart_of_accounts()
             try:
@@ -321,6 +364,10 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                                     "ai_suggested_account": tx.get("account_name"),
                                     "category_confidence": 0.90,
                                     "watched_account": w_label,
+                                    "external_transaction_id": tx_id,
+                                    "zoho_transaction_id": tx_id,
+                                    "zoho_account_id": acc_id,
+                                    "raw_transaction": tx,
                                 })
                     except Exception as tx_err:
                         logger.debug(f"Notice fetching bank transactions for account {acc_id} ({acc_name}): {tx_err}")
@@ -379,6 +426,10 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                                 "ai_suggested_account": None,
                                 "category_confidence": 0.85,
                                 "watched_account": w_label,
+                                "external_transaction_id": tx_id,
+                                "zoho_transaction_id": tx_id,
+                                "zoho_account_id": acc_id,
+                                "raw_transaction": tx,
                             })
                 except Exception as acc_err:
                     logger.warning(f"Error fetching account transactions for account {acc_id} ({acc_name}): {acc_err}")
@@ -397,6 +448,31 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         tax_rate: Optional[str] = None,
     ) -> AccountingPostResult:
         """Pushes categorized line into Zoho Books."""
+        if self.is_live and not settings.MOCK_MODE and self.zoho.org_id:
+            try:
+                res = await self.zoho.categorize_uncategorized_transaction(
+                    transaction_id=transaction_id,
+                    account_id=account_id,
+                    payee_name=payee_name,
+                )
+                return AccountingPostResult(
+                    success=True,
+                    platform=self.platform_name,
+                    entity_type="bank_transaction_categorized",
+                    document_id=transaction_id,
+                    message=f"Categorized transaction {transaction_id} to account {account_id} on Zoho Books.",
+                    raw_response=res,
+                )
+            except Exception as e:
+                logger.error(f"Error categorizing transaction {transaction_id} on Zoho Books: {e}")
+                return AccountingPostResult(
+                    success=False,
+                    platform=self.platform_name,
+                    entity_type="bank_transaction_categorized",
+                    document_id=transaction_id,
+                    message=f"Failed to categorize on Zoho Books: {str(e)}",
+                )
+
         return AccountingPostResult(
             success=True,
             platform=self.platform_name,

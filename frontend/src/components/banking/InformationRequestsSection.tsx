@@ -367,15 +367,15 @@ export const InformationRequestsSection: React.FC = () => {
               onClick={handleSyncFeeds}
               disabled={isSyncing}
               className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
-              title="Pull transactions in watched accounts from connected accounting software"
+              title={`Pull live uncategorized & suspense transactions from ${currentClient?.accounting_software || 'connected accounting software'}`}
             >
               <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>
                 {isSyncing
-                  ? 'Syncing Watched...'
+                  ? 'Syncing Feeds...'
                   : selectedMonth !== 'ALL'
-                  ? `Sync Watched (${selectedMonth.slice(0, 3)})`
-                  : 'Sync Watched Accounts'}
+                  ? `Sync ${currentClient?.accounting_software === 'Zoho Books' ? 'Zoho Feeds' : currentClient?.accounting_software === 'QuickBooks Online' ? 'QBO Suspense' : currentClient?.accounting_software === 'Xero' ? 'Xero Suspense' : 'Watched Feeds'} (${selectedMonth.slice(0, 3)})`
+                  : `Sync Live Feeds (${currentClient?.accounting_software || 'Accounting'})`}
               </span>
             </button>
 
@@ -933,11 +933,22 @@ export const InformationRequestsSection: React.FC = () => {
                       {/* Date & Account */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
                         <span className="font-mono font-bold text-white block">{tx.transaction_date}</span>
-                        <span className="text-[10px] text-sky-400/90 font-mono block truncate max-w-[160px]">
-                          {tx.metadata_json?.watched_account
-                            ? `Watched: ${tx.metadata_json.watched_account}`
-                            : (tx.bank_account_name || 'Watched Account')}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {tx.source_file_name?.includes('Zoho') ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">Zoho Feed</span>
+                          ) : tx.source_file_name?.includes('QuickBooks') ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">QBO Suspense</span>
+                          ) : tx.source_file_name?.includes('Xero') ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">Xero Suspense</span>
+                          ) : (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold">Statement</span>
+                          )}
+                          <span className="text-[10px] text-sky-400/90 font-mono truncate max-w-[120px]">
+                            {tx.metadata_json?.watched_account
+                              ? `Code: ${tx.metadata_json.watched_account}`
+                              : (tx.bank_account_name || 'Bank Line')}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Raw Description */}

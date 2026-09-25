@@ -189,3 +189,164 @@ class XeroService:
             "platform": "Xero",
             "message": "Successfully posted manual journal entry in Xero.",
         }
+
+    async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
+        """Fetch Chart of Accounts from Xero (/api.xro/2.0/Accounts)."""
+        if not self.refresh_token or not self.tenant_id:
+            return []
+        try:
+            token = await self.get_access_token()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Xero-tenant-id": self.tenant_id,
+                    "Accept": "application/json",
+                }
+                resp = await client.get(f"{self.base_url}/Accounts", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    accounts = data.get("Accounts", [])
+                    out = []
+                    for a in accounts:
+                        acc_id = str(a.get("AccountID", ""))
+                        acc_code = str(a.get("Code", ""))
+                        acc_name = a.get("Name", "")
+                        acc_type = a.get("Type", "EXPENSE")
+                        norm = f"{acc_code} {acc_name}".lower()
+                        is_suspense = any(
+                            s in norm
+                            for s in ["suspense", "unallocated", "850", "999", "uncategorized", "ask my accountant"]
+                        )
+                        out.append({
+                            "account_id": acc_code or acc_id,
+                            "account_code": acc_code,
+                            "account_name": acc_name,
+                            "account_type": acc_type,
+                            "is_suspense": is_suspense,
+                        })
+                    return out
+        except Exception as e:
+            logger.warning(f"Xero fetch_chart_of_accounts error: {e}")
+        return []
+
+    async def fetch_uncategorized_bank_transactions(
+        self,
+        watched_accounts: Optional[List[str]] = None,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Pulls unmapped/suspense BankTransactions from Xero (lines coded to 850, 999, etc.)."""
+        if not self.refresh_token or not self.tenant_id:
+            return []
+        try:
+            token = await self.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Xero-tenant-id": self.tenant_id,
+                "Accept": "application/json",
+            }
+            watched_norm = [str(w).strip().lower() for w in (watched_accounts or ["850", "999", "suspense", "uncategorized"])]
+
+            params = {}
+            if date_start:
+                params["where"] = f'Date >= DateTime({date_start.replace("-", ", ")})'
+
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.get(
+                    f"{self.base_url}/BankTransactions",
+                    headers=headers,
+                    params=params,
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"Xero BankTransactions query returned {resp.status_code}: {resp.text}")
+                    return []
+
+                data = resp.json()
+                txs = data.get("BankTransactions", [])
+                results = []
+                for tx in txs:
+                    tx_id = str(tx.get("BankTransactionID", ""))
+                    # Xero Date format: /Date(1518048000000+0000)/ or ISO string
+                    raw_date = tx.get("DateString") or tx.get("Date", "")
+                    tx_type = "CREDIT" if tx.get("Type") == "RECEIVE" else "DEBIT"
+                    contact = tx.get("Contact", {})
+                    payee_name = contact.get("Name", "")
+                    bank_acc = tx.get("BankAccount", {}).get("Name", "Xero Bank Account")
+                    total_amt = abs(float(tx.get("Total", 0.0)))
+
+                    for line in tx.get("LineItems", []):
+                        line_code = str(line.get("AccountCode", "")).lower()
+                        line_desc = line.get("Description") or tx.get("Reference") or f"Transaction from {payee_name or 'Payee'}"
+                        is_match = any(w in line_code for w in watched_norm)
+                        if is_match or not watched_accounts:
+                            line_amt = abs(float(line.get("LineAmount", total_amt)))
+                            results.append({
+                                "transaction_id": tx_id,
+                                "date": raw_date[:10] if len(raw_date) >= 10 else raw_date,
+                                "amount": line_amt,
+                                "transaction_type": tx_type,
+                                "description": line_desc,
+                                "payee": payee_name,
+                                "bank_account_name": bank_acc,
+                                "account_name": f"Account {line.get('AccountCode')}",
+                                "watched_account": line.get("AccountCode") or "850",
+                                "raw_transaction": tx,
+                            })
+                            break
+                return results
+        except Exception as e:
+            logger.warning(f"Xero fetch_uncategorized_bank_transactions error: {e}")
+        return []
+
+    async def categorize_bank_transaction(
+        self,
+        transaction_id: str,
+        account_id: str,
+        payee_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Categorizes a bank transaction in Xero by reassigning line item AccountCode."""
+        if not self.refresh_token or not self.tenant_id:
+            return {
+                "success": True,
+                "platform": "Xero",
+                "message": f"Simulated categorization for Xero bank transaction {transaction_id} to account {account_id}.",
+            }
+        try:
+            token = await self.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Xero-tenant-id": self.tenant_id,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "BankTransactions": [
+                    {
+                        "BankTransactionID": transaction_id,
+                        "LineItems": [
+                            {
+                                "AccountCode": account_id,
+                            }
+                        ],
+                    }
+                ]
+            }
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                post_resp = await client.post(
+                    f"{self.base_url}/BankTransactions",
+                    headers=headers,
+                    json=payload,
+                )
+                if post_resp.status_code not in (200, 201):
+                    raise RuntimeError(f"Failed to update Xero BankTransaction: {post_resp.text}")
+
+                return {
+                    "success": True,
+                    "platform": "Xero",
+                    "transaction_id": transaction_id,
+                    "raw_response": post_resp.json(),
+                    "message": f"Successfully reclassified Xero bank transaction {transaction_id} to account {account_id}.",
+                }
+        except Exception as e:
+            logger.error(f"Error categorizing Xero bank transaction {transaction_id}: {e}")
+            raise

@@ -198,3 +198,178 @@ class QuickBooksService:
             "total_debit": journal_payload.get("total_debit", 0.0),
             "message": "Successfully posted journal entry in QuickBooks Online.",
         }
+
+    async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
+        """Fetch Chart of Accounts from QuickBooks Online (/query?query=select * from Account)."""
+        if not self.refresh_token:
+            return []
+        try:
+            token = await self.get_access_token()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                }
+                query = "select * from Account maxresults 200"
+                resp = await client.get(
+                    f"{self.base_url}/query",
+                    params={"query": query},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    accounts = data.get("QueryResponse", {}).get("Account", [])
+                    out = []
+                    for a in accounts:
+                        acc_id = str(a.get("Id", ""))
+                        acc_num = str(a.get("AcctNum", ""))
+                        acc_name = a.get("Name", "")
+                        acc_type = a.get("AccountType", "Expense")
+                        norm = f"{acc_num} {acc_name}".lower()
+                        is_suspense = any(
+                            s in norm
+                            for s in ["uncategorized", "ask my accountant", "suspense", "6990", "4990", "850"]
+                        )
+                        out.append({
+                            "account_id": acc_id,
+                            "account_code": acc_num or acc_id,
+                            "account_name": acc_name,
+                            "account_type": acc_type,
+                            "is_suspense": is_suspense,
+                        })
+                    return out
+        except Exception as e:
+            logger.warning(f"QuickBooks fetch_chart_of_accounts error: {e}")
+        return []
+
+    async def fetch_uncategorized_transactions(
+        self,
+        watched_accounts: Optional[List[str]] = None,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Pulls unmapped/suspense transactions from QuickBooks Online (e.g. Purchases in 6990, 850)."""
+        if not self.refresh_token:
+            return []
+        try:
+            token = await self.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            }
+            watched_norm = [str(w).strip().lower() for w in (watched_accounts or ["6990", "850", "uncategorized", "suspense"])]
+
+            where_clauses = []
+            if date_start:
+                where_clauses.append(f"TxnDate >= '{date_start}'")
+            if date_end:
+                where_clauses.append(f"TxnDate <= '{date_end}'")
+            where_sql = f" where {' and '.join(where_clauses)}" if where_clauses else ""
+
+            tx_query = f"select * from Purchase{where_sql} maxresults 100"
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.get(
+                    f"{self.base_url}/query",
+                    params={"query": tx_query},
+                    headers=headers,
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"QuickBooks purchase query returned {resp.status_code}: {resp.text}")
+                    return []
+
+                data = resp.json()
+                purchases = data.get("QueryResponse", {}).get("Purchase", [])
+                results = []
+                for p in purchases:
+                    p_id = str(p.get("Id", ""))
+                    p_date = p.get("TxnDate", "")
+                    total_amt = float(p.get("TotalAmt", 0.0))
+                    entity_ref = p.get("EntityRef", {})
+                    payee_name = entity_ref.get("name", "")
+                    bank_acc = p.get("AccountRef", {}).get("name", "QuickBooks Bank Account")
+
+                    # Check each line item to see if it targets a watched account
+                    for line in p.get("Line", []):
+                        detail = line.get("AccountBasedExpenseLineDetail", {})
+                        line_acc_ref = detail.get("AccountRef", {})
+                        line_acc_id = str(line_acc_ref.get("value", "")).lower()
+                        line_acc_name = str(line_acc_ref.get("name", "")).lower()
+
+                        is_match = any(
+                            w in line_acc_id or w in line_acc_name
+                            for w in watched_norm
+                        )
+                        if is_match or not watched_accounts:
+                            line_amt = float(line.get("Amount", total_amt))
+                            desc = line.get("Description") or p.get("PrivateNote") or f"Purchase from {payee_name or 'Vendor'}"
+                            results.append({
+                                "transaction_id": p_id,
+                                "date": p_date,
+                                "amount": line_amt,
+                                "transaction_type": "DEBIT",
+                                "description": desc,
+                                "payee": payee_name,
+                                "bank_account_name": bank_acc,
+                                "account_name": line_acc_ref.get("name") or "Uncategorized Expense",
+                                "watched_account": line_acc_ref.get("name") or "6990",
+                                "raw_transaction": p,
+                            })
+                            break
+                return results
+        except Exception as e:
+            logger.warning(f"QuickBooks fetch_uncategorized_transactions error: {e}")
+        return []
+
+    async def categorize_transaction(
+        self,
+        transaction_id: str,
+        account_id: str,
+        payee_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Categorizes a transaction in QuickBooks Online by reassigning line AccountRef."""
+        if not self.refresh_token:
+            return {
+                "success": True,
+                "platform": "QuickBooks Online",
+                "message": f"Simulated categorization for QBO transaction {transaction_id} to account {account_id}.",
+            }
+        try:
+            token = await self.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            # Fetch existing purchase object to preserve SyncToken and other lines
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                get_resp = await client.get(f"{self.base_url}/purchase/{transaction_id}", headers=headers)
+                if get_resp.status_code != 200:
+                    raise RuntimeError(f"Could not read QBO purchase {transaction_id}: {get_resp.text}")
+
+                purchase = get_resp.json().get("Purchase", {})
+                for line in purchase.get("Line", []):
+                    detail = line.get("AccountBasedExpenseLineDetail")
+                    if detail:
+                        detail["AccountRef"] = {"value": account_id}
+
+                if payee_name and not purchase.get("EntityRef"):
+                    purchase["PrivateNote"] = f"{purchase.get('PrivateNote', '')} | Payee: {payee_name}".strip(" |")
+
+                post_resp = await client.post(
+                    f"{self.base_url}/purchase",
+                    headers=headers,
+                    json=purchase,
+                )
+                if post_resp.status_code not in (200, 201):
+                    raise RuntimeError(f"Failed to update QBO purchase: {post_resp.text}")
+
+                return {
+                    "success": True,
+                    "platform": "QuickBooks Online",
+                    "transaction_id": transaction_id,
+                    "raw_response": post_resp.json(),
+                    "message": f"Successfully reclassified QBO transaction {transaction_id} to account {account_id}.",
+                }
+        except Exception as e:
+            logger.error(f"Error categorizing QBO transaction {transaction_id}: {e}")
+            raise

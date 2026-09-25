@@ -737,8 +737,16 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
         # Sync to accounting software
         if payload.post_to_accounting and client:
             adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
+            meta = tx.metadata_json or {}
+            ext_tx_id = (
+                meta.get("external_transaction_id")
+                or meta.get("zoho_transaction_id")
+                or meta.get("qbo_transaction_id")
+                or meta.get("xero_transaction_id")
+                or str(tx.id)
+            )
             await adapter.categorize_bank_transaction(
-                transaction_id=str(tx.id),
+                transaction_id=str(ext_tx_id),
                 account_id=payload.mapped_account_id,
                 payee_name=payload.payee_name,
                 tax_rate=payload.tax_rate,
@@ -759,6 +767,48 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
             "success": True,
             "transaction": tx.model_dump(),
             "message": f"Categorized transaction {tx.id} to '{tx.mapped_account_name}'.",
+        }
+
+
+@bank_accountant_router.get("/transactions/{tx_id}/matches", summary="Accountant: Get Platform Matches for Bank Transaction")
+async def accountant_get_bank_transaction_matches(tx_id: int) -> Dict[str, Any]:
+    """Fetches potential matching open invoices, bills, and payments from connected accounting platform."""
+    with Session(get_engine()) as session:
+        tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
+        if not tx:
+            raise HTTPException(status_code=404, detail="Transaction not found.")
+
+        client = session.exec(select(ClientOrganization).where(ClientOrganization.id == tx.client_id)).first()
+        if not client:
+            return {"success": True, "matches": []}
+
+        meta = tx.metadata_json or {}
+        ext_tx_id = (
+            meta.get("external_transaction_id")
+            or meta.get("zoho_transaction_id")
+            or meta.get("qbo_transaction_id")
+            or meta.get("xero_transaction_id")
+        )
+
+        matches = []
+        if ext_tx_id and str(client.accounting_software).lower() in ["zoho", "zoho books", "zohobooks"]:
+            from app.services.zoho_service import ZohoBooksService
+            zoho_client = ZohoBooksService(
+                org_id=client.zoho_org_id,
+                client_id=client.zoho_client_id,
+                client_secret=client.zoho_client_secret,
+                refresh_token=client.zoho_refresh_token,
+            )
+            try:
+                matches = await zoho_client.fetch_bank_transaction_matches(str(ext_tx_id))
+            except Exception as e:
+                logger.warning(f"Could not fetch matches for tx {tx_id}: {e}")
+
+        return {
+            "success": True,
+            "transaction_id": tx_id,
+            "external_transaction_id": ext_tx_id,
+            "matches": matches,
         }
 
 
@@ -994,6 +1044,18 @@ async def accountant_sync_bank_feeds(
                 meta = {}
                 if f.get("watched_account"):
                     meta["watched_account"] = f.get("watched_account")
+                if f.get("external_transaction_id"):
+                    meta["external_transaction_id"] = f.get("external_transaction_id")
+                if f.get("zoho_transaction_id"):
+                    meta["zoho_transaction_id"] = f.get("zoho_transaction_id")
+                if f.get("zoho_account_id"):
+                    meta["zoho_account_id"] = f.get("zoho_account_id")
+                if f.get("qbo_transaction_id"):
+                    meta["qbo_transaction_id"] = f.get("qbo_transaction_id")
+                if f.get("xero_transaction_id"):
+                    meta["xero_transaction_id"] = f.get("xero_transaction_id")
+                if f.get("raw_transaction"):
+                    meta["raw_transaction"] = f.get("raw_transaction")
 
                 new_tx = BankTransaction(
                     client_id=client_id,

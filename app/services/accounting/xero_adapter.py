@@ -1,9 +1,14 @@
 """Concrete Xero Adapter for S4 Multi-Platform Engine."""
 
+import calendar
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.config import settings
+from app.utils.logging import get_logger
 from app.services.accounting.base import BaseAccountingAdapter, AccountingContact, AccountingItem, AccountingPostResult
 from app.services.xero_service import XeroService
+
+logger = get_logger("xero_adapter")
 
 
 class XeroAdapter(BaseAccountingAdapter):
@@ -131,6 +136,9 @@ class XeroAdapter(BaseAccountingAdapter):
 
     async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
         """Returns Chart of Accounts for Xero."""
+        live_accs = await self.xero.fetch_chart_of_accounts()
+        if live_accs:
+            return live_accs
         if settings.MOCK_MODE:
             return [
                 {"account_id": "xero_850", "account_code": "850", "account_name": "Suspense Account", "account_type": "Current Liability", "is_suspense": True},
@@ -149,10 +157,70 @@ class XeroAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Discovers unmapped transactions residing in watched suspense accounts on Xero.
-        Returns empty list when live sync is not yet configured or no live records exist.
-        """
-        return []
+        """Discovers unmapped transactions residing in watched suspense accounts on Xero."""
+        now = datetime.now()
+        target_year = year or now.year
+
+        # Resolve numeric month if passed
+        target_m_num = None
+        if month and str(month).upper() != "ALL":
+            m_clean = str(month).strip()
+            if "-" in m_clean:
+                parts = m_clean.split("-")
+                if len(parts) >= 2 and parts[1].isdigit():
+                    target_m_num = int(parts[1])
+            elif m_clean.isdigit():
+                target_m_num = int(m_clean)
+            else:
+                for fmt in ("%B", "%b"):
+                    try:
+                        target_m_num = datetime.strptime(m_clean, fmt).month
+                        break
+                    except ValueError:
+                        pass
+
+        date_start = None
+        date_end = None
+        if target_m_num:
+            days_in_m = calendar.monthrange(target_year, target_m_num)[1]
+            date_start = f"{target_year}-{target_m_num:02d}-01"
+            date_end = f"{target_year}-{target_m_num:02d}-{days_in_m:02d}"
+        elif year:
+            date_start = f"{target_year}-01-01"
+            date_end = f"{target_year}-12-31"
+
+        try:
+            raw_txs = await self.xero.fetch_uncategorized_bank_transactions(
+                watched_accounts=watched_accounts,
+                date_start=date_start,
+                date_end=date_end,
+            )
+            results = []
+            for tx in (raw_txs or []):
+                tx_id = str(tx.get("transaction_id", ""))
+                tx_date = str(tx.get("date") or f"{target_year}-01-01")
+                amt = abs(float(tx.get("amount", 0.0)))
+                desc = tx.get("description") or f"Xero Bank Transaction #{tx_id}"
+                results.append({
+                    "transaction_date": tx_date,
+                    "description": desc,
+                    "amount": amt,
+                    "transaction_type": tx.get("transaction_type", "DEBIT"),
+                    "bank_account_name": tx.get("bank_account_name") or "Xero Bank Feed",
+                    "account_name": tx.get("account_name") or "Suspense Account",
+                    "source_file_name": "Xero_Live_Sync",
+                    "mapped_account_id": None,
+                    "ai_suggested_account": None,
+                    "category_confidence": 0.90,
+                    "watched_account": tx.get("watched_account") or "850",
+                    "external_transaction_id": tx_id,
+                    "xero_transaction_id": tx_id,
+                    "raw_transaction": tx.get("raw_transaction"),
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Error fetching uncategorized bank transactions from Xero: {e}")
+            return []
 
     async def categorize_bank_transaction(
         self,
@@ -162,10 +230,26 @@ class XeroAdapter(BaseAccountingAdapter):
         tax_rate: Optional[str] = None,
     ) -> AccountingPostResult:
         """Pushes categorized line into Xero."""
-        return AccountingPostResult(
-            success=True,
-            platform=self.platform_name,
-            entity_type="bank_transaction_categorized",
-            document_id=f"xero_tx_{transaction_id}",
-            message=f"Transaction reconciled to account {account_id} on Xero.",
-        )
+        try:
+            res = await self.xero.categorize_bank_transaction(
+                transaction_id=transaction_id,
+                account_id=account_id,
+                payee_name=payee_name,
+            )
+            return AccountingPostResult(
+                success=res.get("success", True),
+                platform=self.platform_name,
+                entity_type="bank_transaction_categorized",
+                document_id=transaction_id,
+                message=res.get("message", f"Transaction reconciled to account {account_id} on Xero."),
+                raw_response=res,
+            )
+        except Exception as e:
+            logger.error(f"Error categorizing transaction {transaction_id} on Xero: {e}")
+            return AccountingPostResult(
+                success=False,
+                platform=self.platform_name,
+                entity_type="bank_transaction_categorized",
+                document_id=transaction_id,
+                message=f"Failed to reconcile on Xero: {str(e)}",
+            )

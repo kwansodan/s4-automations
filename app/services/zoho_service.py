@@ -1090,11 +1090,17 @@ class ZohoBooksService:
         if account_id:
             params["account_id"] = account_id
         if status and str(status).upper() != "ALL":
-            params["filter_by"] = f"Status.{status.capitalize()}"
+            if str(status).lower() == "uncategorized":
+                params["transaction_status"] = "uncategorized"
+                params["filter_by"] = "Status.Uncategorized"
+            else:
+                params["filter_by"] = f"Status.{status.capitalize()}"
         if date_start:
             params["date_start"] = date_start
+            params["from_date"] = date_start
         if date_end:
             params["date_end"] = date_end
+            params["to_date"] = date_end
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, headers=headers, params=params)
@@ -1106,6 +1112,174 @@ class ZohoBooksService:
             response.raise_for_status()
             data = response.json()
             return data.get("banktransactions", [])
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def fetch_uncategorized_bank_transactions(
+        self,
+        account_id: Optional[str] = None,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Pulls unclassified/uncategorized bank transactions from Zoho Books (/banktransactions?transaction_status=uncategorized).
+        If account_id is not specified, iterates across all registered bank and credit card accounts.
+        """
+        if not self.org_id:
+            logger.info("No live Zoho credentials/org_id; returning empty uncategorized transactions.")
+            return []
+
+        # If specific account provided, fetch directly
+        if account_id:
+            return await self.fetch_bank_transactions(
+                account_id=account_id,
+                status="uncategorized",
+                date_start=date_start,
+                date_end=date_end,
+            )
+
+        # Otherwise, discover active bank accounts first
+        all_uncat: List[Dict[str, Any]] = []
+        seen_tx_ids = set()
+        try:
+            bank_accounts = await self.fetch_bank_accounts()
+            for bacc in (bank_accounts or []):
+                b_id = str(bacc.get("account_id", ""))
+                if not b_id:
+                    continue
+                txs = await self.fetch_bank_transactions(
+                    account_id=b_id,
+                    status="uncategorized",
+                    date_start=date_start,
+                    date_end=date_end,
+                )
+                for t in (txs or []):
+                    tid = str(t.get("transaction_id", ""))
+                    if tid and tid not in seen_tx_ids:
+                        seen_tx_ids.add(tid)
+                        t["from_account_name"] = bacc.get("account_name")
+                        t["from_account_id"] = b_id
+                        all_uncat.append(t)
+        except Exception as err:
+            logger.warning(f"Could not iterate bank accounts for uncategorized sync: {err}")
+
+        # Also attempt org-wide query if no account-specific loop succeeded
+        if not all_uncat:
+            try:
+                txs = await self.fetch_bank_transactions(
+                    account_id=None,
+                    status="uncategorized",
+                    date_start=date_start,
+                    date_end=date_end,
+                )
+                for t in (txs or []):
+                    tid = str(t.get("transaction_id", ""))
+                    if tid and tid not in seen_tx_ids:
+                        seen_tx_ids.add(tid)
+                        all_uncat.append(t)
+            except Exception as org_err:
+                logger.debug(f"Org-wide uncategorized query note: {org_err}")
+
+        return all_uncat
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def fetch_bank_transaction_matches(
+        self,
+        transaction_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Fetches potential matching open invoices, bills, and payments in Zoho Books for an uncategorized transaction."""
+        if not self.org_id or not transaction_id:
+            return []
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/match"
+        params: Dict[str, Any] = {"organization_id": self.org_id}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.get(url, headers=headers, params=params)
+
+            if response.status_code != 200:
+                logger.warning(f"Could not fetch matches for Zoho bank tx {transaction_id} ({response.status_code}): {response.text}")
+                return []
+
+            data = response.json()
+            return data.get("matching_transactions", []) or data.get("matching_invoices", []) or []
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def categorize_uncategorized_transaction(
+        self,
+        transaction_id: str,
+        account_id: str,
+        payee_name: Optional[str] = None,
+        description: Optional[str] = None,
+        transaction_type: str = "DEBIT",
+        tax_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Categorizes an uncategorized bank transaction into Zoho Books.
+        If withdrawal/debit: categorizes as expense.
+        If deposit/credit: categorizes as customer payment or deposit.
+        """
+        if not self.org_id or not transaction_id:
+            raise ValueError("Zoho org_id and transaction_id are required for categorization.")
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        headers["Content-Type"] = "application/json"
+
+        # Determine endpoint based on DEBIT (withdrawal/expense) vs CREDIT (deposit)
+        is_withdrawal = str(transaction_type).upper() == "DEBIT"
+        sub_path = "expenses" if is_withdrawal else "customerpayments"
+        url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize/{sub_path}"
+        params: Dict[str, Any] = {"organization_id": self.org_id}
+
+        body: Dict[str, Any] = {
+            "account_id": account_id,
+        }
+        if description:
+            body["description"] = description
+        if payee_name:
+            if is_withdrawal:
+                body["vendor_name"] = payee_name
+            else:
+                body["customer_name"] = payee_name
+        if tax_id:
+            body["tax_id"] = tax_id
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, json=body)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                headers["Content-Type"] = "application/json"
+                response = await client.post(url, headers=headers, params=params, json=body)
+
+            if response.status_code not in (200, 201):
+                logger.warning(f"Categorize via /{sub_path} returned {response.status_code}. Attempting generic /categorize...")
+                gen_url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize"
+                response = await client.post(gen_url, headers=headers, params=params, json=body)
+
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"✅ Successfully categorized Zoho bank transaction {transaction_id} to account {account_id}.")
+            return data
 
     @retry(
         reraise=True,
