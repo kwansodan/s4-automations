@@ -846,36 +846,36 @@ export const ClientArTab: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Header & Controls Toolbar */}
-      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Receipt className="w-5 h-5 text-[#E2495B]" />
-            <h2 className="text-base font-extrabold text-[#E2495B] tracking-tight">
+            <Receipt className="w-5 h-5 text-[#0284C7]" />
+            <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
               Accounts Receivable &amp; Review Sheets
             </h2>
-            <span className="text-[10px] font-mono font-bold text-[#E2495B] bg-[#F4ED6E] border border-[#C4BA3B] px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-2 py-0.5 rounded-full">
               {currentClient.name}
             </span>
             {matchedZohoContact ? (
               <span
-                className="inline-flex items-center gap-1 text-[10px] font-bold text-[#E2495B] bg-[#F4ED6E] border border-[#C4BA3B] px-2.5 py-0.5 rounded-full"
+                className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#059669] bg-[#ECFDF5] border border-[#A7F3D0] px-2.5 py-0.5 rounded-full"
                 title={`Reconciled with Zoho Books Customer: ${matchedZohoContact.contact_name} (${matchedZohoContact.contact_id})`}
               >
-                <CheckCircle2 className="w-3 h-3 text-[#E2495B] shrink-0" />
+                <CheckCircle2 className="w-3 h-3 text-[#059669] shrink-0" />
                 <span>Zoho Customer: {matchedZohoContact.company_name || matchedZohoContact.contact_name}</span>
-                <span className="font-mono text-[#E2495B]/80">({matchedZohoContact.contact_id})</span>
+                <span className="font-mono text-[#059669]/80">({matchedZohoContact.contact_id})</span>
               </span>
             ) : (
               <span
-                className="inline-flex items-center gap-1 text-[10px] font-medium text-[#C4BA3B] bg-[#FFFEE6] border border-[#C4BA3B] px-2 py-0.5 rounded-full"
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-50 border border-[#E2E8F0] px-2 py-0.5 rounded-full"
                 title="Will match automatically during Zoho invoice creation using name similarity"
               >
-                <Building2 className="w-3 h-3 text-[#C4BA3B] shrink-0" />
+                <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
                 <span>Auto-reconciles to Zoho Customer</span>
               </span>
             )}
           </div>
-          <p className="text-xs text-[#C4BA3B] mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             {isCustodyTracking
               ? 'Audit OCR extracted laundry/sales control slips, reconcile linen losses, and generate Zoho Books invoices.'
               : 'Audit OCR extracted revenue & sales documents, review line items, and generate Zoho Books invoices.'}
@@ -885,15 +885,15 @@ export const ClientArTab: React.FC = () => {
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Period Selector */}
-          <div className="flex items-center gap-1.5 bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl px-2.5 py-1 text-xs text-[#E2495B] font-bold">
-            <Calendar className="w-3.5 h-3.5 text-[#E2495B]" />
+          <div className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] rounded-xl px-2.5 py-1 text-xs text-[#0F172A] font-semibold shadow-xs">
+            <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-[#E2495B] font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-[#0F172A] font-semibold focus:outline-none cursor-pointer"
             >
               {MONTHS.map((m) => (
-                <option key={m} value={m} className="bg-[#FFFEE6] text-[#E2495B]">
+                <option key={m} value={m} className="bg-white text-slate-800">
                   {m}
                 </option>
               ))}
@@ -901,10 +901,10 @@ export const ClientArTab: React.FC = () => {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-[#E2495B] font-bold focus:outline-none cursor-pointer ml-1"
+              className="bg-transparent text-[#0F172A] font-semibold focus:outline-none cursor-pointer ml-1"
             >
               {YEARS.map((y) => (
-                <option key={y} value={y} className="bg-[#FFFEE6] text-[#E2495B]">
+                <option key={y} value={y} className="bg-white text-slate-800">
                   {y}
                 </option>
               ))}
@@ -915,7 +915,7 @@ export const ClientArTab: React.FC = () => {
           <button
             onClick={() => handleRunArOcr()}
             disabled={isRunningOcr}
-            className="flex items-center gap-1.5 bg-[#F4ED6E] hover:bg-[#FFFEE6] border border-[#C4BA3B] text-[#E2495B] text-xs font-bold px-3.5 py-1.5 rounded-xl transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
           >
             <PlayCircle className={`w-3.5 h-3.5 ${isRunningOcr ? 'animate-spin' : ''}`} />
             <span>{isRunningOcr ? 'Extracting Slips...' : 'Run AR Extraction'}</span>
@@ -927,10 +927,10 @@ export const ClientArTab: React.FC = () => {
               setPurgeTargetFileName('');
               setIsPurgeModalOpen(true);
             }}
-            className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] border border-[#E2495B] text-[#E2495B] text-xs font-bold px-3 py-1.5 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1.5 bg-white hover:bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
             title="Delete mistakenly ingested files or clear erroneous document data"
           >
-            <Trash2 className="w-3.5 h-3.5 text-[#E2495B]" />
+            <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
             <span>Delete Ingested File</span>
           </button>
 
@@ -938,19 +938,19 @@ export const ClientArTab: React.FC = () => {
           <button
             onClick={() => { refreshAll(); loadTransactions(); loadSummaryData(); }}
             disabled={isLoading || isLoadingTx}
-            className="p-2 bg-[#FFFEE6] border border-[#C4BA3B] hover:bg-[#F4ED6E] text-[#E2495B] rounded-xl transition cursor-pointer"
+            className="p-2 bg-white border border-[#E2E8F0] hover:bg-slate-50 text-slate-600 rounded-xl transition cursor-pointer shadow-xs"
             title="Refresh AR Data"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading || isLoadingTx ? 'animate-spin text-[#E2495B]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading || isLoadingTx ? 'animate-spin text-[#0284C7]' : ''}`} />
           </button>
 
           {/* 1-Click Invoice Export */}
           <button
             onClick={handleGenerateInvoicesClick}
-            className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl shadow transition cursor-pointer ${
+            className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer ${
               approvedRowsCount > 0
-                ? 'bg-[#E2495B] hover:bg-[#E2495B]/90 text-[#FFFEE6] border border-[#C4BA3B]'
-                : 'bg-[#FFFEE6] text-[#C4BA3B] border border-[#C4BA3B] cursor-not-allowed opacity-60'
+                ? 'bg-[#059669] hover:bg-[#047857] text-white shadow-sm font-bold'
+                : 'bg-slate-100 text-slate-400 border border-[#E2E8F0] cursor-not-allowed opacity-60'
             }`}
             title={approvedRowsCount === 0 ? "Approve items below first to generate draft invoices" : "Generate Zoho Books Draft Invoices"}
           >

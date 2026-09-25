@@ -97,61 +97,61 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-      <div className="bg-slate-900 border border-sky-500/30 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-5 text-slate-800">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+            <div className="w-9 h-9 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7]">
               <HelpCircle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">
+              <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
                 Draw Client Attention / Send Clarification Query
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#64748B]">
                 {currentClient?.name || 'Client Organisation'} • Transaction #{transaction.id}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Transaction Summary Card */}
-        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
+        <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3.5 space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 flex items-center gap-1.5 font-mono">
-              <Calendar className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-[#64748B] flex items-center gap-1.5 font-mono">
+              <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
               {transaction.transaction_date}
             </span>
-            <span className="font-extrabold text-white text-sm font-mono flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="font-bold text-[#0F172A] text-sm font-mono flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-[#059669]" />
               GHS {transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ml-1 ${
-                transaction.transaction_type === 'DEBIT' ? 'bg-rose-950/60 text-rose-300 border border-rose-500/30' : 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                transaction.transaction_type === 'DEBIT' ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]' : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
               }`}>
                 {transaction.transaction_type}
               </span>
             </span>
           </div>
-          <p className="text-xs font-mono text-slate-300 break-words bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+          <p className="text-xs font-mono text-slate-800 break-words bg-white px-2.5 py-1.5 rounded-lg border border-[#E2E8F0]">
             {transaction.description}
           </p>
-          <span className="text-[11px] text-sky-400/90 block font-mono">
+          <span className="text-[11px] text-[#0284C7] block font-mono">
             Account: {transaction.metadata_json?.watched_account ? `Watched (${transaction.metadata_json.watched_account})` : (transaction.bank_account_name || 'Watched Account')}
           </span>
         </div>
 
         {/* Quick Question Templates */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Suggested Clarification Templates:</span>
           </label>
           <div className="grid grid-cols-1 gap-1.5">
@@ -162,8 +162,8 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
                 onClick={() => setQueryText(tmpl)}
                 className={`text-left text-xs p-2 rounded-lg border transition cursor-pointer ${
                   queryText === tmpl
-                    ? 'bg-sky-950/60 border-sky-500/50 text-sky-200'
-                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    ? 'bg-[#F0F9FF] border-[#BAE6FD] text-[#0284C7] font-medium'
+                    : 'bg-white border-[#E2E8F0] text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 "{tmpl}"
@@ -174,7 +174,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
 
         {/* Custom Question Textarea */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-300 block">
+          <label className="text-xs font-semibold text-slate-700 block">
             Accountant Question / Instructions for Client:
           </label>
           <textarea
@@ -182,14 +182,14 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             onChange={(e) => setQueryText(e.target.value)}
             rows={3}
             placeholder="Type specific question or context for the client..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 resize-none font-sans"
+            className="w-full bg-white border border-[#E2E8F0] rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] resize-none font-sans shadow-xs"
           />
         </div>
 
         {/* Target Stakeholder Recipient */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <Mail className="w-3.5 h-3.5 text-sky-400" />
+          <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Send Alert to Stakeholder / Client Contact:</span>
           </label>
           <div className="flex gap-2">
@@ -198,7 +198,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
               placeholder="cfo@clientorg.com"
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+              className="flex-1 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-mono shadow-xs"
             />
             {(contacts.length > 0 || (currentClient?.team_members && currentClient.team_members.length > 0)) && (
               <select
@@ -206,7 +206,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
                 onChange={(e) => {
                   if (e.target.value) setRecipientEmail(e.target.value);
                 }}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer max-w-[200px] truncate"
+                className="bg-white border border-[#E2E8F0] rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7] cursor-pointer max-w-[200px] truncate shadow-xs"
               >
                 <option value="">Select Stakeholder...</option>
                 {contacts.length > 0
@@ -223,17 +223,17 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
               </select>
             )}
           </div>
-          <span className="text-[10px] text-slate-400 block">
+          <span className="text-[10px] text-slate-500 block">
             A secure 1-click magic link is generated automatically, allowing the recipient to answer without typing an OTP code.
           </span>
         </div>
 
         {/* Modal Actions */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
           >
             Cancel
           </button>
@@ -241,7 +241,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             type="button"
             onClick={handleSendQuery}
             disabled={isSubmitting || !queryText.trim()}
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:from-sky-700 active:to-indigo-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-sky-600/30 transition cursor-pointer"
+            className="inline-flex items-center gap-2 bg-[#0284C7] hover:bg-[#0EA5E9] active:bg-[#0369A1] disabled:opacity-50 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-xs transition cursor-pointer"
           >
             {isSubmitting ? (
               <span>Dispatching Alert...</span>

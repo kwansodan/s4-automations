@@ -211,21 +211,21 @@ export const ClientApTab: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Header & Controls */}
-      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-[#E2495B]" />
-            <h2 className="text-base font-extrabold text-[#E2495B] tracking-tight">
+            <DollarSign className="w-5 h-5 text-[#0284C7]" />
+            <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
               Accounts Payable (Vendor Bills &amp; Expenses)
             </h2>
-            <span className="text-[10px] font-mono font-bold text-[#E2495B] bg-[#F4ED6E] border border-[#C4BA3B] px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-2 py-0.5 rounded-full">
               {currentClient?.name || 'Client'}
             </span>
-            <span className="text-[10px] font-mono font-bold text-[#E2495B] bg-[#FFFEE6] border border-[#C4BA3B] px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-mono font-semibold text-slate-700 bg-white border border-[#E2E8F0] px-2 py-0.5 rounded-full shadow-xs">
               {selectedMonth} {selectedYear}
             </span>
           </div>
-          <p className="text-xs text-[#C4BA3B] mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             Audit OCR extracted supplier bills, review vendor expense rollups, and post approved bills directly into the accounting ledger.
           </p>
         </div>
@@ -233,12 +233,12 @@ export const ClientApTab: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
 
           {/* Auto Post Toggle */}
-          <label className="flex items-center gap-2 text-xs font-bold text-[#E2495B] bg-[#FFFEE6] border border-[#C4BA3B] px-3 py-2 rounded-xl cursor-pointer">
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-white border border-[#E2E8F0] px-3 py-2 rounded-xl cursor-pointer shadow-xs hover:bg-slate-50 transition">
             <input
               type="checkbox"
               checked={isAutoPostDraft}
               onChange={(e) => setIsAutoPostDraft(e.target.checked)}
-              className="rounded border-[#C4BA3B] text-[#E2495B] focus:ring-0 cursor-pointer"
+              className="rounded border-slate-300 text-[#0284C7] focus:ring-0 cursor-pointer"
             />
             <span>Auto-Post to Accounting API</span>
           </label>
@@ -246,16 +246,16 @@ export const ClientApTab: React.FC = () => {
           <button
             onClick={loadTransactions}
             disabled={isLoadingTx}
-            className="p-2 bg-[#FFFEE6] border border-[#C4BA3B] hover:bg-[#F4ED6E] text-[#E2495B] rounded-xl transition cursor-pointer"
+            className="p-2 bg-white border border-[#E2E8F0] hover:bg-slate-50 text-slate-600 rounded-xl transition cursor-pointer shadow-xs"
             title="Refresh AP Data"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTx ? 'animate-spin text-[#E2495B]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTx ? 'animate-spin text-[#0284C7]' : ''}`} />
           </button>
 
           <button
             onClick={handleRunApPipeline}
             disabled={isRunning}
-            className="flex items-center gap-2 bg-[#E2495B] hover:bg-[#E2495B]/90 text-[#FFFEE6] border border-[#C4BA3B] text-xs font-bold px-4 py-2 rounded-xl shadow transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 bg-[#0284C7] hover:bg-[#0EA5E9] text-white border border-[#0284C7] text-xs font-semibold px-4 py-2 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
           >
             {isRunning ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -270,10 +270,10 @@ export const ClientApTab: React.FC = () => {
               setPurgeTargetFileName('');
               setIsPurgeModalOpen(true);
             }}
-            className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] border border-[#E2495B] text-[#E2495B] text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1.5 bg-white hover:bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
             title="Delete mistakenly ingested files or clear erroneous document data"
           >
-            <Trash2 className="w-3.5 h-3.5 text-[#E2495B]" />
+            <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
             <span>Delete Ingested File</span>
           </button>
         </div>

@@ -346,18 +346,18 @@ export const ClientOverviewTab: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* 1. Master Operational Control Header */}
-      <div className="glass-panel rounded-2xl px-5 py-4.5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-slate-800/90">
+      <div className="bg-white rounded-2xl px-5 py-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[#E2E8F0]">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-xl">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
-            <span className="text-xs font-bold text-white tracking-tight">Active Pipelines Monitor</span>
+          <div className="flex items-center gap-2 bg-slate-50 border border-[#E2E8F0] px-3 py-1.5 rounded-xl">
+            <span className="w-2 h-2 rounded-full bg-[#059669] shadow-[0_0_6px_#10B981] animate-pulse" />
+            <span className="text-xs font-bold text-slate-900 tracking-tight">Active Pipelines Monitor</span>
           </div>
 
-          <span className="text-xs font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/40 px-3 py-1 rounded-xl">
+          <span className="text-xs font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-3 py-1 rounded-xl">
             {selectedMonth} {selectedYear}
           </span>
 
-          <span className="text-xs text-slate-400 hidden lg:inline">
+          <span className="text-xs text-slate-500 hidden lg:inline">
             • Dynamic orchestration for {activePipelines.length} live stream{activePipelines.length !== 1 ? 's' : ''} &amp; {currentPlatform.name}
           </span>
         </div>
@@ -365,13 +365,13 @@ export const ClientOverviewTab: React.FC = () => {
         <div className="flex items-center gap-2.5 flex-wrap shrink-0">
           <button
             onClick={() => setShowBlueprint((prev) => !prev)}
-            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition cursor-pointer ${
+            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition cursor-pointer shadow-xs ${
               showBlueprint
-                ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
-                : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+                ? 'bg-[#F0F9FF] border-[#BAE6FD] text-[#0284C7]'
+                : 'bg-white hover:bg-slate-50 border-[#E2E8F0] text-slate-700'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+            <BookOpen className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Blueprint</span>
             {showBlueprint ? <ChevronUp className="w-3.5 h-3.5 ml-0.5" /> : <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
           </button>
@@ -379,10 +379,10 @@ export const ClientOverviewTab: React.FC = () => {
           <button
             onClick={handleTestProbe}
             disabled={isProbing}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer shadow-xs disabled:opacity-50"
             title="Probe connection to source folders and mailboxes"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isProbing ? 'animate-spin text-sky-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isProbing ? 'animate-spin text-[#0284C7]' : 'text-slate-400'}`} />
             <span>{isProbing ? 'Probing...' : 'Test Ingestion'}</span>
           </button>
 
@@ -391,16 +391,16 @@ export const ClientOverviewTab: React.FC = () => {
               setEditingPipeline(null);
               setIsWizardOpen(true);
             }}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600/80 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer shadow-xs"
           >
-            <Plus className="w-3.5 h-3.5 text-sky-400" />
+            <Plus className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Add Pipeline</span>
           </button>
 
           <button
             onClick={handleRunAllStreams}
             disabled={isBatchRunning || activePipelines.length === 0}
-            className="flex items-center gap-2 bg-gradient-to-r from-sky-500 via-indigo-600 to-indigo-700 hover:from-sky-400 hover:to-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-sky-500/25 transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-bold px-4 py-2 rounded-xl shadow-sm transition cursor-pointer disabled:opacity-50"
           >
             {isBatchRunning ? (
               <>
@@ -554,35 +554,35 @@ export const ClientOverviewTab: React.FC = () => {
         {/* Metric 1: Configured & Active Streams */}
         <div
           onClick={() => navigateToClientSubTab('pipelines')}
-          className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-4.5 shadow-md backdrop-blur-xl transition-all cursor-pointer group"
+          className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#BAE6FD] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400">Active Pipelines</span>
-            <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-semibold text-slate-500">Active Pipelines</span>
+            <div className="w-8 h-8 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7] group-hover:scale-105 transition-transform">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-white tracking-tight">
-            {activePipelines.length} <span className="text-xs font-normal text-slate-400">/ {pipelines.length} total</span>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight tabular-nums">
+            {activePipelines.length} <span className="text-xs font-normal text-slate-500">/ {pipelines.length} total</span>
           </div>
           <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[10px]">
             {arPipelines.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-500/30 font-semibold">
+              <span className="px-1.5 py-0.5 rounded bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] font-semibold">
                 {arPipelines.length} AR
               </span>
             )}
             {apPipelines.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/30 font-semibold">
+              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
                 {apPipelines.length} AP
               </span>
             )}
             {bankPipelines.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-semibold">
+              <span className="px-1.5 py-0.5 rounded bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] font-semibold">
                 {bankPipelines.length} Bank
               </span>
             )}
             {glPipelines.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-500/30 font-semibold">
+              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-semibold">
                 {glPipelines.length} GL
               </span>
             )}
@@ -596,19 +596,19 @@ export const ClientOverviewTab: React.FC = () => {
             else if (activeSections.hasAp) navigateToClientSubTab('ap');
             else if (activeSections.hasBank) navigateToClientSubTab('bank');
           }}
-          className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-4.5 shadow-md backdrop-blur-xl transition-all cursor-pointer group"
+          className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#A7F3D0] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400">Staged Ledger Items</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-semibold text-slate-500">Staged Ledger Items</span>
+            <div className="w-8 h-8 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] flex items-center justify-center text-[#059669] group-hover:scale-105 transition-transform">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-400 tracking-tight">
-            {stagedCount} <span className="text-xs font-normal text-slate-400">Transactions</span>
+          <div className="text-2xl font-bold text-[#059669] tracking-tight tabular-nums">
+            {stagedCount} <span className="text-xs font-normal text-slate-500">Transactions</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 truncate">
-            <span className="font-mono font-semibold text-slate-200">
+          <div className="text-[11px] text-slate-500 mt-2 truncate">
+            <span className="font-mono font-semibold text-slate-800 tabular-nums">
               {currentClient.currency || 'GHS'} {stagedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>{' '}
             <span>awaiting sign-off</span>
@@ -618,20 +618,20 @@ export const ClientOverviewTab: React.FC = () => {
         {/* Metric 3: Automated Posting Readiness */}
         <div
           onClick={() => navigateToClientSubTab('pipelines')}
-          className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-4.5 shadow-md backdrop-blur-xl transition-all cursor-pointer group"
+          className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#BAE6FD] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400">Auto-Draft Invoicing</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
+            <span className="text-xs font-semibold text-slate-500">Auto-Draft Invoicing</span>
+            <div className="w-8 h-8 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7] group-hover:scale-105 transition-transform">
               <Zap className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-indigo-300 tracking-tight">
-            {autoDraftCount} <span className="text-xs font-normal text-slate-400">/ {activePipelines.length} Streams</span>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight tabular-nums">
+            {autoDraftCount} <span className="text-xs font-normal text-slate-500">/ {activePipelines.length} Streams</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 truncate">
+          <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5 truncate">
             <span>{currentPlatform.icon}</span>
-            <span className="text-slate-300 font-semibold">{currentPlatform.name}</span>
+            <span className="text-slate-800 font-semibold">{currentPlatform.name}</span>
             <span>Sync</span>
           </div>
         </div>
@@ -639,24 +639,24 @@ export const ClientOverviewTab: React.FC = () => {
         {/* Metric 4: Ingestion Pipeline Health */}
         <div
           onClick={() => navigateToClientSubTab('settings')}
-          className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-4.5 shadow-md backdrop-blur-xl transition-all cursor-pointer group"
+          className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-amber-300 rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400">Extraction Health</span>
+            <span className="text-xs font-semibold text-slate-500">Extraction Health</span>
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform ${
               failedPipelines.length === 0
-                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                ? 'bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]'
+                : 'bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48]'
             }`}>
               {failedPipelines.length === 0 ? <ShieldCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
             </div>
           </div>
-          <div className={`text-2xl font-extrabold tracking-tight ${
-            failedPipelines.length === 0 ? 'text-white' : 'text-rose-400'
+          <div className={`text-2xl font-bold tracking-tight ${
+            failedPipelines.length === 0 ? 'text-slate-900' : 'text-[#E11D48]'
           }`}>
             {failedPipelines.length === 0 ? 'All Healthy' : `${failedPipelines.length} Need Review`}
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 truncate">
+          <div className="text-[11px] text-slate-500 mt-2 truncate">
             <span>{totalSourcesDiscovered} docs scanned • {totalItemsExtracted} extracted</span>
           </div>
         </div>
@@ -664,17 +664,17 @@ export const ClientOverviewTab: React.FC = () => {
       </div>
 
       {/* 6. Executive Action Queue: Daily Focus Items */}
-      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-6 shadow-md space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#C4BA3B]">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#F4ED6E] border border-[#C4BA3B] flex items-center justify-center text-[#E2495B]">
+            <div className="w-8 h-8 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7]">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-[#E2495B] tracking-tight">
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
                 Daily Bookkeeping Action Queue
               </h2>
-              <p className="text-xs text-[#C4BA3B]">
+              <p className="text-xs text-slate-500">
                 Immediate items requiring review, classification, or client sign-off today.
               </p>
             </div>
@@ -682,7 +682,7 @@ export const ClientOverviewTab: React.FC = () => {
 
           <button
             onClick={() => navigateToClientSubTab('pipelines')}
-            className="flex items-center gap-1.5 text-xs font-bold text-[#E2495B] hover:bg-[#F4ED6E] px-3.5 py-2 rounded-xl border border-[#C4BA3B] transition cursor-pointer self-start sm:self-auto"
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] hover:bg-[#F0F9FF] px-3.5 py-2 rounded-xl border border-[#BAE6FD] transition cursor-pointer self-start sm:self-auto shadow-xs"
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Manage All Streams ({pipelines.length}) &rarr;</span>
@@ -692,21 +692,21 @@ export const ClientOverviewTab: React.FC = () => {
         {/* 3 Core Action Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
           {/* Action 1: Bank & Reconciliations */}
-          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
+          <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-4 flex flex-col justify-between hover:border-[#0284C7] transition group">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Banking &amp; Suspense</span>
-                <Landmark className="w-4 h-4 text-[#E2495B]" />
+                <span className="text-xs font-bold text-[#0284C7] uppercase tracking-wider">Banking &amp; Suspense</span>
+                <Landmark className="w-4 h-4 text-[#0284C7]" />
               </div>
-              <h3 className="text-sm font-bold text-[#E2495B]">Clarifications &amp; Feeds</h3>
-              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900">Clarifications &amp; Feeds</h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                 Review unclassified bank transactions in monitored suspense accounts and query clients with 1-click links.
               </p>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+            <div className="pt-4 mt-2 border-t border-[#BAE6FD]">
               <button
                 onClick={() => navigateToClientSubTab('requests')}
-                className="w-full flex items-center justify-center gap-1.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] text-xs font-bold py-2 rounded-lg shadow-sm transition cursor-pointer"
+                className="w-full flex items-center justify-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold py-2 rounded-lg shadow-sm transition cursor-pointer"
               >
                 <span>Open Bank Queue</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -715,23 +715,23 @@ export const ClientOverviewTab: React.FC = () => {
           </div>
 
           {/* Action 2: AR Revenue Slips */}
-          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Revenue Control</span>
-                <Receipt className="w-4 h-4 text-[#E2495B]" />
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Revenue Control</span>
+                <Receipt className="w-4 h-4 text-slate-700" />
               </div>
-              <h3 className="text-sm font-bold text-[#E2495B]">AR Revenue Ledger</h3>
-              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900">AR Revenue Ledger</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 {stagedCount > 0
                   ? `${stagedCount} staged transactions (${currentClient.currency || 'GHS'} ${stagedAmount.toLocaleString()}) awaiting batch sign-off.`
                   : 'All revenue slip extractions are up to date and reconciled.'}
               </p>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+            <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
               <button
                 onClick={() => navigateToClientSubTab('ar')}
-                className="w-full flex items-center justify-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] text-xs font-bold py-2 rounded-lg transition cursor-pointer"
+                className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
               >
                 <span>Review Revenue Ledger</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -740,21 +740,21 @@ export const ClientOverviewTab: React.FC = () => {
           </div>
 
           {/* Action 3: AP Vendor Bills */}
-          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Vendor Expenses</span>
-                <DollarSign className="w-4 h-4 text-[#E2495B]" />
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Vendor Expenses</span>
+                <DollarSign className="w-4 h-4 text-slate-700" />
               </div>
-              <h3 className="text-sm font-bold text-[#E2495B]">AP Vendor Bills</h3>
-              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+              <h3 className="text-sm font-bold text-slate-900">AP Vendor Bills</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 Inspect AI OCR vendor receipts, verify line-item tax breakdowns, and push draft bills to {currentPlatform.name}.
               </p>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+            <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
               <button
                 onClick={() => navigateToClientSubTab('ap')}
-                className="w-full flex items-center justify-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] text-xs font-bold py-2 rounded-lg transition cursor-pointer"
+                className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
               >
                 <span>Review Vendor Bills</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -768,68 +768,68 @@ export const ClientOverviewTab: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         
         {/* Accounting ERP Sync Status */}
-        <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4.5 shadow-sm">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-base">{currentPlatform.icon}</span>
-              <h3 className="text-xs font-bold text-[#E2495B] uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                 Connected Accounting Platform
               </h3>
             </div>
             <button
               onClick={() => navigateToClientSubTab('settings')}
-              className="text-[11px] font-semibold text-[#E2495B] hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-[#0284C7] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Manage</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
-          <div className="bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl p-3 flex items-center justify-between">
+          <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3 flex items-center justify-between">
             <div className="min-w-0">
-              <h4 className="text-xs font-bold text-[#E2495B] truncate">{currentPlatform.name}</h4>
-              <p className="text-[11px] text-[#C4BA3B] mt-0.5">{currentPlatform.targetProtocol}</p>
+              <h4 className="text-xs font-bold text-slate-900 truncate">{currentPlatform.name}</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">{currentPlatform.targetProtocol}</p>
               {currentClient.zohoOrg && (
-                <span className="text-[10px] font-mono text-[#C4BA3B] block mt-0.5">
+                <span className="text-[10px] font-mono text-slate-500 block mt-0.5">
                   Org ID: {currentClient.zohoOrg}
                 </span>
               )}
             </div>
 
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#F4ED6E] border border-[#C4BA3B] text-[#E2495B] shrink-0">
+            <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] shrink-0">
               Live Connected
             </span>
           </div>
         </div>
 
         {/* Cloud Document Storage & Mailbox Feeds */}
-        <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4.5 shadow-sm">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-[#E2495B]" />
-              <h3 className="text-xs font-bold text-[#E2495B] uppercase tracking-wider">
+              <HardDrive className="w-4 h-4 text-[#0284C7]" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                 Monitored Storage &amp; Inboxes
               </h3>
             </div>
             <button
               onClick={() => navigateToClientSubTab('pipelines')}
-              className="text-[11px] font-semibold text-[#E2495B] hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-[#0284C7] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Pipelines</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
-          <div className="bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl p-3 flex items-center justify-between">
+          <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3 flex items-center justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#E2495B] truncate">
+                <span className="text-xs font-bold text-slate-900 truncate">
                   {(currentClient.folderId || currentClient.folder_id)
                     ? 'Google Drive OCR Folder'
                     : 'Configured Ingestion Channels'}
                 </span>
               </div>
-              <p className="text-[11px] font-mono text-[#C4BA3B] truncate mt-0.5">
+              <p className="text-[11px] font-mono text-slate-500 truncate mt-0.5">
                 {(currentClient.folderId || currentClient.folder_id)
                   ? `${(currentClient.folderId || currentClient.folder_id)!.slice(0, 24)}...`
                   : `${activePipelines.length} Active Storage Stream(s)`}
@@ -841,7 +841,7 @@ export const ClientOverviewTab: React.FC = () => {
                 href={`https://drive.google.com/drive/folders/${currentClient.folderId || currentClient.folder_id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#C4BA3B] hover:text-[#E2495B] p-1.5 transition shrink-0"
+                className="text-slate-400 hover:text-[#0284C7] p-1.5 transition shrink-0"
                 title="Open in Google Drive"
               >
                 <ExternalLink className="w-4 h-4" />

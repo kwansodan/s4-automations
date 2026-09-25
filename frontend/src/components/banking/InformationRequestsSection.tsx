@@ -343,43 +343,43 @@ export const InformationRequestsSection: React.FC = () => {
     <div className="space-y-6 animate-in fade-in">
       
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-sky-950/80 via-slate-900 to-indigo-950/80 border border-sky-500/30 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 shadow-inner">
+              <div className="w-10 h-10 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7] shadow-xs">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-xl font-extrabold text-white tracking-tight">
+                  <h1 className="text-xl font-bold text-[#0F172A] tracking-tight">
                     Information Requests
                   </h1>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/40 uppercase tracking-wider">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] uppercase tracking-wider">
                     Watched Accounts
                   </span>
                   {clients && clients.length > 1 ? (
-                    <div className="flex items-center gap-1.5 bg-sky-950/90 border border-sky-500/40 rounded-xl px-2.5 py-1 shadow-sm">
-                      <span className="text-[10px] uppercase font-bold text-sky-400">Client:</span>
+                    <div className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] rounded-xl px-2.5 py-1 shadow-xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500">Client:</span>
                       <select
                         value={currentClient?.id || ''}
                         onChange={(e) => setClient(e.target.value)}
-                        className="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer"
+                        className="bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer"
                       >
                         {clients.map((c) => (
-                          <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                          <option key={c.id} value={c.id} className="bg-white text-slate-800">
                             {c.name}
                           </option>
                         ))}
                       </select>
                     </div>
                   ) : (
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B]">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]">
                       {currentClient?.name || 'Active Client'}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-[#C4BA3B] mt-0.5 max-w-2xl font-medium">
+                <p className="text-xs text-[#64748B] mt-0.5 max-w-2xl font-normal">
                   Review unclassified transactions in monitored watched accounts, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
                 </p>
               </div>
@@ -390,24 +390,24 @@ export const InformationRequestsSection: React.FC = () => {
           <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             <button
               onClick={() => setIsWatchedDrawerOpen(!isWatchedDrawerOpen)}
-              className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl border transition cursor-pointer ${
+              className={`flex items-center gap-1.5 text-xs font-semibold py-2.5 px-3.5 rounded-xl border transition cursor-pointer ${
                 isWatchedDrawerOpen
-                  ? 'bg-[#E2495B] text-[#FFFEE6] border-[#E2495B] shadow-md shadow-[#E2495B]/30'
-                  : 'bg-[#FFFEE6] text-[#E2495B] hover:bg-[#F4ED6E] border-[#C4BA3B]'
+                  ? 'bg-[#0284C7] text-white border-[#0284C7] shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border-[#E2E8F0] shadow-xs'
               }`}
             >
-              <Sliders className={`w-3.5 h-3.5 ${isWatchedDrawerOpen ? 'text-[#FFFEE6]' : 'text-[#E2495B]'}`} />
+              <Sliders className={`w-3.5 h-3.5 ${isWatchedDrawerOpen ? 'text-white' : 'text-slate-600'}`} />
               <span>Watched Accounts ({watchedAccounts.length})</span>
-              {isWatchedDrawerOpen ? <ChevronUp className="w-3.5 h-3.5 text-[#FFFEE6]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#E2495B]" />}
+              {isWatchedDrawerOpen ? <ChevronUp className="w-3.5 h-3.5 text-white" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-600" />}
             </button>
 
             <button
               onClick={handleSyncFeeds}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2.5 px-3.5 rounded-xl border border-[#E2E8F0] shadow-xs transition cursor-pointer"
               title={`Pull live uncategorized & suspense transactions from ${platformName}`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#E2495B] ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#0284C7] ${isSyncing ? 'animate-spin' : ''}`} />
               <span>
                 {isSyncing
                   ? 'Syncing Feeds...'
@@ -418,10 +418,10 @@ export const InformationRequestsSection: React.FC = () => {
             </button>
 
             <label
-              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2.5 px-3.5 rounded-xl border border-[#E2E8F0] shadow-xs transition cursor-pointer"
               title="Upload bank statement (PDF or CSV)"
             >
-              <UploadCloud className="w-3.5 h-3.5 text-[#E2495B]" />
+              <UploadCloud className="w-3.5 h-3.5 text-[#0284C7]" />
               <span>{isUploading ? 'Ingesting...' : 'Upload Statement'}</span>
               <input
                 type="file"
@@ -434,16 +434,16 @@ export const InformationRequestsSection: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('contacts')}
-              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2.5 px-3.5 rounded-xl border border-[#E2E8F0] shadow-xs transition cursor-pointer"
               title="Manage client contacts and firm team members"
             >
-              <Users className="w-3.5 h-3.5 text-[#E2495B]" />
+              <Users className="w-3.5 h-3.5 text-slate-600" />
               <span>Contacts &amp; Team</span>
             </button>
 
             <button
               onClick={() => setActiveTab('portal')}
-              className="flex items-center gap-1.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-[#E2495B]/25 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-xs transition cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Open Client Portal View</span>
@@ -453,14 +453,14 @@ export const InformationRequestsSection: React.FC = () => {
 
         {/* Collapsible Watched Chart of Accounts Drawer */}
         {isWatchedDrawerOpen && (
-          <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-4 animate-in fade-in">
+          <div className="mt-5 pt-4 border-t border-[#E2E8F0] space-y-4 animate-in fade-in">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-sky-400" />
+                <h3 className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-[#0284C7]" />
                   <span>Monitored Suspense &amp; Uncategorized Accounts</span>
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-[#64748B] mt-0.5">
                   Select which Chart of Account codes to monitor for unclassified transactions:
                 </p>
               </div>
@@ -469,14 +469,14 @@ export const InformationRequestsSection: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized'])}
-                  className="text-[11px] text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 transition cursor-pointer"
+                  className="text-[11px] text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-[#E2E8F0] transition cursor-pointer shadow-xs"
                 >
                   Reset Defaults
                 </button>
                 <button
                   onClick={handleSaveWatchedAccounts}
                   disabled={isSavingWatched}
-                  className="inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-md shadow-sky-600/20"
+                  className="inline-flex items-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>{isSavingWatched ? 'Saving...' : 'Save Watched Accounts'}</span>
@@ -485,17 +485,17 @@ export const InformationRequestsSection: React.FC = () => {
             </div>
 
             {/* Dropdown Selector & Custom Code Input Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-[#E2E8F0]">
               {/* Dropdown Account Picker */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
                   <span>Select from Chart of Accounts:</span>
                 </label>
                 <div className="flex gap-2">
                   <select
                     value={selectedDropdownCode}
                     onChange={(e) => setSelectedDropdownCode(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                    className="flex-1 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7] cursor-pointer"
                   >
                     <option value="">Choose an account to watch...</option>
                     {accounts.map((acc: ChartOfAccountItem) => {
@@ -517,7 +517,7 @@ export const InformationRequestsSection: React.FC = () => {
                       }
                     }}
                     disabled={!selectedDropdownCode}
-                    className="inline-flex items-center gap-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
+                    className="inline-flex items-center gap-1 bg-[#0284C7] hover:bg-[#0EA5E9] disabled:opacity-40 text-white text-xs font-semibold px-3 py-2 rounded-lg transition cursor-pointer shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add</span>
@@ -527,7 +527,7 @@ export const InformationRequestsSection: React.FC = () => {
 
               {/* Custom Code Input */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
                   <span>Add Custom Account Code / Alias:</span>
                 </label>
                 <div className="flex gap-2">
@@ -546,7 +546,7 @@ export const InformationRequestsSection: React.FC = () => {
                       }
                     }}
                     placeholder="e.g. 1099, MOMO_CLEARING, 2150..."
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                    className="flex-1 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-mono"
                   />
                   <button
                     type="button"
@@ -558,7 +558,7 @@ export const InformationRequestsSection: React.FC = () => {
                       }
                     }}
                     disabled={!customCodeInput.trim()}
-                    className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
+                    className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white text-xs font-semibold px-3 py-2 rounded-lg transition cursor-pointer shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Code</span>
@@ -569,8 +569,8 @@ export const InformationRequestsSection: React.FC = () => {
 
             {/* Quick Presets Row */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
+              <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#0284C7]" />
                 Quick Presets:
               </span>
               <button
@@ -580,7 +580,7 @@ export const InformationRequestsSection: React.FC = () => {
                   const merged = Array.from(new Set([...watchedAccounts, ...toAdd]));
                   setWatchedAccounts(merged);
                 }}
-                className="text-[11px] bg-slate-950 hover:bg-slate-900 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                className="text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] px-2.5 py-1 rounded-lg transition cursor-pointer shadow-xs"
               >
                 + Default Suspense (6990 &amp; 850)
               </button>
@@ -591,7 +591,7 @@ export const InformationRequestsSection: React.FC = () => {
                   const merged = Array.from(new Set([...watchedAccounts, ...toAdd]));
                   setWatchedAccounts(merged);
                 }}
-                className="text-[11px] bg-slate-950 hover:bg-slate-900 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                className="text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] px-2.5 py-1 rounded-lg transition cursor-pointer shadow-xs"
               >
                 + MoMo &amp; Clearing Holding
               </button>
@@ -600,14 +600,14 @@ export const InformationRequestsSection: React.FC = () => {
             {/* Active Watched Accounts Badges */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-300 font-bold">
+                <span className="text-slate-700 font-bold">
                   Currently Monitored Accounts ({watchedAccounts.length}):
                 </span>
                 {watchedAccounts.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setWatchedAccounts([])}
-                    className="text-slate-500 hover:text-rose-400 transition underline cursor-pointer"
+                    className="text-slate-500 hover:text-[#E11D48] transition underline cursor-pointer"
                   >
                     Clear all
                   </button>
@@ -615,7 +615,7 @@ export const InformationRequestsSection: React.FC = () => {
               </div>
 
               {watchedAccounts.length === 0 ? (
-                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-center text-xs text-amber-300">
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center text-xs text-amber-800">
                   ⚠️ No accounts are currently watched. Select from the dropdown or pick a preset above.
                 </div>
               ) : (
@@ -629,15 +629,15 @@ export const InformationRequestsSection: React.FC = () => {
                     return (
                       <div
                         key={code}
-                        className="inline-flex items-center gap-1.5 bg-sky-950/80 text-sky-200 border border-sky-500/50 px-3 py-1.5 rounded-xl text-xs font-medium shadow-sm"
+                        className="inline-flex items-center gap-1.5 bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] px-3 py-1.5 rounded-xl text-xs font-medium shadow-xs"
                       >
-                        <span className="w-2 h-2 rounded-full bg-sky-400" />
+                        <span className="w-2 h-2 rounded-full bg-[#0284C7]" />
                         <span className="font-mono font-bold">{code}</span>
-                        {label !== code && <span>— {label}</span>}
+                        {label !== code && <span className="text-slate-700">— {label}</span>}
                         <button
                           type="button"
                           onClick={() => setWatchedAccounts(watchedAccounts.filter((c) => c !== code))}
-                          className="text-sky-400 hover:text-rose-400 hover:bg-rose-950/40 p-0.5 rounded transition cursor-pointer ml-1"
+                          className="text-[#0284C7] hover:text-[#E11D48] hover:bg-[#FFF1F2] p-0.5 rounded transition cursor-pointer ml-1"
                           title={`Remove ${code} from watched accounts`}
                         >
                           <X className="w-3.5 h-3.5" />
@@ -659,50 +659,50 @@ export const InformationRequestsSection: React.FC = () => {
         {/* Unmapped / Needs Action */}
         <div
           onClick={() => setStatusFilter('UNMAPPED')}
-          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
-            statusFilter === 'UNMAPPED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
+          className={`bg-white border rounded-2xl p-4 shadow-sm transition cursor-pointer ${
+            statusFilter === 'UNMAPPED' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-[#BAE6FD]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#C4BA3B]">Needs Classification</span>
-            <AlertCircle className="w-4 h-4 text-[#E2495B]" />
+            <span className="text-xs font-semibold text-[#64748B]">Needs Classification</span>
+            <AlertCircle className="w-4 h-4 text-[#E11D48]" />
           </div>
-          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_uncategorized}</div>
-          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Awaiting account mapping</span>
+          <div className="text-2xl font-bold font-mono text-[#0F172A]">{metrics.total_uncategorized}</div>
+          <span className="text-[10px] text-slate-400 font-normal mt-1 block">Awaiting account mapping</span>
         </div>
 
         {/* Pending Client Clarification */}
         <div
           onClick={() => setStatusFilter('CLARIFICATION_REQUESTED')}
-          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
-            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
+          className={`bg-white border rounded-2xl p-4 shadow-sm transition cursor-pointer ${
+            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-[#BAE6FD]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#C4BA3B]">Awaiting Client</span>
-            <Clock className="w-4 h-4 text-[#C4BA3B]" />
+            <span className="text-xs font-semibold text-[#64748B]">Awaiting Client</span>
+            <Clock className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_pending_client}</div>
-          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Clarification queries sent</span>
+          <div className="text-2xl font-bold font-mono text-[#0F172A]">{metrics.total_pending_client}</div>
+          <span className="text-[10px] text-slate-400 font-normal mt-1 block">Clarification queries sent</span>
         </div>
 
         {/* Client Responded */}
         <div
           onClick={() => setStatusFilter('CLIENT_ANSWERED')}
-          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer relative overflow-hidden ${
-            statusFilter === 'CLIENT_ANSWERED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
+          className={`bg-[#F0F9FF] border rounded-2xl p-4 shadow-sm transition cursor-pointer relative overflow-hidden ${
+            statusFilter === 'CLIENT_ANSWERED' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#BAE6FD] hover:border-[#0284C7]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#E2495B]">Client Responded</span>
-            <CheckCircle2 className="w-4 h-4 text-[#E2495B]" />
+            <span className="text-xs font-semibold text-[#0284C7]">Client Responded</span>
+            <CheckCircle2 className="w-4 h-4 text-[#0284C7]" />
           </div>
-          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_client_answered}</div>
-          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Notes added • Ready to classify</span>
+          <div className="text-2xl font-bold font-mono text-[#0284C7]">{metrics.total_client_answered}</div>
+          <span className="text-[10px] text-slate-500 font-normal mt-1 block">Notes added • Ready to classify</span>
           {metrics.total_client_answered > 0 && (
             <span className="absolute top-2 right-2 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#E2495B] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#E2495B]"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0284C7] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0284C7]"></span>
             </span>
           )}
         </div>
@@ -710,26 +710,26 @@ export const InformationRequestsSection: React.FC = () => {
         {/* Categorized & Synced */}
         <div
           onClick={() => setStatusFilter('MAPPED')}
-          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
-            statusFilter === 'MAPPED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
+          className={`bg-white border rounded-2xl p-4 shadow-sm transition cursor-pointer ${
+            statusFilter === 'MAPPED' ? 'border-[#059669] ring-2 ring-[#059669]/20' : 'border-[#E2E8F0] hover:border-[#A7F3D0]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#C4BA3B]">Categorized &amp; Synced</span>
-            <CheckCheck className="w-4 h-4 text-[#C4BA3B]" />
+            <span className="text-xs font-semibold text-[#64748B]">Categorized &amp; Synced</span>
+            <CheckCheck className="w-4 h-4 text-[#059669]" />
           </div>
-          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_mapped}</div>
-          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Reconciled to accounting</span>
+          <div className="text-2xl font-bold font-mono text-[#059669]">{metrics.total_mapped}</div>
+          <span className="text-[10px] text-slate-400 font-normal mt-1 block">Reconciled to accounting</span>
         </div>
 
       </div>
 
       {/* Filter Toolbar & Bulk Actions */}
-      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4 shadow-md space-y-3">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 flex-wrap bg-[#FFFEE6] p-1 rounded-xl border border-[#C4BA3B]">
+          <div className="flex items-center gap-1.5 flex-wrap bg-slate-50 p-1 rounded-xl border border-[#E2E8F0]">
             {[
               { id: 'ALL', label: `All Items (${metrics.total_count})` },
               { id: 'UNMAPPED', label: `Uncategorized (${metrics.total_uncategorized})` },
@@ -740,10 +740,10 @@ export const InformationRequestsSection: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                className={`text-xs px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === tab.id
-                    ? 'bg-[#E2495B] text-[#FFFEE6] shadow-sm'
-                    : 'text-[#C4BA3B] hover:text-[#E2495B] hover:bg-[#F4ED6E]'
+                    ? 'bg-white text-[#0284C7] font-bold shadow-xs border border-[#E2E8F0]'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
                 }`}
               >
                 {tab.label}
@@ -754,31 +754,31 @@ export const InformationRequestsSection: React.FC = () => {
           {/* Controls: Month & Year Selector + Search Box */}
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Month & Year Dropdown */}
-            <div className="flex items-center gap-1.5 bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl px-3 py-1.5 shadow-inner">
-              <Calendar className="w-3.5 h-3.5 text-[#E2495B] shrink-0" />
+            <div className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 shadow-xs">
+              <Calendar className="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[#E2495B] focus:outline-none cursor-pointer pr-1"
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1"
                 title="Filter transactions by month"
               >
                 {MONTH_OPTIONS.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#FFFEE6] text-[#E2495B]">
+                  <option key={m.id} value={m.id} className="bg-white text-slate-800">
                     {m.label}
                   </option>
                 ))}
               </select>
 
-              <span className="text-[#C4BA3B] text-xs">/</span>
+              <span className="text-slate-300 text-xs">/</span>
 
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[#E2495B] focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
                 title="Filter transactions by year"
               >
                 {YEAR_OPTIONS.map((y) => (
-                  <option key={y.id} value={y.id} className="bg-[#FFFEE6] text-[#E2495B]">
+                  <option key={y.id} value={y.id} className="bg-white text-slate-800">
                     {y.label}
                   </option>
                 ))}
@@ -791,7 +791,7 @@ export const InformationRequestsSection: React.FC = () => {
                     setSelectedMonth('ALL');
                     setSelectedYear('ALL');
                   }}
-                  className="ml-1 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 p-0.5 rounded transition cursor-pointer"
+                  className="ml-1 text-slate-400 hover:text-[#E11D48] hover:bg-[#FFF1F2] p-0.5 rounded transition cursor-pointer"
                   title="Clear month & year filters (Show all)"
                 >
                   <X className="w-3 h-3" />
@@ -801,13 +801,13 @@ export const InformationRequestsSection: React.FC = () => {
 
             {/* Search Box */}
             <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#C4BA3B]" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search description, payee, amount..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl pl-9 pr-3 py-1.5 text-xs text-[#E2495B] placeholder-[#C4BA3B]/70 focus:outline-none focus:border-[#E2495B] font-sans"
+                className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-sans shadow-xs"
               />
             </div>
           </div>
@@ -815,12 +815,12 @@ export const InformationRequestsSection: React.FC = () => {
 
         {/* Active Month & Year Indicator Banner */}
         {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
-          <div className="flex items-center justify-between text-xs bg-sky-950/50 border border-sky-500/30 rounded-xl px-3 py-1.5 animate-in fade-in">
+          <div className="flex items-center justify-between text-xs bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl px-3 py-1.5 animate-in fade-in">
             <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-              <span className="text-sky-200 font-medium">
+              <span className="inline-block w-2 h-2 rounded-full bg-[#0284C7] animate-pulse" />
+              <span className="text-slate-700 font-medium">
                 Showing transactions for{' '}
-                <strong className="text-white">
+                <strong className="text-[#0284C7]">
                   {selectedMonth !== 'ALL' ? selectedMonth : 'All Months'}
                   {selectedYear !== 'ALL' ? ` ${selectedYear}` : ' (All Years)'}
                 </strong>{' '}
@@ -832,7 +832,7 @@ export const InformationRequestsSection: React.FC = () => {
                 setSelectedMonth('ALL');
                 setSelectedYear('ALL');
               }}
-              className="text-[11px] text-sky-400 hover:text-white underline cursor-pointer"
+              className="text-[11px] text-[#0284C7] hover:underline cursor-pointer font-medium"
             >
               Reset Date Filters
             </button>
@@ -841,14 +841,14 @@ export const InformationRequestsSection: React.FC = () => {
 
         {/* Bulk Action Bar (when rows are selected) */}
         {selectedTxIds.length > 0 && (
-          <div className="bg-sky-950/60 border border-sky-500/40 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-sky-200">
+              <span className="text-xs font-bold text-slate-800">
                 {selectedTxIds.length} transaction(s) selected
               </span>
               <button
                 onClick={() => setSelectedTxIds([])}
-                className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
               >
                 Deselect all
               </button>
@@ -858,7 +858,7 @@ export const InformationRequestsSection: React.FC = () => {
               <select
                 value={bulkAccountId}
                 onChange={(e) => setBulkAccountId(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                className="bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7] cursor-pointer shadow-xs"
               >
                 <option value="">Assign Category to All...</option>
                 {accounts.map((acc) => (
@@ -871,7 +871,7 @@ export const InformationRequestsSection: React.FC = () => {
               <button
                 onClick={handleBulkCategorize}
                 disabled={isBulkCategorizing || !bulkAccountId}
-                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-[#059669] hover:bg-[#047857] disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer shadow-xs"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Bulk Categorize</span>
@@ -879,7 +879,7 @@ export const InformationRequestsSection: React.FC = () => {
 
               <button
                 onClick={handleBulkQuery}
-                className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer shadow-xs"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Batch Ask Client (Digest)</span>
@@ -890,17 +890,17 @@ export const InformationRequestsSection: React.FC = () => {
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-xl overflow-hidden">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
-            <RefreshCw className="w-6 h-6 text-sky-400 animate-spin" />
+          <div className="p-12 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
+            <RefreshCw className="w-6 h-6 text-[#0284C7] animate-spin" />
             <span>Loading watched account transactions &amp; queries...</span>
           </div>
         ) : transactions.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs space-y-3">
-            <ShieldCheck className="w-8 h-8 text-emerald-400/80 mx-auto" />
-            <p className="font-bold text-white text-sm">No Transactions Found in Watched Accounts</p>
-            <p className="text-slate-400 max-w-md mx-auto">
+          <div className="p-12 text-center text-slate-500 text-xs space-y-3">
+            <ShieldCheck className="w-8 h-8 text-[#059669] mx-auto" />
+            <p className="font-bold text-slate-900 text-sm">No Transactions Found in Watched Accounts</p>
+            <p className="text-slate-500 max-w-md mx-auto">
               {selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL'
                 ? `No transactions match the current filter (${[selectedMonth !== 'ALL' && selectedMonth, selectedYear !== 'ALL' && selectedYear, statusFilter !== 'ALL' && statusFilter].filter(Boolean).join(', ')}). Your monitored accounts may contain records in other months or years.`
                 : 'All transactions in monitored watched accounts are currently classified, or none have been imported yet from your accounting software.'}
@@ -914,7 +914,7 @@ export const InformationRequestsSection: React.FC = () => {
                     setSearchQuery('');
                     setStatusFilter('ALL');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 hover:bg-sky-500/30 font-medium transition text-xs flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] hover:bg-[#E0F2FE] font-medium transition text-xs flex items-center gap-1.5 shadow-xs"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Show All Periods &amp; Clear Filters
@@ -923,9 +923,9 @@ export const InformationRequestsSection: React.FC = () => {
               <button
                 onClick={handleSyncFeeds}
                 disabled={isSyncing}
-                className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-lg bg-white text-slate-700 border border-[#E2E8F0] hover:bg-slate-50 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-sky-400' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#0284C7]' : ''}`} />
                 {isSyncing ? 'Syncing...' : `Sync Feeds from ${platformName}`}
               </button>
             </div>
@@ -934,7 +934,7 @@ export const InformationRequestsSection: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr className="bg-slate-50/80 border-b border-[#E2E8F0] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-3 w-10 text-center">
                     <input
                       type="checkbox"
@@ -943,7 +943,7 @@ export const InformationRequestsSection: React.FC = () => {
                         if (e.target.checked) setSelectedTxIds(transactions.map((t) => t.id));
                         else setSelectedTxIds([]);
                       }}
-                      className="rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                      className="rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
                     />
                   </th>
                   <th className="py-3 px-3">Date / Account</th>
@@ -954,7 +954,7 @@ export const InformationRequestsSection: React.FC = () => {
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-xs">
+              <tbody className="divide-y divide-[#E2E8F0] text-xs">
                 {transactions.map((tx) => {
                   const isSelected = selectedTxIds.includes(tx.id);
                   const isUnmapped = tx.status === 'UNMAPPED';
@@ -966,9 +966,9 @@ export const InformationRequestsSection: React.FC = () => {
                   return (
                     <tr
                       key={tx.id}
-                      className={`hover:bg-slate-800/40 transition-colors ${
-                        isSelected ? 'bg-sky-950/20' : ''
-                      } ${isAnswered ? 'bg-emerald-950/10' : ''}`}
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isSelected ? 'bg-[#F0F9FF]/60' : ''
+                      } ${isAnswered ? 'bg-[#ECFDF5]/50' : ''}`}
                     >
                       {/* Checkbox */}
                       <td className="py-3.5 px-3 text-center">
@@ -979,24 +979,24 @@ export const InformationRequestsSection: React.FC = () => {
                             if (e.target.checked) setSelectedTxIds([...selectedTxIds, tx.id]);
                             else setSelectedTxIds(selectedTxIds.filter((id) => id !== tx.id));
                           }}
-                          className="rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                          className="rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
                         />
                       </td>
 
                       {/* Date & Account */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
-                        <span className="font-mono font-bold text-white block">{tx.transaction_date}</span>
+                        <span className="font-mono font-bold text-slate-900 block">{tx.transaction_date}</span>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {tx.source_file_name?.includes('Zoho') ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">Zoho Feed</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">Zoho Feed</span>
                           ) : tx.source_file_name?.includes('QuickBooks') ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">QBO Suspense</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">QBO Suspense</span>
                           ) : tx.source_file_name?.includes('Xero') ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">Xero Suspense</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold border border-sky-200">Xero Suspense</span>
                           ) : (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold">Statement</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">Statement</span>
                           )}
-                          <span className="text-[10px] text-sky-400/90 font-mono truncate max-w-[120px]">
+                          <span className="text-[10px] text-slate-600 font-mono truncate max-w-[120px]">
                             {tx.metadata_json?.watched_account
                               ? `Code: ${tx.metadata_json.watched_account}`
                               : (tx.bank_account_name || 'Bank Line')}
@@ -1006,11 +1006,11 @@ export const InformationRequestsSection: React.FC = () => {
 
                       {/* Raw Description */}
                       <td className="py-3.5 px-3 max-w-[240px]">
-                        <p className="font-mono text-slate-200 text-[11px] break-words line-clamp-2" title={tx.description}>
+                        <p className="font-sans text-slate-800 text-[11px] font-medium break-words line-clamp-2" title={tx.description}>
                           {tx.description}
                         </p>
                         {tx.ai_suggested_account && !isMapped && (
-                          <div className="flex items-center gap-1 text-[10px] text-amber-400 mt-1">
+                          <div className="flex items-center gap-1 text-[10px] text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-1.5 py-0.5 rounded mt-1 inline-flex">
                             <Sparkles className="w-3 h-3 shrink-0" />
                             <span className="truncate">AI Suggestion: {tx.ai_suggested_account}</span>
                             {tx.category_confidence && (
@@ -1022,11 +1022,11 @@ export const InformationRequestsSection: React.FC = () => {
 
                       {/* Amount */}
                       <td className="py-3.5 px-3 whitespace-nowrap font-mono">
-                        <span className="font-extrabold text-white text-sm block">
+                        <span className="font-bold font-mono text-slate-900 text-sm block">
                           GHS {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded inline-block mt-0.5 ${
-                          tx.transaction_type === 'DEBIT' ? 'bg-rose-950 text-rose-300 border border-rose-500/30' : 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded inline-block mt-0.5 font-mono ${
+                          tx.transaction_type === 'DEBIT' ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]' : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
                         }`}>
                           {tx.transaction_type}
                         </span>
@@ -1038,10 +1038,10 @@ export const InformationRequestsSection: React.FC = () => {
                           <select
                             value={rowAccountMap[tx.id] || tx.mapped_account_id || ''}
                             onChange={(e) => setRowAccountMap({ ...rowAccountMap, [tx.id]: e.target.value })}
-                            className={`w-full text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500 transition cursor-pointer ${
+                            className={`w-full text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#0284C7] transition cursor-pointer shadow-xs ${
                               isMapped
-                                ? 'bg-slate-950/80 text-emerald-300 border border-emerald-500/40 font-bold'
-                                : 'bg-slate-950 border border-slate-800 text-white'
+                                ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] font-bold'
+                                : 'bg-white border border-[#E2E8F0] text-slate-800'
                             }`}
                           >
                             <option value="">Select Category...</option>
@@ -1058,7 +1058,7 @@ export const InformationRequestsSection: React.FC = () => {
                             placeholder="Payee / Contact (optional)"
                             value={rowPayeeMap[tx.id] !== undefined ? rowPayeeMap[tx.id] : (tx.payee_name || '')}
                             onChange={(e) => setRowPayeeMap({ ...rowPayeeMap, [tx.id]: e.target.value })}
-                            className="w-full bg-slate-950/60 border border-slate-800/80 rounded-lg px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 font-sans"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-sans shadow-xs"
                           />
                         </div>
                       </td>
@@ -1066,41 +1066,41 @@ export const InformationRequestsSection: React.FC = () => {
                       {/* Status & Client Response Box */}
                       <td className="py-3.5 px-4 max-w-[260px]">
                         {isAnswered ? (
-                          <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-2.5 space-y-1 text-[11px]">
-                            <div className="flex items-center justify-between text-emerald-300 font-bold">
+                          <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl p-2.5 space-y-1 text-[11px]">
+                            <div className="flex items-center justify-between text-[#059669] font-bold">
                               <span className="flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[#059669]" />
                                 Client Responded
                               </span>
                             </div>
-                            <p className="text-white font-sans bg-slate-950/60 p-1.5 rounded border border-emerald-500/20 italic">
+                            <p className="text-slate-800 font-sans bg-white p-1.5 rounded border border-[#A7F3D0] italic">
                               "{tx.client_explanation}"
                             </p>
                             {tx.client_attachments && tx.client_attachments.length > 0 && (
-                              <div className="flex items-center gap-1 text-sky-400 text-[10px]">
+                              <div className="flex items-center gap-1 text-[#0284C7] text-[10px]">
                                 <Paperclip className="w-3 h-3" />
                                 <span>{tx.client_attachments.length} attachment(s) uploaded</span>
                               </div>
                             )}
                           </div>
                         ) : isPending ? (
-                          <div className="bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 space-y-1 text-[11px]">
-                            <span className="font-bold text-amber-300 flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1 text-[11px]">
+                            <span className="font-bold text-amber-800 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
                               Awaiting Client Response
                             </span>
-                            <p className="text-slate-300 line-clamp-2 text-[10px]">
+                            <p className="text-slate-700 line-clamp-2 text-[10px]">
                               Asked: "{tx.accountant_query}"
                             </p>
                           </div>
                         ) : isMapped ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-500/40">
-                            <Check className="w-3 h-3 text-indigo-400" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+                            <Check className="w-3 h-3 text-[#059669]" />
                             <span>{tx.mapped_account_name || 'Categorized'}</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-950 text-slate-400 border border-slate-800">
-                            <AlertCircle className="w-3 h-3 text-sky-400" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-[#E2E8F0]">
+                            <AlertCircle className="w-3 h-3 text-[#0284C7]" />
                             <span>Uncategorized</span>
                           </span>
                         )}
@@ -1114,7 +1114,7 @@ export const InformationRequestsSection: React.FC = () => {
                             type="button"
                             onClick={() => handleCategorizeRow(tx)}
                             disabled={isSaving}
-                            className="inline-flex items-center gap-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/40 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                            className="inline-flex items-center gap-1 bg-[#ECFDF5] hover:bg-[#D1FAE5] text-[#059669] hover:text-[#047857] border border-[#A7F3D0] px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
                             title="Approve category & sync to accounting platform"
                           >
                             <Check className="w-3.5 h-3.5" />
@@ -1125,7 +1125,7 @@ export const InformationRequestsSection: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenQueryModal(tx)}
-                            className="inline-flex items-center gap-1 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 hover:text-white border border-sky-500/40 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                            className="inline-flex items-center gap-1 bg-[#F0F9FF] hover:bg-[#E0F2FE] text-[#0284C7] hover:text-[#0369A1] border border-[#BAE6FD] px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
                             title="Draw client attention / request explanation"
                           >
                             <Send className="w-3.5 h-3.5" />

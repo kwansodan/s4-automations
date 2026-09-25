@@ -104,8 +104,8 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-4 bg-[#FFFEE6]">
-      <div className="w-full max-w-md bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    <div className="min-h-[85vh] flex items-center justify-center p-4 bg-[#F8FAFC]">
+      <div className="w-full max-w-md bg-white border border-[#E2E8F0] rounded-2xl p-8 shadow-sm animate-in fade-in zoom-in-95 duration-200">
         
         {/* Back to Homepage button */}
         {onBackToLanding && (
@@ -113,9 +113,9 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
             <button
               type="button"
               onClick={onBackToLanding}
-              className="inline-flex items-center gap-1.5 text-xs text-[#C4BA3B] hover:text-[#E2495B] transition cursor-pointer font-medium"
+              className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition cursor-pointer font-medium"
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-[#E2495B]" />
+              <ArrowLeft className="w-3.5 h-3.5 text-[#0284C7]" />
               <span>Back to Homepage &amp; Live Demo</span>
             </button>
           </div>
@@ -123,30 +123,30 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
 
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] border border-[#E2495B]/40 flex items-center justify-center text-[#FFFEE6] shadow-lg shadow-[#E2495B]/25">
-            <Zap className="w-7 h-7 text-[#FFFEE6]" />
+          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-[#0284C7] to-[#38BDF8] border border-[#0284C7]/20 flex items-center justify-center text-white shadow-xs">
+            <Zap className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-extrabold text-[#E2495B] tracking-tight">S4 Automations</h1>
-          <p className="text-xs text-[#C4BA3B] mt-1 font-medium">Multi-Client Accounting & Financial Suite</p>
+          <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">S4 Automations</h1>
+          <p className="text-xs text-[#64748B] mt-1 font-normal">Multi-Client Accounting & Financial Suite</p>
         </div>
 
         {/* Security Badge */}
-        <div className="flex items-center justify-center gap-1.5 text-xs text-[#E2495B] bg-[#F4ED6E] border border-[#C4BA3B] rounded-full py-1 px-3 mb-6 font-bold">
-          <ShieldCheck className="w-4 h-4 text-[#E2495B]" />
+        <div className="flex items-center justify-center gap-1.5 text-xs text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] rounded-full py-1 px-3 mb-6 font-semibold">
+          <ShieldCheck className="w-4 h-4 text-[#0284C7]" />
           <span>Passwordless Email OTP Security</span>
         </div>
 
         {/* Feedback Alerts */}
         {errorMessage && (
-          <div className="flex items-center gap-2 p-3 bg-red-950/60 border border-red-500/30 text-red-300 rounded-lg text-xs mb-4 animate-in fade-in">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+          <div className="flex items-center gap-2 p-3 bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] rounded-xl text-xs mb-4 animate-in fade-in font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-[#E11D48]" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="flex items-center gap-2 p-3 bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs mb-4 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          <div className="flex items-center gap-2 p-3 bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] rounded-xl text-xs mb-4 animate-in fade-in font-medium">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-[#059669]" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -155,11 +155,11 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
         {step === 'request' ? (
           <form onSubmit={handleRequestSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#E2495B] mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                 Authorized Administrator Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#C4BA3B]" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="email"
                   value={email}
@@ -167,10 +167,10 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                   placeholder="s4bookkeeping@service4gh.com"
                   required
                   disabled={isLoading}
-                  className="w-full bg-[#FFFEE6] border border-[#C4BA3B] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[#E2495B] placeholder-[#C4BA3B]/80 focus:outline-none focus:border-[#E2495B] focus:ring-1 focus:ring-[#E2495B] transition-all disabled:opacity-50"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] transition-all disabled:opacity-50 shadow-xs"
                 />
               </div>
-              <p className="text-[11px] text-[#C4BA3B] mt-1">
+              <p className="text-[11px] text-slate-500 mt-1">
                 A single-use 6-digit login code will be sent to this email address.
               </p>
             </div>
@@ -178,7 +178,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 bg-[#E2495B] hover:bg-[#cf3c4e] active:bg-[#b52e3f] text-[#FFFEE6] text-sm font-semibold py-2.5 px-4 rounded-lg shadow-lg shadow-[#E2495B]/30 transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 bg-[#0284C7] hover:bg-[#0EA5E9] active:bg-[#0369A1] text-white text-sm font-semibold py-2.5 px-4 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -197,12 +197,12 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
           /* Step 2: 6-Digit OTP Form */
           <form onSubmit={handleVerifySubmit} className="space-y-4">
             <div className="text-center mb-2">
-              <span className="text-xs text-[#C4BA3B]">Enter the 6-digit code sent to:</span>
-              <p className="text-sm font-bold text-[#E2495B]">{email}</p>
+              <span className="text-xs text-slate-500">Enter the 6-digit code sent to:</span>
+              <p className="text-sm font-bold text-slate-900">{email}</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#E2495B] text-center mb-2">
+              <label className="block text-xs font-semibold text-slate-700 text-center mb-2">
                 6-Digit Verification Code
               </label>
               <input
@@ -214,7 +214,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                 placeholder="000000"
                 required
                 disabled={isLoading}
-                className="w-full max-w-[260px] mx-auto block bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-lg py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#E2495B] focus:outline-none focus:border-[#E2495B] focus:ring-2 focus:ring-[#E2495B]/30 transition-all"
+                className="w-full max-w-[260px] mx-auto block bg-white border border-[#E2E8F0] rounded-xl py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-slate-900 focus:outline-none focus:border-[#0284C7] transition-all shadow-xs"
               />
 
               {devHint && (
@@ -225,7 +225,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                       setOtp(devHint);
                       verifyOtp(email.trim(), devHint);
                     }}
-                    className="inline-flex items-center gap-1 text-xs text-[#F4ED6E] bg-[#C4BA3B]/15 border border-[#C4BA3B]/30 rounded px-2 py-0.5 hover:bg-[#C4BA3B]/25 transition cursor-pointer"
+                    className="inline-flex items-center gap-1 text-xs text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg px-2 py-0.5 hover:bg-[#E0F2FE] transition cursor-pointer"
                   >
                     <span>⚡ Auto-fill:</span>
                     <strong className="font-mono">{devHint}</strong>
@@ -235,12 +235,12 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
 
               <div className="flex justify-between items-center text-xs text-slate-400 mt-3 px-1">
                 <span>
-                  Expires in: <strong className="text-[#C4BA3B] font-mono">{formatTimer(countdown)}</strong>
+                  Expires in: <strong className="text-slate-700 font-mono">{formatTimer(countdown)}</strong>
                 </span>
                 <button
                   type="button"
                   onClick={handleRequestSubmit}
-                  className="text-[#F4ED6E] hover:text-[#FFFEE6] underline cursor-pointer"
+                  className="text-[#0284C7] hover:underline cursor-pointer font-medium"
                 >
                   Resend Code
                 </button>
@@ -250,7 +250,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
             <button
               type="submit"
               disabled={isLoading || otp.length !== 6}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 bg-[#059669] hover:bg-[#047857] active:bg-[#065F46] text-white text-sm font-semibold py-2.5 px-4 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -259,8 +259,8 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                 </>
               ) : (
                 <>
-                  <Lock className="w-4 h-4" />
-                  <span>Verify & Access Hub</span>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Verify &amp; Enter Platform</span>
                 </>
               )}
             </button>
@@ -273,7 +273,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                   setOtp('');
                   setErrorMessage('');
                 }}
-                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 transition cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Use a different email</span>
@@ -283,8 +283,8 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
         )}
 
         {/* Footer */}
-        <div className="mt-8 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500 flex items-center justify-center gap-1">
-          <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />
+        <div className="mt-8 pt-4 border-t border-[#E2E8F0] text-center text-[11px] text-slate-500 flex items-center justify-center gap-1">
+          <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
           <span>Protected by S4 Multi-Client Accounting Security</span>
         </div>
       </div>

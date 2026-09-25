@@ -176,45 +176,45 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       )}
 
       {/* 1. Header Navigation */}
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-[#E2E8F0] shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] flex items-center justify-center text-[#FFFEE6] shadow-md shadow-[#E2495B]/20">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#0284C7] to-[#38BDF8] flex items-center justify-center text-white shadow-xs">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <span className="text-base font-black tracking-tight text-[#E2495B] flex items-center gap-1.5">
+              <span className="text-base font-bold tracking-tight text-[#0F172A] flex items-center gap-1.5">
                 S4 Automations
-                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] rounded">
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] rounded">
                   AI OCR
                 </span>
               </span>
             </div>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#C4BA3B]">
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#64748B]">
             {cfg.show_how_it_works && (
-              <a href="#how-it-works" className="hover:text-[#E2495B] transition">
+              <a href="#how-it-works" className="hover:text-[#0F172A] transition">
                 How It Works
               </a>
             )}
             {cfg.show_ocr_sandbox && (
-              <a href="#ocr-sandbox" className="hover:text-[#E2495B] transition">
+              <a href="#ocr-sandbox" className="hover:text-[#0F172A] transition">
                 Live OCR Demo
               </a>
             )}
             {cfg.show_roi_calculator && (
-              <a href="#roi-calculator" className="hover:text-[#E2495B] transition">
+              <a href="#roi-calculator" className="hover:text-[#0F172A] transition">
                 ROI Calculator
               </a>
             )}
             {cfg.show_pricing && (
-              <a href="#pricing" className="hover:text-[#E2495B] transition">
+              <a href="#pricing" className="hover:text-[#0F172A] transition">
                 Pricing &amp; Pilots
               </a>
             )}
             {cfg.show_faq && (
-              <a href="#faq" className="hover:text-[#E2495B] transition">
+              <a href="#faq" className="hover:text-[#0F172A] transition">
                 FAQ
               </a>
             )}
@@ -224,20 +224,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {cfg.show_client_portal_link && onOpenPortal && (
               <button
                 onClick={onOpenPortal}
-                className="hidden sm:inline-block text-xs font-semibold text-[#C4BA3B] hover:text-[#E2495B] px-2 py-1.5 rounded-xl transition cursor-pointer"
+                className="hidden sm:inline-block text-xs font-semibold text-[#64748B] hover:text-[#0F172A] px-2 py-1.5 rounded-xl transition cursor-pointer"
               >
                 Client Portal
               </button>
             )}
             <button
               onClick={onGoToLogin}
-              className="text-xs font-bold text-[#E2495B] hover:bg-[#F4ED6E] px-3 py-1.5 rounded-xl transition cursor-pointer"
+              className="text-xs font-semibold text-slate-700 hover:bg-slate-100 px-3 py-1.5 rounded-xl transition cursor-pointer"
             >
               Sign In
             </button>
             <button
               onClick={() => openLeadModalWithTier()}
-              className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-[#E2495B] to-[#C4BA3B] hover:from-[#cf3c4e] hover:to-[#b0a631] text-[#FFFEE6] rounded-xl text-xs font-bold shadow-lg shadow-[#E2495B]/25 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 sm:px-4 py-2 bg-[#0284C7] hover:bg-[#0EA5E9] text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer flex items-center gap-1.5"
             >
               <span>Book Firm Demo</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -248,27 +248,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* 2. Hero Section */}
       {cfg.show_hero && (
-        <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28 border-b border-[#C4BA3B] bg-[#FFFEE6]">
+        <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28 border-b border-[#E2E8F0] bg-white">
           <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-6">
             {cfg.hero_badge && (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F4ED6E] border border-[#C4BA3B] text-[11px] font-bold text-[#E2495B] shadow-sm animate-in fade-in">
-                <Sparkles className="w-3.5 h-3.5 text-[#E2495B]" />
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F0F9FF] border border-[#BAE6FD] text-[11px] font-semibold text-[#0284C7] shadow-xs animate-in fade-in">
+                <Sparkles className="w-3.5 h-3.5 text-[#0284C7]" />
                 <span>{cfg.hero_badge}</span>
               </div>
             )}
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#E2495B] tracking-tight leading-[1.15]">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#0F172A] tracking-tight leading-[1.15]">
               {cfg.hero_headline}
             </h1>
 
-            <p className="text-sm sm:text-base text-[#C4BA3B] max-w-3xl mx-auto leading-relaxed font-semibold">
+            <p className="text-sm sm:text-base text-[#64748B] max-w-3xl mx-auto leading-relaxed font-normal">
               {cfg.hero_subheadline}
             </p>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
               <button
                 onClick={() => openLeadModalWithTier('Free Firm Walkthrough')}
-                className="w-full sm:w-auto px-6 py-3.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] rounded-xl text-xs sm:text-sm font-bold shadow-xl shadow-[#E2495B]/30 transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-3.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>{cfg.hero_primary_cta_text || 'Request a Free Firm Walkthrough'}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -278,9 +278,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 href={whatsappUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full sm:w-auto px-5 py-3.5 bg-[#F4ED6E] hover:bg-[#FFFEE6] text-[#E2495B] border border-[#C4BA3B] rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#C4BA3B]/20"
+                className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-[#E2E8F0] rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
               >
-                <MessageSquare className="w-4 h-4 text-[#E2495B]" />
+                <MessageSquare className="w-4 h-4 text-[#059669]" />
                 <span>Send 3 Sample Slips on WhatsApp (10-Min Audit)</span>
               </a>
             </div>
