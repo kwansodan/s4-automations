@@ -963,21 +963,21 @@ export const ClientArTab: React.FC = () => {
       {/* Execution Feedback Notification Banner */}
       {runFeedback && (
         <div
-          className={`flex items-start justify-between gap-3 p-4 rounded-xl border transition animate-in fade-in slide-in-from-top-2 ${
+          className={`flex items-start justify-between gap-3 p-4 rounded-xl border transition shadow-xs animate-in fade-in slide-in-from-top-2 ${
             runFeedback.type === 'error'
-              ? 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+              ? 'bg-[#FFF1F2] border-[#FECDD3] text-[#9F1239]'
               : runFeedback.type === 'warning'
-              ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
-              : 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+              ? 'bg-[#FEF3C7] border-[#FDE68A] text-[#92400E]'
+              : 'bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]'
           }`}
         >
           <div className="flex items-start gap-2.5">
             {runFeedback.type === 'error' ? (
-              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-5 h-5 text-[#E11D48] shrink-0 mt-0.5" />
             ) : runFeedback.type === 'warning' ? (
-              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-5 h-5 text-[#D97706] shrink-0 mt-0.5" />
             ) : (
-              <Check className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <Check className="w-5 h-5 text-[#059669] shrink-0 mt-0.5" />
             )}
             <div>
               <div className="font-semibold text-xs">{runFeedback.message}</div>
@@ -988,7 +988,7 @@ export const ClientArTab: React.FC = () => {
           </div>
           <button
             onClick={() => setRunFeedback(null)}
-            className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+            className="p-1 hover:bg-slate-200/60 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
             title="Dismiss notice"
           >
             <X className="w-4 h-4" />
@@ -997,14 +997,14 @@ export const ClientArTab: React.FC = () => {
       )}
 
       {/* Mode Switcher & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
-        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2 shadow-xs">
+        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/80">
           <button
             onClick={() => setActiveLedgerView('summary')}
             className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
               activeLedgerView === 'summary'
-                ? 'bg-sky-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
@@ -1014,8 +1014,8 @@ export const ClientArTab: React.FC = () => {
             onClick={() => setActiveLedgerView('daily')}
             className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
               activeLedgerView === 'daily'
-                ? 'bg-sky-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -1027,7 +1027,7 @@ export const ClientArTab: React.FC = () => {
           <button
             onClick={handleBatchApprove}
             disabled={isApproving || arStagedTx.filter(t => !t.approved).length === 0}
-            className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1.5 bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#A7F3D0] text-[#059669] text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
             title="1-Click Approve all pending transactions in DB"
           >
             <CheckCheck className="w-3.5 h-3.5" />
@@ -1041,7 +1041,7 @@ export const ClientArTab: React.FC = () => {
               placeholder="Search item, slip or date..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 sm:w-60"
+              className="bg-slate-50 border border-[#E2E8F0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#0F172A] placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:bg-white sm:w-60"
             />
           </div>
         </div>
@@ -1049,18 +1049,18 @@ export const ClientArTab: React.FC = () => {
 
       {/* Daily Slips Filter Toolbar: Status Pills & Property Filter */}
       {activeLedgerView === 'daily' && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/60 rounded-xl p-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2.5 shadow-xs">
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setDailyStatusFilter('ALL')}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                 dailyStatusFilter === 'ALL'
-                  ? 'bg-slate-800 text-white border border-slate-600 shadow'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                  ? 'bg-[#0F172A] text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
               }`}
             >
               <span>All Slips</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-700/60 text-slate-300">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200/70 text-slate-700">
                 {dailyCounts.all}
               </span>
             </button>
@@ -1068,12 +1068,12 @@ export const ClientArTab: React.FC = () => {
               onClick={() => setDailyStatusFilter('PENDING')}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                 dailyStatusFilter === 'PENDING'
-                  ? 'bg-amber-950/80 text-amber-300 border border-amber-500/50 shadow'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                  ? 'bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
               }`}
             >
               <span>Pending</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-500/30">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
                 {dailyCounts.pending}
               </span>
             </button>
@@ -1081,12 +1081,12 @@ export const ClientArTab: React.FC = () => {
               onClick={() => setDailyStatusFilter('APPROVED')}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                 dailyStatusFilter === 'APPROVED'
-                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 shadow'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                  ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
               }`}
             >
               <span>Approved</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
                 {dailyCounts.approved}
               </span>
             </button>
@@ -1095,13 +1095,13 @@ export const ClientArTab: React.FC = () => {
                 onClick={() => setDailyStatusFilter('DISCREPANCY')}
                 className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                   dailyStatusFilter === 'DISCREPANCY'
-                    ? 'bg-rose-950/80 text-rose-300 border border-rose-500/50 shadow'
-                    : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                    ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
                 }`}
               >
-                <AlertTriangle className="w-3 h-3 text-rose-400" />
+                <AlertTriangle className="w-3 h-3 text-[#E11D48]" />
                 <span>Loss Discrepancies</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-950 text-rose-400 border border-rose-500/30">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
                   {dailyCounts.discrepancy}
                 </span>
               </button>
@@ -1111,12 +1111,12 @@ export const ClientArTab: React.FC = () => {
                 onClick={() => setDailyStatusFilter('INVOICED')}
                 className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                   dailyStatusFilter === 'INVOICED'
-                    ? 'bg-sky-950/80 text-sky-300 border border-sky-500/50 shadow'
-                    : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800/80'
+                    ? 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
                 }`}
               >
                 <span>Invoiced</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-sky-950 text-sky-400 border border-sky-500/30">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]">
                   {dailyCounts.invoiced}
                 </span>
               </button>
@@ -1124,33 +1124,33 @@ export const ClientArTab: React.FC = () => {
           </div>
 
           {availableProperties.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs shrink-0">
+            <div className="flex items-center gap-2 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-500 text-[11px]">{isCustodyTracking ? 'Property:' : 'Customer / Site:'}</span>
+              <span className="text-[#64748B] text-[11px]">{isCustodyTracking ? 'Property:' : 'Customer / Site:'}</span>
               <select
                 value={dailyPropertyFilter}
                 onChange={(e) => setDailyPropertyFilter(e.target.value)}
-                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+                className="bg-transparent text-[#0F172A] font-medium focus:outline-none cursor-pointer"
               >
-                <option value="ALL" className="bg-slate-900 text-white">
+                <option value="ALL" className="bg-white text-slate-800">
                   {isCustodyTracking ? 'All Properties' : 'All Customers / Sites'} ({arStagedTx.length})
                 </option>
                 {availableProperties.map((p) => (
-                  <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>
+                  <option key={p} value={p} className="bg-white text-slate-800">{p}</option>
                 ))}
               </select>
             </div>
           )}
 
           {/* Sub-toolbar: View Mode Switcher (Group by Slip vs Flat Table) & Accordion Actions */}
-          <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 mt-1">
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+          <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E2E8F0] mt-1">
+            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/80">
               <button
                 onClick={() => setDailyViewMode('grouped')}
                 className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
                   dailyViewMode === 'grouped'
-                    ? 'bg-sky-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
                 title="Organize transactions by daily control slip with 1-click slip approval"
               >
@@ -1161,8 +1161,8 @@ export const ClientArTab: React.FC = () => {
                 onClick={() => setDailyViewMode('flat')}
                 className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
                   dailyViewMode === 'flat'
-                    ? 'bg-sky-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
                 title="View all transactions in a single flat ledger table"
               >
@@ -1175,14 +1175,14 @@ export const ClientArTab: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleExpandAll}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-white bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-lg transition cursor-pointer"
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-[#E2E8F0] hover:bg-slate-50 rounded-lg transition cursor-pointer shadow-xs"
                   title="Expand all daily slips"
                 >
                   Expand All
                 </button>
                 <button
                   onClick={handleCollapseAll}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-white bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-lg transition cursor-pointer"
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-[#E2E8F0] hover:bg-slate-50 rounded-lg transition cursor-pointer shadow-xs"
                   title="Collapse all daily slips"
                 >
                   Collapse All
@@ -1192,10 +1192,10 @@ export const ClientArTab: React.FC = () => {
                     setPurgeTargetFileName('');
                     setIsPurgeModalOpen(true);
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:text-white bg-rose-950/50 hover:bg-rose-900 border border-rose-600/50 rounded-lg transition cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#E11D48] hover:bg-rose-50 bg-white border border-[#FECDD3] rounded-lg transition cursor-pointer shadow-xs"
                   title="Purge mistakenly uploaded document or file from PostgreSQL"
                 >
-                  <Trash2 className="w-3 h-3 text-rose-400" />
+                  <Trash2 className="w-3 h-3 text-[#E11D48]" />
                   <span>Purge File</span>
                 </button>
               </div>
@@ -1205,14 +1205,14 @@ export const ClientArTab: React.FC = () => {
       )}
 
       {/* Primary In-App PostgreSQL Ledger Notice */}
-      <div className="bg-emerald-950/25 border border-emerald-500/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-emerald-300">
+      <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#065F46] shadow-xs">
         <div className="flex items-center gap-2">
           <span className="flex h-2 w-2 relative shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#059669]"></span>
           </span>
           <span>
-            <strong>Native In-App PostgreSQL Ledger Active:</strong>{' '}
+            <strong className="text-[#065F46] font-bold">Native In-App PostgreSQL Ledger Active:</strong>{' '}
             {isCustodyTracking
               ? 'Daily control slips, linen loss reconciliations, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'
               : 'Daily revenue documents, quantities, rates, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'}
@@ -1222,17 +1222,17 @@ export const ClientArTab: React.FC = () => {
 
       {/* Summary View Notice & Quick-Switch */}
       {activeLedgerView === 'summary' && (
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            <Info className="w-4 h-4 text-sky-400 shrink-0" />
+        <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
+          <div className="flex items-center gap-2 text-xs text-[#0369A1]">
+            <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
             <span>
-              Viewing aggregated monthly totals. To inspect, edit, or delete individual ingested slips and files, switch to <strong className="text-white">Daily Slips</strong> or use <strong className="text-rose-400">Delete Ingested File</strong>.
+              Viewing aggregated monthly totals. To inspect, edit, or delete individual ingested slips and files, switch to <strong className="text-[#0C4A6E] font-bold">Daily Slips</strong> or use <strong className="text-[#E11D48] font-bold">Delete Ingested File</strong>.
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setActiveLedgerView('daily')}
-              className="px-2.5 py-1 text-xs font-bold bg-sky-950 text-sky-300 border border-sky-500/40 hover:bg-sky-900/60 rounded-lg transition cursor-pointer"
+              className="px-2.5 py-1 text-xs font-bold bg-white text-[#0284C7] border border-[#BAE6FD] hover:bg-sky-50 rounded-lg transition cursor-pointer shadow-xs"
             >
               Open Daily Slips ({arStagedTx.length})
             </button>
@@ -1241,9 +1241,9 @@ export const ClientArTab: React.FC = () => {
                 setPurgeTargetFileName('');
                 setIsPurgeModalOpen(true);
               }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-rose-950/60 text-rose-300 border border-rose-500/40 hover:bg-rose-900 rounded-lg transition cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-white text-[#E11D48] border border-[#FECDD3] hover:bg-rose-50 rounded-lg transition cursor-pointer shadow-xs"
             >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
               <span>Delete Ingested File</span>
             </button>
           </div>
@@ -1251,13 +1251,13 @@ export const ClientArTab: React.FC = () => {
       )}
 
       {/* Main Table Views */}
-      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl border border-slate-800">
+      <div className="bg-white rounded-2xl overflow-hidden border border-[#E2E8F0] shadow-xs">
         <div className="overflow-x-auto custom-scrollbar">
           
           {/* VIEW 1: IN-APP POSTGRESQL MONTHLY SUMMARY */}
           {activeLedgerView === 'summary' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
+              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   {renderSummarySortHeader(isCustodyTracking ? 'Standard Item Name' : 'Item / Service Description', 'item_name', 'left')}
                   {isCustodyTracking ? (
@@ -1277,47 +1277,47 @@ export const ClientArTab: React.FC = () => {
                   {renderSummarySortHeader('Status', 'status', 'center')}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
+              <tbody className="divide-y divide-[#E2E8F0] text-[#334155] font-medium bg-white">
                 {sortedSummaryRows.length > 0 ? (
                   sortedSummaryRows.map((row) => {
                     const lossQty = row.linen_discrepancy || 0;
                     return (
                       <tr
                         key={row.item_name}
-                        className={`hover:bg-slate-850/50 transition-colors ${
-                          row.is_fully_approved ? 'bg-emerald-950/15' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          row.is_fully_approved ? 'bg-[#ECFDF5]/50' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-[#E11D48] bg-[#FFF1F2]/50' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">{toTitleCase(row.item_name)}</td>
+                        <td className="py-3 px-4 font-bold text-[#0F172A] whitespace-nowrap">{toTitleCase(row.item_name)}</td>
                         {isCustodyTracking ? (
                           <>
-                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_picked_up}</td>
-                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{row.total_delivered}</td>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap text-[#0F172A]">{row.total_picked_up}</td>
+                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap text-[#0F172A]">{row.total_delivered}</td>
                             <td className="py-3 px-4 text-center whitespace-nowrap">
                               {lossQty > 0 ? (
-                                <span className="inline-flex items-center gap-1 text-rose-300 font-mono font-bold bg-rose-950/80 border border-rose-500/50 px-2 py-0.5 rounded-full text-[11px] shadow-sm">
-                                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span className="inline-flex items-center gap-1 text-[#E11D48] font-mono font-bold bg-[#FFF1F2] border border-[#FECDD3] px-2 py-0.5 rounded-full text-[11px] shadow-xs">
+                                  <AlertTriangle className="w-3 h-3 text-[#E11D48] shrink-0" />
                                   <span>-{lossQty} missing</span>
                                 </span>
                               ) : (
-                                <span className="text-slate-600 font-mono text-xs">—</span>
+                                <span className="text-slate-400 font-mono text-xs">—</span>
                               )}
                             </td>
                           </>
                         ) : (
-                          <td className="py-3 px-4 text-center font-mono font-bold text-white whitespace-nowrap">{row.total_delivered}</td>
+                          <td className="py-3 px-4 text-center font-mono font-bold text-[#0F172A] whitespace-nowrap">{row.total_delivered}</td>
                         )}
-                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap text-[#475569]">{formatCurrency(row.unit_rate ?? row.unit_price ?? 0)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-[#059669] whitespace-nowrap">
                           {formatCurrency(row.total_billed)}
                         </td>
-                        <td className="py-3 px-4 text-center font-mono text-slate-400 whitespace-nowrap">{row.slips_count}</td>
+                        <td className="py-3 px-4 text-center font-mono text-[#64748B] whitespace-nowrap">{row.slips_count}</td>
                         <td className="py-3 px-4 text-center">
                           <input
                             type="checkbox"
                             checked={Boolean(row.is_fully_reviewed)}
                             onChange={() => handleToggleSummaryApproval(row, 'reviewed')}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                            className="w-4 h-4 rounded border-slate-300 bg-white text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -1325,15 +1325,15 @@ export const ClientArTab: React.FC = () => {
                             type="checkbox"
                             checked={Boolean(row.is_fully_approved)}
                             onChange={() => handleToggleSummaryApproval(row, 'approved')}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            className="w-4 h-4 rounded border-slate-300 bg-white text-[#059669] focus:ring-[#059669] cursor-pointer"
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
                             className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                               row.is_fully_approved
-                                ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
-                                : 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
+                                ? 'bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]'
+                                : 'bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706]'
                             }`}
                           >
                             {row.is_fully_approved ? 'APPROVED' : 'PENDING'}
@@ -1344,7 +1344,7 @@ export const ClientArTab: React.FC = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-500 text-xs">
+                    <td colSpan={10} className="py-12 text-center text-[#64748B] text-xs">
                       {isLoadingSummary
                         ? 'Loading PostgreSQL reconciliation summary...'
                         : `No AR summary line items found for ${selectedMonth} ${selectedYear}. Click 'Run AR Extraction' above to process daily control slips.`}
@@ -1357,7 +1357,7 @@ export const ClientArTab: React.FC = () => {
 
           {/* VIEW 2A: IN-APP POSTGRESQL DAILY SLIPS - GROUPED BY SLIP */}
           {activeLedgerView === 'daily' && dailyViewMode === 'grouped' && (
-            <div className="divide-y divide-slate-800/80">
+            <div className="divide-y divide-[#E2E8F0]">
               {paginatedGroupedSlips.length > 0 ? (
                 paginatedGroupedSlips.map((slip) => {
                   const expanded = isSlipExpanded(slip.slipKey);
@@ -1367,33 +1367,33 @@ export const ClientArTab: React.FC = () => {
                       <div
                         className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
                           slip.isFullyApproved
-                            ? 'bg-emerald-950/20 hover:bg-emerald-950/30'
+                            ? 'bg-[#ECFDF5]/50 hover:bg-[#ECFDF5]/80'
                             : slip.totalLossQty > 0
-                            ? 'border-l-4 border-l-rose-500 bg-rose-950/15 hover:bg-rose-950/25'
-                            : 'bg-slate-900/40 hover:bg-slate-850/60'
+                            ? 'border-l-4 border-l-[#E11D48] bg-[#FFF1F2]/50 hover:bg-[#FFF1F2]/80'
+                            : 'bg-slate-50/70 hover:bg-slate-100/70'
                         }`}
                       >
                         {/* Left: Expand Chevron, Property, Date, File Name Link, Item Count */}
                         <div className="flex items-center gap-2.5 min-w-0">
                           <button
                             onClick={() => toggleSlipExpanded(slip.slipKey)}
-                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer shrink-0"
+                            className="p-1 rounded hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 transition cursor-pointer shrink-0"
                             title={expanded ? 'Collapse slip line items' : 'Expand slip line items'}
                           >
                             {expanded ? (
-                              <ChevronUp className="w-4 h-4 text-slate-300" />
+                              <ChevronUp className="w-4 h-4 text-slate-600" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-300" />
+                              <ChevronDown className="w-4 h-4 text-slate-600" />
                             )}
                           </button>
 
                           <div className="flex flex-wrap items-center gap-2 min-w-0">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-950/80 text-sky-300 border border-sky-500/30 shrink-0">
-                              <Building2 className="w-3 h-3 text-sky-400" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shrink-0">
+                              <Building2 className="w-3 h-3 text-[#0284C7]" />
                               <span>{slip.propertyName}</span>
                             </span>
 
-                            <span className="font-mono text-xs font-bold text-white bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/60 shrink-0 whitespace-nowrap">
+                            <span className="font-mono text-xs font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] shrink-0 whitespace-nowrap shadow-xs">
                               {slip.slipDate}
                             </span>
 
@@ -1402,19 +1402,19 @@ export const ClientArTab: React.FC = () => {
                                 href={slip.driveUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-xs group max-w-[280px] truncate"
+                                className="inline-flex items-center gap-1 text-[#0284C7] hover:text-[#0369A1] hover:underline transition font-mono text-xs group max-w-[280px] truncate"
                                 title={`Open original slip in Google Drive: ${slip.sourceFileName}`}
                               >
                                 <span className="truncate">{slip.sourceFileName}</span>
-                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-[#0284C7]" />
                               </a>
                             ) : (
-                              <span className="font-mono text-xs text-slate-300 max-w-[280px] truncate block" title={slip.sourceFileName}>
+                              <span className="font-mono text-xs text-[#64748B] max-w-[280px] truncate block" title={slip.sourceFileName}>
                                 {slip.sourceFileName}
                               </span>
                             )}
 
-                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                            <span className="text-[11px] text-[#64748B] font-medium whitespace-nowrap">
                               ({slip.items.length} {slip.items.length === 1 ? 'item' : 'items'})
                             </span>
                           </div>
@@ -1425,38 +1425,38 @@ export const ClientArTab: React.FC = () => {
                           <div className="flex items-center gap-1.5 text-xs font-mono">
                             {isCustodyTracking ? (
                               <>
-                                <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Picked Up">
-                                  <span className="text-slate-500 text-[10px] mr-1">PICK</span>
-                                  <span className="text-slate-200 font-semibold">{slip.totalPickQty}</span>
+                                <div className="bg-white px-2 py-1 rounded border border-[#E2E8F0] whitespace-nowrap shadow-xs" title="Total Picked Up">
+                                  <span className="text-[#64748B] text-[10px] mr-1">PICK</span>
+                                  <span className="text-[#0F172A] font-semibold">{slip.totalPickQty}</span>
                                 </div>
-                                <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Delivered">
-                                  <span className="text-slate-500 text-[10px] mr-1">DELIV</span>
-                                  <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
+                                <div className="bg-white px-2 py-1 rounded border border-[#E2E8F0] whitespace-nowrap shadow-xs" title="Total Delivered">
+                                  <span className="text-[#64748B] text-[10px] mr-1">DELIV</span>
+                                  <span className="text-[#0F172A] font-semibold">{slip.totalDelivQty}</span>
                                 </div>
                                 {slip.totalLossQty > 0 ? (
                                   <div
-                                    className="bg-rose-950/80 px-2 py-1 rounded border border-rose-500/50 text-rose-300 flex items-center gap-1 font-bold shadow-sm whitespace-nowrap"
+                                    className="bg-[#FFF1F2] px-2 py-1 rounded border border-[#FECDD3] text-[#E11D48] flex items-center gap-1 font-bold shadow-xs whitespace-nowrap"
                                     title="Linen Loss Discrepancy"
                                   >
-                                    <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                                    <span className="text-[10px] text-rose-400 uppercase">Loss</span>
+                                    <AlertTriangle className="w-3 h-3 text-[#E11D48] shrink-0" />
+                                    <span className="text-[10px] text-[#E11D48] uppercase">Loss</span>
                                     <span>-{slip.totalLossQty} missing</span>
                                   </div>
                                 ) : (
-                                  <div className="bg-slate-950 px-2 py-1 rounded border border-slate-800 text-slate-500 whitespace-nowrap" title="No Loss">
+                                  <div className="bg-white px-2 py-1 rounded border border-[#E2E8F0] text-slate-400 whitespace-nowrap shadow-xs" title="No Loss">
                                     <span className="text-[10px] mr-1">LOSS</span>
                                     <span>—</span>
                                   </div>
                                 )}
                               </>
                             ) : (
-                              <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 whitespace-nowrap" title="Total Quantity">
-                                <span className="text-slate-500 text-[10px] mr-1.5 uppercase font-sans">Total Qty:</span>
-                                <span className="text-slate-200 font-semibold">{slip.totalDelivQty}</span>
+                              <div className="bg-white px-2.5 py-1 rounded border border-[#E2E8F0] whitespace-nowrap shadow-xs" title="Total Quantity">
+                                <span className="text-[#64748B] text-[10px] mr-1.5 uppercase font-sans">Total Qty:</span>
+                                <span className="text-[#0F172A] font-semibold">{slip.totalDelivQty}</span>
                               </div>
                             )}
-                            <div className="bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-right whitespace-nowrap" title="Total Amount">
-                              <span className="font-bold text-emerald-400">{formatCurrency(slip.totalAmount)}</span>
+                            <div className="bg-white px-2.5 py-1 rounded border border-[#E2E8F0] text-right whitespace-nowrap shadow-xs" title="Total Amount">
+                              <span className="font-bold text-[#059669]">{formatCurrency(slip.totalAmount)}</span>
                             </div>
                           </div>
 
@@ -1464,12 +1464,12 @@ export const ClientArTab: React.FC = () => {
                           <button
                             onClick={() => handleToggleSlipApproval(slip)}
                             disabled={approvingSlipKey === slip.slipKey}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-sm disabled:opacity-40 whitespace-nowrap ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 whitespace-nowrap ${
                               slip.isFullyApproved
-                                ? 'bg-emerald-950 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/60'
+                                ? 'bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] hover:bg-[#D1FAE5]'
                                 : slip.isPartiallyApproved
-                                ? 'bg-amber-950/80 border border-amber-500/60 text-amber-300 hover:bg-amber-900/80'
-                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                ? 'bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] hover:bg-[#FDE68A]'
+                                : 'bg-[#059669] hover:bg-[#047857] text-white'
                             }`}
                             title={slip.isFullyApproved ? 'Click to unapprove all items on this slip' : '1-Click Approve all line items on this slip'}
                           >
@@ -1480,12 +1480,12 @@ export const ClientArTab: React.FC = () => {
                               </>
                             ) : slip.isFullyApproved ? (
                               <>
-                                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                <CheckCheck className="w-3.5 h-3.5 text-[#059669]" />
                                 <span>Slip Approved</span>
                               </>
                             ) : slip.isPartiallyApproved ? (
                               <>
-                                <Check className="w-3.5 h-3.5 text-amber-400" />
+                                <Check className="w-3.5 h-3.5 text-[#D97706]" />
                                 <span>Approve Rest ({slip.items.filter((i) => !i.approved).length})</span>
                               </>
                             ) : (
@@ -1500,17 +1500,17 @@ export const ClientArTab: React.FC = () => {
                           <button
                             onClick={() => handleDeleteSlip(slip)}
                             disabled={deletingSlipKey === slip.slipKey}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-600/60 hover:border-rose-500 transition cursor-pointer shadow-sm disabled:opacity-40 shrink-0"
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#E11D48] hover:bg-[#FFF1F2] bg-white border border-[#FECDD3] transition cursor-pointer shadow-xs disabled:opacity-40 shrink-0"
                             title={`Delete all ${slip.items.length} unposted line items extracted from "${slip.sourceFileName || 'this slip'}"`}
                           >
                             {deletingSlipKey === slip.slipKey ? (
                               <>
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E11D48]" />
                                 <span>Deleting...</span>
                               </>
                             ) : (
                               <>
-                                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
                                 <span>Delete Slip</span>
                               </>
                             )}
@@ -1520,9 +1520,9 @@ export const ClientArTab: React.FC = () => {
 
                       {/* Nested Slip Items Table (when expanded) */}
                       {expanded && (
-                        <div className="bg-slate-950/60 border-t border-slate-800/80 px-2 py-1.5 overflow-x-auto custom-scrollbar">
+                        <div className="bg-white border-t border-[#E2E8F0] px-2 py-1.5 overflow-x-auto custom-scrollbar">
                           <table className="w-full text-left text-xs">
-                            <thead className="text-slate-500 uppercase tracking-wider font-semibold text-[10px] border-b border-slate-800/60">
+                            <thead className="text-[#64748B] uppercase tracking-wider font-semibold text-[10px] border-b border-[#E2E8F0] bg-slate-50/70">
                               <tr>
                                 <th className="py-2 px-3 text-left">{isCustodyTracking ? 'Item Description' : 'Item / Service Description'}</th>
                                 {isCustodyTracking ? (
@@ -1542,7 +1542,7 @@ export const ClientArTab: React.FC = () => {
                                 <th className="py-2 px-3 text-center">Actions</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-800/40 text-slate-300 font-medium">
+                            <tbody className="divide-y divide-[#E2E8F0] text-[#334155] font-medium bg-white">
                               {slip.items.map((tx) => {
                                 if (editingTxId === tx.id) {
                                   const livePick = Math.max(0, Number(editPickQty) || 0);
@@ -1552,7 +1552,7 @@ export const ClientArTab: React.FC = () => {
                                   const liveTotal = Math.round(liveDeliv * liveRate * 100) / 100;
 
                                   return (
-                                    <tr key={tx.id} className="bg-sky-950/30 border-2 border-sky-500/50 shadow-inner">
+                                    <tr key={tx.id} className="bg-[#F0F9FF] border-2 border-[#0284C7]/50 shadow-inner">
                                       <td className="py-2 px-3 min-w-[280px]">
                                         <ZohoItemSearchableSelect
                                           items={zohoMasterItems}
@@ -1569,7 +1569,7 @@ export const ClientArTab: React.FC = () => {
                                               min="0"
                                               value={editPickQty}
                                               onChange={(e) => setEditPickQty(e.target.value)}
-                                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                              className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7]"
                                             />
                                           </td>
                                           <td className="py-2 px-3 text-center">
@@ -1578,17 +1578,17 @@ export const ClientArTab: React.FC = () => {
                                               min="0"
                                               value={editDelivQty}
                                               onChange={(e) => setEditDelivQty(e.target.value)}
-                                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                              className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7]"
                                             />
                                           </td>
                                           <td className="py-2 px-3 text-center">
                                             {liveLoss > 0 ? (
-                                              <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                              <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] shadow-xs">
+                                                <AlertTriangle className="w-3 h-3 text-[#E11D48] shrink-0" />
                                                 <span>-{liveLoss} missing</span>
                                               </span>
                                             ) : (
-                                              <span className="text-slate-600 font-mono text-xs">—</span>
+                                              <span className="text-slate-400 font-mono text-xs">—</span>
                                             )}
                                           </td>
                                         </>
@@ -1602,39 +1602,39 @@ export const ClientArTab: React.FC = () => {
                                               setEditDelivQty(e.target.value);
                                               setEditPickQty(e.target.value);
                                             }}
-                                            className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                            className="w-20 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7]"
                                           />
                                         </td>
                                       )}
                                       <td className="py-2 px-3 text-right">
                                         <div className="inline-flex items-center justify-end gap-1">
-                                          <span className="text-slate-500 text-[10px]">GHS</span>
+                                          <span className="text-[#64748B] text-[10px]">GHS</span>
                                           <input
                                             type="number"
                                             step="0.01"
                                             min="0"
                                             value={editRate}
                                             onChange={(e) => setEditRate(e.target.value)}
-                                            className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-right font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                            className="w-20 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-right font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7]"
                                           />
                                         </div>
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                                      <td className="py-2 px-3 text-right font-mono font-bold text-[#059669] whitespace-nowrap">
                                         {formatCurrency(liveTotal)}
                                       </td>
                                       <td className="py-2 px-3 text-center">
-                                        <span className="text-sky-400 text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
+                                        <span className="text-[#0284C7] text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
                                       </td>
                                       <td className="py-2 px-3 text-center">
                                         <input
                                           type="checkbox"
                                           checked={Boolean(tx.approved)}
                                           onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
-                                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                          className="w-4 h-4 rounded border-slate-300 bg-white text-[#059669] focus:ring-[#059669] cursor-pointer"
                                         />
                                       </td>
                                       <td className="py-2 px-3 text-center">
-                                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950 border border-sky-500/40 text-sky-300">
+                                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-[#F0F9FF] border border-[#BAE6FD] text-[#0284C7]">
                                           EDITING
                                         </span>
                                       </td>
@@ -1643,7 +1643,7 @@ export const ClientArTab: React.FC = () => {
                                           <button
                                             onClick={() => handleSaveEdit(tx.id)}
                                             disabled={isSavingTx}
-                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white transition shadow cursor-pointer disabled:opacity-50"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-[#0284C7] hover:bg-[#0369A1] text-white transition shadow-xs cursor-pointer disabled:opacity-50"
                                             title="Save changes"
                                           >
                                             <Save className="w-3.5 h-3.5" />
@@ -1652,7 +1652,7 @@ export const ClientArTab: React.FC = () => {
                                           <button
                                             onClick={handleCancelEdit}
                                             disabled={isSavingTx}
-                                            className="inline-flex items-center p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                                            className="inline-flex items-center p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
                                             title="Cancel editing"
                                           >
                                             <X className="w-3.5 h-3.5" />
@@ -1660,13 +1660,13 @@ export const ClientArTab: React.FC = () => {
                                           <button
                                             onClick={() => handleDeleteRow(tx.id)}
                                             disabled={deletingTxId === tx.id}
-                                            className="inline-flex items-center p-1 rounded-md text-rose-400 hover:text-white hover:bg-rose-900/60 border border-rose-800/40 transition cursor-pointer"
+                                            className="inline-flex items-center p-1 rounded-md text-[#E11D48] hover:bg-rose-50 border border-[#FECDD3] transition cursor-pointer"
                                             title="Delete this mistakenly ingested row"
                                           >
                                             {deletingTxId === tx.id ? (
-                                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E11D48]" />
                                             ) : (
-                                              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                              <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
                                             )}
                                           </button>
                                         </div>
@@ -1684,20 +1684,20 @@ export const ClientArTab: React.FC = () => {
                                 return (
                                   <tr
                                     key={tx.id}
-                                    className={`hover:bg-slate-850/40 transition-colors ${
+                                    className={`hover:bg-slate-50/80 transition-colors ${
                                       tx.approved
-                                        ? 'bg-emerald-950/10'
+                                        ? 'bg-[#ECFDF5]/40'
                                         : lossQty > 0
-                                        ? 'border-l-2 border-l-rose-500 bg-rose-950/15'
+                                        ? 'border-l-2 border-l-[#E11D48] bg-[#FFF1F2]/40'
                                         : ''
                                     }`}
                                   >
-                                    <td className="py-2.5 px-3 font-bold text-white whitespace-nowrap">
+                                    <td className="py-2.5 px-3 font-bold text-[#0F172A] whitespace-nowrap">
                                       <div className="flex items-center gap-1.5 group">
                                         <span>{toTitleCase(tx.item_or_description)}</span>
                                         <button
                                           onClick={() => handleStartEdit(tx)}
-                                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-800 rounded text-slate-400 hover:text-sky-400 transition"
+                                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-[#0284C7] transition"
                                           title="Edit item name or details"
                                         >
                                           <Edit3 className="w-3 h-3" />
@@ -1706,26 +1706,26 @@ export const ClientArTab: React.FC = () => {
                                     </td>
                                     {isCustodyTracking ? (
                                       <>
-                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{pickQty}</td>
-                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap text-[#0F172A]">{pickQty}</td>
+                                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap text-[#0F172A]">{delivQty}</td>
                                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                                           {lossQty > 0 ? (
-                                            <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                              <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                            <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48] shadow-xs">
+                                              <AlertTriangle className="w-3 h-3 text-[#E11D48] shrink-0" />
                                               <span>-{lossQty} missing</span>
                                             </span>
                                           ) : (
-                                            <span className="text-slate-600 font-mono text-xs">—</span>
+                                            <span className="text-slate-400 font-mono text-xs">—</span>
                                           )}
                                         </td>
                                       </>
                                     ) : (
-                                      <td className="py-2.5 px-3 text-center font-mono font-bold text-white whitespace-nowrap">{delivQty}</td>
+                                      <td className="py-2.5 px-3 text-center font-mono font-bold text-[#0F172A] whitespace-nowrap">{delivQty}</td>
                                     )}
-                                    <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-slate-300">
+                                    <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-[#475569]">
                                       {formatCurrency(rate)}
                                     </td>
-                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-[#059669] whitespace-nowrap">
                                       {formatCurrency(total)}
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
@@ -1733,7 +1733,7 @@ export const ClientArTab: React.FC = () => {
                                         type="checkbox"
                                         checked={Boolean(tx.reviewed)}
                                         onChange={() => handleToggleTx(tx.id, 'reviewed', tx.reviewed)}
-                                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                        className="w-4 h-4 rounded border-slate-300 bg-white text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
                                       />
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
@@ -1741,17 +1741,17 @@ export const ClientArTab: React.FC = () => {
                                         type="checkbox"
                                         checked={Boolean(tx.approved)}
                                         onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
-                                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                        className="w-4 h-4 rounded border-slate-300 bg-white text-[#059669] focus:ring-[#059669] cursor-pointer"
                                       />
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
                                       <span
                                         className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                                           tx.status === 'INVOICED'
-                                            ? 'bg-sky-950 border border-sky-500/40 text-sky-300'
+                                            ? 'bg-[#F0F9FF] border border-[#BAE6FD] text-[#0284C7]'
                                             : tx.approved
-                                            ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
-                                            : 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
+                                            ? 'bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]'
+                                            : 'bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706]'
                                         }`}
                                       >
                                         {tx.status === 'INVOICED' ? 'INVOICED' : tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
@@ -1761,23 +1761,23 @@ export const ClientArTab: React.FC = () => {
                                       <div className="inline-flex items-center gap-1">
                                         <button
                                           onClick={() => handleStartEdit(tx)}
-                                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-600 hover:text-[#0284C7] hover:bg-slate-100 border border-[#E2E8F0] hover:border-[#BAE6FD] transition cursor-pointer"
                                           title="Edit item name, quantities, or rate"
                                         >
-                                          <Edit3 className="w-3 h-3 text-sky-400" />
+                                          <Edit3 className="w-3 h-3 text-[#0284C7]" />
                                           <span>Edit</span>
                                         </button>
                                         {tx.status !== 'INVOICED' && (
                                           <button
                                             onClick={() => handleDeleteRow(tx.id)}
                                             disabled={deletingTxId === tx.id}
-                                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-[#E11D48] hover:bg-rose-50 border border-[#FECDD3] transition cursor-pointer"
                                             title="Delete this line item from database"
                                           >
                                             {deletingTxId === tx.id ? (
-                                              <RefreshCw className="w-3 h-3 animate-spin text-rose-400" />
+                                              <RefreshCw className="w-3 h-3 animate-spin text-[#E11D48]" />
                                             ) : (
-                                              <Trash2 className="w-3 h-3 text-rose-400" />
+                                              <Trash2 className="w-3 h-3 text-[#E11D48]" />
                                             )}
                                             <span>Delete</span>
                                           </button>
@@ -1795,7 +1795,7 @@ export const ClientArTab: React.FC = () => {
                   );
                 })
               ) : (
-                <div className="py-12 text-center text-slate-500 text-xs">
+                <div className="py-12 text-center text-[#64748B] text-xs">
                   {isLoadingTx
                     ? 'Loading daily slips from PostgreSQL...'
                     : dailyCounts.all === 0
@@ -1809,7 +1809,7 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 2B: IN-APP POSTGRESQL DAILY SLIPS - FLAT TABLE */}
           {activeLedgerView === 'daily' && dailyViewMode === 'flat' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold text-[11px]">
+              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   {renderDailySortHeader('Date', 'transaction_date', 'left')}
                   {renderDailySortHeader(isCustodyTracking ? 'Slip Filename' : 'Document Reference', 'source_file_name', 'left')}
@@ -1831,7 +1831,7 @@ export const ClientArTab: React.FC = () => {
                   <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
+              <tbody className="divide-y divide-[#E2E8F0] text-[#334155] font-medium">
                 {paginatedArStagedTx.length > 0 ? (
                   paginatedArStagedTx.map((tx) => {
                     const driveUrl = tx.metadata_json?.drive_file_url ||
@@ -1845,22 +1845,22 @@ export const ClientArTab: React.FC = () => {
                       const liveTotal = Math.round(liveDeliv * liveRate * 100) / 100;
 
                       return (
-                        <tr key={tx.id} className="bg-sky-950/30 border-2 border-sky-500/50 shadow-inner">
-                          <td className="py-3 px-4 font-mono text-slate-300 font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                        <tr key={tx.id} className="bg-sky-50/70 border-2 border-sky-400 shadow-xs">
+                          <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             {driveUrl ? (
                               <a
                                 href={driveUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-[11px] group max-w-[220px]"
+                                className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px]"
                                 title={`Open original slip in Google Drive: ${tx.source_file_name}`}
                               >
                                 <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
-                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
                               </a>
                             ) : (
-                              <span className="font-mono text-[11px] text-slate-400 max-w-[180px] truncate block" title={tx.source_file_name}>
+                              <span className="font-mono text-[11px] text-slate-500 max-w-[180px] truncate block" title={tx.source_file_name}>
                                 {tx.source_file_name || 'Slip'}
                               </span>
                             )}
@@ -1881,7 +1881,7 @@ export const ClientArTab: React.FC = () => {
                                   min="0"
                                   value={editPickQty}
                                   onChange={(e) => setEditPickQty(e.target.value)}
-                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                  className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                                 />
                               </td>
                               <td className="py-2.5 px-4 text-center">
@@ -1890,17 +1890,17 @@ export const ClientArTab: React.FC = () => {
                                   min="0"
                                   value={editDelivQty}
                                   onChange={(e) => setEditDelivQty(e.target.value)}
-                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                  className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                                 />
                               </td>
                               <td className="py-2.5 px-4 text-center">
                                 {liveLoss > 0 ? (
-                                  <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                    <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-50 border border-rose-200 text-rose-700 shadow-2xs">
+                                    <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                                     <span>-{liveLoss} missing</span>
                                   </span>
                                 ) : (
-                                  <span className="text-slate-600 font-mono text-xs">—</span>
+                                  <span className="text-slate-400 font-mono text-xs">—</span>
                                 )}
                               </td>
                             </>
@@ -1914,7 +1914,7 @@ export const ClientArTab: React.FC = () => {
                                   setEditDelivQty(e.target.value);
                                   setEditPickQty(e.target.value);
                                 }}
-                                className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                               />
                             </td>
                           )}
@@ -1927,26 +1927,26 @@ export const ClientArTab: React.FC = () => {
                                 min="0"
                                 value={editRate}
                                 onChange={(e) => setEditRate(e.target.value)}
-                                className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-right font-mono text-xs text-white focus:outline-none focus:border-sky-500"
+                                className="w-20 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-right font-mono text-xs text-[#0F172A] focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                               />
                             </div>
                           </td>
-                          <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">
                             {formatCurrency(liveTotal)}
                           </td>
                           <td className="py-2.5 px-4 text-center">
-                            <span className="text-sky-400 text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
+                            <span className="text-sky-600 text-[11px] font-semibold" title="Will be marked reviewed on save">Auto</span>
                           </td>
                           <td className="py-2.5 px-4 text-center">
                             <input
                               type="checkbox"
                               checked={Boolean(tx.approved)}
                               onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
-                              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                             />
                           </td>
                           <td className="py-2.5 px-4 text-center">
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950 border border-sky-500/40 text-sky-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 border border-sky-200 text-sky-700">
                               EDITING
                             </span>
                           </td>
@@ -1955,7 +1955,7 @@ export const ClientArTab: React.FC = () => {
                               <button
                                 onClick={() => handleSaveEdit(tx.id)}
                                 disabled={isSavingTx}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white transition shadow cursor-pointer disabled:opacity-50"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-[#0284C7] hover:bg-sky-600 text-white transition shadow-xs cursor-pointer disabled:opacity-50"
                                 title="Save changes"
                               >
                                 <Save className="w-3.5 h-3.5" />
@@ -1964,7 +1964,7 @@ export const ClientArTab: React.FC = () => {
                               <button
                                 onClick={handleCancelEdit}
                                 disabled={isSavingTx}
-                                className="inline-flex items-center p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                                className="inline-flex items-center p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
                                 title="Cancel editing"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -1972,13 +1972,13 @@ export const ClientArTab: React.FC = () => {
                               <button
                                 onClick={() => handleDeleteRow(tx.id)}
                                 disabled={deletingTxId === tx.id}
-                                className="inline-flex items-center p-1 rounded-md text-rose-400 hover:text-white hover:bg-rose-900/60 border border-rose-800/40 transition cursor-pointer"
+                                className="inline-flex items-center p-1 rounded-md text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
                                 title="Delete this mistakenly ingested row"
                               >
                                 {deletingTxId === tx.id ? (
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
                                 ) : (
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                                 )}
                               </button>
                             </div>
@@ -1996,35 +1996,35 @@ export const ClientArTab: React.FC = () => {
                     return (
                       <tr
                         key={tx.id}
-                        className={`hover:bg-slate-850/50 transition-colors ${
-                          tx.approved ? 'bg-emerald-950/15' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-950/15' : ''
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          tx.approved ? 'bg-emerald-50/40' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-50/40' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-mono text-slate-300 font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           {driveUrl ? (
                             <a
                               href={driveUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sky-400 hover:text-sky-300 hover:underline transition font-mono text-[11px] group max-w-[220px]"
+                              className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px]"
                               title={`Open original slip in Google Drive: ${tx.source_file_name}`}
                             >
                               <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
-                              <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-400" />
+                              <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
                             </a>
                           ) : (
-                            <span className="font-mono text-[11px] text-slate-400 max-w-[180px] truncate block" title={tx.source_file_name}>
+                            <span className="font-mono text-[11px] text-slate-500 max-w-[180px] truncate block" title={tx.source_file_name}>
                               {tx.source_file_name || 'Slip'}
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                        <td className="py-3 px-4 font-bold text-[#0F172A] whitespace-nowrap">
                           <div className="flex items-center gap-1.5 group">
                             <span>{toTitleCase(tx.item_or_description)}</span>
                             <button
                               onClick={() => handleStartEdit(tx)}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-800 rounded text-slate-400 hover:text-sky-400 transition"
+                              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-sky-600 transition"
                               title="Edit item name or details"
                             >
                               <Edit3 className="w-3 h-3" />
@@ -2033,24 +2033,24 @@ export const ClientArTab: React.FC = () => {
                         </td>
                         {isCustodyTracking ? (
                           <>
-                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{pickQty}</td>
-                            <td className="py-3 px-4 text-center font-mono whitespace-nowrap">{delivQty}</td>
+                            <td className="py-3 px-4 text-center font-mono text-[#0F172A] whitespace-nowrap">{pickQty}</td>
+                            <td className="py-3 px-4 text-center font-mono text-[#0F172A] whitespace-nowrap">{delivQty}</td>
                             <td className="py-3 px-4 text-center whitespace-nowrap">
                               {lossQty > 0 ? (
-                                <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-300 shadow-sm">
-                                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-rose-50 border border-rose-200 text-rose-700 shadow-2xs">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                                   <span>-{lossQty} missing</span>
                                 </span>
                               ) : (
-                                <span className="text-slate-600 font-mono text-xs">—</span>
+                                <span className="text-slate-400 font-mono text-xs">—</span>
                               )}
                             </td>
                           </>
                         ) : (
-                          <td className="py-3 px-4 text-center font-mono font-bold text-white whitespace-nowrap">{delivQty}</td>
+                          <td className="py-3 px-4 text-center font-mono font-bold text-[#0F172A] whitespace-nowrap">{delivQty}</td>
                         )}
-                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap">{formatCurrency(rate)}</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 whitespace-nowrap">
+                        <td className="py-3 px-4 text-right font-mono text-[#334155] whitespace-nowrap">{formatCurrency(rate)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">
                           {formatCurrency(total)}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -2058,7 +2058,7 @@ export const ClientArTab: React.FC = () => {
                             type="checkbox"
                             checked={Boolean(tx.reviewed)}
                             onChange={() => handleToggleTx(tx.id, 'reviewed', tx.reviewed)}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                            className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-sky-600 focus:ring-sky-500 cursor-pointer"
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -2066,17 +2066,17 @@ export const ClientArTab: React.FC = () => {
                             type="checkbox"
                             checked={Boolean(tx.approved)}
                             onChange={() => handleToggleTx(tx.id, 'approved', tx.approved)}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                           />
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
                             className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                               tx.status === 'INVOICED'
-                                ? 'bg-sky-950 border border-sky-500/40 text-sky-300'
+                                ? 'bg-sky-50 border border-sky-200 text-sky-700'
                                 : tx.approved
-                                ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
-                                : 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
+                                ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                                : 'bg-amber-50 border border-amber-200 text-amber-700'
                             }`}
                           >
                             {tx.status === 'INVOICED' ? 'INVOICED' : tx.approved ? 'APPROVED' : tx.status || 'PENDING'}
@@ -2086,23 +2086,23 @@ export const ClientArTab: React.FC = () => {
                           <div className="inline-flex items-center gap-1.5">
                             <button
                               onClick={() => handleStartEdit(tx)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-400 hover:text-sky-300 hover:bg-slate-800 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 transition cursor-pointer"
                               title="Edit item name, quantities, or rate"
                             >
-                              <Edit3 className="w-3 h-3 text-sky-400" />
+                              <Edit3 className="w-3 h-3 text-sky-600" />
                               <span>Edit</span>
                             </button>
                             {tx.status !== 'INVOICED' && (
                               <button
                                 onClick={() => handleDeleteRow(tx.id)}
                                 disabled={deletingTxId === tx.id}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 transition cursor-pointer"
                                 title="Delete this line item from database"
                               >
                                 {deletingTxId === tx.id ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin text-rose-400" />
+                                  <RefreshCw className="w-3 h-3 animate-spin text-rose-600" />
                                 ) : (
-                                  <Trash2 className="w-3 h-3 text-rose-400" />
+                                  <Trash2 className="w-3 h-3 text-rose-600" />
                                 )}
                                 <span>Delete</span>
                               </button>
@@ -2130,22 +2130,22 @@ export const ClientArTab: React.FC = () => {
 
         {/* Footer for Daily Slips (Pagination for Flat Table or Count for Grouped) */}
         {activeLedgerView === 'daily' && totalDailyCount > 0 && (
-          <div className="bg-slate-950/80 border-t border-slate-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+          <div className="bg-slate-50/90 border-t border-[#E2E8F0] px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#64748B]">
             {dailyViewMode === 'grouped' ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <FolderKanban className="w-4 h-4 text-sky-400 shrink-0" />
+                    <FolderKanban className="w-4 h-4 text-sky-600 shrink-0" />
                     <span>
                       Showing slips{' '}
-                      <strong className="text-white font-mono">
+                      <strong className="text-[#0F172A] font-mono">
                         {groupedPageSize === 'all' ? 1 : Math.min((groupedCurrentPage - 1) * Number(groupedPageSize) + 1, totalGroupedCount)}
                       </strong>{' '}
                       to{' '}
-                      <strong className="text-white font-mono">
+                      <strong className="text-[#0F172A] font-mono">
                         {groupedPageSize === 'all' ? totalGroupedCount : Math.min(groupedCurrentPage * Number(groupedPageSize), totalGroupedCount)}
                       </strong>{' '}
-                      of <strong className="text-white font-mono">{totalGroupedCount}</strong> slips
+                      of <strong className="text-[#0F172A] font-mono">{totalGroupedCount}</strong> slips
                     </span>
                   </div>
 
@@ -2157,8 +2157,8 @@ export const ClientArTab: React.FC = () => {
                         onClick={() => setGroupedPageSize(size as any)}
                         className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
                           groupedPageSize === size
-                            ? 'bg-sky-600 text-white shadow'
-                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            ? 'bg-[#0284C7] text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
                         }`}
                       >
                         {size === 'all' ? 'All' : size}
@@ -2172,18 +2172,18 @@ export const ClientArTab: React.FC = () => {
                     <button
                       onClick={() => setGroupedCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={groupedCurrentPage === 1}
-                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      className="p-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                       title="Previous slips page"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <span className="text-slate-400 font-mono text-xs px-2">
+                    <span className="text-slate-600 font-mono text-xs px-2">
                       Page {groupedCurrentPage} of {totalGroupedPages}
                     </span>
                     <button
                       onClick={() => setGroupedCurrentPage((p) => Math.min(totalGroupedPages, p + 1))}
                       disabled={groupedCurrentPage >= totalGroupedPages}
-                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      className="p-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                       title="Next slips page"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -2196,14 +2196,14 @@ export const ClientArTab: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <span>
                     Showing{' '}
-                    <strong className="text-white font-mono">
+                    <strong className="text-[#0F172A] font-mono">
                       {dailyPageSize === 'all' ? 1 : Math.min((dailyCurrentPage - 1) * Number(dailyPageSize) + 1, totalDailyCount)}
                     </strong>{' '}
                     to{' '}
-                    <strong className="text-white font-mono">
+                    <strong className="text-[#0F172A] font-mono">
                       {dailyPageSize === 'all' ? totalDailyCount : Math.min(dailyCurrentPage * Number(dailyPageSize), totalDailyCount)}
                     </strong>{' '}
-                    of <strong className="text-white font-mono">{totalDailyCount}</strong> items
+                    of <strong className="text-[#0F172A] font-mono">{totalDailyCount}</strong> items
                   </span>
 
                   <div className="flex items-center gap-1.5 ml-2">
@@ -2214,8 +2214,8 @@ export const ClientArTab: React.FC = () => {
                         onClick={() => setDailyPageSize(size as any)}
                         className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
                           dailyPageSize === size
-                            ? 'bg-sky-600 text-white shadow'
-                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            ? 'bg-[#0284C7] text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
                         }`}
                       >
                         {size === 'all' ? 'All' : size}
@@ -2229,21 +2229,21 @@ export const ClientArTab: React.FC = () => {
                     <button
                       onClick={() => setDailyCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={dailyCurrentPage === 1}
-                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      className="p-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                       title="Previous page"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
 
-                    <span className="px-2 font-mono text-slate-300 text-xs">
-                      Page <strong className="text-white">{dailyCurrentPage}</strong> of{' '}
-                      <strong className="text-white">{totalDailyPages}</strong>
+                    <span className="px-2 font-mono text-slate-600 text-xs">
+                      Page <strong className="text-[#0F172A]">{dailyCurrentPage}</strong> of{' '}
+                      <strong className="text-[#0F172A]">{totalDailyPages}</strong>
                     </span>
 
                     <button
                       onClick={() => setDailyCurrentPage((p) => Math.min(totalDailyPages, p + 1))}
                       disabled={dailyCurrentPage === totalDailyPages}
-                      className="p-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                      className="p-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                       title="Next page"
                     >
                       <ChevronRight className="w-4 h-4" />

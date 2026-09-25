@@ -284,60 +284,60 @@ export const ClientApTab: React.FC = () => {
         <div
           className={`p-4 rounded-xl border flex items-center gap-3 text-xs ${
             runResult.status === 'COMPLETED'
-              ? 'bg-indigo-950/60 border-indigo-500/40 text-indigo-200'
-              : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+              ? 'bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]'
+              : 'bg-[#FFF1F2] border-[#FECDD3] text-[#9F1239]'
           }`}
         >
           {runResult.status === 'COMPLETED' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-[#059669]" />
           ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            <AlertTriangle className="w-4 h-4 shrink-0 text-[#E11D48]" />
           )}
-          <span>{runResult.message}</span>
+          <span className="font-medium">{runResult.message}</span>
         </div>
       )}
 
       {/* View Switcher Tabs & Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
-        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 overflow-x-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-2xl p-2.5 shadow-xs">
+        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80 overflow-x-auto">
           <button
             onClick={() => setActiveSubTab('summary')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeSubTab === 'summary'
-                ? 'bg-indigo-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Layers className="w-3.5 h-3.5 text-indigo-300" />
+            <Layers className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Monthly Summary ({vendorSummary.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('bills')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeSubTab === 'bills'
-                ? 'bg-indigo-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileText className="w-3.5 h-3.5 text-indigo-300" />
+            <FileText className="w-3.5 h-3.5 text-[#0284C7]" />
             <span>Vendor Bills ({apTransactions.length})</span>
           </button>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 font-mono">
-            <span>Total: <strong className="text-white font-bold">{formatCurrency(totalApAmount)}</strong></span>
+          <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 font-mono">
+            <span>Total: <strong className="text-[#0F172A] font-bold">{formatCurrency(totalApAmount)}</strong></span>
             <span>•</span>
-            <span>Approved: <strong className="text-emerald-400 font-bold">{formatCurrency(totalApprovedAmount)}</strong></span>
+            <span>Approved: <strong className="text-emerald-600 font-bold">{formatCurrency(totalApprovedAmount)}</strong></span>
           </div>
 
           <button
             onClick={handleBatchApproveAp}
             disabled={isApproving || apTransactions.filter((t) => !t.approved).length === 0}
-            className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
             title="1-Click Approve all pending transactions in DB"
           >
-            <CheckCheck className="w-3.5 h-3.5" />
+            <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
             <span>{isApproving ? 'Approving...' : '1-Click Approve All'}</span>
           </button>
 
@@ -348,18 +348,18 @@ export const ClientApTab: React.FC = () => {
               placeholder="Search vendor, invoice..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 sm:w-64"
+              className="bg-slate-50 border border-[#E2E8F0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#0F172A] placeholder-slate-400 focus:outline-none focus:border-[#0284C7] sm:w-64"
             />
           </div>
         </div>
       </div>
 
       {/* In-App PostgreSQL Ledger Notice */}
-      <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-indigo-300">
+      <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#065F46]">
         <div className="flex items-center gap-2">
           <span className="flex h-2 w-2 relative shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span>
             <strong>Native In-App PostgreSQL AP Ledger Active:</strong> Supplier bills are parsed and saved directly into PostgreSQL. Approve line items to post bills into your accounting software.
@@ -369,17 +369,17 @@ export const ClientApTab: React.FC = () => {
 
       {/* Summary View Notice & Quick-Switch */}
       {activeSubTab === 'summary' && (
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+        <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-[#0369A1]">
+            <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
             <span>
-              Viewing aggregated vendor totals. To review, approve, or delete individual supplier bills and files, switch to <strong className="text-white">Vendor Bills</strong> or use <strong className="text-rose-400">Delete Ingested File</strong>.
+              Viewing aggregated vendor totals. To review, approve, or delete individual supplier bills and files, switch to <strong className="text-[#0F172A]">Vendor Bills</strong> or use <strong className="text-rose-600">Delete Ingested File</strong>.
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setActiveSubTab('bills')}
-              className="px-2.5 py-1 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/60 rounded-lg transition cursor-pointer"
+              className="px-2.5 py-1 text-xs font-bold bg-white text-[#0284C7] border border-[#BAE6FD] hover:bg-sky-50 rounded-lg transition cursor-pointer shadow-xs"
             >
               Open Vendor Bills ({transactions.length})
             </button>
@@ -388,9 +388,9 @@ export const ClientApTab: React.FC = () => {
                 setPurgeTargetFileName('');
                 setIsPurgeModalOpen(true);
               }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-rose-950/60 text-rose-300 border border-rose-500/40 hover:bg-rose-900 rounded-lg transition cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 rounded-lg transition cursor-pointer shadow-xs"
             >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
               <span>Delete Ingested File</span>
             </button>
           </div>
@@ -398,26 +398,26 @@ export const ClientApTab: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div className="glass-panel rounded-2xl overflow-hidden shadow-xl border border-slate-800">
+      <div className="bg-white rounded-2xl overflow-hidden shadow-xs border border-[#E2E8F0]">
         <div className="overflow-x-auto custom-scrollbar">
           {isLoadingTx ? (
-            <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+            <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-[#0284C7]" />
               <p className="text-xs">Loading AP vendor bills from PostgreSQL...</p>
             </div>
           ) : activeSubTab === 'summary' ? (
             /* TAB 1: MONTHLY SUMMARY (ROLLUP) */
             filteredVendorSummary.length === 0 ? (
-              <div className="text-center py-12 bg-slate-950/40">
-                <Layers className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-slate-300">No AP monthly summaries found.</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Click <strong className="text-indigo-400">"Run AP Bill Pipeline"</strong> above to extract vendor bills into the ledger.
+              <div className="text-center py-12 bg-slate-50/50">
+                <Layers className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-[#0F172A]">No AP monthly summaries found.</p>
+                <p className="text-xs text-[#64748B] mt-1 max-w-sm mx-auto">
+                  Click <strong className="text-[#0284C7]">"Run AP Bill Pipeline"</strong> above to extract vendor bills into the ledger.
                 </p>
               </div>
             ) : (
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                <thead className="bg-slate-50/90 text-[#64748B] uppercase tracking-wider font-semibold text-[11px] border-b border-[#E2E8F0]">
                   <tr>
                     <th className="py-3 px-4">Vendor Name</th>
                     <th className="py-3 px-4">Expense Category</th>
@@ -428,32 +428,32 @@ export const ClientApTab: React.FC = () => {
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300">
+                <tbody className="divide-y divide-[#E2E8F0] font-medium text-[#334155]">
                   {filteredVendorSummary.map((row, idx) => (
                     <tr
                       key={idx}
-                      className={`hover:bg-slate-800/40 transition ${
-                        row.is_fully_approved ? 'bg-emerald-950/15' : ''
+                      className={`hover:bg-slate-50/80 transition ${
+                        row.is_fully_approved ? 'bg-emerald-50/40' : ''
                       }`}
                     >
-                      <td className="py-3 px-4 font-bold text-white">{row.vendor_name}</td>
-                      <td className="py-3 px-4 text-slate-400">{row.category}</td>
-                      <td className="py-3 px-4 text-center font-mono">{row.bills_count} bills</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-indigo-300">
+                      <td className="py-3 px-4 font-bold text-[#0F172A]">{row.vendor_name}</td>
+                      <td className="py-3 px-4 text-slate-500">{row.category}</td>
+                      <td className="py-3 px-4 text-center font-mono text-[#0F172A]">{row.bills_count} bills</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-[#0284C7]">
                         {formatCurrency(row.total_amount)}
                       </td>
-                      <td className="py-3 px-4 text-center font-mono">
+                      <td className="py-3 px-4 text-center font-mono text-slate-600">
                         {row.reviewed_count}/{row.bills_count}
                       </td>
-                      <td className="py-3 px-4 text-center font-mono">
+                      <td className="py-3 px-4 text-center font-mono text-slate-600">
                         {row.approved_count}/{row.bills_count}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             row.is_fully_approved
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}
                         >
                           {row.is_fully_approved ? 'APPROVED' : 'Pending'}
@@ -467,16 +467,16 @@ export const ClientApTab: React.FC = () => {
           ) : (
             /* TAB 2: INDIVIDUAL VENDOR BILLS */
             filteredApTransactions.length === 0 ? (
-              <div className="text-center py-12 bg-slate-950/40">
-                <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-slate-300">No staged AP transactions in database.</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Click <strong className="text-indigo-400">"Run AP Bill Pipeline"</strong> to process vendor bills into PostgreSQL ledger.
+              <div className="text-center py-12 bg-slate-50/50">
+                <FileText className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-[#0F172A]">No staged AP transactions in database.</p>
+                <p className="text-xs text-[#64748B] mt-1 max-w-sm mx-auto">
+                  Click <strong className="text-[#0284C7]">"Run AP Bill Pipeline"</strong> to process vendor bills into PostgreSQL ledger.
                 </p>
               </div>
             ) : (
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                <thead className="bg-slate-50/90 text-[#64748B] uppercase tracking-wider font-semibold text-[11px] border-b border-[#E2E8F0]">
                   <tr>
                     <th className="py-3 px-4">Bill Date</th>
                     <th className="py-3 px-4">Vendor / Description</th>
@@ -489,34 +489,34 @@ export const ClientApTab: React.FC = () => {
                     <th className="py-3 px-4 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300">
+                <tbody className="divide-y divide-[#E2E8F0] font-medium text-[#334155]">
                   {filteredApTransactions.map((tx) => (
                     <tr
                       key={tx.id}
-                      className={`hover:bg-slate-800/40 transition ${tx.approved ? 'bg-emerald-950/15' : ''}`}
+                      className={`hover:bg-slate-50/80 transition ${tx.approved ? 'bg-emerald-50/40' : ''}`}
                     >
-                      <td className="py-3 px-4 text-slate-400 font-mono">{tx.transaction_date}</td>
-                      <td className="py-3 px-4 text-white font-semibold">{tx.item_or_description}</td>
-                      <td className="py-3 px-4 text-slate-400">{tx.category_or_account || 'Vendor Bill'}</td>
+                      <td className="py-3 px-4 text-slate-600 font-mono">{tx.transaction_date}</td>
+                      <td className="py-3 px-4 text-[#0F172A] font-semibold">{tx.item_or_description}</td>
+                      <td className="py-3 px-4 text-slate-500">{tx.category_or_account || 'Vendor Bill'}</td>
                       <td className="py-3 px-4 font-mono text-[11px]">
                         {tx.metadata_json?.drive_file_url || tx.source_identifier ? (
                           <a
                             href={tx.metadata_json?.drive_file_url || `https://drive.google.com/file/d/${tx.source_identifier}/view`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 hover:underline max-w-[180px] truncate"
+                            className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 hover:underline max-w-[180px] truncate"
                             title={`Open in Google Drive: ${tx.source_file_name}`}
                           >
                             <span className="truncate">{tx.source_file_name || 'Bill Document'}</span>
-                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            <ExternalLink className="w-3 h-3 shrink-0 text-sky-600" />
                           </a>
                         ) : (
-                          <span className="text-slate-400 truncate max-w-[180px] block" title={tx.source_file_name}>
+                          <span className="text-slate-500 truncate max-w-[180px] block" title={tx.source_file_name}>
                             {tx.source_file_name || 'Bill'}
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right text-indigo-400 font-mono font-bold">
+                      <td className="py-3 px-4 text-right text-emerald-600 font-mono font-bold">
                         {formatCurrency(tx.total_amount)}
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -524,7 +524,7 @@ export const ClientApTab: React.FC = () => {
                           type="checkbox"
                           checked={Boolean(tx.reviewed)}
                           onChange={() => handleToggleApTx(tx.id, 'reviewed', tx.reviewed)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -532,17 +532,17 @@ export const ClientApTab: React.FC = () => {
                           type="checkbox"
                           checked={Boolean(tx.approved)}
                           onChange={() => handleToggleApTx(tx.id, 'approved', tx.approved)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             tx.status === 'INVOICED'
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                              ? 'bg-sky-50 text-sky-700 border border-sky-200'
                               : tx.approved
-                              ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
-                              : 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                              ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}
                         >
                           {tx.status === 'INVOICED' ? 'Draft Bill Posted' : tx.approved ? 'APPROVED' : 'Pending Review'}
@@ -553,13 +553,13 @@ export const ClientApTab: React.FC = () => {
                           <button
                             onClick={() => handleDeleteApTx(tx.id)}
                             disabled={deletingTxId === tx.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 hover:border-rose-500 transition cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 transition cursor-pointer"
                             title="Delete this staged vendor bill"
                           >
                             {deletingTxId === tx.id ? (
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
                             ) : (
-                              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                             )}
                             <span>Delete</span>
                           </button>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Trash2,
@@ -142,61 +142,61 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-rose-500/40 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50/80 border-b border-[#E2E8F0] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-400 flex items-center justify-center shadow-lg shadow-rose-950/30">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shadow-xs">
               <Trash2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
                 <span>Delete Mistakenly Ingested File</span>
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#64748B]">
                 Purge unposted records from PostgreSQL ledger for {clientName} ({selectedMonth} {selectedYear})
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 bg-white">
           {/* Status Banners */}
           {deleteSuccessMsg && (
-            <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="p-3 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#059669] shrink-0" />
               <span>{deleteSuccessMsg}</span>
             </div>
           )}
           {deleteErrorMsg && (
-            <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <div className="p-3 rounded-xl bg-[#FFF1F2] border border-[#FECDD3] text-[#9F1239] text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#E11D48] shrink-0" />
               <span>{deleteErrorMsg}</span>
             </div>
           )}
 
           {/* Explanation Alert */}
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-1">
-            <p className="font-semibold text-white flex items-center gap-1.5">
-              <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-[#E2E8F0] text-xs text-[#334155] space-y-1">
+            <p className="font-semibold text-[#0F172A] flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-amber-500" />
               <span>Zero-Accounting-Pollution Guarantee</span>
             </p>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
+            <p className="text-[#64748B] text-[11px] leading-relaxed">
               Ingested files remain in the staging database until explicitly approved and exported. Deleting a file removes all of its extracted line items and clears deduplication footprints so you can upload a corrected file.
             </p>
           </div>
 
           {/* List of Ingested Files */}
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-bold text-[#334155] uppercase tracking-wider mb-2">
               Select Ingested File to Purge ({ingestedFiles.length} detected)
             </label>
 
@@ -210,26 +210,26 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
                       onClick={() => !file.isPosted && setSelectedFileName(file.fileName)}
                       className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
                         file.isPosted
-                          ? 'bg-slate-950/40 border-slate-800 opacity-60 cursor-not-allowed'
+                          ? 'bg-slate-50 border-[#E2E8F0] opacity-60 cursor-not-allowed'
                           : isSelected
-                          ? 'bg-rose-950/30 border-rose-500/60 shadow-sm'
-                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                          ? 'bg-rose-50/70 border-rose-400 shadow-xs'
+                          : 'bg-white border-[#E2E8F0] hover:border-slate-300 hover:bg-slate-50/60'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <FileText
                           className={`w-4 h-4 shrink-0 ${
-                            isSelected ? 'text-rose-400' : 'text-slate-400'
+                            isSelected ? 'text-rose-600' : 'text-slate-400'
                           }`}
                         />
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-white truncate" title={file.fileName}>
+                          <p className="text-xs font-bold text-[#0F172A] truncate" title={file.fileName}>
                             {file.fileName}
                           </p>
-                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
                             <span>{file.count} line item{file.count === 1 ? '' : 's'}</span>
                             <span>•</span>
-                            <span className="font-mono text-emerald-400 font-semibold">
+                            <span className="font-mono text-emerald-600 font-semibold">
                               {formatCurrency(file.totalAmount)}
                             </span>
                             {file.dates.length > 0 && (
@@ -244,15 +244,15 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
 
                       <div className="shrink-0 text-right">
                         {file.isPosted ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                             Posted ({file.status})
                           </span>
                         ) : (
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                               isSelected
-                                ? 'bg-rose-950 text-rose-300 border-rose-500/50'
-                                : 'bg-slate-900 text-slate-400 border-slate-800'
+                                ? 'bg-rose-100 text-rose-700 border-rose-300'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                             }`}
                           >
                             {isSelected ? 'Selected for Purge' : 'Staged (Unposted)'}
@@ -264,11 +264,11 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
                 })}
               </div>
             ) : (
-              <div className="text-center py-6 bg-slate-950/50 border border-slate-800 rounded-xl">
-                <FileText className="w-6 h-6 text-slate-600 mx-auto mb-1" />
-                <p className="text-xs text-slate-400">No staged source files found in the current period.</p>
+              <div className="text-center py-6 bg-slate-50 border border-[#E2E8F0] rounded-xl">
+                <FileText className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+                <p className="text-xs text-[#64748B]">No staged source files found in the current period.</p>
                 <div className="mt-3 px-4">
-                  <label className="block text-[11px] text-slate-400 text-left mb-1">
+                  <label className="block text-[11px] text-[#64748B] text-left mb-1 font-medium">
                     Or enter file name manually:
                   </label>
                   <input
@@ -276,7 +276,7 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
                     placeholder="e.g. August_Invoice_01.pdf"
                     value={manualFileName}
                     onChange={(e) => setManualFileName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5 text-xs text-[#0F172A] placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
                   />
                 </div>
               </div>
@@ -284,8 +284,8 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
           </div>
 
           {targetFile && targetFile.isPosted && (
-            <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
                 This file has already been posted to Zoho Books ({targetFile.status}). Locked records cannot be deleted from the staging ledger.
               </span>
@@ -294,11 +294,11 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50/80 border-t border-[#E2E8F0] flex items-center justify-between">
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 rounded-xl transition cursor-pointer"
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-xl transition cursor-pointer"
           >
             Cancel
           </button>
@@ -307,7 +307,7 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
             type="button"
             onClick={handlePurge}
             disabled={!activeFileName || isDeleting || (targetFile?.isPosted ?? false)}
-            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-rose-600/25 transition cursor-pointer"
+            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
           >
             {isDeleting ? (
               <>

@@ -75,13 +75,13 @@ export const SheetsViewer: React.FC = () => {
     <div className="space-y-4">
       
       {/* Header & Controls Bar */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-base font-bold text-white tracking-tight">Google Sheets Review & Reconciliation</h2>
+            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-base font-bold text-[#0F172A] tracking-tight">Google Sheets Review & Reconciliation</h2>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             Audit OCR extracted control slips, verify linen discrepancies, and approve line-items for automated accounting invoicing.
           </p>
         </div>
@@ -89,15 +89,15 @@ export const SheetsViewer: React.FC = () => {
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Month / Year Selectors */}
-          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-[#E2E8F0] rounded-xl px-2.5 py-1 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-slate-500" />
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+              className="bg-transparent text-[#0F172A] font-medium focus:outline-none cursor-pointer"
             >
               {MONTHS.map((m) => (
-                <option key={m} value={m} className="bg-slate-900 text-white">
+                <option key={m} value={m} className="bg-white text-[#0F172A]">
                   {m}
                 </option>
               ))}
@@ -105,10 +105,10 @@ export const SheetsViewer: React.FC = () => {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-white font-medium focus:outline-none cursor-pointer ml-1"
+              className="bg-transparent text-[#0F172A] font-medium focus:outline-none cursor-pointer ml-1"
             >
               {YEARS.map((y) => (
-                <option key={y} value={y} className="bg-slate-900 text-white">
+                <option key={y} value={y} className="bg-white text-[#0F172A]">
                   {y}
                 </option>
               ))}
@@ -121,7 +121,7 @@ export const SheetsViewer: React.FC = () => {
               href={sheetsData.spreadsheet_url}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer shadow-xs"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>Open in Google Sheets</span>
@@ -132,17 +132,17 @@ export const SheetsViewer: React.FC = () => {
           <button
             onClick={() => refreshAll()}
             disabled={isLoading}
-            className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+            className="p-1.5 bg-white border border-[#E2E8F0] hover:bg-slate-50 text-slate-600 rounded-xl transition cursor-pointer shadow-xs"
             title="Refresh Sheet Data"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#0284C7]' : ''}`} />
           </button>
 
           {/* 1-Click Zoho Invoicing Trigger */}
           <button
             onClick={() => setIsInvoiceModalOpen(true)}
             disabled={approvedRowsCount === 0}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-lg shadow-emerald-600/25 transition disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>Generate Invoices ({approvedRowsCount} Approved - {formatCurrency(totalApprovedAmount)})</span>
@@ -152,21 +152,21 @@ export const SheetsViewer: React.FC = () => {
 
       {/* Sheets Sync Error Banner */}
       {sheetsError && (
-        <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-[#FFF1F2] border border-[#FECDD3] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-rose-200">Google Sheets Sync Error</h3>
+                <h3 className="text-sm font-bold text-rose-800">Google Sheets Sync Error</h3>
                 {sheetsError.status && (
-                  <span className="text-[10px] bg-rose-900/60 text-rose-300 font-mono px-2 py-0.5 rounded border border-rose-700/50">
+                  <span className="text-[10px] bg-rose-100 text-rose-700 font-mono px-2 py-0.5 rounded border border-rose-200">
                     HTTP {sheetsError.status}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-rose-300/80 mt-1">{sheetsError.message}</p>
+              <p className="text-xs text-rose-700 mt-1">{sheetsError.message}</p>
               {sheetsError.troubleshootingHint && (
-                <p className="text-[11px] text-rose-400/90 mt-1 font-mono">
+                <p className="text-[11px] text-rose-800 mt-1 font-mono">
                   💡 Hint: {sheetsError.troubleshootingHint}
                 </p>
               )}
@@ -176,16 +176,16 @@ export const SheetsViewer: React.FC = () => {
             <button
               onClick={() => refreshAll()}
               disabled={isLoading}
-              className="flex items-center gap-1.5 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-600/40 text-rose-200 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer shadow-xs"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Retry Sync</span>
             </button>
             <button
               onClick={() => openDebugDrawer('errors')}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl transition cursor-pointer shadow-xs"
             >
-              <Terminal className="w-3.5 h-3.5 text-rose-400" />
+              <Terminal className="w-3.5 h-3.5 text-rose-600" />
               <span>Inspect Trace</span>
             </button>
           </div>
@@ -193,24 +193,24 @@ export const SheetsViewer: React.FC = () => {
       )}
 
       {/* Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
-        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-2xl p-2.5 shadow-xs">
+        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
           <button
             onClick={() => setSheetsSubTab('monthly')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
               sheetsSubTab === 'monthly'
-                ? 'bg-sky-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Tab 2: Monthly Summary ({monthlySummary.length} rows)
           </button>
           <button
             onClick={() => setSheetsSubTab('daily')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
               sheetsSubTab === 'daily'
-                ? 'bg-sky-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Tab 1: Daily Details ({dailyDetails.length} items)
@@ -222,17 +222,17 @@ export const SheetsViewer: React.FC = () => {
           placeholder="Filter by hotel, item, or slip filename..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 sm:w-72"
+          className="bg-slate-50 border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-[#0F172A] placeholder-slate-400 focus:outline-none focus:border-[#0284C7] sm:w-72"
         />
       </div>
 
       {/* Table Container */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl backdrop-blur-xl">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto custom-scrollbar">
           {sheetsSubTab === 'monthly' ? (
             /* TAB 2: MONTHLY SUMMARY TABLE */
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   <th className="py-3 px-4">Client / Hotel</th>
                   <th className="py-3 px-4">Item Name</th>
@@ -246,31 +246,31 @@ export const SheetsViewer: React.FC = () => {
                   <th className="py-3 px-4 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              <tbody className="divide-y divide-[#E2E8F0] text-[#334155] font-medium">
                 {filteredSummary.length > 0 ? (
                   filteredSummary.map((row) => (
                     <tr
                       key={row.row_index}
-                      className={`hover:bg-slate-850/50 transition-colors ${
-                        row.approved ? 'bg-emerald-950/15' : (row.linen_discrepancy ?? 0) > 0 ? 'bg-amber-950/10' : ''
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        row.approved ? 'bg-emerald-50/40' : (row.linen_discrepancy ?? 0) > 0 ? 'bg-amber-50/40' : ''
                       }`}
                     >
-                      <td className="py-3 px-4 font-bold text-white">{row.client_name}</td>
+                      <td className="py-3 px-4 font-bold text-[#0F172A]">{row.client_name}</td>
                       <td className="py-3 px-4">{row.item_name}</td>
                       <td className="py-3 px-4 text-center font-mono">{row.pickup_qty}</td>
                       <td className="py-3 px-4 text-center font-mono">{row.delivery_qty}</td>
                       <td className="py-3 px-4 text-center">
                         {(row.linen_discrepancy ?? 0) > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-amber-400 font-mono font-bold bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">
-                            <AlertTriangle className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 text-amber-700 font-mono font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
                             <span>+{row.linen_discrepancy}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-500 font-mono">0</span>
+                          <span className="text-slate-400 font-mono">0</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price ?? 0)}</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                      <td className="py-3 px-4 text-right font-mono text-[#334155]">{formatCurrency(row.unit_price ?? 0)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
                         {formatCurrency(row.total_billed ?? 0)}
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -278,7 +278,7 @@ export const SheetsViewer: React.FC = () => {
                           type="checkbox"
                           checked={row.reviewed}
                           onChange={(e) => handleToggleApproval(row.row_index, 'reviewed', e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-sky-500 focus:ring-offset-slate-900 cursor-pointer"
+                          className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -286,17 +286,17 @@ export const SheetsViewer: React.FC = () => {
                           type="checkbox"
                           checked={row.approved}
                           onChange={(e) => handleToggleApproval(row.row_index, 'approved', e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-emerald-500 focus:ring-offset-slate-900 cursor-pointer"
+                          className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                             row.approved
-                              ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
+                              ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
                               : row.status === 'INVOICED'
-                              ? 'bg-sky-950 border border-sky-500/40 text-sky-300'
-                              : 'bg-slate-950 border border-slate-700 text-slate-400'
+                              ? 'bg-sky-50 border border-sky-200 text-sky-700'
+                              : 'bg-slate-100 border border-slate-200 text-slate-600'
                           }`}
                         >
                           {row.approved ? 'APPROVED' : row.status || 'PENDING'}
@@ -316,7 +316,7 @@ export const SheetsViewer: React.FC = () => {
           ) : (
             /* TAB 1: DAILY DETAILS TABLE */
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Client / Hotel</th>
@@ -330,30 +330,30 @@ export const SheetsViewer: React.FC = () => {
                   <th className="py-3 px-4 text-right">Amount</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              <tbody className="divide-y divide-[#E2E8F0] text-[#334155] font-medium">
                 {filteredDaily.length > 0 ? (
                   filteredDaily.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-850/50 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-400">{row.date}</td>
-                      <td className="py-3 px-4 font-bold text-white">{row.client_name}</td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-sky-400">{row.file_name}</td>
+                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-500">{row.date}</td>
+                      <td className="py-3 px-4 font-bold text-[#0F172A]">{row.client_name}</td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-sky-600">{row.file_name}</td>
                       <td className="py-3 px-4">{row.item_name}</td>
                       <td className="py-3 px-4">
-                        <span className="text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-slate-400">
+                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600">
                           {row.category}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-center font-mono">{row.pickup_quantity}</td>
-                      <td className="py-3 px-4 text-center font-mono">{row.delivery_quantity}</td>
+                      <td className="py-3 px-4 text-center font-mono text-[#0F172A]">{row.pickup_quantity}</td>
+                      <td className="py-3 px-4 text-center font-mono text-[#0F172A]">{row.delivery_quantity}</td>
                       <td className="py-3 px-4 text-center">
                         {(row.discrepancy ?? 0) > 0 ? (
-                          <span className="text-amber-400 font-mono font-bold">+{row.discrepancy}</span>
+                          <span className="text-amber-600 font-mono font-bold">+{row.discrepancy}</span>
                         ) : (
-                          <span className="text-slate-500 font-mono">0</span>
+                          <span className="text-slate-400 font-mono">0</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(row.unit_price ?? 0)}</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                      <td className="py-3 px-4 text-right font-mono text-[#334155]">{formatCurrency(row.unit_price ?? 0)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
                         {formatCurrency(row.total_amount ?? 0)}
                       </td>
                     </tr>
