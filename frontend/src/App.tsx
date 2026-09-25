@@ -71,8 +71,12 @@ const MainLayout: React.FC = () => {
     );
   }
 
-  // If user navigated directly to the Client Portal
-  if (activeTab === 'portal') {
+  // If user navigated directly to the Client Portal or followed a magic link
+  const hasMagicParam =
+    typeof window !== 'undefined' &&
+    (window.location.search.includes('portal_magic') || window.location.search.includes('magic_token'));
+
+  if (activeTab === 'portal' || hasMagicParam) {
     return (
       <ErrorBoundary componentName="Client Clarification Portal">
         <ClientPortal onBackToAdmin={() => setActiveTab('workspace')} />

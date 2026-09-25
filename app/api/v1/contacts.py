@@ -158,7 +158,7 @@ async def _dispatch_firm_team_invite(
 ) -> bool:
     """Sends a welcome email to a new accounting firm staff member."""
     subject = f"🤝 Welcome to {firm_name} Client Management Team"
-    portal_url = "http://localhost:5173"
+    portal_url = settings.APP_BASE_URL
     html_content = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 28px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
         <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin-top: 0;">
@@ -258,7 +258,7 @@ async def list_client_contacts(
 
         # Ensure magic link token
         magic_tok = c.magic_token or generate_magic_link_token(c.client_id, c_client_name, None)
-        magic_url = f"http://localhost:5173/?portal_magic={magic_tok}"
+        magic_url = f"{settings.APP_BASE_URL}/?portal_magic={magic_tok}"
 
         item = c.model_dump()
         item["client_name"] = c_client_name
@@ -298,7 +298,7 @@ async def invite_client_contact(
     ).first()
 
     magic_token = generate_magic_link_token(client.id, client.name, None)
-    magic_url = f"http://localhost:5173/?portal_magic={magic_token}"
+    magic_url = f"{settings.APP_BASE_URL}/?portal_magic={magic_token}"
 
     if existing:
         existing.name = payload.name.strip()
@@ -384,7 +384,7 @@ async def resend_client_contact_invite(
     client_name = client.name if client else contact.client_id
 
     magic_token = generate_magic_link_token(contact.client_id, client_name, None)
-    magic_url = f"http://localhost:5173/?portal_magic={magic_token}"
+    magic_url = f"{settings.APP_BASE_URL}/?portal_magic={magic_token}"
 
     contact.magic_token = magic_token
     contact.invite_sent_at = datetime.now(timezone.utc)

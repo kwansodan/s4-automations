@@ -156,7 +156,12 @@ export function parseCurrentRoute(): RouteState {
   if (search.includes('tab=privacy') || pathname.includes('privacy')) {
     return { tab: 'privacy', path: '/privacy' };
   }
-  if (search.includes('tab=portal') || pathname.includes('portal')) {
+  if (
+    search.includes('portal_magic') ||
+    search.includes('magic_token') ||
+    search.includes('tab=portal') ||
+    pathname.includes('portal')
+  ) {
     return { tab: 'portal', path: '/portal' };
   }
 

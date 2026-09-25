@@ -362,7 +362,7 @@ async def client_portal_explain_transaction(
                 <p style="color: #e2e8f0; font-size: 14px;">{payload.client_explanation}</p>
             </div>
             <p style="margin-top: 20px;">
-                <a href="http://localhost:5173" style="background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                <a href="{settings.APP_BASE_URL}" style="background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold;">
                     Open S4 Information Requests &amp; Classify →
                 </a>
             </p>
