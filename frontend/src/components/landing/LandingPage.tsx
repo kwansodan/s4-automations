@@ -237,7 +237,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
             <button
               onClick={() => openLeadModalWithTier()}
-              className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-[#E2495B] to-[#C4BA3B] hover:from-[#cf3c4e] hover:to-[#b0a631] text-[#FFFEE6] rounded-xl text-xs font-bold shadow-lg shadow-[#E2495B]/25 transition cursor-pointer flex items-center gap-1.5"
             >
               <span>Book Firm Demo</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -249,17 +249,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* 2. Hero Section */}
       {cfg.show_hero && (
         <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28 border-b border-slate-800">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(226,73,91,0.12),rgba(255,255,255,0))]" />
 
           <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-6">
             {cfg.hero_badge && (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-700/80 text-[11px] font-semibold text-sky-300 shadow-sm animate-in fade-in">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-[#C4BA3B]/40 text-[11px] font-semibold text-[#F4ED6E] shadow-sm animate-in fade-in">
+                <Sparkles className="w-3.5 h-3.5 text-[#F4ED6E]" />
                 <span>{cfg.hero_badge}</span>
               </div>
             )}
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.15]">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#FFFEE6] tracking-tight leading-[1.15]">
               {cfg.hero_headline}
             </h1>
 
@@ -270,7 +270,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
               <button
                 onClick={() => openLeadModalWithTier('Free Firm Walkthrough')}
-                className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xl shadow-indigo-600/30 transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-[#E2495B] via-[#cf3c4e] to-[#C4BA3B] hover:opacity-95 text-[#FFFEE6] rounded-xl text-xs sm:text-sm font-bold shadow-xl shadow-[#E2495B]/30 transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>{cfg.hero_primary_cta_text || 'Request a Free Firm Walkthrough'}</span>
                 <ArrowRight className="w-4 h-4" />

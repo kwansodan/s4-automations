@@ -166,25 +166,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             onClick={() => handleNav('workspace', 'overview')}
             className="flex items-center gap-2.5 cursor-pointer group overflow-hidden min-w-0"
           >
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 group-hover:scale-105 transition-transform ${
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[#FFFEE6] shadow-md shrink-0 group-hover:scale-105 transition-transform ${
               isIndividualBusiness
-                ? 'bg-gradient-to-tr from-amber-500 to-orange-600 shadow-amber-500/20'
-                : 'bg-gradient-to-tr from-sky-500 to-indigo-600 shadow-sky-500/20'
+                ? 'bg-gradient-to-tr from-[#C4BA3B] to-[#E2495B] shadow-[#E2495B]/20'
+                : 'bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] shadow-[#E2495B]/25'
             }`}>
               {isIndividualBusiness ? (
                 <span className="text-base">{activeOrganization?.icon || '🧺'}</span>
               ) : (
-                <Zap className="w-4 h-4" />
+                <Zap className="w-4 h-4 text-[#FFFEE6]" />
               )}
             </div>
             {!isCollapsed && (
               <div className="min-w-0">
-                <span className="text-xs font-extrabold text-white tracking-tight block truncate group-hover:text-sky-300 transition-colors">
+                <span className="text-xs font-extrabold text-[#FFFEE6] tracking-tight block truncate group-hover:text-[#F4ED6E] transition-colors">
                   {isIndividualBusiness
                     ? (activeOrganization?.name?.split('(')[0].trim() || 'ANR Group')
                     : 'S4 Automations'}
                 </span>
-                <span className="text-[9px] font-mono block truncate text-slate-400">
+                <span className="text-[9px] font-mono block truncate text-[#C4BA3B]">
                   {isIndividualBusiness ? 'Direct Business' : 'Accounting Practice'}
                 </span>
               </div>
@@ -194,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           {/* Desktop Collapse Toggle */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 transition cursor-pointer"
+            className="hidden lg:flex p-1 rounded-lg text-slate-400 hover:text-[#FFFEE6] hover:bg-slate-900 border border-transparent hover:border-slate-800 transition cursor-pointer"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -206,20 +206,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           <div className="px-3 pt-2.5 relative">
             <button
               onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
-              className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer group"
+              className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-[#C4BA3B]/50 transition cursor-pointer group"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm shrink-0">{activeOrganization?.icon || (isIndividualBusiness ? '🧺' : '🏛️')}</span>
                 <div className="min-w-0">
-                  <span className="text-[11px] font-bold text-white block truncate group-hover:text-sky-300">
+                  <span className="text-[11px] font-bold text-[#FFFEE6] block truncate group-hover:text-[#F4ED6E]">
                     {activeOrganization?.name || 'Switch Workspace'}
                   </span>
-                  <span className="text-[9px] text-sky-400 font-mono block truncate">
+                  <span className="text-[9px] text-[#C4BA3B] font-mono block truncate">
                     {activeOrganization?.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Company Account' : 'Accounting Practice Portfolio'}
                   </span>
                 </div>
               </div>
-              <ChevronDown className={`w-3 h-3 text-slate-400 group-hover:text-white transition-transform ${isOrgDropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-3 h-3 text-slate-400 group-hover:text-[#FFFEE6] transition-transform ${isOrgDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOrgDropdownOpen && (
@@ -237,19 +237,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
                         setIsOrgDropdownOpen(false);
                       }}
                       className={`w-full text-left flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                        isCurrent ? 'bg-sky-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'
+                        isCurrent ? 'bg-[#E2495B] text-[#FFFEE6] font-bold shadow-md shadow-[#E2495B]/30' : 'text-slate-300 hover:bg-slate-800 hover:text-[#FFFEE6]'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm shrink-0">{org.icon || (org.org_type === 'INDIVIDUAL_BUSINESS' ? '🧺' : '🏛️')}</span>
                         <div className="min-w-0">
                           <span className="truncate block font-semibold text-[11px]">{org.name}</span>
-                          <span className={`text-[8px] font-mono block ${isCurrent ? 'text-sky-200' : 'text-slate-400'}`}>
+                          <span className={`text-[8px] font-mono block ${isCurrent ? 'text-[#F4ED6E]' : 'text-slate-400'}`}>
                             {org.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Business' : 'Accounting Practice'}
                           </span>
                         </div>
                       </div>
-                      {isCurrent && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      {isCurrent && <Check className="w-3.5 h-3.5 shrink-0 text-[#FFFEE6]" />}
                     </button>
                   );
                 })}
@@ -515,7 +515,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
           {/* User Profile / Logout */}
           <div className="flex items-center justify-between gap-2 p-1.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="w-8 h-8 rounded-xl bg-sky-600/20 border border-sky-500/40 flex items-center justify-center text-xs text-sky-400 font-bold shrink-0">
+              <span className="w-8 h-8 rounded-xl bg-[#E2495B]/20 border border-[#E2495B]/40 flex items-center justify-center text-xs text-[#FFFEE6] font-bold shrink-0">
                 {user?.email?.[0]?.toUpperCase() || 'S'}
               </span>
               {!isCollapsed && (

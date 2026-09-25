@@ -82,16 +82,16 @@ export const ClientSwitcher: React.FC = () => {
       {/* Trigger Pill */}
       <button
         onClick={() => setIsSwitcherOpen(!isSwitcherOpen)}
-        className="flex items-center gap-2.5 bg-slate-900/90 hover:bg-slate-850 border border-slate-700/80 hover:border-sky-500/50 rounded-xl px-3 py-1.5 transition-all shadow-md cursor-pointer group"
+        className="flex items-center gap-2.5 bg-slate-900/90 hover:bg-slate-850 border border-slate-700/80 hover:border-[#C4BA3B]/50 rounded-xl px-3 py-1.5 transition-all shadow-md cursor-pointer group"
       >
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg ${
-          isIndividualBusiness ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-sky-500/15 border border-sky-500/30'
+          isIndividualBusiness ? 'bg-[#C4BA3B]/15 border border-[#C4BA3B]/30' : 'bg-[#E2495B]/15 border border-[#E2495B]/30'
         }`}>
           {currentClient?.icon || (isIndividualBusiness ? '🧺' : '🏢')}
         </div>
         <div className="text-left">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors">
+            <span className="text-xs font-bold text-[#FFFEE6] group-hover:text-[#F4ED6E] transition-colors">
               {currentClient?.name?.split('(')[0].trim() || 'Select Client'}
             </span>
             <span
@@ -99,8 +99,8 @@ export const ClientSwitcher: React.FC = () => {
                 currentClient?.status === 'live'
                   ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
                   : currentClient?.status === 'dev'
-                  ? 'bg-sky-400 shadow-[0_0_8px_#38bdf8]'
-                  : 'bg-amber-400'
+                  ? 'bg-[#F4ED6E] shadow-[0_0_8px_#F4ED6E]'
+                  : 'bg-[#C4BA3B]'
               }`}
             />
           </div>
@@ -109,7 +109,7 @@ export const ClientSwitcher: React.FC = () => {
           </span>
         </div>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform duration-200 ${
+          className={`w-3.5 h-3.5 text-slate-400 group-hover:text-[#FFFEE6] transition-transform duration-200 ${
             isSwitcherOpen ? 'rotate-180' : ''
           }`}
         />
@@ -117,13 +117,13 @@ export const ClientSwitcher: React.FC = () => {
 
       {/* Dropdown Menu */}
       {isSwitcherOpen && (
-        <div className="absolute left-0 top-full mt-2 w-80 bg-slate-900/95 border border-sky-500/30 rounded-xl shadow-2xl p-2.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute left-0 top-full mt-2 w-80 bg-slate-900/95 border border-[#C4BA3B]/30 rounded-xl shadow-2xl p-2.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
           {isAccountingFirm ? (
             /* Accounting Firm Practice Portfolio View */
             <>
               <div className="flex items-center justify-between px-2 py-1 mb-2 border-b border-slate-800">
-                <span className="text-xs font-bold text-slate-300">Accounting Clients</span>
-                <span className="text-[10px] font-mono text-sky-400 bg-sky-950 px-1.5 py-0.5 rounded border border-sky-500/20">
+                <span className="text-xs font-bold text-[#FFFEE6]">Accounting Clients</span>
+                <span className="text-[10px] font-mono text-[#F4ED6E] bg-[#C4BA3B]/20 px-1.5 py-0.5 rounded border border-[#C4BA3B]/30">
                   {clients.length} Registered
                 </span>
               </div>

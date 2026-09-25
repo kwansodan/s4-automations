@@ -248,13 +248,13 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
       <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 font-black text-xl">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] flex items-center justify-center text-[#FFFEE6] shadow-lg shadow-[#E2495B]/20 font-black text-xl">
               S4
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-white tracking-tight">S4 Automations</span>
-                <span className="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                <span className="font-extrabold text-[#FFFEE6] tracking-tight">S4 Automations</span>
+                <span className="bg-[#C4BA3B]/15 text-[#F4ED6E] border border-[#C4BA3B]/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
                   Client Clarification Portal
                 </span>
               </div>
@@ -343,7 +343,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                   <button
                     type="submit"
                     disabled={isRequestingOtp}
-                    className="w-full bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-sm"
+                    className="w-full bg-gradient-to-r from-[#E2495B] to-[#C4BA3B] hover:from-[#cf3c4e] hover:to-[#b0a631] text-[#FFFEE6] font-bold py-3.5 px-4 rounded-xl transition shadow-lg shadow-[#E2495B]/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-sm"
                   >
                     {isRequestingOtp ? (
                       <Clock className="w-4 h-4 animate-spin" />
@@ -570,8 +570,8 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                           </div>
 
                           {/* Attach Receipt Trigger */}
-                          <label className="flex items-center justify-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0">
-                            <Paperclip className="w-3.5 h-3.5 text-sky-400" />
+                          <label className="flex items-center justify-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-[#FFFEE6] px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0">
+                            <Paperclip className="w-3.5 h-3.5 text-[#F4ED6E]" />
                             <span>Attach Receipt</span>
                             <input
                               type="file"
@@ -595,8 +595,8 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                             disabled={isSubmitting || !explanationInputs[tx.id]?.trim()}
                             className={`flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-40 ${
                               isAnswered
-                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                                : 'bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-md shadow-sky-600/20'
+                                ? 'bg-slate-800 hover:bg-slate-700 text-[#FFFEE6] border border-slate-700'
+                                : 'bg-gradient-to-r from-[#E2495B] to-[#C4BA3B] hover:from-[#cf3c4e] hover:to-[#b0a631] text-[#FFFEE6] shadow-md shadow-[#E2495B]/20'
                             }`}
                           >
                             {isSubmitting ? (

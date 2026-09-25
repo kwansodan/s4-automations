@@ -617,31 +617,34 @@ export const InformationRequestsSection: React.FC = () => {
         {/* Total Uncategorized */}
         <div
           onClick={() => setStatusFilter('UNMAPPED')}
+        {/* Unmapped / Needs Action */}
+        <div
+          onClick={() => setStatusFilter('UNMAPPED')}
           className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'UNMAPPED' ? 'border-sky-500/80 ring-1 ring-sky-500/50' : 'border-slate-800 hover:border-slate-700'
+            statusFilter === 'UNMAPPED' ? 'border-[#E2495B]/80 ring-1 ring-[#E2495B]/50' : 'border-slate-800 hover:border-slate-700'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-400">Needs Classification</span>
-            <AlertCircle className="w-4 h-4 text-sky-400" />
+            <AlertCircle className="w-4 h-4 text-[#E2495B]" />
           </div>
-          <div className="text-2xl font-black text-white">{metrics.total_uncategorized}</div>
-          <span className="text-[10px] text-sky-400/80 font-medium mt-1 block">Awaiting account mapping</span>
+          <div className="text-2xl font-black text-[#FFFEE6]">{metrics.total_uncategorized}</div>
+          <span className="text-[10px] text-[#E2495B]/90 font-medium mt-1 block">Awaiting account mapping</span>
         </div>
 
         {/* Pending Client Clarification */}
         <div
           onClick={() => setStatusFilter('CLARIFICATION_REQUESTED')}
           className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-amber-500/80 ring-1 ring-amber-500/50' : 'border-slate-800 hover:border-slate-700'
+            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-[#C4BA3B]/80 ring-1 ring-[#C4BA3B]/50' : 'border-slate-800 hover:border-slate-700'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-amber-300">Awaiting Client</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold text-[#F4ED6E]">Awaiting Client</span>
+            <Clock className="w-4 h-4 text-[#C4BA3B]" />
           </div>
-          <div className="text-2xl font-black text-amber-200">{metrics.total_pending_client}</div>
-          <span className="text-[10px] text-amber-400/80 font-medium mt-1 block">Clarification queries sent</span>
+          <div className="text-2xl font-black text-[#F4ED6E]">{metrics.total_pending_client}</div>
+          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Clarification queries sent</span>
         </div>
 
         {/* Client Responded */}
@@ -669,15 +672,15 @@ export const InformationRequestsSection: React.FC = () => {
         <div
           onClick={() => setStatusFilter('MAPPED')}
           className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'MAPPED' ? 'border-indigo-500/80 ring-1 ring-indigo-500/50' : 'border-slate-800 hover:border-slate-700'
+            statusFilter === 'MAPPED' ? 'border-[#C4BA3B]/80 ring-1 ring-[#C4BA3B]/50' : 'border-slate-800 hover:border-slate-700'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-400">Categorized &amp; Synced</span>
-            <CheckCheck className="w-4 h-4 text-indigo-400" />
+            <CheckCheck className="w-4 h-4 text-[#C4BA3B]" />
           </div>
-          <div className="text-2xl font-black text-white">{metrics.total_mapped}</div>
-          <span className="text-[10px] text-indigo-400/80 font-medium mt-1 block">Reconciled to accounting</span>
+          <div className="text-2xl font-black text-[#FFFEE6]">{metrics.total_mapped}</div>
+          <span className="text-[10px] text-[#C4BA3B]/80 font-medium mt-1 block">Reconciled to accounting</span>
         </div>
 
       </div>

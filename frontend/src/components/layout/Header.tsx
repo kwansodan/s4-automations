@@ -40,14 +40,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { errors, unreadErrorsCount, openDebugDrawer } = useErrors();
 
   return (
-    <header className="sticky top-0 z-30 bg-slate-950/80 border-b border-slate-800/80 backdrop-blur-xl h-16">
+    <header className="sticky top-0 z-30 bg-[#0b0d14]/90 border-b border-slate-800/80 backdrop-blur-xl h-16">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         
         {/* Left: Mobile Toggle & Client Switcher */}
         <div className="flex items-center gap-3">
           <button
             onClick={onOpenMobileMenu}
-            className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-900 border border-slate-800 lg:hidden cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-[#FFFEE6] bg-slate-900 border border-slate-800 lg:hidden cursor-pointer"
             title="Open Navigation Menu"
           >
             <Menu className="w-5 h-5" />
@@ -57,18 +57,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
         </div>
 
         {/* Center: Global Period (Month / Year) Selector */}
-        <div className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
-          <Calendar className="w-3.5 h-3.5 text-sky-400" />
+        <div className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-[#C4BA3B]/30 rounded-xl px-3 py-1.5 shadow-inner">
+          <Calendar className="w-3.5 h-3.5 text-[#C4BA3B]" />
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
             Scope:
           </span>
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+            className="bg-transparent text-xs font-bold text-[#FFFEE6] focus:outline-none cursor-pointer"
           >
             {MONTHS.map((m) => (
-              <option key={m} value={m} className="bg-slate-900 text-white">
+              <option key={m} value={m} className="bg-slate-900 text-[#FFFEE6]">
                 {m}
               </option>
             ))}
@@ -76,10 +76,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="bg-transparent text-xs font-bold text-sky-400 focus:outline-none cursor-pointer ml-1"
+            className="bg-transparent text-xs font-bold text-[#F4ED6E] focus:outline-none cursor-pointer ml-1"
           >
             {YEARS.map((y) => (
-              <option key={y} value={y} className="bg-slate-900 text-white">
+              <option key={y} value={y} className="bg-slate-900 text-[#FFFEE6]">
                 {y}
               </option>
             ))}

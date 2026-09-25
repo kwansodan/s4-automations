@@ -123,16 +123,16 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
 
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-sky-500/30 to-indigo-500/30 border border-sky-400/40 flex items-center justify-center text-sky-400 shadow-lg shadow-sky-500/20">
-            <Zap className="w-7 h-7" />
+          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] border border-[#E2495B]/40 flex items-center justify-center text-[#FFFEE6] shadow-lg shadow-[#E2495B]/25">
+            <Zap className="w-7 h-7 text-[#FFFEE6]" />
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">S4 Automations</h1>
+          <h1 className="text-2xl font-extrabold text-[#FFFEE6] tracking-tight">S4 Automations</h1>
           <p className="text-xs text-slate-400 mt-1">Multi-Client Accounting & Financial Suite</p>
         </div>
 
         {/* Security Badge */}
-        <div className="flex items-center justify-center gap-1.5 text-xs text-sky-400 bg-sky-950/60 border border-sky-500/20 rounded-full py-1 px-3 mb-6 font-medium">
-          <ShieldCheck className="w-4 h-4 text-sky-400" />
+        <div className="flex items-center justify-center gap-1.5 text-xs text-[#FFFEE6] bg-[#C4BA3B]/15 border border-[#C4BA3B]/30 rounded-full py-1 px-3 mb-6 font-medium">
+          <ShieldCheck className="w-4 h-4 text-[#F4ED6E]" />
           <span>Passwordless Email OTP Security</span>
         </div>
 
@@ -155,7 +155,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
         {step === 'request' ? (
           <form onSubmit={handleRequestSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-[#FFFEE6] mb-1.5">
                 Authorized Administrator Email
               </label>
               <div className="relative">
@@ -167,7 +167,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                   placeholder="s4bookkeeping@service4gh.com"
                   required
                   disabled={isLoading}
-                  className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all disabled:opacity-50"
+                  className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2.5 text-sm text-[#FFFEE6] placeholder-slate-500 focus:outline-none focus:border-[#E2495B] focus:ring-1 focus:ring-[#E2495B] transition-all disabled:opacity-50"
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
@@ -178,7 +178,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg shadow-lg shadow-sky-600/30 transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 bg-[#E2495B] hover:bg-[#cf3c4e] active:bg-[#b52e3f] text-[#FFFEE6] text-sm font-semibold py-2.5 px-4 rounded-lg shadow-lg shadow-[#E2495B]/30 transition-all disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -198,11 +198,11 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
           <form onSubmit={handleVerifySubmit} className="space-y-4">
             <div className="text-center mb-2">
               <span className="text-xs text-slate-400">Enter the 6-digit code sent to:</span>
-              <p className="text-sm font-bold text-sky-400">{email}</p>
+              <p className="text-sm font-bold text-[#F4ED6E]">{email}</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 text-center mb-2">
+              <label className="block text-xs font-semibold text-[#FFFEE6] text-center mb-2">
                 6-Digit Verification Code
               </label>
               <input
@@ -214,7 +214,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                 placeholder="000000"
                 required
                 disabled={isLoading}
-                className="w-full max-w-[260px] mx-auto block bg-slate-950 border border-slate-700 rounded-lg py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 transition-all"
+                className="w-full max-w-[260px] mx-auto block bg-slate-950 border border-slate-700 rounded-lg py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#FFFEE6] focus:outline-none focus:border-[#E2495B] focus:ring-2 focus:ring-[#E2495B]/30 transition-all"
               />
 
               {devHint && (
@@ -225,7 +225,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                       setOtp(devHint);
                       verifyOtp(email.trim(), devHint);
                     }}
-                    className="inline-flex items-center gap-1 text-xs text-sky-400 bg-sky-950/60 border border-sky-500/30 rounded px-2 py-0.5 hover:bg-sky-900/60 transition cursor-pointer"
+                    className="inline-flex items-center gap-1 text-xs text-[#F4ED6E] bg-[#C4BA3B]/15 border border-[#C4BA3B]/30 rounded px-2 py-0.5 hover:bg-[#C4BA3B]/25 transition cursor-pointer"
                   >
                     <span>⚡ Auto-fill:</span>
                     <strong className="font-mono">{devHint}</strong>
@@ -235,12 +235,12 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
 
               <div className="flex justify-between items-center text-xs text-slate-400 mt-3 px-1">
                 <span>
-                  Expires in: <strong className="text-amber-400 font-mono">{formatTimer(countdown)}</strong>
+                  Expires in: <strong className="text-[#C4BA3B] font-mono">{formatTimer(countdown)}</strong>
                 </span>
                 <button
                   type="button"
                   onClick={handleRequestSubmit}
-                  className="text-sky-400 hover:text-sky-300 underline cursor-pointer"
+                  className="text-[#F4ED6E] hover:text-[#FFFEE6] underline cursor-pointer"
                 >
                   Resend Code
                 </button>

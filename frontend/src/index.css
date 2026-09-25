@@ -3,16 +3,43 @@
 @source "./**/*.{ts,tsx,js,jsx,html}";
 @source "../../index.html";
 
+@theme {
+  --color-brand-carmine: #E2495B;
+  --color-brand-carmine-hover: #cf3c4e;
+  --color-brand-carmine-active: #b52e3f;
+  --color-brand-gold: #C4BA3B;
+  --color-brand-gold-hover: #b0a631;
+  --color-brand-canary: #F4ED6E;
+  --color-brand-cream: #FFFEE6;
+
+  /* Cascading sky to the brand carmine/gold/canary palette */
+  --color-sky-50: #FFFEE6;
+  --color-sky-100: #fefcd4;
+  --color-sky-200: #F4ED6E;
+  --color-sky-300: #e5df63;
+  --color-sky-400: #F4ED6E;
+  --color-sky-500: #E2495B;
+  --color-sky-600: #E2495B;
+  --color-sky-700: #cf3c4e;
+  --color-sky-800: #9e2333;
+  --color-sky-900: #420f16;
+  --color-sky-950: #29080c;
+}
+
 @layer base {
   :root {
-    --brand-primary: #0284c7;
-    --brand-accent: #6366f1;
+    --brand-primary: #E2495B;
+    --brand-gold: #C4BA3B;
+    --brand-canary: #F4ED6E;
+    --brand-cream: #FFFEE6;
+    --brand-accent: #C4BA3B;
+    --brand-highlight: #F4ED6E;
     --brand-emerald: #10b981;
   }
 
   body {
-    background-color: #020617;
-    color: #f8fafc;
+    background-color: #0b0d14;
+    color: #FFFEE6;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
@@ -23,39 +50,51 @@
   }
 }
 
-/* Glassmorphism Surface Tokens */
+/* Glassmorphism Surface Tokens with warm luxury undertones */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(18, 20, 29, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(196, 186, 59, 0.16);
 }
 
 .glass-panel-elevated {
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(22, 24, 34, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(226, 73, 91, 0.22);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
 }
 
 .glass-card {
-  background: rgba(15, 23, 42, 0.65);
+  background: rgba(18, 20, 29, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(196, 186, 59, 0.14);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(56, 189, 248, 0.3);
-  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(226, 73, 91, 0.45);
+  background: rgba(25, 27, 38, 0.88);
   transform: translateY(-1px);
 }
 
-/* Subtle glow effects */
+/* Subtle glow effects matching the 4-color palette */
+.glow-carmine {
+  box-shadow: 0 0 25px -5px rgba(226, 73, 91, 0.35);
+}
+
+.glow-gold {
+  box-shadow: 0 0 25px -5px rgba(196, 186, 59, 0.3);
+}
+
+.glow-canary {
+  box-shadow: 0 0 25px -5px rgba(244, 237, 110, 0.35);
+}
+
 .glow-sky {
-  box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.25);
+  box-shadow: 0 0 25px -5px rgba(226, 73, 91, 0.3);
 }
 
 .glow-emerald {
@@ -63,7 +102,7 @@
 }
 
 .glow-indigo {
-  box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 0 25px -5px rgba(196, 186, 59, 0.3);
 }
 
 /* Custom Scrollbars */
@@ -72,15 +111,15 @@
   height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 17, 24, 0.7);
   border-radius: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.25);
+  background: rgba(226, 73, 91, 0.4);
   border-radius: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.6);
+  background: rgba(226, 73, 91, 0.8);
 }
 
 /* Shimmer animation */
