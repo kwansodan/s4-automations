@@ -149,7 +149,7 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-sky-500 selection:text-white">
+    <div className="min-h-screen bg-[#FFFEE6] text-[#E2495B] flex font-sans selection:bg-[#E2495B] selection:text-[#FFFEE6]">
       {/* Collapsible / Responsive Sidebar */}
       <Sidebar
         isMobileOpen={isMobileMenuOpen}

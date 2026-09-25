@@ -104,8 +104,8 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900/90 border border-sky-500/30 rounded-2xl p-8 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+    <div className="min-h-[85vh] flex items-center justify-center p-4 bg-[#FFFEE6]">
+      <div className="w-full max-w-md bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         
         {/* Back to Homepage button */}
         {onBackToLanding && (
@@ -113,9 +113,9 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
             <button
               type="button"
               onClick={onBackToLanding}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition cursor-pointer font-medium"
+              className="inline-flex items-center gap-1.5 text-xs text-[#C4BA3B] hover:text-[#E2495B] transition cursor-pointer font-medium"
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+              <ArrowLeft className="w-3.5 h-3.5 text-[#E2495B]" />
               <span>Back to Homepage &amp; Live Demo</span>
             </button>
           </div>
@@ -126,13 +126,13 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
           <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] border border-[#E2495B]/40 flex items-center justify-center text-[#FFFEE6] shadow-lg shadow-[#E2495B]/25">
             <Zap className="w-7 h-7 text-[#FFFEE6]" />
           </div>
-          <h1 className="text-2xl font-extrabold text-[#FFFEE6] tracking-tight">S4 Automations</h1>
-          <p className="text-xs text-slate-400 mt-1">Multi-Client Accounting & Financial Suite</p>
+          <h1 className="text-2xl font-extrabold text-[#E2495B] tracking-tight">S4 Automations</h1>
+          <p className="text-xs text-[#C4BA3B] mt-1 font-medium">Multi-Client Accounting & Financial Suite</p>
         </div>
 
         {/* Security Badge */}
-        <div className="flex items-center justify-center gap-1.5 text-xs text-[#FFFEE6] bg-[#C4BA3B]/15 border border-[#C4BA3B]/30 rounded-full py-1 px-3 mb-6 font-medium">
-          <ShieldCheck className="w-4 h-4 text-[#F4ED6E]" />
+        <div className="flex items-center justify-center gap-1.5 text-xs text-[#E2495B] bg-[#F4ED6E] border border-[#C4BA3B] rounded-full py-1 px-3 mb-6 font-bold">
+          <ShieldCheck className="w-4 h-4 text-[#E2495B]" />
           <span>Passwordless Email OTP Security</span>
         </div>
 
@@ -155,11 +155,11 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
         {step === 'request' ? (
           <form onSubmit={handleRequestSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#FFFEE6] mb-1.5">
+              <label className="block text-xs font-semibold text-[#E2495B] mb-1.5">
                 Authorized Administrator Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#C4BA3B]" />
                 <input
                   type="email"
                   value={email}
@@ -167,10 +167,10 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                   placeholder="s4bookkeeping@service4gh.com"
                   required
                   disabled={isLoading}
-                  className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2.5 text-sm text-[#FFFEE6] placeholder-slate-500 focus:outline-none focus:border-[#E2495B] focus:ring-1 focus:ring-[#E2495B] transition-all disabled:opacity-50"
+                  className="w-full bg-[#FFFEE6] border border-[#C4BA3B] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[#E2495B] placeholder-[#C4BA3B]/80 focus:outline-none focus:border-[#E2495B] focus:ring-1 focus:ring-[#E2495B] transition-all disabled:opacity-50"
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="text-[11px] text-[#C4BA3B] mt-1">
                 A single-use 6-digit login code will be sent to this email address.
               </p>
             </div>
@@ -197,12 +197,12 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
           /* Step 2: 6-Digit OTP Form */
           <form onSubmit={handleVerifySubmit} className="space-y-4">
             <div className="text-center mb-2">
-              <span className="text-xs text-slate-400">Enter the 6-digit code sent to:</span>
-              <p className="text-sm font-bold text-[#F4ED6E]">{email}</p>
+              <span className="text-xs text-[#C4BA3B]">Enter the 6-digit code sent to:</span>
+              <p className="text-sm font-bold text-[#E2495B]">{email}</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#FFFEE6] text-center mb-2">
+              <label className="block text-xs font-semibold text-[#E2495B] text-center mb-2">
                 6-Digit Verification Code
               </label>
               <input
@@ -214,7 +214,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                 placeholder="000000"
                 required
                 disabled={isLoading}
-                className="w-full max-w-[260px] mx-auto block bg-slate-950 border border-slate-700 rounded-lg py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#FFFEE6] focus:outline-none focus:border-[#E2495B] focus:ring-2 focus:ring-[#E2495B]/30 transition-all"
+                className="w-full max-w-[260px] mx-auto block bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-lg py-2.5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#E2495B] focus:outline-none focus:border-[#E2495B] focus:ring-2 focus:ring-[#E2495B]/30 transition-all"
               />
 
               {devHint && (

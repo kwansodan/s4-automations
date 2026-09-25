@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { errors, unreadErrorsCount, openDebugDrawer } = useErrors();
 
   return (
-    <header className="sticky top-0 z-30 bg-[#0b0d14]/90 border-b border-slate-800/80 backdrop-blur-xl h-16">
+    <header className="sticky top-0 z-30 bg-[#FFFEE6] border-b border-[#C4BA3B] h-16">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         
         {/* Left: Mobile Toggle & Client Switcher */}

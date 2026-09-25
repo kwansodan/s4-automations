@@ -154,14 +154,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 flex flex-col bg-slate-950/95 border-r border-slate-800/80 backdrop-blur-2xl transition-all duration-300 ${
+        className={`fixed top-0 left-0 bottom-0 z-50 flex flex-col bg-[#FFFEE6] border-r border-[#C4BA3B] transition-all duration-300 ${
           isCollapsed ? 'w-20' : 'w-64'
         } ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Top: App Brand & Organization Context Switcher */}
-        <div className="h-16 flex items-center justify-between px-3.5 border-b border-slate-800/80 shrink-0 relative">
+        <div className="h-16 flex items-center justify-between px-3.5 border-b border-[#C4BA3B] shrink-0 relative">
           <div
             onClick={() => handleNav('workspace', 'overview')}
             className="flex items-center gap-2.5 cursor-pointer group overflow-hidden min-w-0"
@@ -510,7 +510,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
         </div>
 
         {/* Bottom User & Health Footer */}
-        <div className="p-3 border-t border-slate-800/80 shrink-0 space-y-2 bg-slate-950/80">
+        <div className="p-3 border-t border-[#C4BA3B] shrink-0 space-y-2 bg-[#FFFEE6]">
 
           {/* User Profile / Logout */}
           <div className="flex items-center justify-between gap-2 p-1.5">

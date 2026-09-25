@@ -179,42 +179,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E2495B] to-[#C4BA3B] flex items-center justify-center text-[#FFFEE6] shadow-md shadow-[#E2495B]/20">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-base font-black tracking-tight text-white flex items-center gap-1.5">
+              <span className="text-base font-black tracking-tight text-[#E2495B] flex items-center gap-1.5">
                 S4 Automations
-                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-sky-950 text-sky-400 border border-sky-800/60 rounded">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] rounded">
                   AI OCR
                 </span>
               </span>
             </div>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-6 text-xs font-medium text-slate-300">
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#C4BA3B]">
             {cfg.show_how_it_works && (
-              <a href="#how-it-works" className="hover:text-white transition">
+              <a href="#how-it-works" className="hover:text-[#E2495B] transition">
                 How It Works
               </a>
             )}
             {cfg.show_ocr_sandbox && (
-              <a href="#ocr-sandbox" className="hover:text-white transition">
+              <a href="#ocr-sandbox" className="hover:text-[#E2495B] transition">
                 Live OCR Demo
               </a>
             )}
             {cfg.show_roi_calculator && (
-              <a href="#roi-calculator" className="hover:text-white transition">
+              <a href="#roi-calculator" className="hover:text-[#E2495B] transition">
                 ROI Calculator
               </a>
             )}
             {cfg.show_pricing && (
-              <a href="#pricing" className="hover:text-white transition">
+              <a href="#pricing" className="hover:text-[#E2495B] transition">
                 Pricing &amp; Pilots
               </a>
             )}
             {cfg.show_faq && (
-              <a href="#faq" className="hover:text-white transition">
+              <a href="#faq" className="hover:text-[#E2495B] transition">
                 FAQ
               </a>
             )}
@@ -224,14 +224,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {cfg.show_client_portal_link && onOpenPortal && (
               <button
                 onClick={onOpenPortal}
-                className="hidden sm:inline-block text-xs font-semibold text-slate-400 hover:text-sky-400 px-2 py-1.5 rounded-xl transition cursor-pointer"
+                className="hidden sm:inline-block text-xs font-semibold text-[#C4BA3B] hover:text-[#E2495B] px-2 py-1.5 rounded-xl transition cursor-pointer"
               >
                 Client Portal
               </button>
             )}
             <button
               onClick={onGoToLogin}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-xl transition cursor-pointer"
+              className="text-xs font-bold text-[#E2495B] hover:bg-[#F4ED6E] px-3 py-1.5 rounded-xl transition cursor-pointer"
             >
               Sign In
             </button>
@@ -248,29 +248,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* 2. Hero Section */}
       {cfg.show_hero && (
-        <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28 border-b border-slate-800">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(226,73,91,0.12),rgba(255,255,255,0))]" />
-
+        <section className="relative overflow-hidden pt-16 pb-20 lg:pt-24 lg:pb-28 border-b border-[#C4BA3B] bg-[#FFFEE6]">
           <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center space-y-6">
             {cfg.hero_badge && (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-[#C4BA3B]/40 text-[11px] font-semibold text-[#F4ED6E] shadow-sm animate-in fade-in">
-                <Sparkles className="w-3.5 h-3.5 text-[#F4ED6E]" />
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F4ED6E] border border-[#C4BA3B] text-[11px] font-bold text-[#E2495B] shadow-sm animate-in fade-in">
+                <Sparkles className="w-3.5 h-3.5 text-[#E2495B]" />
                 <span>{cfg.hero_badge}</span>
               </div>
             )}
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#FFFEE6] tracking-tight leading-[1.15]">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#E2495B] tracking-tight leading-[1.15]">
               {cfg.hero_headline}
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-300 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-sm sm:text-base text-[#C4BA3B] max-w-3xl mx-auto leading-relaxed font-semibold">
               {cfg.hero_subheadline}
             </p>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
               <button
                 onClick={() => openLeadModalWithTier('Free Firm Walkthrough')}
-                className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-[#E2495B] via-[#cf3c4e] to-[#C4BA3B] hover:opacity-95 text-[#FFFEE6] rounded-xl text-xs sm:text-sm font-bold shadow-xl shadow-[#E2495B]/30 transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-3.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] rounded-xl text-xs sm:text-sm font-bold shadow-xl shadow-[#E2495B]/30 transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>{cfg.hero_primary_cta_text || 'Request a Free Firm Walkthrough'}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -280,9 +278,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 href={whatsappUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full sm:w-auto px-5 py-3.5 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
+                className="w-full sm:w-auto px-5 py-3.5 bg-[#F4ED6E] hover:bg-[#FFFEE6] text-[#E2495B] border border-[#C4BA3B] rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#C4BA3B]/20"
               >
-                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                <MessageSquare className="w-4 h-4 text-[#E2495B]" />
                 <span>Send 3 Sample Slips on WhatsApp (10-Min Audit)</span>
               </a>
             </div>

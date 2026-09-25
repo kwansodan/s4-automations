@@ -347,12 +347,12 @@ export const InformationRequestsSection: React.FC = () => {
                       </select>
                     </div>
                   ) : (
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B]">
                       {currentClient?.name || 'Active Client'}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+                <p className="text-xs text-[#C4BA3B] mt-0.5 max-w-2xl font-medium">
                   Review unclassified transactions in monitored watched accounts, assign Chart of Accounts categories inline, and query clients with instant 1-click notification alerts.
                 </p>
               </div>
@@ -365,22 +365,22 @@ export const InformationRequestsSection: React.FC = () => {
               onClick={() => setIsWatchedDrawerOpen(!isWatchedDrawerOpen)}
               className={`flex items-center gap-1.5 text-xs font-bold py-2.5 px-3.5 rounded-xl border transition cursor-pointer ${
                 isWatchedDrawerOpen
-                  ? 'bg-sky-600 text-white border-sky-500 shadow-md shadow-sky-600/30'
-                  : 'bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border-slate-800'
+                  ? 'bg-[#E2495B] text-[#FFFEE6] border-[#E2495B] shadow-md shadow-[#E2495B]/30'
+                  : 'bg-[#FFFEE6] text-[#E2495B] hover:bg-[#F4ED6E] border-[#C4BA3B]'
               }`}
             >
-              <Sliders className="w-3.5 h-3.5 text-sky-400" />
+              <Sliders className={`w-3.5 h-3.5 ${isWatchedDrawerOpen ? 'text-[#FFFEE6]' : 'text-[#E2495B]'}`} />
               <span>Watched Accounts ({watchedAccounts.length})</span>
-              {isWatchedDrawerOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {isWatchedDrawerOpen ? <ChevronUp className="w-3.5 h-3.5 text-[#FFFEE6]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#E2495B]" />}
             </button>
 
             <button
               onClick={handleSyncFeeds}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
               title={`Pull live uncategorized & suspense transactions from ${platformName}`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#E2495B] ${isSyncing ? 'animate-spin' : ''}`} />
               <span>
                 {isSyncing
                   ? 'Syncing Feeds...'
@@ -392,16 +392,16 @@ export const InformationRequestsSection: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('contacts')}
-              className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
               title="Manage client contacts and firm team members"
             >
-              <Users className="w-3.5 h-3.5 text-sky-400" />
+              <Users className="w-3.5 h-3.5 text-[#E2495B]" />
               <span>Contacts &amp; Team</span>
             </button>
 
             <button
               onClick={() => setActiveTab('portal')}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-[#E2495B]/25 transition cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Open Client Portal View</span>
@@ -617,50 +617,50 @@ export const InformationRequestsSection: React.FC = () => {
         {/* Unmapped / Needs Action */}
         <div
           onClick={() => setStatusFilter('UNMAPPED')}
-          className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'UNMAPPED' ? 'border-[#E2495B]/80 ring-1 ring-[#E2495B]/50' : 'border-slate-800 hover:border-slate-700'
+          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
+            statusFilter === 'UNMAPPED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-400">Needs Classification</span>
+            <span className="text-xs font-bold text-[#C4BA3B]">Needs Classification</span>
             <AlertCircle className="w-4 h-4 text-[#E2495B]" />
           </div>
-          <div className="text-2xl font-black text-[#FFFEE6]">{metrics.total_uncategorized}</div>
-          <span className="text-[10px] text-[#E2495B]/90 font-medium mt-1 block">Awaiting account mapping</span>
+          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_uncategorized}</div>
+          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Awaiting account mapping</span>
         </div>
 
         {/* Pending Client Clarification */}
         <div
           onClick={() => setStatusFilter('CLARIFICATION_REQUESTED')}
-          className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-[#C4BA3B]/80 ring-1 ring-[#C4BA3B]/50' : 'border-slate-800 hover:border-slate-700'
+          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
+            statusFilter === 'CLARIFICATION_REQUESTED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#F4ED6E]">Awaiting Client</span>
+            <span className="text-xs font-bold text-[#C4BA3B]">Awaiting Client</span>
             <Clock className="w-4 h-4 text-[#C4BA3B]" />
           </div>
-          <div className="text-2xl font-black text-[#F4ED6E]">{metrics.total_pending_client}</div>
+          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_pending_client}</div>
           <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Clarification queries sent</span>
         </div>
 
         {/* Client Responded */}
         <div
           onClick={() => setStatusFilter('CLIENT_ANSWERED')}
-          className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer relative overflow-hidden ${
-            statusFilter === 'CLIENT_ANSWERED' ? 'border-emerald-500/80 ring-1 ring-emerald-500/50' : 'border-slate-800 hover:border-slate-700'
+          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer relative overflow-hidden ${
+            statusFilter === 'CLIENT_ANSWERED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-emerald-300">Client Responded</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-bold text-[#E2495B]">Client Responded</span>
+            <CheckCircle2 className="w-4 h-4 text-[#E2495B]" />
           </div>
-          <div className="text-2xl font-black text-emerald-200">{metrics.total_client_answered}</div>
-          <span className="text-[10px] text-emerald-400/80 font-medium mt-1 block">Notes added • Ready to classify</span>
+          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_client_answered}</div>
+          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Notes added • Ready to classify</span>
           {metrics.total_client_answered > 0 && (
             <span className="absolute top-2 right-2 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#E2495B] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#E2495B]"></span>
             </span>
           )}
         </div>
@@ -668,26 +668,26 @@ export const InformationRequestsSection: React.FC = () => {
         {/* Categorized & Synced */}
         <div
           onClick={() => setStatusFilter('MAPPED')}
-          className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl backdrop-blur-xl transition cursor-pointer ${
-            statusFilter === 'MAPPED' ? 'border-[#C4BA3B]/80 ring-1 ring-[#C4BA3B]/50' : 'border-slate-800 hover:border-slate-700'
+          className={`bg-[#FFFEE6] border-2 rounded-2xl p-4 shadow-md transition cursor-pointer ${
+            statusFilter === 'MAPPED' ? 'border-[#E2495B] ring-2 ring-[#E2495B]/40' : 'border-[#C4BA3B] hover:border-[#E2495B]'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-400">Categorized &amp; Synced</span>
+            <span className="text-xs font-bold text-[#C4BA3B]">Categorized &amp; Synced</span>
             <CheckCheck className="w-4 h-4 text-[#C4BA3B]" />
           </div>
-          <div className="text-2xl font-black text-[#FFFEE6]">{metrics.total_mapped}</div>
-          <span className="text-[10px] text-[#C4BA3B]/80 font-medium mt-1 block">Reconciled to accounting</span>
+          <div className="text-2xl font-black text-[#E2495B]">{metrics.total_mapped}</div>
+          <span className="text-[10px] text-[#C4BA3B] font-medium mt-1 block">Reconciled to accounting</span>
         </div>
 
       </div>
 
       {/* Filter Toolbar & Bulk Actions */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl space-y-3">
+      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4 shadow-md space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 flex-wrap bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center gap-1.5 flex-wrap bg-[#FFFEE6] p-1 rounded-xl border border-[#C4BA3B]">
             {[
               { id: 'ALL', label: `All Items (${metrics.total_count})` },
               { id: 'UNMAPPED', label: `Uncategorized (${metrics.total_uncategorized})` },
@@ -700,8 +700,8 @@ export const InformationRequestsSection: React.FC = () => {
                 onClick={() => setStatusFilter(tab.id)}
                 className={`text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === tab.id
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    ? 'bg-[#E2495B] text-[#FFFEE6] shadow-sm'
+                    : 'text-[#C4BA3B] hover:text-[#E2495B] hover:bg-[#F4ED6E]'
                 }`}
               >
                 {tab.label}
@@ -712,31 +712,31 @@ export const InformationRequestsSection: React.FC = () => {
           {/* Controls: Month & Year Selector + Search Box */}
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Month & Year Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
-              <Calendar className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <div className="flex items-center gap-1.5 bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl px-3 py-1.5 shadow-inner">
+              <Calendar className="w-3.5 h-3.5 text-[#E2495B] shrink-0" />
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer pr-1"
+                className="bg-transparent text-xs font-bold text-[#E2495B] focus:outline-none cursor-pointer pr-1"
                 title="Filter transactions by month"
               >
                 {MONTH_OPTIONS.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                  <option key={m.id} value={m.id} className="bg-[#FFFEE6] text-[#E2495B]">
                     {m.label}
                   </option>
                 ))}
               </select>
 
-              <span className="text-slate-600 text-xs">/</span>
+              <span className="text-[#C4BA3B] text-xs">/</span>
 
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-300 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-bold text-[#E2495B] focus:outline-none cursor-pointer"
                 title="Filter transactions by year"
               >
                 {YEAR_OPTIONS.map((y) => (
-                  <option key={y.id} value={y.id} className="bg-slate-900 text-white">
+                  <option key={y.id} value={y.id} className="bg-[#FFFEE6] text-[#E2495B]">
                     {y.label}
                   </option>
                 ))}
@@ -759,13 +759,13 @@ export const InformationRequestsSection: React.FC = () => {
 
             {/* Search Box */}
             <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#C4BA3B]" />
               <input
                 type="text"
                 placeholder="Search description, payee, amount..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-sans"
+                className="w-full bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl pl-9 pr-3 py-1.5 text-xs text-[#E2495B] placeholder-[#C4BA3B]/70 focus:outline-none focus:border-[#E2495B] font-sans"
               />
             </div>
           </div>
