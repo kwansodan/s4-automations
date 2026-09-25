@@ -177,7 +177,7 @@ Return a strictly valid JSON object with tailored content for 4 distinct distrib
 3. "client_email":
    - "subject": Professional, engaging email subject line for client finance teams and accounting partners.
    - "preheader": Short preview snippet (1 sentence).
-   - "html": Clean, beautifully styled HTML newsletter body (inline styles with modern dark or clean slate theme, highlighting "What's New", "Why it Matters for Your Accounting", and "How to Use It").
+   - "html": Clean, beautifully styled HTML newsletter body (inline styles with crisp Light Lab AI aesthetic: #f8fafc canvas, #ffffff card, #0f172a headers, #64748b body text, #0284c7 electric cyan CTA button, hairline #e2e8f0 borders, highlighting "What's New", "Why it Matters for Your Accounting", and "How to Use It").
 
 4. "changelog":
    - "version": Suggested semantic version string (e.g. "1.4.0").
@@ -245,22 +245,24 @@ Strictly respond with ONLY the JSON object. No preamble, no markdown formatting 
         )
 
         email_html = f"""
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #f8fafc; border-radius: 16px; padding: 32px; border: 1px solid #1e293b;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <span style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 1px;">S4 Automations Release</span>
-            <h1 style="color: #ffffff; font-size: 22px; font-weight: 800; margin-top: 14px; margin-bottom: 8px;">{safe_title}</h1>
-            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5;">A new feature has been deployed to enhance your accounting workflow and data integrity.</p>
-          </div>
-          <div style="background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-            <h3 style="color: #38bdf8; font-size: 14px; margin-top: 0; margin-bottom: 10px;">⚡ What's New:</h3>
-            <p style="color: #cbd5e1; font-size: 13px; line-height: 1.6; margin: 0;">{safe_summary}</p>
-          </div>
-          <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-            <h4 style="color: #34d399; font-size: 13px; margin: 0 0 6px 0;">🛡️ Accounting Impact</h4>
-            <p style="color: #a7f3d0; font-size: 12px; margin: 0; line-height: 1.5;">This upgrade prevents duplicate billing, preserves full document lineage, and automatically keeps your accounting ledger synchronized without manual intervention.</p>
-          </div>
-          <div style="text-align: center;">
-            <a href="https://service4gh.com" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 24px; border-radius: 8px;">Open S4 Workspace</a>
+        <div style="background-color: #f8fafc; padding: 36px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; color: #0f172a; border-radius: 16px; padding: 36px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <span style="background: #f0f9ff; color: #0284c7; font-size: 11px; font-weight: 700; padding: 6px 14px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #bae6fd;">S4 Automations Release</span>
+              <h1 style="color: #0f172a; font-size: 22px; font-weight: 800; margin-top: 14px; margin-bottom: 8px; letter-spacing: -0.01em;">{safe_title}</h1>
+              <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0;">A new feature has been deployed to enhance your accounting workflow and data integrity.</p>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+              <h3 style="color: #0284c7; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0; margin-bottom: 8px;">⚡ What's New:</h3>
+              <p style="color: #334155; font-size: 13px; line-height: 1.6; margin: 0;">{safe_summary}</p>
+            </div>
+            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #059669; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+              <h4 style="color: #065f46; font-size: 13px; font-weight: 700; margin: 0 0 4px 0;">🛡️ Accounting Impact</h4>
+              <p style="color: #047857; font-size: 12px; margin: 0; line-height: 1.5;">This upgrade prevents duplicate billing, preserves full document lineage, and automatically keeps your accounting ledger synchronized without manual intervention.</p>
+            </div>
+            <div style="text-align: center;">
+              <a href="https://service4gh.com" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">Open S4 Workspace</a>
+            </div>
           </div>
         </div>
         """

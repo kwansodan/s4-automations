@@ -423,21 +423,32 @@ async def capture_public_lead(
     admin_notify_email = settings.NOTIFICATION_EMAIL or settings.AUTH_EMAIL or "s4bookkeeping@service4gh.com"
     admin_subject = f"🔥 New S4 Demo Request: {payload.company_name} ({payload.full_name})"
     admin_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; background: #0f172a; color: #f8fafc; border-radius: 12px;">
-      <h2 style="color: #38bdf8; margin-top: 0;">🚀 New Accounting Automation Pilot Inquiry</h2>
-      <p style="font-size: 14px; line-height: 1.5;">A new prospect has requested a live demo from the public landing page:</p>
-      
-      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px;">
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">Full Name:</td><td style="padding: 8px; font-weight: bold;">{payload.full_name}</td></tr>
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">Email:</td><td style="padding: 8px; font-weight: bold;"><a href="mailto:{payload.email}" style="color: #38bdf8;">{payload.email}</a></td></tr>
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">Company / Firm:</td><td style="padding: 8px; font-weight: bold;">{payload.company_name} ({'Accounting Firm' if payload.accounting_firm else 'Single Business'})</td></tr>
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">WhatsApp / Phone:</td><td style="padding: 8px; font-weight: bold;">{payload.phone_or_whatsapp or 'Not provided'}</td></tr>
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">Target ERP:</td><td style="padding: 8px; font-weight: bold; text-transform: uppercase;">{payload.primary_accounting_software}</td></tr>
-        <tr style="border-bottom: 1px solid #334155;"><td style="padding: 8px; color: #94a3b8;">Client Volume:</td><td style="padding: 8px; font-weight: bold;">{payload.client_count_estimate or '1-5'}</td></tr>
-        <tr><td style="padding: 8px; color: #94a3b8;">Pain Point:</td><td style="padding: 8px; font-style: italic;">{payload.biggest_headache or 'General bookkeeping automation'}</td></tr>
-      </table>
+    <div style="background-color: #f8fafc; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <div style="background: #ffffff; color: #0f172a; padding: 32px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="display: inline-block; padding: 4px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9999px; color: #0284c7; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+          🚀 Lead Notification
+        </div>
+        <h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin: 0 0 10px 0; letter-spacing: -0.01em;">
+          New Accounting Automation Pilot Inquiry
+        </h2>
+        <p style="font-size: 14px; line-height: 1.5; color: #475569; margin: 0 0 16px 0;">
+          A new prospect has requested a live demo from the public landing page:
+        </p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0 24px 0; font-size: 13px;">
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Full Name:</td><td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">{payload.full_name}</td></tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Email:</td><td style="padding: 10px 0; font-weight: 600; text-align: right;"><a href="mailto:{payload.email}" style="color: #0284c7; text-decoration: none;">{payload.email}</a></td></tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Company / Firm:</td><td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">{payload.company_name} ({'Accounting Firm' if payload.accounting_firm else 'Single Business'})</td></tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">WhatsApp / Phone:</td><td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">{payload.phone_or_whatsapp or 'Not provided'}</td></tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Target ERP:</td><td style="padding: 10px 0; font-weight: 700; color: #0284c7; text-transform: uppercase; text-align: right;">{payload.primary_accounting_software}</td></tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Client Volume:</td><td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">{payload.client_count_estimate or '1-5'}</td></tr>
+          <tr><td style="padding: 10px 0; color: #64748b; font-weight: 500;">Pain Point:</td><td style="padding: 10px 0; font-style: italic; color: #334155; text-align: right;">{payload.biggest_headache or 'General bookkeeping automation'}</td></tr>
+        </table>
 
-      <a href="mailto:{payload.email}?subject=Re:%20S4%20Automations%20Demo%20for%20{payload.company_name}" style="display: inline-block; background: #0284c7; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px;">Reply to Prospect Now</a>
+        <div style="text-align: center;">
+          <a href="mailto:{payload.email}?subject=Re:%20S4%20Automations%20Demo%20for%20{payload.company_name}" style="display: inline-block; background: #0284c7; color: #ffffff; padding: 12px 26px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">Reply to Prospect Now</a>
+        </div>
+      </div>
     </div>
     """
 
@@ -454,24 +465,35 @@ async def capture_public_lead(
     # Send Welcome Auto-Responder to Prospect
     prospect_subject = "Welcome to S4 Automations - Let's Streamline Your Accounting"
     prospect_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 24px; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 12px;">
-      <h2 style="color: #0369a1; margin-top: 0;">Hello {payload.full_name},</h2>
-      <p style="font-size: 14px; line-height: 1.6; color: #334155;">
-        Thank you for your interest in <strong>S4 Automations</strong>. We received your request for a live demo for <strong>{payload.company_name}</strong>.
-      </p>
-      <p style="font-size: 14px; line-height: 1.6; color: #334155;">
-        Our accounting automation engine helps firms and finance teams eliminate up to 85% of manual receipt, vendor bill, and MoMo entry directly into {payload.primary_accounting_software.replace('_', ' ').title()}.
-      </p>
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 18px 0; font-size: 13px; color: #166534;">
-        <strong>Next Step:</strong> One of our senior automation engineers will reach out to you within 24 hours to schedule your walkthrough and run a sample batch of your documents.
+    <div style="background-color: #f8fafc; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <div style="background: #ffffff; color: #0f172a; padding: 36px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="display: inline-block; padding: 4px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9999px; color: #0284c7; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+          ⚡ S4 Welcome
+        </div>
+        <h2 style="color: #0f172a; margin: 0 0 12px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.01em;">
+          Hello {payload.full_name},
+        </h2>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0 0 14px 0;">
+          Thank you for your interest in <strong>S4 Automations</strong>. We received your request for a live demo for <strong>{payload.company_name}</strong>.
+        </p>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0 0 18px 0;">
+          Our accounting automation engine helps firms and finance teams eliminate up to 85% of manual receipt, vendor bill, and MoMo entry directly into {payload.primary_accounting_software.replace('_', ' ').title()}.
+        </p>
+        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #059669; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 13px; color: #065f46; line-height: 1.5;">
+          <strong>Next Step:</strong> One of our senior automation engineers will reach out to you within 24 hours to schedule your walkthrough and run a sample batch of your documents.
+        </div>
+        <p style="font-size: 13px; color: #64748b; line-height: 1.5; margin: 16px 0;">
+          Need immediate assistance? Feel free to reply directly to this email.
+        </p>
+        <div style="border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 16px;">
+          <p style="font-size: 13px; color: #0f172a; margin: 0; font-weight: 700;">
+            The S4 Automations Engineering Team
+          </p>
+          <p style="font-size: 11px; color: #94a3b8; margin: 4px 0 0 0;">
+            https://s4-automations.com &bull; Chartered Accounting &amp; Workflow Intelligence
+          </p>
+        </div>
       </div>
-      <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
-        Need immediate assistance? Feel free to reply directly to this email.
-      </p>
-      <p style="font-size: 13px; color: #0f172a; margin-top: 24px; font-weight: bold;">
-        The S4 Automations Engineering Team<br/>
-        <span style="font-size: 11px; color: #64748b; font-weight: normal;">https://s4-automations.com</span>
-      </p>
     </div>
     """
 

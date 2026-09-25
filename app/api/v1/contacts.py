@@ -107,39 +107,41 @@ async def _dispatch_client_portal_invite(
     """Sends a branded invitation email to a client stakeholder for information requests."""
     subject = f"📨 [Portal Invite] Access the {client_name} Accounting & Information Requests Portal"
     html_content = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 28px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
-        <div style="text-align: center; margin-bottom: 24px;">
-            <div style="display: inline-block; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; padding: 8px 16px; border-radius: 9999px; font-size: 12px; font-weight: bold; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em;">
-                Information Requests Portal
+    <div style="background-color: #f8fafc; padding: 36px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background: #ffffff; color: #0f172a; padding: 36px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; color: #0284c7; text-transform: uppercase; letter-spacing: 0.05em;">
+                    Information Requests Portal
+                </div>
+                <h1 style="color: #0f172a; font-size: 22px; font-weight: 800; margin: 16px 0 8px 0; letter-spacing: -0.01em;">
+                    Welcome, {contact.name}
+                </h1>
+                <p style="color: #475569; font-size: 14px; margin: 0; line-height: 1.5;">
+                    Your accounting team at <strong>{firm_name}</strong> has invited you to the client portal for <strong>{client_name}</strong>.
+                </p>
             </div>
-            <h1 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 16px 0 6px 0;">
-                Welcome, {contact.name}
-            </h1>
-            <p style="color: #94a3b8; font-size: 14px; margin: 0;">
-                Your accounting team at <strong>{firm_name}</strong> has invited you to the client portal for <strong>{client_name}</strong>.
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+                <h3 style="color: #0284c7; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0; margin-bottom: 6px;">
+                    Your Role: {contact.role.replace('_', ' ')}
+                </h3>
+                <p style="color: #334155; font-size: 13px; line-height: 1.6; margin: 0;">
+                    Use the portal to answer accountant clarification queries on bank feeds, upload missing invoices or receipts, and keep <strong>{client_name}</strong>'s books accurate and up to date.
+                </p>
+            </div>
+
+            <div style="text-align: center; margin: 28px 0;">
+                <a href="{magic_url}" style="background: #0284c7; color: #ffffff; padding: 13px 32px; border-radius: 8px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                    Open Client Portal (1-Click Access) &rarr;
+                </a>
+            </div>
+
+            <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin: 0;">
+                🔒 This magic link provides direct, passwordless access for 72 hours. Alternatively, you can log in at any time with an email OTP code.
             </p>
-        </div>
-
-        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
-            <h3 style="color: #38bdf8; font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 0; margin-bottom: 8px;">
-                Your Role: {contact.role.replace('_', ' ')}
-            </h3>
-            <p style="color: #cbd5e1; font-size: 13px; line-height: 1.6; margin: 0;">
-                Use the portal to answer accountant clarification queries on bank feeds, upload missing invoices or receipts, and keep <strong>{client_name}</strong>'s books accurate and up to date.
-            </p>
-        </div>
-
-        <div style="text-align: center; margin: 28px 0;">
-            <a href="{magic_url}" style="background: linear-gradient(135deg, #0284c7, #4f46e5); color: #ffffff; padding: 14px 32px; border-radius: 10px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);">
-                Open Client Portal (1-Click Access) →
-            </a>
-        </div>
-
-        <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin: 0;">
-            This magic link provides direct, passwordless access for 72 hours. Alternatively, you can log in at any time with an email OTP code.
-        </p>
-        <div style="border-top: 1px solid #1e293b; margin-top: 24px; padding-top: 16px; text-align: center; color: #475569; font-size: 11px;">
-            S4 Automations • Chartered Accounting &amp; Workflow Intelligence
+            <div style="border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
+                S4 Automations &bull; Chartered Accounting &amp; Workflow Intelligence
+            </div>
         </div>
     </div>
     """
@@ -160,25 +162,33 @@ async def _dispatch_firm_team_invite(
     subject = f"🤝 Welcome to {firm_name} Client Management Team"
     portal_url = settings.APP_BASE_URL
     html_content = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 28px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
-        <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin-top: 0;">
-            Welcome to the Practice, {member.name}
-        </h1>
-        <p style="color: #94a3b8; font-size: 14px;">
-            You have been invited to join the accounting and client management team at <strong>{firm_name}</strong> as a <strong>{member.role.replace('_', ' ')}</strong>.
-        </p>
-        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 20px 0;">
-            <p style="color: #38bdf8; font-size: 12px; font-weight: bold; margin: 0 0 6px 0; text-transform: uppercase;">
-                Your Assigned Client Scope:
+    <div style="background-color: #f8fafc; padding: 36px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background: #ffffff; color: #0f172a; padding: 36px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <div style="display: inline-block; background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; color: #0284c7; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;">
+                Team Onboarding
+            </div>
+            <h1 style="color: #0f172a; font-size: 22px; font-weight: 800; margin-top: 0; margin-bottom: 8px; letter-spacing: -0.01em;">
+                Welcome to the Practice, {member.name}
+            </h1>
+            <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 20px 0;">
+                You have been invited to join the accounting and client management team at <strong>{firm_name}</strong> as a <strong>{member.role.replace('_', ' ')}</strong>.
             </p>
-            <p style="color: #ffffff; font-size: 14px; font-family: monospace; margin: 0;">
-                {', '.join(member.assigned_client_ids) if member.assigned_client_ids != ['*'] else 'All Firm Clients (Global)'}
-            </p>
-        </div>
-        <div style="text-align: center; margin: 24px 0;">
-            <a href="{portal_url}" style="background: #0284c7; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; text-decoration: none; display: inline-block;">
-                Launch Management Console →
-            </a>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0;">
+                <p style="color: #0284c7; font-size: 11px; font-weight: 700; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+                    Your Assigned Client Scope:
+                </p>
+                <p style="color: #0f172a; font-size: 14px; font-family: 'JetBrains Mono', monospace; font-weight: 600; margin: 0;">
+                    {', '.join(member.assigned_client_ids) if member.assigned_client_ids != ['*'] else 'All Firm Clients (Global)'}
+                </p>
+            </div>
+            <div style="text-align: center; margin: 28px 0 16px 0;">
+                <a href="{portal_url}" style="background: #0284c7; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                    Launch Management Console &rarr;
+                </a>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
+                S4 Automations &bull; Chartered Accounting &amp; Workflow Intelligence
+            </div>
         </div>
     </div>
     """

@@ -122,25 +122,25 @@ class MailjetService:
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>{subject}</title>
         </head>
-        <body style="margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', Arial, sans-serif; background-color: #020617; color: #f8fafc;">
-          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #020617; padding: 40px 10px;">
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a;">
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding: 40px 10px;">
             <tr>
               <td align="center">
-                <table width="100%" max-width="500px" style="max-width: 500px; background-color: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 36px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+                <table width="100%" max-width="500px" style="max-width: 500px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                   <tr>
                     <td align="left">
-                      <div style="display: inline-block; padding: 8px 12px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; color: #38bdf8; font-size: 13px; font-weight: 600; margin-bottom: 20px;">
+                      <div style="display: inline-block; padding: 6px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9999px; color: #0284c7; font-size: 12px; font-weight: 600; margin-bottom: 20px;">
                         ⚡ S4 Automations Security
                       </div>
-                      <h2 style="color: #ffffff; font-size: 24px; font-weight: 700; margin: 0 0 12px 0;">
+                      <h2 style="color: #0f172a; font-size: 22px; font-weight: 700; margin: 0 0 10px 0; letter-spacing: -0.02em;">
                         Verification Code
                       </h2>
-                      <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">
+                      <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">
                         Use this 6-digit one-time password (OTP) to securely access the S4 Multi-Client Accounting Suite:
                       </p>
                       
-                      <div style="background-color: #020617; border: 1px solid #38bdf8; border-radius: 12px; padding: 20px; text-align: center; margin: 0 0 24px 0;">
-                        <span style="font-family: 'JetBrains Mono', monospace, Courier; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #38bdf8;">
+                      <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 22px; text-align: center; margin: 0 0 24px 0;">
+                        <span style="font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #0284c7;">
                           {otp_code}
                         </span>
                       </div>
@@ -148,8 +148,8 @@ class MailjetService:
                       <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin: 0 0 16px 0;">
                         ⏳ <strong>Expires in 10 minutes.</strong> If you did not request this login code, please disregard this email.
                       </p>
-                      <hr style="border: 0; border-top: 1px solid #1e293b; margin: 24px 0;" />
-                      <p style="color: #475569; font-size: 11px; margin: 0; text-align: center;">
+                      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+                      <p style="color: #94a3b8; font-size: 11px; margin: 0; text-align: center;">
                         Protected by S4 Multi-Client Accounting Automation • Service4GH
                       </p>
                     </td>

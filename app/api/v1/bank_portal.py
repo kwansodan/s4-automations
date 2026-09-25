@@ -354,18 +354,28 @@ async def client_portal_explain_transaction(
         target_email = settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
         subject = f"✅ [Client Responded] Explanation provided for GHS {tx.amount:,.2f} ({client['client_name']})"
         html_body = f"""
-        <div style="font-family: sans-serif; background: #0b0f19; color: #f8fafc; padding: 20px; border-radius: 10px;">
-            <h2 style="color: #10b981; margin-top: 0;">New Explanation Received from {client['client_name']}</h2>
-            <p><strong>Transaction:</strong> GHS {tx.amount:,.2f} on {tx.transaction_date} ({tx.description})</p>
-            <div style="background: #1e293b; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981;">
-                <strong>Client's Explanation:</strong><br/>
-                <p style="color: #e2e8f0; font-size: 14px;">{payload.client_explanation}</p>
+        <div style="background-color: #f8fafc; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            <div style="background: #ffffff; color: #0f172a; padding: 28px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="display: inline-block; padding: 4px 12px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; color: #059669; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+                    ✅ Client Clarification Received
+                </div>
+                <h2 style="color: #0f172a; margin: 0 0 12px 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">
+                    New Explanation Received from {client['client_name']}
+                </h2>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin: 16px 0; font-size: 13px; color: #334155;">
+                    <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 4px;">Transaction</div>
+                    <span style="font-weight: 700; color: #0f172a; font-family: 'JetBrains Mono', monospace; font-size: 15px;">GHS {tx.amount:,.2f}</span> on <span style="color: #475569;">{tx.transaction_date}</span> &bull; <span style="color: #64748b; font-size: 12px;">{tx.description}</span>
+                </div>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #059669; padding: 14px 16px; border-radius: 8px; margin: 16px 0;">
+                    <div style="font-size: 11px; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Client's Explanation:</div>
+                    <p style="color: #065f46; font-size: 14px; margin: 0; line-height: 1.5;">{payload.client_explanation}</p>
+                </div>
+                <div style="margin-top: 24px; text-align: center;">
+                    <a href="{settings.APP_BASE_URL}" style="display: inline-block; background: #0284c7; color: #ffffff; padding: 11px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                        Open S4 Information Requests &amp; Classify &rarr;
+                    </a>
+                </div>
             </div>
-            <p style="margin-top: 20px;">
-                <a href="{settings.APP_BASE_URL}" style="background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                    Open S4 Information Requests &amp; Classify →
-                </a>
-            </p>
         </div>
         """
         try:
@@ -848,24 +858,39 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
         if payload.send_immediately:
             subject = f"❓ [Action Required] Clarification requested for GHS {tx.amount:,.2f} ({client_name})"
             html_content = f"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 12px; max-width: 600px;">
-                <h2 style="color: #38bdf8; margin-top: 0;">Clarification Needed on Transaction in Watched Account</h2>
-                <p>Hello from your accounting team for <strong>{client_name}</strong>,</p>
-                <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                    <div style="font-size: 13px; color: #94a3b8;">Transaction Details:</div>
-                    <div style="font-size: 18px; font-weight: bold; color: #ffffff; margin-top: 4px;">GHS {tx.amount:,.2f} ({tx.transaction_type})</div>
-                    <div style="font-size: 12px; color: #cbd5e1; font-family: monospace; margin-top: 4px;">Date: {tx.transaction_date} • Ref: {tx.description}</div>
+            <div style="background-color: #f8fafc; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                <div style="background: #ffffff; color: #0f172a; padding: 32px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <div style="display: inline-block; padding: 4px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9999px; color: #0284c7; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+                        ❓ Information Request
+                    </div>
+                    <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">
+                        Clarification Needed on Transaction in Watched Account
+                    </h2>
+                    <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 18px 0;">
+                        Hello from your accounting team for <strong>{client_name}</strong>,
+                    </p>
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+                        <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; color: #64748b; letter-spacing: 0.05em;">Transaction Details:</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #0f172a; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
+                            GHS {tx.amount:,.2f} <span style="font-size: 13px; font-weight: normal; color: #64748b;">({tx.transaction_type})</span>
+                        </div>
+                        <div style="font-size: 12px; color: #475569; margin-top: 6px;">
+                            Date: <strong>{tx.transaction_date}</strong> &bull; Ref: <code>{tx.description}</code>
+                        </div>
+                    </div>
+                    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 8px; margin-bottom: 24px;">
+                        <strong style="color: #0369a1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Question from Accountant:</strong>
+                        <p style="color: #0c4a6e; font-size: 14px; margin: 6px 0 0 0; line-height: 1.5; font-style: italic;">"{payload.query_text}"</p>
+                    </div>
+                    <div style="text-align: center; margin: 28px 0 16px 0;">
+                        <a href="{magic_url}" style="background: #0284c7; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                            Review &amp; Provide Explanation &rarr;
+                        </a>
+                    </div>
+                    <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">
+                        🔒 No password required &bull; Secure 72-hour one-click access
+                    </p>
                 </div>
-                <div style="background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; padding: 14px; border-radius: 6px; margin-bottom: 20px;">
-                    <strong style="color: #38bdf8; font-size: 12px; text-transform: uppercase;">Question from Accountant:</strong>
-                    <p style="color: #ffffff; font-size: 14px; margin: 6px 0 0 0;">"{payload.query_text}"</p>
-                </div>
-                <div style="text-align: center; margin: 24px 0;">
-                    <a href="{magic_url}" style="background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block;">
-                        Review &amp; Provide Explanation →
-                    </a>
-                </div>
-                <p style="font-size: 11px; color: #64748b; text-align: center;">No password required • Secure 72-hour one-click access</p>
             </div>
             """
             try:
@@ -947,24 +972,40 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         subject = f"❓ [Action Required] Clarification requested on {len(txs)} transactions in watched accounts ({client_name})"
         
         items_html = "".join(
-            f"<li><strong>GHS {t.amount:,.2f}</strong> ({t.transaction_date}) - <code>{t.description}</code></li>"
+            f"<li style='margin-bottom: 8px; color: #334155; font-size: 13px;'><strong style='color: #0f172a; font-family: monospace;'>GHS {t.amount:,.2f}</strong> <span style='color: #64748b;'>({t.transaction_date})</span> &bull; <code style='background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: #0f172a;'>{t.description}</code></li>"
             for t in txs[:10]
         )
 
         html_content = f"""
-        <div style="font-family: sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px; border-radius: 12px;">
-            <h2 style="color: #38bdf8;">Clarification Needed on {len(txs)} Transactions in Watched Accounts</h2>
-            <p>Your accounting team has requested information on the following items for <strong>{client_name}</strong>:</p>
-            <div style="background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; padding: 12px; margin: 16px 0;">
-                <p style="margin: 0; color: #ffffff;">"{payload.query_text}"</p>
-            </div>
-            <ul style="color: #cbd5e1; font-size: 13px;">
-                {items_html}
-            </ul>
-            <div style="text-align: center; margin-top: 24px;">
-                <a href="{magic_url}" style="background: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                    Open Portal &amp; Provide Notes →
-                </a>
+        <div style="background-color: #f8fafc; padding: 32px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            <div style="background: #ffffff; color: #0f172a; padding: 32px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="display: inline-block; padding: 4px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 9999px; color: #0284c7; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+                    ❓ Bulk Information Request
+                </div>
+                <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">
+                    Clarification Needed on {len(txs)} Transactions in Watched Accounts
+                </h2>
+                <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">
+                    Your accounting team has requested information on the following items for <strong>{client_name}</strong>:
+                </p>
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 8px; margin: 16px 0 20px 0;">
+                    <div style="font-size: 11px; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Accountant's Question:</div>
+                    <p style="margin: 0; color: #0c4a6e; font-size: 14px; line-height: 1.5; font-style: italic;">"{payload.query_text}"</p>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 24px;">
+                    <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;">Pending Transactions:</div>
+                    <ul style="padding-left: 20px; margin: 0;">
+                        {items_html}
+                    </ul>
+                </div>
+                <div style="text-align: center; margin-top: 24px;">
+                    <a href="{magic_url}" style="background: #0284c7; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                        Open Portal &amp; Provide Notes &rarr;
+                    </a>
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 16px 0 0 0;">
+                    🔒 No password required &bull; Secure 72-hour one-click access
+                </p>
             </div>
         </div>
         """
