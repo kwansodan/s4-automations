@@ -1090,17 +1090,12 @@ class ZohoBooksService:
         if account_id:
             params["account_id"] = account_id
         if status and str(status).upper() != "ALL":
-            if str(status).lower() == "uncategorized":
-                params["transaction_status"] = "uncategorized"
-                params["filter_by"] = "Status.Uncategorized"
-            else:
-                params["filter_by"] = f"Status.{status.capitalize()}"
+            clean_status = str(status).strip().lower()
+            params["transaction_status"] = clean_status
         if date_start:
             params["date_start"] = date_start
-            params["from_date"] = date_start
         if date_end:
             params["date_end"] = date_end
-            params["to_date"] = date_end
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, headers=headers, params=params)
@@ -1109,7 +1104,12 @@ class ZohoBooksService:
                 headers = self._get_headers(access_token)
                 response = await client.get(url, headers=headers, params=params)
 
-            response.raise_for_status()
+            if response.status_code != 200:
+                logger.warning(
+                    f"Zoho /banktransactions error ({response.status_code}) for account {account_id}: {response.text}"
+                )
+                return []
+
             data = response.json()
             return data.get("banktransactions", [])
 
@@ -1312,7 +1312,9 @@ class ZohoBooksService:
         combined_txs: List[Dict[str, Any]] = []
         seen_keys = set()
 
-        def _add_tx(t: Dict[str, Any]):
+        def _add_tx(t: Any):
+            if not isinstance(t, dict):
+                return
             tid = str(t.get("transaction_id") or t.get("expense_id") or t.get("journal_id") or "")
             tdate = str(t.get("transaction_date") or t.get("date") or "")
             tamt = str(t.get("amount") or t.get("total") or t.get("debit_amount") or "")
@@ -1416,23 +1418,27 @@ class ZohoBooksService:
                 r_txs = []
                 if r_res.status_code == 200:
                     r_data = r_res.json()
-                    r_txs = (
+                    raw_candidate = (
                         r_data.get("register_transactions")
                         or r_data.get("account_transactions")
                         or r_data.get("transactions")
                         or []
                     )
+                    if isinstance(raw_candidate, list):
+                        r_txs = [item for item in raw_candidate if isinstance(item, dict)]
                 elif date_start or date_end:
                     # Fallback to no date filter
                     all_r_res = await client.get(reg_url, headers=headers, params={"organization_id": self.org_id})
                     if all_r_res.status_code == 200:
                         all_r_data = all_r_res.json()
-                        r_txs = (
+                        raw_candidate = (
                             all_r_data.get("register_transactions")
                             or all_r_data.get("account_transactions")
                             or all_r_data.get("transactions")
                             or []
                         )
+                        if isinstance(raw_candidate, list):
+                            r_txs = [item for item in raw_candidate if isinstance(item, dict)]
 
                 for r_item in r_txs:
                     _add_tx(r_item)
