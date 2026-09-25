@@ -24,6 +24,7 @@ import {
   Users,
   Globe,
   CreditCard,
+  Sparkles,
 } from 'lucide-react';
 
 interface SidebarProps {

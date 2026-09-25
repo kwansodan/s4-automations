@@ -117,7 +117,9 @@ export const InformationRequestsSection: React.FC = () => {
     setIsUploading(true);
     addLog('info', `[BANK] Ingesting bank statement (${file.name}) for ${currentClient.name}...`);
     try {
-      const res = await uploadBankStatement(currentClient.id, file, selectedMonth, selectedYear);
+      const yearNum = selectedYear && selectedYear !== 'ALL' ? Number(selectedYear) : undefined;
+      const monthVal = selectedMonth && selectedMonth !== 'ALL' ? selectedMonth : undefined;
+      const res = await uploadBankStatement(currentClient.id, file, monthVal, yearNum);
       addLog('success', `Bank statement parsed: ${res.newly_staged || 0} unmapped transactions staged.`);
       await loadData();
     } catch (err: any) {
