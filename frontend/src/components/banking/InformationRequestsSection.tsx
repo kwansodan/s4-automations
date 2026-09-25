@@ -10,9 +10,10 @@ import {
   bulkQueryBankTransactions,
   syncBankFeedsFromAccounting,
 } from '../../lib/api';
-import type {
-  BankTransactionRecord,
-  ChartOfAccountItem,
+import {
+  ACCOUNTING_PLATFORMS,
+  type BankTransactionRecord,
+  type ChartOfAccountItem,
 } from '../../types/client';
 import { QueryComposerModal } from '../modals/QueryComposerModal';
 import {
@@ -72,6 +73,16 @@ const YEAR_OPTIONS = [
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient, clients, setClient } = useClient();
   const { addLog, setActiveTab } = useAutomation();
+
+  const platformInfo = ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient?.accounting_software);
+  const platformName = platformInfo?.name || 'Accounting';
+  const platformFeedLabel = currentClient?.accounting_software === 'zoho_books'
+    ? 'Zoho Feeds'
+    : currentClient?.accounting_software === 'quickbooks_online'
+    ? 'QBO Suspense'
+    : currentClient?.accounting_software === 'xero'
+    ? 'Xero Suspense'
+    : 'Watched Feeds';
 
   const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
   const [metrics, setMetrics] = useState({
@@ -367,15 +378,15 @@ export const InformationRequestsSection: React.FC = () => {
               onClick={handleSyncFeeds}
               disabled={isSyncing}
               className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
-              title={`Pull live uncategorized & suspense transactions from ${currentClient?.accounting_software || 'connected accounting software'}`}
+              title={`Pull live uncategorized & suspense transactions from ${platformName}`}
             >
               <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>
                 {isSyncing
                   ? 'Syncing Feeds...'
                   : selectedMonth !== 'ALL'
-                  ? `Sync ${currentClient?.accounting_software === 'Zoho Books' ? 'Zoho Feeds' : currentClient?.accounting_software === 'QuickBooks Online' ? 'QBO Suspense' : currentClient?.accounting_software === 'Xero' ? 'Xero Suspense' : 'Watched Feeds'} (${selectedMonth.slice(0, 3)})`
-                  : `Sync Live Feeds (${currentClient?.accounting_software || 'Accounting'})`}
+                  ? `Sync ${platformFeedLabel} (${selectedMonth.slice(0, 3)})`
+                  : `Sync Live Feeds (${platformName})`}
               </span>
             </button>
 
@@ -873,7 +884,7 @@ export const InformationRequestsSection: React.FC = () => {
                 className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-sky-400' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync Watched Accounts'}
+                {isSyncing ? 'Syncing...' : `Sync Feeds from ${platformName}`}
               </button>
             </div>
           </div>
