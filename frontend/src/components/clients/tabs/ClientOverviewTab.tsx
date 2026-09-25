@@ -663,442 +663,173 @@ export const ClientOverviewTab: React.FC = () => {
 
       </div>
 
-      {/* 6. Active Pipelines Operations Hub (Hero Section) */}
-      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 space-y-4">
-        
-        {/* Section Header & Category Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+      {/* 6. Executive Action Queue: Daily Focus Items */}
+      <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-6 shadow-md space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#C4BA3B]">
           <div className="flex items-center gap-2.5">
-            <Layers className="w-5 h-5 text-sky-400" />
+            <div className="w-8 h-8 rounded-xl bg-[#F4ED6E] border border-[#C4BA3B] flex items-center justify-center text-[#E2495B]">
+              <Sparkles className="w-4 h-4" />
+            </div>
             <div>
-              <h2 className="text-sm font-extrabold text-white tracking-tight">
-                Configured Ingestion Pipelines &amp; Streams
+              <h2 className="text-base font-extrabold text-[#E2495B] tracking-tight">
+                Daily Bookkeeping Action Queue
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Multi-channel extraction matrix routing into staged accounting ledgers.
+              <p className="text-xs text-[#C4BA3B]">
+                Immediate items requiring review, classification, or client sign-off today.
               </p>
             </div>
           </div>
 
-          {/* Section Filter Tabs */}
-          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1 rounded-xl shrink-0 overflow-x-auto">
-            <button
-              onClick={() => setFilterSection('ALL')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                filterSection === 'ALL'
-                  ? 'bg-sky-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              All ({pipelines.length})
-            </button>
-            {arPipelines.length > 0 && (
-              <button
-                onClick={() => setFilterSection('AR')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  filterSection === 'AR'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                AR Revenue ({arPipelines.length})
-              </button>
-            )}
-            {apPipelines.length > 0 && (
-              <button
-                onClick={() => setFilterSection('AP')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  filterSection === 'AP'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                AP Bills ({apPipelines.length})
-              </button>
-            )}
-            {bankPipelines.length > 0 && (
-              <button
-                onClick={() => setFilterSection('BANK')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  filterSection === 'BANK'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Bank Feeds ({bankPipelines.length})
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => navigateToClientSubTab('pipelines')}
+            className="flex items-center gap-1.5 text-xs font-bold text-[#E2495B] hover:bg-[#F4ED6E] px-3.5 py-2 rounded-xl border border-[#C4BA3B] transition cursor-pointer self-start sm:self-auto"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Manage All Streams ({pipelines.length}) &rarr;</span>
+          </button>
         </div>
 
-        {/* Dynamic Pipelines Grid */}
-        {filteredPipelines.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredPipelines.map((pipe, idx) => {
-              const isPipeRunning = triggeringPipeId === pipe.id || (batchProgress?.currentName === pipe.name);
-              const isActive = pipe.is_active !== false && pipe.active !== false;
-
-              // Section style tagging
-              const isAr = pipe.section === 'AR' || pipe.entity_type?.startsWith('ar_') || pipe.entity_type?.startsWith('pos_');
-              const isAp = pipe.section === 'AP' || pipe.entity_type?.startsWith('ap_');
-              const isBank = pipe.section === 'BANK' || pipe.entity_type?.includes('statement') || pipe.entity_type?.includes('bank');
-
-              const sectionBadgeStyle = isAr
-                ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                : isAp
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                : isBank
-                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                : 'bg-purple-500/15 text-purple-300 border-purple-500/30';
-
-              const sectionLabel = isAr
-                ? 'AR • Sales Invoices & Revenue'
-                : isAp
-                ? 'AP • Vendor Bills & Payables'
-                : isBank
-                ? 'BANK • Statement & Feeds'
-                : `${pipe.section || 'GL'} • General Ledger`;
-
-              const ledgerSubTab = isAr ? 'ar' : isAp ? 'ap' : isBank ? 'bank' : 'pipelines';
-
-              // Source icon
-              const isDrive = pipe.source_type === 'google_drive';
-              const isEmail = pipe.source_type === 'email';
-              const isOneDrive = pipe.source_type === 'onedrive';
-              const isBankFeed = pipe.source_type === 'bank_feed';
-
-              const folderOrTarget =
-                pipe.folderId ||
-                pipe.folder_id ||
-                pipe.sourceEmail ||
-                pipe.source_email ||
-                pipe.source_identifier ||
-                currentClient.folderId ||
-                currentClient.folder_id ||
-                'Linked Target';
-
-              const lastRun = pipe.last_run_summary;
-
-              return (
-                <div
-                  key={pipe.id || idx}
-                  className={`bg-slate-900/70 border rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-slate-700 transition shadow-lg relative group ${
-                    !isActive ? 'opacity-70 border-slate-800/60' : 'border-slate-800'
-                  }`}
-                >
-                  <div>
-                    {/* Top Tag & Header Controls */}
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border uppercase tracking-wider ${sectionBadgeStyle}`}>
-                        {sectionLabel}
-                      </span>
-
-                      <div className="flex items-center gap-1.5">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isActive
-                            ? 'bg-emerald-950/80 border border-emerald-500/30 text-emerald-300'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-slate-500'}`} />
-                          <span>{isActive ? 'LIVE STREAM' : 'PAUSED'}</span>
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingPipeline(pipe);
-                            setIsWizardOpen(true);
-                          }}
-                          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-                          title="Configure Pipeline Stream"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Pipeline Name & Description */}
-                    <div>
-                      <h3 className="text-sm font-bold text-white group-hover:text-sky-300 transition-colors">
-                        {pipe.name}
-                      </h3>
-                      {pipe.notes && (
-                        <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{pipe.notes}</p>
-                      )}
-                    </div>
-
-                    {/* Source & Destination Routing Strip */}
-                    <div className="grid grid-cols-2 gap-2.5 mt-3.5 pt-3 border-t border-slate-800/80 text-xs">
-                      
-                      {/* Ingestion Source */}
-                      <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-850">
-                        <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">
-                          Source Ingestion
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {isDrive ? (
-                            <HardDrive className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                          ) : isEmail ? (
-                            <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          ) : isOneDrive ? (
-                            <Cloud className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          ) : isBankFeed ? (
-                            <Landmark className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          ) : (
-                            <Zap className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                          )}
-                          <span className="font-mono text-[11px] text-slate-200 truncate" title={folderOrTarget}>
-                            {folderOrTarget.length > 20 ? `${folderOrTarget.slice(0, 18)}...` : folderOrTarget}
-                          </span>
-                          {isDrive && (folderOrTarget.startsWith('1') || folderOrTarget.length > 15) && (
-                            <a
-                              href={`https://drive.google.com/drive/folders/${folderOrTarget}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-slate-400 hover:text-sky-400 ml-auto shrink-0"
-                              title="Open Google Drive folder"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Accounting Destination */}
-                      <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-850">
-                        <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">
-                          ERP Posting Target
-                        </span>
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs shrink-0">{currentPlatform.icon}</span>
-                            <span className="text-[11px] font-semibold text-slate-200 truncate">
-                              {currentPlatform.name}
-                            </span>
-                          </div>
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                              pipe.auto_post_to_zoho || pipe.auto_post_draft
-                                ? 'bg-indigo-950/80 text-indigo-300 border border-indigo-500/30'
-                                : 'bg-slate-800 text-slate-400'
-                            }`}
-                            title={pipe.auto_post_to_zoho || pipe.auto_post_draft ? 'Auto-Draft active' : 'Staged manual review'}
-                          >
-                            {pipe.auto_post_to_zoho || pipe.auto_post_draft ? 'Auto-Draft' : 'Review'}
-                          </span>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Schedule & Run Count Strip */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-0.5">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{pipe.cron_schedule_human || pipe.schedule || 'Scheduled / Daily @ 18:00 UTC'}</span>
-                      </span>
-                      {pipe.total_runs_count ? (
-                        <span className="font-mono text-slate-500 text-[10px]">
-                          {pipe.total_runs_count} total run{pipe.total_runs_count !== 1 ? 's' : ''}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {/* Last Run Telemetry Box */}
-                    {lastRun ? (
-                      <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 mt-3 space-y-2">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <div className="flex items-center gap-1.5 text-slate-400">
-                            <Clock className="w-3 h-3 text-sky-400" />
-                            <span>
-                              Last Run: {new Date(lastRun.triggered_at).toLocaleDateString()} {new Date(lastRun.triggered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-
-                          <span
-                            className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
-                              lastRun.status === 'COMPLETED_DUPLICATES_SKIPPED'
-                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                : lastRun.status === 'FAILED'
-                                ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                                : lastRun.items_extracted > 0
-                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            {lastRun.status === 'COMPLETED_DUPLICATES_SKIPPED'
-                              ? 'Duplicates Skipped'
-                              : lastRun.status === 'FAILED'
-                              ? 'Failed'
-                              : lastRun.items_extracted > 0
-                              ? `${lastRun.items_extracted} Staged`
-                              : 'Executed'}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-slate-300 line-clamp-2">
-                          {lastRun.summary_message}
-                        </p>
-
-                        {/* Telemetry Actions Strip */}
-                        <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[11px]">
-                          <button
-                            type="button"
-                            onClick={() => setActiveRunSummary(lastRun)}
-                            className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 cursor-pointer"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>Inspect Telemetry</span>
-                          </button>
-
-                          {lastRun.spreadsheet_url && !lastRun.spreadsheet_url.includes('mock_sheet') && (
-                            <a
-                              href={lastRun.spreadsheet_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 hover:underline"
-                            >
-                              <FileSpreadsheet className="w-3.5 h-3.5" />
-                              <span>Review Sheet</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-slate-950/50 border border-dashed border-slate-850 rounded-xl p-3 mt-3 text-center text-xs text-slate-500">
-                        <span>Awaiting initial run for {selectedMonth} {selectedYear}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card Action Controls Footer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => navigateToClientSubTab(ledgerSubTab as any)}
-                      className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <span>View Staged Ledger</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerStream(pipe.id, pipe.name)}
-                      disabled={isPipeRunning}
-                      className="flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-white bg-sky-950/80 hover:bg-sky-900/80 border border-sky-500/40 px-3.5 py-1.5 rounded-xl transition cursor-pointer disabled:opacity-50"
-                    >
-                      {isPipeRunning ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                          <span>Running...</span>
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Run Stream</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-10 px-4 rounded-2xl bg-slate-950/40 border border-dashed border-slate-800 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 mx-auto">
-              <Layers className="w-6 h-6" />
-            </div>
+        {/* 3 Core Action Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {/* Action 1: Bank & Reconciliations */}
+          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
             <div>
-              <h3 className="text-sm font-bold text-white">No Ingestion Pipelines Found</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                No active streams match the selected filter. Connect Google Drive, email inboxes, or bank statements to begin extracting transactions.
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Banking &amp; Suspense</span>
+                <Landmark className="w-4 h-4 text-[#E2495B]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#E2495B]">Clarifications &amp; Feeds</h3>
+              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+                Review unclassified bank transactions in monitored suspense accounts and query clients with 1-click links.
               </p>
             </div>
-            <button
-              onClick={() => {
-                setEditingPipeline(null);
-                setIsWizardOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Configure New Pipeline Stream</span>
-            </button>
+            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+              <button
+                onClick={() => navigateToClientSubTab('requests')}
+                className="w-full flex items-center justify-center gap-1.5 bg-[#E2495B] hover:bg-[#cf3c4e] text-[#FFFEE6] text-xs font-bold py-2 rounded-lg shadow-sm transition cursor-pointer"
+              >
+                <span>Open Bank Queue</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        )}
 
+          {/* Action 2: AR Revenue Slips */}
+          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Revenue Control</span>
+                <Receipt className="w-4 h-4 text-[#E2495B]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#E2495B]">AR Revenue Ledger</h3>
+              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+                {stagedCount > 0
+                  ? `${stagedCount} staged transactions (${currentClient.currency || 'GHS'} ${stagedAmount.toLocaleString()}) awaiting batch sign-off.`
+                  : 'All revenue slip extractions are up to date and reconciled.'}
+              </p>
+            </div>
+            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+              <button
+                onClick={() => navigateToClientSubTab('ar')}
+                className="w-full flex items-center justify-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] text-xs font-bold py-2 rounded-lg transition cursor-pointer"
+              >
+                <span>Review Revenue Ledger</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Action 3: AP Vendor Bills */}
+          <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-xl p-4 flex flex-col justify-between hover:border-[#E2495B] transition group">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-[#C4BA3B] uppercase tracking-wider">Vendor Expenses</span>
+                <DollarSign className="w-4 h-4 text-[#E2495B]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#E2495B]">AP Vendor Bills</h3>
+              <p className="text-xs text-[#C4BA3B] mt-1 leading-relaxed">
+                Inspect AI OCR vendor receipts, verify line-item tax breakdowns, and push draft bills to {currentPlatform.name}.
+              </p>
+            </div>
+            <div className="pt-4 mt-2 border-t border-[#C4BA3B]/60">
+              <button
+                onClick={() => navigateToClientSubTab('ap')}
+                className="w-full flex items-center justify-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B] text-xs font-bold py-2 rounded-lg transition cursor-pointer"
+              >
+                <span>Review Vendor Bills</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 7. Connected Infrastructure & Integration Status Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         
         {/* Accounting ERP Sync Status */}
-        <div className="glass-panel rounded-2xl p-4.5 shadow-lg border border-slate-800">
+        <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-base">{currentPlatform.icon}</span>
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-[#E2495B] uppercase tracking-wider">
                 Connected Accounting Platform
               </h3>
             </div>
             <button
               onClick={() => navigateToClientSubTab('settings')}
-              className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-[#E2495B] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Manage</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between">
+          <div className="bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl p-3 flex items-center justify-between">
             <div className="min-w-0">
-              <h4 className="text-xs font-bold text-white truncate">{currentPlatform.name}</h4>
-              <p className="text-[11px] text-slate-400 mt-0.5">{currentPlatform.targetProtocol}</p>
+              <h4 className="text-xs font-bold text-[#E2495B] truncate">{currentPlatform.name}</h4>
+              <p className="text-[11px] text-[#C4BA3B] mt-0.5">{currentPlatform.targetProtocol}</p>
               {currentClient.zohoOrg && (
-                <span className="text-[10px] font-mono text-slate-500 block mt-0.5">
+                <span className="text-[10px] font-mono text-[#C4BA3B] block mt-0.5">
                   Org ID: {currentClient.zohoOrg}
                 </span>
               )}
             </div>
 
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 shrink-0">
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#F4ED6E] border border-[#C4BA3B] text-[#E2495B] shrink-0">
               Live Connected
             </span>
           </div>
         </div>
 
         {/* Cloud Document Storage & Mailbox Feeds */}
-        <div className="glass-panel rounded-2xl p-4.5 shadow-lg border border-slate-800">
+        <div className="bg-[#FFFEE6] border-2 border-[#C4BA3B] rounded-2xl p-4.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-sky-400" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              <HardDrive className="w-4 h-4 text-[#E2495B]" />
+              <h3 className="text-xs font-bold text-[#E2495B] uppercase tracking-wider">
                 Monitored Storage &amp; Inboxes
               </h3>
             </div>
             <button
               onClick={() => navigateToClientSubTab('pipelines')}
-              className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-[#E2495B] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Pipelines</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between">
+          <div className="bg-[#FFFEE6] border border-[#C4BA3B] rounded-xl p-3 flex items-center justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white truncate">
+                <span className="text-xs font-bold text-[#E2495B] truncate">
                   {(currentClient.folderId || currentClient.folder_id)
                     ? 'Google Drive OCR Folder'
                     : 'Configured Ingestion Channels'}
                 </span>
               </div>
-              <p className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
+              <p className="text-[11px] font-mono text-[#C4BA3B] truncate mt-0.5">
                 {(currentClient.folderId || currentClient.folder_id)
                   ? `${(currentClient.folderId || currentClient.folder_id)!.slice(0, 24)}...`
                   : `${activePipelines.length} Active Storage Stream(s)`}
@@ -1110,7 +841,7 @@ export const ClientOverviewTab: React.FC = () => {
                 href={`https://drive.google.com/drive/folders/${currentClient.folderId || currentClient.folder_id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-slate-400 hover:text-sky-400 p-1.5 transition shrink-0"
+                className="text-[#C4BA3B] hover:text-[#E2495B] p-1.5 transition shrink-0"
                 title="Open in Google Drive"
               >
                 <ExternalLink className="w-4 h-4" />
@@ -1150,3 +881,4 @@ export const ClientOverviewTab: React.FC = () => {
     </div>
   );
 };
+

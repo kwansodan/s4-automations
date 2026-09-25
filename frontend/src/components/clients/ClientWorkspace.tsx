@@ -30,8 +30,7 @@ export const ClientWorkspace: React.FC = () => {
       {workspaceSubTab === 'overview' && <ClientOverviewTab />}
       {workspaceSubTab === 'ar' && <ClientArTab />}
       {workspaceSubTab === 'ap' && <ClientApTab />}
-      {workspaceSubTab === 'bank' && <ClientBankTab />}
-      {workspaceSubTab === 'requests' && <ClientRequestsTab />}
+      {(workspaceSubTab === 'bank' || workspaceSubTab === 'requests') && <ClientRequestsTab />}
       {workspaceSubTab === 'pipelines' && <ClientPipelinesTab />}
       {workspaceSubTab === 'settings' && <ClientSettingsTab />}
     </div>

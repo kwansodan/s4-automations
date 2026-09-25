@@ -62,84 +62,65 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setIsMobileOpen(false);
   };
 
-  const clientCoreNavItems: Array<{
-    sub: WorkspaceSubTab;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-  }> = [
-    { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
-  ];
-
-  const clientWatchedNavItems: Array<{
-    sub: WorkspaceSubTab;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-  }> = [
-    {
-      sub: 'requests',
-      label: isIndividualBusiness ? 'Clarification Requests' : 'Information Requests',
-      icon: ShieldCheck,
-      badge: 'Watched',
-    },
-  ];
-
-  const clientPipelineNavItems = React.useMemo(() => {
+  // Tier 1: Client Daily Bookkeeping Workspace
+  const clientWorkspaceNavItems = React.useMemo(() => {
     const items: Array<{
       sub: WorkspaceSubTab;
       label: string;
       icon: React.ComponentType<{ className?: string }>;
       badge?: string;
-    }> = [];
+    }> = [
+      { sub: 'overview', label: 'Executive Dashboard', icon: LayoutDashboard },
+    ];
+
     if (activeSections.hasAr) {
-      items.push({ sub: 'ar', label: isIndividualBusiness ? 'AR Revenue & Control Slips' : 'AR Revenue Ledger', icon: Receipt });
+      items.push({ sub: 'ar', label: isIndividualBusiness ? 'Revenue Slips' : 'AR Revenue Ledger', icon: Receipt });
     }
     if (activeSections.hasAp) {
       items.push({ sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign });
     }
-    if (activeSections.hasBank) {
-      items.push({ sub: 'bank', label: 'Bank Statements', icon: Landmark });
-    }
-    items.push({ sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` });
-    return items;
-  }, [activeSections, isIndividualBusiness, currentClient?.pipelines?.length]);
+    
+    // Unified Bank & Reconciliations (absorbs watched accounts, bank statements, client queries)
+    items.push({
+      sub: 'requests',
+      label: 'Bank & Reconciliations',
+      icon: Landmark,
+      badge: 'Live',
+    });
 
-  const clientConfigNavItems: Array<{
-    sub: WorkspaceSubTab;
+    return items;
+  }, [activeSections, isIndividualBusiness]);
+
+  // Tier 2: Operations, Automations & Master Data
+  const operationsNavItems: Array<{
+    tab?: ActiveTab;
+    sub?: WorkspaceSubTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
+    { sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
+    { tab: 'catalog', label: 'Master Item Catalog', icon: Package },
+    { tab: 'contacts', label: 'Contacts & Access', icon: Users },
+  ];
+
+  // Tier 3: Settings & Platform Administration
+  const settingsNavItems: Array<{
+    tab?: ActiveTab;
+    sub?: WorkspaceSubTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
     { sub: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
-  ];
-
-  const accountingSuiteNavItems: Array<{
-    tab: ActiveTab;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-  }> = [
-    { tab: 'contacts', label: 'Contacts & Team', icon: Users, badge: 'Invite' },
-    { tab: 'catalog', label: 'Master Item Catalog', icon: Package },
-  ];
-
-  const platformNavItems: Array<{
-    tab: ActiveTab;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-  }> = [
-    { tab: 'changelog', label: "What's New", icon: BookOpen },
-    { tab: 'social', label: 'Release Broadcaster', icon: Share2, badge: 'AI' },
     ...(user?.role === 'admin'
       ? [
-          { tab: 'billing' as ActiveTab, label: 'Billing & Subscriptions', icon: CreditCard, badge: 'Finance' },
-          { tab: 'landing-manager' as ActiveTab, label: 'Landing Page Manager', icon: Globe, badge: 'Public' },
           { tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' },
+          { tab: 'billing' as ActiveTab, label: 'Firm Billing', icon: CreditCard },
+          { tab: 'social' as ActiveTab, label: 'Release Hub', icon: Sparkles },
         ]
       : []),
-    { tab: 'logs', label: 'Live Telemetry Logs', icon: Terminal },
+    { tab: 'logs' as ActiveTab, label: 'System Logs', icon: Terminal },
   ];
 
   return (
@@ -262,15 +243,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
         {/* Navigation Links Scrollable Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar py-4 px-3 space-y-6">
           
-          {/* GROUP 1: ACTIVE CLIENT WORKSPACE */}
+          {/* TIER 1: CLIENT WORKSPACE */}
           <div className="space-y-1">
             {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                {isIndividualBusiness ? 'Company' : 'Client Workspace'}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C4BA3B] px-3 block mb-1.5 font-mono">
+                {isIndividualBusiness ? 'Company Books' : 'Client Books'}
               </span>
             )}
 
-            {clientCoreNavItems.map((item) => {
+            {clientWorkspaceNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
 
@@ -281,17 +262,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
                   title={isCollapsed ? item.label : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+                      ? 'bg-[#E2495B] text-[#FFFEE6] shadow-md shadow-[#E2495B]/30 font-bold'
+                      : 'text-[#C4BA3B] hover:text-[#E2495B] hover:bg-[#F4ED6E]'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#FFFEE6]' : 'text-[#C4BA3B]'}`} />
                   {!isCollapsed && (
                     <div className="flex items-center justify-between flex-1 min-w-0">
                       <span className="truncate">{item.label}</span>
                       {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                          isActive ? 'bg-[#cf3c4e] text-[#FFFEE6]' : 'bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B]'
                         }`}>
                           {item.badge}
                         </span>
@@ -303,36 +284,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             })}
           </div>
 
-          {/* GROUP 2: WATCHED ACCOUNTS & INFORMATION REQUESTS */}
+          {/* TIER 2: AUTOMATION & MASTER DATA */}
           <div className="space-y-1">
             {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400/80 px-3 block mb-1.5 font-mono">
-                Watched Accounts
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C4BA3B] px-3 block mb-1.5 font-mono">
+                Automations &amp; Setup
               </span>
             )}
 
-            {clientWatchedNavItems.map((item) => {
+            {operationsNavItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
+              const isActive = item.sub
+                ? activeTab === 'workspace' && workspaceSubTab === item.sub
+                : activeTab === item.tab;
 
               return (
                 <button
-                  key={item.sub}
-                  onClick={() => handleNav('workspace', item.sub)}
+                  key={item.label}
+                  onClick={() => (item.sub ? handleNav('workspace', item.sub) : handleNav(item.tab!))}
                   title={isCollapsed ? item.label : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-sky-300/90 hover:text-white hover:bg-slate-900/80'
+                      ? 'bg-[#E2495B] text-[#FFFEE6] shadow-md shadow-[#E2495B]/30 font-bold'
+                      : 'text-[#C4BA3B] hover:text-[#E2495B] hover:bg-[#F4ED6E]'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-sky-400'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#FFFEE6]' : 'text-[#C4BA3B]'}`} />
                   {!isCollapsed && (
                     <div className="flex items-center justify-between flex-1 min-w-0">
                       <span className="truncate">{item.label}</span>
                       {item.badge && (
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-sky-950 text-sky-300 border border-sky-500/30'
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                          isActive ? 'bg-[#cf3c4e] text-[#FFFEE6]' : 'bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B]'
                         }`}>
                           {item.badge}
                         </span>
@@ -344,159 +327,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             })}
           </div>
 
-          {/* GROUP 3: INGESTION PIPELINES */}
+          {/* TIER 3: SETTINGS & PLATFORM */}
           <div className="space-y-1">
             {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Ingestion Pipelines
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C4BA3B] px-3 block mb-1.5 font-mono">
+                Settings &amp; Platform
               </span>
             )}
 
-            {clientPipelineNavItems.map((item) => {
+            {settingsNavItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
+              const isActive = item.sub
+                ? activeTab === 'workspace' && workspaceSubTab === item.sub
+                : activeTab === item.tab;
 
               return (
                 <button
-                  key={item.sub}
-                  onClick={() => handleNav('workspace', item.sub)}
+                  key={item.label}
+                  onClick={() => (item.sub ? handleNav('workspace', item.sub) : handleNav(item.tab!))}
                   title={isCollapsed ? item.label : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+                      ? 'bg-[#E2495B] text-[#FFFEE6] shadow-md shadow-[#E2495B]/30 font-bold'
+                      : 'text-[#C4BA3B] hover:text-[#E2495B] hover:bg-[#F4ED6E]'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#FFFEE6]' : 'text-[#C4BA3B]'}`} />
                   {!isCollapsed && (
                     <div className="flex items-center justify-between flex-1 min-w-0">
                       <span className="truncate">{item.label}</span>
                       {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* GROUP 4: SETTINGS */}
-          <div className="space-y-1">
-            {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Settings
-              </span>
-            )}
-
-            {clientConfigNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
-
-              return (
-                <button
-                  key={item.sub}
-                  onClick={() => handleNav('workspace', item.sub)}
-                  title={isCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  {!isCollapsed && (
-                    <div className="flex items-center justify-between flex-1 min-w-0">
-                      <span className="truncate">{item.label}</span>
-                      {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* GROUP 5: ACCOUNTING SUITE (FIRM & PRACTICE TOOLS) */}
-          <div className="space-y-1">
-            {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Accounting Suite
-              </span>
-            )}
-
-            {accountingSuiteNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.tab;
-
-              return (
-                <button
-                  key={item.tab}
-                  onClick={() => handleNav(item.tab)}
-                  title={isCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  {!isCollapsed && (
-                    <div className="flex items-center justify-between flex-1 min-w-0">
-                      <span className="truncate">{item.label}</span>
-                      {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* GROUP 6: PLATFORM & SYSTEM MANAGEMENT */}
-          <div className="space-y-1">
-            {!isCollapsed && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 block mb-1.5 font-mono">
-                Platform &amp; System
-              </span>
-            )}
-
-            {platformNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.tab;
-
-              return (
-                <button
-                  key={item.tab}
-                  onClick={() => handleNav(item.tab)}
-                  title={isCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  {!isCollapsed && (
-                    <div className="flex items-center justify-between flex-1 min-w-0">
-                      <span className="truncate">{item.label}</span>
-                      {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                          isActive ? 'bg-[#cf3c4e] text-[#FFFEE6]' : 'bg-[#F4ED6E] text-[#E2495B] border border-[#C4BA3B]'
                         }`}>
                           {item.badge}
                         </span>

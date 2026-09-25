@@ -9,6 +9,7 @@ import {
   bulkCategorizeBankTransactions,
   bulkQueryBankTransactions,
   syncBankFeedsFromAccounting,
+  uploadBankStatement,
 } from '../../lib/api';
 import {
   ACCOUNTING_PLATFORMS,
@@ -18,6 +19,7 @@ import {
 import { QueryComposerModal } from '../modals/QueryComposerModal';
 import {
   Landmark,
+  UploadCloud,
   HelpCircle,
   Sparkles,
   CheckCircle2,
@@ -72,7 +74,7 @@ const YEAR_OPTIONS = [
 
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient, clients, setClient } = useClient();
-  const { addLog, setActiveTab } = useAutomation();
+  const { addLog, setActiveTab, selectedMonth: globalMonth, selectedYear: globalYear } = useAutomation();
 
   const platformInfo = ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient?.accounting_software);
   const platformName = platformInfo?.name || 'Accounting';
@@ -95,13 +97,36 @@ export const InformationRequestsSection: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Month & Year Filter State (Defaults to 'ALL' to show full queue until filtered)
-  const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
-  const [selectedYear, setSelectedYear] = useState<string>('ALL');
+  // Month & Year Filter State (Synchronized with Global Canonical Header Scope)
+  const [selectedMonth, setSelectedMonth] = useState<string>(globalMonth || 'ALL');
+  const [selectedYear, setSelectedYear] = useState<string>(globalYear ? String(globalYear) : 'ALL');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (globalMonth) setSelectedMonth(globalMonth);
+    if (globalYear) setSelectedYear(String(globalYear));
+  }, [globalMonth, globalYear]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentClient) return;
+    setIsUploading(true);
+    addLog('info', `[BANK] Ingesting bank statement (${file.name}) for ${currentClient.name}...`);
+    try {
+      const res = await uploadBankStatement(currentClient.id, file, selectedMonth, selectedYear);
+      addLog('success', `Bank statement parsed: ${res.newly_staged || 0} unmapped transactions staged.`);
+      await loadData();
+    } catch (err: any) {
+      addLog('error', `Bank statement upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
 
   // Chart of Accounts & Watched Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
@@ -389,6 +414,21 @@ export const InformationRequestsSection: React.FC = () => {
                   : `Sync Live Feeds (${platformName})`}
               </span>
             </button>
+
+            <label
+              className="flex items-center gap-1.5 bg-[#FFFEE6] hover:bg-[#F4ED6E] text-[#E2495B] text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#C4BA3B] transition cursor-pointer"
+              title="Upload bank statement (PDF or CSV)"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-[#E2495B]" />
+              <span>{isUploading ? 'Ingesting...' : 'Upload Statement'}</span>
+              <input
+                type="file"
+                accept=".pdf,.csv"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isUploading}
+              />
+            </label>
 
             <button
               onClick={() => setActiveTab('contacts')}
