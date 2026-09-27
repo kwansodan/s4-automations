@@ -341,7 +341,7 @@ export const ClientArTab: React.FC = () => {
   };
 
   const toTitleCase = (str?: string): string => {
-    if (!str) return '—';
+    if (!str) return '-';
     return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
   };
 
@@ -531,7 +531,7 @@ export const ClientArTab: React.FC = () => {
           slipKey: key,
           sourceFileName: tx.source_file_name || 'Slip Document',
           propertyName: prop,
-          slipDate: tx.transaction_date || '—',
+          slipDate: tx.transaction_date || '-',
           driveUrl,
           items: [],
           txIds: [],
@@ -1300,7 +1300,7 @@ export const ClientArTab: React.FC = () => {
                                   <span>-{lossQty} missing</span>
                                 </span>
                               ) : (
-                                <span className="text-slate-400 font-mono text-xs">—</span>
+                                <span className="text-slate-400 font-mono text-xs">-</span>
                               )}
                             </td>
                           </>
@@ -1445,7 +1445,7 @@ export const ClientArTab: React.FC = () => {
                                 ) : (
                                   <div className="bg-white px-2 py-1 rounded border border-[#E2E8F0] text-slate-400 whitespace-nowrap shadow-xs" title="No Loss">
                                     <span className="text-[10px] mr-1">LOSS</span>
-                                    <span>—</span>
+                                    <span>-</span>
                                   </div>
                                 )}
                               </>
@@ -1588,7 +1588,7 @@ export const ClientArTab: React.FC = () => {
                                                 <span>-{liveLoss} missing</span>
                                               </span>
                                             ) : (
-                                              <span className="text-slate-400 font-mono text-xs">—</span>
+                                              <span className="text-slate-400 font-mono text-xs">-</span>
                                             )}
                                           </td>
                                         </>
@@ -1715,7 +1715,7 @@ export const ClientArTab: React.FC = () => {
                                               <span>-{lossQty} missing</span>
                                             </span>
                                           ) : (
-                                            <span className="text-slate-400 font-mono text-xs">—</span>
+                                            <span className="text-slate-400 font-mono text-xs">-</span>
                                           )}
                                         </td>
                                       </>
@@ -1846,7 +1846,7 @@ export const ClientArTab: React.FC = () => {
 
                       return (
                         <tr key={tx.id} className="bg-sky-50/70 border-2 border-sky-400 shadow-xs">
-                          <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                          <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '-'}</td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             {driveUrl ? (
                               <a
@@ -1900,7 +1900,7 @@ export const ClientArTab: React.FC = () => {
                                     <span>-{liveLoss} missing</span>
                                   </span>
                                 ) : (
-                                  <span className="text-slate-400 font-mono text-xs">—</span>
+                                  <span className="text-slate-400 font-mono text-xs">-</span>
                                 )}
                               </td>
                             </>
@@ -2000,7 +2000,7 @@ export const ClientArTab: React.FC = () => {
                           tx.approved ? 'bg-emerald-50/40' : (isCustodyTracking && lossQty > 0) ? 'border-l-2 border-l-rose-500 bg-rose-50/40' : ''
                         }`}
                       >
-                        <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '-'}</td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           {driveUrl ? (
                             <a
@@ -2042,7 +2042,7 @@ export const ClientArTab: React.FC = () => {
                                   <span>-{lossQty} missing</span>
                                 </span>
                               ) : (
-                                <span className="text-slate-400 font-mono text-xs">—</span>
+                                <span className="text-slate-400 font-mono text-xs">-</span>
                               )}
                             </td>
                           </>

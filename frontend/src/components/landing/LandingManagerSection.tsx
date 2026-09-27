@@ -698,11 +698,11 @@ export const LandingManagerSection: React.FC = () => {
                               <ExternalLink className="w-2.5 h-2.5" />
                             </a>
                           ) : (
-                            '—'
+                            '-'
                           )}
                         </td>
                         <td className="py-3 px-2 text-[11px] text-slate-400">
-                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}
+                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '-'}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <select

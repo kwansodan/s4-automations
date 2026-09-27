@@ -246,7 +246,7 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
     }
   }
 
-  const networkErrMessage = `Cannot reach S4 backend — tried ${failedHosts.join(', ')}. The browser network request could not complete.`;
+  const networkErrMessage = `Cannot reach S4 backend - tried ${failedHosts.join(', ')}. The browser network request could not complete.`;
 
   if (typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
     (window as any).__S4_REPORT_ERROR__({

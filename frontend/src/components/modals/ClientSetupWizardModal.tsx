@@ -1401,10 +1401,10 @@ export const ClientSetupWizardModal: React.FC = () => {
                           }}
                           className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
                         >
-                          <option value="AR">AR — Accounts Receivable (Sales / Income)</option>
-                          <option value="AP">AP — Accounts Payable (Bills / Expenses)</option>
-                          <option value="BANK">BANK — Bank Feeds &amp; Statements</option>
-                          <option value="GL">GL — General Ledger Journals</option>
+                          <option value="AR">AR - Accounts Receivable (Sales / Income)</option>
+                          <option value="AP">AP - Accounts Payable (Bills / Expenses)</option>
+                          <option value="BANK">BANK - Bank Feeds &amp; Statements</option>
+                          <option value="GL">GL - General Ledger Journals</option>
                         </select>
                       </div>
 

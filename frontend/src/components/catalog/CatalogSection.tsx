@@ -119,7 +119,7 @@ export const CatalogSection: React.FC = () => {
                 filteredItems.map((item) => (
                   <tr key={item.item_id} className="hover:bg-slate-850/50 transition-colors">
                     <td className="py-3 px-4 font-bold text-white">{item.name}</td>
-                    <td className="py-3 px-4 text-slate-400">{item.description || '—'}</td>
+                    <td className="py-3 px-4 text-slate-400">{item.description || '-'}</td>
                     <td className="py-3 px-4 font-mono text-sky-400 text-[11px]">{item.item_id}</td>
                     <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
                       {formatCurrency(item.rate)}

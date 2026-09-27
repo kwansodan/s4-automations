@@ -148,7 +148,7 @@ class SocialBroadcasterService:
         """Uses Google Gemini to craft tailored copy across LinkedIn, X/Twitter, Client Email, and Changelog."""
         
         prompt = f"""
-You are an elite B2B product marketing director and senior accounting software architect for "S4 Automations" — an enterprise multi-tenant accounting and document ingestion automation engine.
+You are an elite B2B product marketing director and senior accounting software architect for "S4 Automations" - an enterprise multi-tenant accounting and document ingestion automation engine.
 S4 Automations eliminates manual data entry for accounting firms, CFOs, and finance teams by automating:
 - Accounts Receivable (AR): Handwritten slips & invoices extracted with Gemini Vision AI, reviewed in Google Sheets, and drafted into Zoho Books/QuickBooks/Xero.
 - Accounts Payable (AP): Vendor bills ingestion, OCR, validation, duplicate prevention, and auto-posting.

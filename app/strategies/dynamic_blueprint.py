@@ -362,7 +362,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     })
                     self.log_step(
                         "DEDUPLICATION",
-                        f"Skipped duplicate '{doc.file_name}' — already processed and recorded in ledger.",
+                        f"Skipped duplicate '{doc.file_name}' - already processed and recorded in ledger.",
                         "duplicate",
                         {"file_name": doc.file_name, "checksum": checksum[:12]},
                     )

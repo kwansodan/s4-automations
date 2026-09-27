@@ -431,8 +431,8 @@ export const AudienceManagerModal: React.FC<AudienceManagerModalProps> = ({
                               <div className="text-[11px] text-amber-300/80 font-mono">{sub.email}</div>
                             </td>
                             <td className="py-2.5 px-3">
-                              <div className="text-slate-200">{sub.company || '—'}</div>
-                              <div className="text-[10px] text-slate-500">{sub.role_or_title || '—'}</div>
+                              <div className="text-slate-200">{sub.company || '-'}</div>
+                              <div className="text-[10px] text-slate-500">{sub.role_or_title || '-'}</div>
                             </td>
                             <td className="py-2.5 px-3">
                               <span

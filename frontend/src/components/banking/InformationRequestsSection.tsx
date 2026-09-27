@@ -633,7 +633,7 @@ export const InformationRequestsSection: React.FC = () => {
                       >
                         <span className="w-2 h-2 rounded-full bg-[#0284C7]" />
                         <span className="font-mono font-bold">{code}</span>
-                        {label !== code && <span className="text-slate-700">— {label}</span>}
+                        {label !== code && <span className="text-slate-700">- {label}</span>}
                         <button
                           type="button"
                           onClick={() => setWatchedAccounts(watchedAccounts.filter((c) => c !== code))}

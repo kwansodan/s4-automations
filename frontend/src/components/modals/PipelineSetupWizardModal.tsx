@@ -831,10 +831,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
                   >
-                    <option value="AR">🔵 Accounts Receivable (AR) — Revenue &amp; Customer Invoices</option>
-                    <option value="AP">🟠 Accounts Payable (AP) — Vendor Bills &amp; Expenses</option>
-                    <option value="BANK">🟢 Banking &amp; Treasury (BANK) — Statements &amp; MoMo Feeds</option>
-                    <option value="GL">🟣 General Ledger (GL) — Manual Journal Entries</option>
+                    <option value="AR">🔵 Accounts Receivable (AR) - Revenue &amp; Customer Invoices</option>
+                    <option value="AP">🟠 Accounts Payable (AP) - Vendor Bills &amp; Expenses</option>
+                    <option value="BANK">🟢 Banking &amp; Treasury (BANK) - Statements &amp; MoMo Feeds</option>
+                    <option value="GL">🟣 General Ledger (GL) - Manual Journal Entries</option>
                   </select>
                 </div>
 
@@ -1190,7 +1190,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       />
                       <div>
                         <span className="font-semibold text-white block">Lookback Grace Window</span>
-                        <span className="text-[10px] text-slate-400">Scan prior month during days 1–7 to catch late-arriving bills.</span>
+                        <span className="text-[10px] text-slate-400">Scan prior month during days 1-7 to catch late-arriving bills.</span>
                       </div>
                     </label>
 
