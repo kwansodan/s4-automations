@@ -6,7 +6,7 @@ import { state } from '../state.js';
 import { requestOtp, verifyOtp } from '../api.js';
 
 let currentStep = 'request'; // 'request' | 'verify'
-let userEmail = 's4bookkeeping@service4gh.com';
+let userEmail = '';
 let enteredOtp = '';
 let isLoading = false;
 let errorMessage = '';
@@ -77,7 +77,7 @@ export function renderLoginView(container) {
           <form id="formRequestOtp" class="login-form">
             <div class="form-group" style="margin-bottom: 1.25rem;">
               <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: var(--text-color);">
-                Authorized Administrator Email
+                Work Email Address
               </label>
               <div style="position: relative;">
                 <input 
@@ -85,7 +85,7 @@ export function renderLoginView(container) {
                   id="inputAuthEmail" 
                   class="form-control" 
                   value="${userEmail}" 
-                  placeholder="s4bookkeeping@service4gh.com"
+                  placeholder="name@company.com"
                   required 
                   style="font-size: 0.95rem; padding-left: 2.5rem;"
                   ${isLoading ? 'disabled' : ''}
@@ -93,7 +93,7 @@ export function renderLoginView(container) {
                 <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); font-size: 1rem;">✉️</span>
               </div>
               <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
-                A 6-digit single-use login code will be sent to this email address.
+                Enter your authorized work email to receive a single-use 6-digit verification code.
               </div>
             </div>
 

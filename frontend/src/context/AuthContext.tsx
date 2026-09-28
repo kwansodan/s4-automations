@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       isAuthenticated: Boolean(token),
       token: token || null,
-      user: user || (token ? { email: 's4bookkeeping@service4gh.com', name: 'S4 Bookkeeping Admin', role: 'admin' } : null),
+      user: user || (token ? { email: '', name: 'Authenticated Member', role: 'member' } : null),
     };
   });
 

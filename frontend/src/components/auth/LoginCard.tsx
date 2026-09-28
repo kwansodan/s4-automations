@@ -10,7 +10,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
   const { requestOtp, verifyOtp } = useAuth();
 
   const [step, setStep] = useState<'request' | 'verify'>('request');
-  const [email, setEmail] = useState('s4bookkeeping@service4gh.com');
+  const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -156,7 +156,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
           <form onSubmit={handleRequestSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Authorized Administrator Email
+                Work Email Address
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -164,14 +164,14 @@ export const LoginCard: React.FC<LoginCardProps> = ({ onBackToLanding }) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="s4bookkeeping@service4gh.com"
+                  placeholder="name@company.com"
                   required
                   disabled={isLoading}
                   className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] transition-all disabled:opacity-50 shadow-xs"
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                A single-use 6-digit login code will be sent to this email address.
+                Enter your authorized work email to receive a single-use 6-digit verification code.
               </p>
             </div>
 
