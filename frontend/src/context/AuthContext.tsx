@@ -18,7 +18,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { isAuthenticated: false, user: null, token: null };
     }
     
-    // Check URL parameters for explicit logout
+    // Check URL parameters for explicit logout or 1-click magic auto-login
     if (typeof window !== 'undefined' && window?.location) {
       const search = window.location.search || '';
       const hash = window.location.hash || '';
@@ -26,6 +26,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('S4_AUTH_TOKEN');
         localStorage.removeItem('S4_AUTH_USER');
         return { isAuthenticated: false, user: null, token: null };
+      }
+
+      // Check URL parameters for 1-click team invitation magic login
+      const params = new URLSearchParams(search);
+      const urlAuthToken = params.get('auth_token');
+      if (urlAuthToken) {
+        localStorage.setItem('S4_AUTH_TOKEN', urlAuthToken);
+        params.delete('auth_token');
+        const newSearch = params.toString() ? `?${params.toString()}` : '';
+        try {
+          window.history.replaceState({}, '', window.location.pathname + newSearch);
+        } catch (_) {}
+        return {
+          isAuthenticated: true,
+          token: urlAuthToken,
+          user: null,
+        };
       }
     }
 

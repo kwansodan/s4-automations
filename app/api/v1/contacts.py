@@ -160,7 +160,10 @@ async def _dispatch_firm_team_invite(
 ) -> bool:
     """Sends a welcome email to a new accounting firm staff member."""
     subject = f"🤝 Welcome to {firm_name} Client Management Team"
-    portal_url = settings.APP_BASE_URL.rstrip("/")
+    # Generate direct 1-click login token for seamless onboarding
+    from app.services.auth_service import AuthService
+    magic_token = AuthService._create_token(member.email, role=member.role)
+    portal_url = f"{settings.APP_BASE_URL.rstrip('/')}/?auth_token={magic_token}"
     html_content = f"""
     <div style="background-color: #f8fafc; padding: 36px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="background: #ffffff; color: #0f172a; padding: 36px; border-radius: 16px; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -182,10 +185,13 @@ async def _dispatch_firm_team_invite(
                 </p>
             </div>
             <div style="text-align: center; margin: 28px 0 16px 0;">
-                <a href="{portal_url}" style="background: #0284c7; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
-                    Launch Management Console &rarr;
+                <a href="{portal_url}" style="background: #0284c7; color: #ffffff; padding: 13px 32px; border-radius: 8px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
+                    Launch Management Console (1-Click Access) &rarr;
                 </a>
             </div>
+            <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin: 0;">
+                🔒 This magic link provides instant, 1-click access to the console. You can also sign in anytime using your email address with a 6-digit verification code.
+            </p>
             <div style="border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
                 S4 Automations &bull; Chartered Accounting &amp; Workflow Intelligence
             </div>

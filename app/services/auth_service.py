@@ -32,12 +32,29 @@ class AuthService:
         cleaned_email = email.strip().lower()
         allowed_email = settings.AUTH_EMAIL.strip().lower()
 
-        if cleaned_email != allowed_email:
+        is_admin = (cleaned_email == allowed_email)
+        is_team_member = False
+
+        if not is_admin:
+            try:
+                from app.models.db_models import FirmTeamMember
+                with Session(get_engine()) as session:
+                    member = session.exec(
+                        select(FirmTeamMember)
+                        .where(FirmTeamMember.email == cleaned_email)
+                        .where(FirmTeamMember.status.in_(["ACTIVE", "INVITED"]))
+                    ).first()
+                    if member:
+                        is_team_member = True
+            except Exception as e:
+                logger.error(f"Error checking firm team member table: {e}")
+
+        if not (is_admin or is_team_member):
             logger.warning(f"Unauthorized OTP request attempt for email: {cleaned_email}")
             return {
                 "success": False,
                 "status": "UNAUTHORIZED",
-                "message": f"Email '{email}' is not authorized for S4 Automations admin access.",
+                "message": f"Email '{email}' is not authorized. Please ask your administrator to invite you to the firm team.",
             }
 
         # Generate 6-digit cryptographically secure numeric OTP
@@ -196,7 +213,26 @@ class AuthService:
                 "message": f"Database verification error: {str(e)}",
             }
 
-        token = cls._create_token(cleaned_email)
+        user_name = "S4 Bookkeeping Admin" if cleaned_email == settings.AUTH_EMAIL.strip().lower() else "Team Member"
+        user_role = "admin" if cleaned_email == settings.AUTH_EMAIL.strip().lower() else "SENIOR_ACCOUNTANT"
+
+        try:
+            from app.models.db_models import FirmTeamMember
+            with Session(get_engine()) as session:
+                member = session.exec(
+                    select(FirmTeamMember).where(FirmTeamMember.email == cleaned_email)
+                ).first()
+                if member:
+                    member.status = "ACTIVE"
+                    member.last_login_at = datetime.now(timezone.utc)
+                    session.add(member)
+                    session.commit()
+                    user_name = member.name
+                    user_role = member.role
+        except Exception as e:
+            logger.warning(f"Could not update FirmTeamMember status on login: {e}")
+
+        token = cls._create_token(cleaned_email, role=user_role)
         current_org, orgs = cls.get_user_organizations(cleaned_email)
         logger.info(f"✅ User {cleaned_email} successfully authenticated via Email OTP ({current_org['org_type']}).")
 
@@ -207,15 +243,15 @@ class AuthService:
             "token_type": "bearer",
             "user": {
                 "email": cleaned_email,
-                "name": "S4 Bookkeeping Admin",
-                "role": "admin",
+                "name": user_name,
+                "role": user_role,
                 "organization": current_org,
                 "organizations": orgs,
             },
         }
 
     @classmethod
-    def _create_token(cls, email: str) -> str:
+    def _create_token(cls, email: str, role: str = "admin") -> str:
         """Generates a secure HMAC-signed bearer token with 30-day TTL."""
         import base64
         import json
@@ -224,7 +260,7 @@ class AuthService:
         expires_at = issued_at + (30 * 86400)  # 30 days
         payload = {
             "sub": email,
-            "role": "admin",
+            "role": role,
             "iat": issued_at,
             "exp": expires_at,
             "nonce": secrets.token_hex(8),
@@ -269,10 +305,25 @@ class AuthService:
             email = payload.get("sub", "")
             current_org, orgs = cls.get_user_organizations(email)
 
+            user_name = "S4 Bookkeeping Admin" if email.strip().lower() == settings.AUTH_EMAIL.strip().lower() else "Team Member"
+            user_role = payload.get("role", "admin")
+
+            try:
+                from app.models.db_models import FirmTeamMember
+                with Session(get_engine()) as session:
+                    member = session.exec(
+                        select(FirmTeamMember).where(FirmTeamMember.email == email.strip().lower())
+                    ).first()
+                    if member:
+                        user_name = member.name
+                        user_role = member.role
+            except Exception:
+                pass
+
             return {
                 "email": email,
-                "name": "S4 Bookkeeping Admin",
-                "role": payload.get("role", "admin"),
+                "name": user_name,
+                "role": user_role,
                 "organization": current_org,
                 "organizations": orgs,
             }
