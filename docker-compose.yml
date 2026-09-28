@@ -17,10 +17,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       default:
+        aliases:
+          - app
+          - anr-backend
+          - s4-backend
       proxy:
         aliases:
+          - app
           - anr-backend
           - s4-backend
 
@@ -77,11 +88,13 @@ services:
     restart: unless-stopped
     ports:
       - "${INNGEST_DEV_PORT:-8288}:8288"
-    command: inngest dev -u http://app:8000/api/inngest
+    command: inngest dev --host 0.0.0.0 -u http://app:8000/api/inngest
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     networks:
       - default
+      - proxy
 
 volumes:
   postgres_data:

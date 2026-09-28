@@ -106,7 +106,13 @@ async def ensure_json_content_type(request: Request, call_next):
         return Response(status_code=499)
 
 
-# Mount durable Inngest functions (disable unauthed sync in production)
+# Mount durable Inngest functions (allow unauthed sync in dev or when local inngest dev server is used)
+enable_unauthed_sync = (
+    settings.ENVIRONMENT.lower() != "production"
+    or bool(settings.INNGEST_DEV_SERVER_URL)
+    or os.environ.get("INNGEST_DEV") == "1"
+)
+
 inngest.fast_api.serve(
     app,
     inngest_client,
@@ -117,7 +123,7 @@ inngest.fast_api.serve(
         inngest_ap_pipeline_fn,
         inngest_bank_statement_fn,
     ],
-    enable_unauthed_sync=(settings.ENVIRONMENT.lower() != "production"),
+    enable_unauthed_sync=enable_unauthed_sync,
 )
 
 
