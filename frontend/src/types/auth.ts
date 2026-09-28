@@ -3,7 +3,7 @@ import type { Organization } from './client';
 export interface AuthUser {
   email: string;
   name: string;
-  role: 'admin' | 'bookkeeper' | 'auditor';
+  role: 'admin' | 'bookkeeper' | 'auditor' | string;
   organization?: Organization;
   organizations?: Organization[];
 }
