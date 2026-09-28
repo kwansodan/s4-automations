@@ -271,6 +271,10 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Sync backend server errors and warnings continuously into ErrorContext
   const syncServerIssues = useCallback(
     async (isInitial = false) => {
+      // Do not poll server errors if visitor is unauthenticated
+      if (typeof localStorage === 'undefined' || !localStorage.getItem('S4_AUTH_TOKEN')) {
+        return;
+      }
       try {
         const sinceSeq = isInitial ? 0 : lastSeqRef.current;
         const res = await fetchServerErrorsApi(25, sinceSeq, true);
