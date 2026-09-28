@@ -103,13 +103,13 @@ class Settings(BaseSettings):
 
     # Application Frontend URL
     APP_BASE_URL: str = Field(
-        default="https://s4automations.service4gh.com",
+        default="https://aut.service4gh.com",
         description="Public base URL of the frontend application (used for email alerts and magic links)",
     )
 
     # CORS Allowed Origins
     ALLOWED_ORIGINS: str = Field(
-        default="https://s4automations.service4gh.com,https://autapi.service4gh.com,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8000",
+        default="https://aut.service4gh.com,https://autapi.service4gh.com,https://s4automations.service4gh.com,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8000",
         description="Comma-separated list of allowed CORS origins",
     )
 
@@ -171,6 +171,7 @@ class Settings(BaseSettings):
             "ENVIRONMENT": self.ENVIRONMENT,
             "LOG_LEVEL": self.LOG_LEVEL,
             "MOCK_MODE": self.MOCK_MODE,
+            "APP_BASE_URL": self.APP_BASE_URL,
         }
 
     def update_values(self, new_values: dict):
@@ -231,6 +232,7 @@ class Settings(BaseSettings):
             f"ENVIRONMENT={self.ENVIRONMENT}",
             f"LOG_LEVEL={self.LOG_LEVEL}",
             f"MOCK_MODE={'true' if self.MOCK_MODE else 'false'}",
+            f"APP_BASE_URL={self.APP_BASE_URL}",
         ]
         with open(env_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")

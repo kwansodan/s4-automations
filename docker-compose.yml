@@ -14,6 +14,7 @@ services:
       - INNGEST_DEV_SERVER_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_BASE_URL=${INNGEST_DEV_SERVER_URL:-http://inngest:8288}
       - INNGEST_DEV=1
+      - APP_BASE_URL=${APP_BASE_URL:-https://aut.service4gh.com}
     depends_on:
       postgres:
         condition: service_healthy

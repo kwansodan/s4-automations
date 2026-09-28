@@ -843,7 +843,7 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
 
         # Generate Magic Link for 1-click response
         magic_token = generate_magic_link_token(tx.client_id, client_name, tx.id)
-        magic_url = f"https://s4automations.service4gh.com/?portal_magic={magic_token}"
+        magic_url = f"{settings.APP_BASE_URL.rstrip('/')}/?portal_magic={magic_token}"
 
         # Target recipient
         target_email = payload.recipient_email
@@ -966,7 +966,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         session.commit()
 
         magic_token = generate_magic_link_token(client_id, client_name, None)
-        magic_url = f"https://s4automations.service4gh.com/?portal_magic={magic_token}"
+        magic_url = f"{settings.APP_BASE_URL.rstrip('/')}/?portal_magic={magic_token}"
 
         target_email = payload.recipient_email or settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
         subject = f"❓ [Action Required] Clarification requested on {len(txs)} transactions in watched accounts ({client_name})"
