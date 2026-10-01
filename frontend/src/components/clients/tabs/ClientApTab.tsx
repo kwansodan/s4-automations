@@ -11,7 +11,7 @@ import {
   createClientTransaction,
   triggerApPipeline,
 } from '../../../lib/api';
-import { formatCurrency } from '../../../lib/utils';
+import { formatCurrency, downloadTxt } from '../../../lib/utils';
 import {
   DollarSign,
   PlayCircle,
@@ -38,6 +38,7 @@ import {
   Check,
   Save,
   X,
+  Download,
 } from 'lucide-react';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 
@@ -489,39 +490,40 @@ export const ClientApTab: React.FC = () => {
     defaultDate: string;
   }
 
-  const missingPeriods = useMemo<MissingPeriod[]>(() => {
-    if (missingCadence === 'disabled') return [];
-    if (!selectedMonth || !selectedYear) return [];
-    const monthIdx = MONTHS.indexOf(selectedMonth);
+  const computeMissingGapsForApTx = (
+    txList: any[],
+    cadence: 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled',
+    month: string,
+    year: string | number
+  ): MissingPeriod[] => {
+    if (cadence === 'disabled') return [];
+    if (!month || !year) return [];
+    const monthIdx = MONTHS.indexOf(month);
     if (monthIdx === -1) return [];
 
-    const yearNum = Number(selectedYear);
+    const yearNum = Number(year);
     const daysInMonth = new Date(yearNum, monthIdx + 1, 0).getDate();
     const today = new Date();
     const isCurrentMonthYear = today.getFullYear() === yearNum && today.getMonth() === monthIdx;
     const maxDay = isCurrentMonthYear ? today.getDate() : daysInMonth;
 
-    const targetTx = vendorFilter === 'ALL'
-      ? apTransactions
-      : apTransactions.filter((t) => (t.item_or_description || '').trim() === vendorFilter);
-
     const presentDates = new Set(
-      targetTx.map((t) => t.transaction_date).filter(Boolean)
+      txList.map((t) => t.transaction_date).filter(Boolean)
     );
 
     const gaps: MissingPeriod[] = [];
 
-    if (missingCadence === 'daily') {
+    if (cadence === 'daily') {
       for (let d = 1; d <= maxDay; d++) {
         const dStr = String(d).padStart(2, '0');
         const mStr = String(monthIdx + 1).padStart(2, '0');
         const fullDate = `${yearNum}-${mStr}-${dStr}`;
         if (!presentDates.has(fullDate)) {
-          const shortName = `${selectedMonth.slice(0, 3)} ${dStr}`;
+          const shortName = `${month.slice(0, 3)} ${dStr}`;
           gaps.push({ key: fullDate, label: shortName, defaultDate: fullDate });
         }
       }
-    } else if (missingCadence === 'weekly') {
+    } else if (cadence === 'weekly') {
       const weeks = [
         { name: 'Week 1', start: 1, end: 7 },
         { name: 'Week 2', start: 8, end: 14 },
@@ -546,13 +548,13 @@ export const ClientApTab: React.FC = () => {
             const midDay = String(Math.min(w.start, maxDay)).padStart(2, '0');
             gaps.push({
               key: `${yearNum}-${mStr}-w${w.name}`,
-              label: `${w.name} (${selectedMonth.slice(0, 3)} ${w.start}-${endDay})`,
+              label: `${w.name} (${month.slice(0, 3)} ${w.start}-${endDay})`,
               defaultDate: `${yearNum}-${mStr}-${midDay}`,
             });
           }
         }
       });
-    } else if (missingCadence === 'fortnightly') {
+    } else if (cadence === 'fortnightly') {
       const fn1End = Math.min(14, maxDay);
       let fn1HasBill = false;
       for (let d = 1; d <= fn1End; d++) {
@@ -567,7 +569,7 @@ export const ClientApTab: React.FC = () => {
       if (!fn1HasBill) {
         gaps.push({
           key: `${yearNum}-${mStr}-fn1`,
-          label: `1st Fortnight (${selectedMonth.slice(0, 3)} 01-14)`,
+          label: `1st Fortnight (${month.slice(0, 3)} 01-14)`,
           defaultDate: `${yearNum}-${mStr}-01`,
         });
       }
@@ -583,24 +585,135 @@ export const ClientApTab: React.FC = () => {
         if (!fn2HasBill) {
           gaps.push({
             key: `${yearNum}-${mStr}-fn2`,
-            label: `2nd Fortnight (${selectedMonth.slice(0, 3)} 15-${daysInMonth})`,
+            label: `2nd Fortnight (${month.slice(0, 3)} 15-${daysInMonth})`,
             defaultDate: `${yearNum}-${mStr}-15`,
           });
         }
       }
-    } else if (missingCadence === 'monthly') {
+    } else if (cadence === 'monthly') {
       if (presentDates.size === 0) {
         const mStr = String(monthIdx + 1).padStart(2, '0');
         gaps.push({
           key: `${yearNum}-${mStr}-full`,
-          label: `${selectedMonth} ${yearNum}`,
+          label: `${month} ${yearNum}`,
           defaultDate: `${yearNum}-${mStr}-01`,
         });
       }
     }
 
     return gaps;
+  };
+
+  const missingPeriods = useMemo<MissingPeriod[]>(() => {
+    const targetTx = vendorFilter === 'ALL'
+      ? apTransactions
+      : apTransactions.filter((t) => (t.item_or_description || '').trim() === vendorFilter);
+
+    return computeMissingGapsForApTx(targetTx, missingCadence, selectedMonth, selectedYear);
   }, [missingCadence, selectedMonth, selectedYear, apTransactions, vendorFilter]);
+
+  const handleExportMissingPeriodsTxt = () => {
+    if (missingCadence === 'disabled') {
+      alert('Missing activity detection is currently disabled. Please select a cadence first.');
+      return;
+    }
+
+    const timestamp = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    const isFiltered = vendorFilter !== 'ALL';
+    const clientName = currentClient?.name || 'Client';
+    const cadenceLabel = missingCadence === 'daily' ? 'Daily Gaps' : missingCadence === 'weekly' ? 'Weekly Gaps' : missingCadence === 'fortnightly' ? 'Fortnightly Gaps' : 'Monthly Gaps';
+    const unitLabel = missingCadence === 'daily' ? 'days' : missingCadence === 'weekly' ? 'weeks' : missingCadence === 'fortnightly' ? 'fortnights' : 'months';
+
+    let txt = '';
+    txt += '================================================================================\n';
+    txt += `                    MISSING ACTIVITY REPORT (VENDOR BILLS)\n`;
+    txt += '================================================================================\n';
+    txt += `Client:       ${clientName}\n`;
+    txt += `Period:       ${selectedMonth} ${selectedYear}\n`;
+    txt += `Cadence:      ${cadenceLabel}\n`;
+    txt += `Filter Scope: ${isFiltered ? `Vendor: ${vendorFilter}` : 'All Vendors (Unfiltered)'}\n`;
+    txt += `Generated:    ${timestamp}\n`;
+    txt += '================================================================================\n\n';
+
+    if (isFiltered) {
+      const targetTx = apTransactions.filter((t) => (t.item_or_description || '').trim() === vendorFilter);
+      const gaps = computeMissingGapsForApTx(targetTx, missingCadence, selectedMonth, selectedYear);
+
+      txt += `VENDOR: ${vendorFilter}\n`;
+      txt += `Total Missing Periods: ${gaps.length} ${unitLabel}\n`;
+      txt += '--------------------------------------------------------------------------------\n';
+
+      if (gaps.length === 0) {
+        txt += `No missing activity detected. All vendor bills have been recorded for this period.\n`;
+      } else {
+        txt += `Missing Periods:\n`;
+        gaps.forEach((g, idx) => {
+          txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+        });
+      }
+      txt += '\n================================================================================\n';
+      txt += `End of Report - ${gaps.length} missing ${unitLabel} reported for ${vendorFilter}.\n`;
+    } else {
+      const vendorsToReport = availableVendors.length > 0
+        ? [...availableVendors]
+        : Array.from(new Set(apTransactions.map((t) => (t.item_or_description || '').trim()).filter(Boolean)));
+
+      if (vendorsToReport.length === 0) {
+        vendorsToReport.push(clientName);
+      }
+
+      const vendorSummaries = vendorsToReport.map((vnd) => {
+        const vndTx = apTransactions.filter((t) => (t.item_or_description || '').trim() === vnd);
+        const gaps = computeMissingGapsForApTx(vndTx, missingCadence, selectedMonth, selectedYear);
+        return { vendor: vnd, gaps };
+      });
+
+      const totalMissingPeriods = vendorSummaries.reduce((acc, curr) => acc + curr.gaps.length, 0);
+
+      txt += `EXECUTIVE SUMMARY BY VENDOR:\n`;
+      txt += `Total Vendors Analyzed: ${vendorsToReport.length}\n`;
+      txt += `Total Missing Periods Across All Vendors: ${totalMissingPeriods} ${unitLabel}\n\n`;
+      txt += `Breakdown:\n`;
+      vendorSummaries.forEach((s) => {
+        txt += `  - ${s.vendor}: ${s.gaps.length} missing ${unitLabel}\n`;
+      });
+      txt += '\n';
+
+      vendorSummaries.forEach((s) => {
+        txt += '================================================================================\n';
+        txt += `VENDOR: ${s.vendor.toUpperCase()}\n`;
+        txt += `Total Missing: ${s.gaps.length} ${unitLabel}\n`;
+        txt += '================================================================================\n';
+
+        if (s.gaps.length === 0) {
+          txt += `Status: All periods recorded. No missing vendor bills for this vendor in ${selectedMonth} ${selectedYear}.\n\n`;
+        } else {
+          txt += `Missing Periods:\n`;
+          s.gaps.forEach((g, idx) => {
+            txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+          });
+          txt += '\n';
+        }
+      });
+
+      txt += '================================================================================\n';
+      txt += `End of Report - ${vendorsToReport.length} vendors processed, ${totalMissingPeriods} total missing ${unitLabel}.\n`;
+    }
+
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeScope = isFiltered ? vendorFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Vendors';
+    const filename = `Missing_Activity_AP_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.txt`;
+
+    downloadTxt(filename, txt);
+    addLog('success', `Exported missing activity report to ${filename}`);
+  };
 
   const apKpis = useMemo(() => {
     return {
@@ -896,8 +1009,20 @@ export const ClientApTab: React.FC = () => {
             <div className="text-lg font-bold text-rose-900 font-mono">{apKpis.missingPeriodsCount}</div>
             <div className="text-[11px] text-slate-500 capitalize">{missingCadence} Gaps</div>
           </div>
-          <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
-            <Calendar className="w-5 h-5" />
+          <div className="flex items-center gap-1.5">
+            {missingCadence !== 'disabled' && (
+              <button
+                type="button"
+                onClick={handleExportMissingPeriodsTxt}
+                className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition cursor-pointer"
+                title="Export Missing Activity Report (.txt)"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
+            <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+              <Calendar className="w-5 h-5" />
+            </div>
           </div>
         </div>
       </div>
@@ -910,13 +1035,22 @@ export const ClientApTab: React.FC = () => {
               <AlertCircle className="w-4 h-4" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-amber-900 text-xs">
                   Missing Activity Detected ({missingPeriods.length} {missingCadence === 'daily' ? 'days' : missingCadence === 'weekly' ? 'weeks' : missingCadence === 'fortnightly' ? 'fortnights' : 'months'})
                 </span>
                 <span className="text-[10px] font-mono text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
                   {vendorFilter === 'ALL' ? 'All Vendors' : vendorFilter}
                 </span>
+                <button
+                  type="button"
+                  onClick={handleExportMissingPeriodsTxt}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-semibold text-[11px] transition shadow-xs cursor-pointer ml-1"
+                  title={`Export missing activity to .txt (${vendorFilter === 'ALL' ? 'All Vendors' : vendorFilter})`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export to TXT</span>
+                </button>
               </div>
               <p className="text-[11px] text-amber-700/90 mt-0.5">
                 No vendor bills recorded in PostgreSQL for these periods. Click any <strong className="font-semibold">[ + ]</strong> badge to manually record a bill.
@@ -1210,6 +1344,19 @@ export const ClientApTab: React.FC = () => {
                 <option value="disabled">Disabled</option>
               </select>
             </div>
+
+            {missingCadence !== 'disabled' && (
+              <button
+                type="button"
+                onClick={handleExportMissingPeriodsTxt}
+                className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] hover:bg-slate-50 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer shrink-0"
+                title={`Export missing activity report to .txt (${vendorFilter === 'ALL' ? 'All Vendors' : vendorFilter})`}
+              >
+                <Download className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">Export Missing (.txt)</span>
+                <span className="sm:hidden">Export</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
