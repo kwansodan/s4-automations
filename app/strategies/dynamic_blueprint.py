@@ -278,6 +278,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
 
         # Query existing processed checksums in DB to ensure idempotency
+        sheet_id = kwargs.get("sheet_id") or kwargs.get("spreadsheet_id")
+        existing_filenames_in_sheet: set = set()
         existing_checksums = set()
         try:
             with Session(get_engine()) as session:
@@ -319,7 +321,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
                     # If not finalized in accounting, check if absent from active review sheet or if existing records are corrupted zero-value dummies
                     if not has_posted_tx:
-                        if sheet_id and doc_file_lower not in existing_filenames_in_sheet:
+                        if sheet_id and existing_filenames_in_sheet and doc_file_lower not in existing_filenames_in_sheet:
                             should_reprocess = True
                             logger.info(
                                 f"🔄 Auto-resync: '{doc.file_name}' was previously staged but is missing from review sheet "
