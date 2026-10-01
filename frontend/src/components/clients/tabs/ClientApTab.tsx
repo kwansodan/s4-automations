@@ -618,48 +618,22 @@ export const ClientApTab: React.FC = () => {
       return;
     }
 
-    const timestamp = new Date().toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
     const isFiltered = vendorFilter !== 'ALL';
     const clientName = currentClient?.name || 'Client';
-    const cadenceLabel = missingCadence === 'daily' ? 'Daily Gaps' : missingCadence === 'weekly' ? 'Weekly Gaps' : missingCadence === 'fortnightly' ? 'Fortnightly Gaps' : 'Monthly Gaps';
-    const unitLabel = missingCadence === 'daily' ? 'days' : missingCadence === 'weekly' ? 'weeks' : missingCadence === 'fortnightly' ? 'fortnights' : 'months';
-
     let txt = '';
-    txt += '================================================================================\n';
-    txt += `                    MISSING ACTIVITY REPORT (VENDOR BILLS)\n`;
-    txt += '================================================================================\n';
-    txt += `Client:       ${clientName}\n`;
-    txt += `Period:       ${selectedMonth} ${selectedYear}\n`;
-    txt += `Cadence:      ${cadenceLabel}\n`;
-    txt += `Filter Scope: ${isFiltered ? `Vendor: ${vendorFilter}` : 'All Vendors (Unfiltered)'}\n`;
-    txt += `Generated:    ${timestamp}\n`;
-    txt += '================================================================================\n\n';
 
     if (isFiltered) {
       const targetTx = apTransactions.filter((t) => (t.item_or_description || '').trim() === vendorFilter);
       const gaps = computeMissingGapsForApTx(targetTx, missingCadence, selectedMonth, selectedYear);
 
-      txt += `VENDOR: ${vendorFilter}\n`;
-      txt += `Total Missing Periods: ${gaps.length} ${unitLabel}\n`;
-      txt += '--------------------------------------------------------------------------------\n';
-
+      txt += `Vendor: ${vendorFilter}\n`;
       if (gaps.length === 0) {
-        txt += `No missing activity detected. All vendor bills have been recorded for this period.\n`;
+        txt += 'No missing dates\n';
       } else {
-        txt += `Missing Periods:\n`;
-        gaps.forEach((g, idx) => {
-          txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+        gaps.forEach((g) => {
+          txt += `${missingCadence === 'daily' ? g.defaultDate : g.label}\n`;
         });
       }
-      txt += '\n================================================================================\n';
-      txt += `End of Report - ${gaps.length} missing ${unitLabel} reported for ${vendorFilter}.\n`;
     } else {
       const vendorsToReport = availableVendors.length > 0
         ? [...availableVendors]
@@ -669,50 +643,28 @@ export const ClientApTab: React.FC = () => {
         vendorsToReport.push(clientName);
       }
 
-      const vendorSummaries = vendorsToReport.map((vnd) => {
+      vendorsToReport.forEach((vnd, idx) => {
         const vndTx = apTransactions.filter((t) => (t.item_or_description || '').trim() === vnd);
         const gaps = computeMissingGapsForApTx(vndTx, missingCadence, selectedMonth, selectedYear);
-        return { vendor: vnd, gaps };
-      });
 
-      const totalMissingPeriods = vendorSummaries.reduce((acc, curr) => acc + curr.gaps.length, 0);
-
-      txt += `EXECUTIVE SUMMARY BY VENDOR:\n`;
-      txt += `Total Vendors Analyzed: ${vendorsToReport.length}\n`;
-      txt += `Total Missing Periods Across All Vendors: ${totalMissingPeriods} ${unitLabel}\n\n`;
-      txt += `Breakdown:\n`;
-      vendorSummaries.forEach((s) => {
-        txt += `  - ${s.vendor}: ${s.gaps.length} missing ${unitLabel}\n`;
-      });
-      txt += '\n';
-
-      vendorSummaries.forEach((s) => {
-        txt += '================================================================================\n';
-        txt += `VENDOR: ${s.vendor.toUpperCase()}\n`;
-        txt += `Total Missing: ${s.gaps.length} ${unitLabel}\n`;
-        txt += '================================================================================\n';
-
-        if (s.gaps.length === 0) {
-          txt += `Status: All periods recorded. No missing vendor bills for this vendor in ${selectedMonth} ${selectedYear}.\n\n`;
+        if (idx > 0) txt += '\n';
+        txt += `Vendor: ${vnd}\n`;
+        if (gaps.length === 0) {
+          txt += 'No missing dates\n';
         } else {
-          txt += `Missing Periods:\n`;
-          s.gaps.forEach((g, idx) => {
-            txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+          gaps.forEach((g) => {
+            txt += `${missingCadence === 'daily' ? g.defaultDate : g.label}\n`;
           });
-          txt += '\n';
         }
       });
-
-      txt += '================================================================================\n';
-      txt += `End of Report - ${vendorsToReport.length} vendors processed, ${totalMissingPeriods} total missing ${unitLabel}.\n`;
     }
 
     const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeScope = isFiltered ? vendorFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Vendors';
-    const filename = `Missing_Activity_AP_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.txt`;
+    const filename = `Missing_Dates_AP_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.txt`;
 
     downloadTxt(filename, txt);
-    addLog('success', `Exported missing activity report to ${filename}`);
+    addLog('success', `Exported missing dates to ${filename}`);
   };
 
   const apKpis = useMemo(() => {

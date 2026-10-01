@@ -1123,51 +1123,23 @@ export const ClientArTab: React.FC = () => {
       return;
     }
 
-    const timestamp = new Date().toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
     const isFiltered = dailyPropertyFilter !== 'ALL';
     const clientName = currentClient?.name || 'Client';
-    const cadenceLabel = missingCadence === 'daily' ? 'Daily Gaps' : missingCadence === 'weekly' ? 'Weekly Gaps' : missingCadence === 'fortnightly' ? 'Fortnightly Gaps' : 'Monthly Gaps';
-    const unitLabel = missingCadence === 'daily' ? 'days' : missingCadence === 'weekly' ? 'weeks' : missingCadence === 'fortnightly' ? 'fortnights' : 'months';
-
     let txt = '';
-    txt += '================================================================================\n';
-    txt += `                    MISSING ACTIVITY REPORT (DELIVERY SLIPS)\n`;
-    txt += '================================================================================\n';
-    txt += `Client:       ${clientName}\n`;
-    txt += `Period:       ${selectedMonth} ${selectedYear}\n`;
-    txt += `Cadence:      ${cadenceLabel}\n`;
-    txt += `Filter Scope: ${isFiltered ? `Customer: ${dailyPropertyFilter}` : 'All Customers (Unfiltered)'}\n`;
-    txt += `Generated:    ${timestamp}\n`;
-    txt += '================================================================================\n\n';
 
     if (isFiltered) {
-      // Filtered mode: Export only the filtered customer
       const targetTx = arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
       const gaps = computeMissingGapsForTx(targetTx, missingCadence, selectedMonth, selectedYear);
 
-      txt += `CUSTOMER: ${dailyPropertyFilter}\n`;
-      txt += `Total Missing Periods: ${gaps.length} ${unitLabel}\n`;
-      txt += '--------------------------------------------------------------------------------\n';
-
+      txt += `Customer: ${dailyPropertyFilter}\n`;
       if (gaps.length === 0) {
-        txt += `No missing activity detected. All delivery slips have been recorded for this period.\n`;
+        txt += 'No missing dates\n';
       } else {
-        txt += `Missing Periods:\n`;
-        gaps.forEach((g, idx) => {
-          txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+        gaps.forEach((g) => {
+          txt += `${missingCadence === 'daily' ? g.defaultDate : g.label}\n`;
         });
       }
-      txt += '\n================================================================================\n';
-      txt += `End of Report - ${gaps.length} missing ${unitLabel} reported for ${dailyPropertyFilter}.\n`;
     } else {
-      // Unfiltered mode: Export all customers, each under a separate heading
       const customersToReport = availableProperties.length > 0
         ? [...availableProperties]
         : Array.from(new Set(arStagedTx.map((t) => extractPropertyName(t.source_file_name, t.metadata_json)).filter(Boolean)));
@@ -1176,51 +1148,28 @@ export const ClientArTab: React.FC = () => {
         customersToReport.push(clientName);
       }
 
-      const customerSummaries = customersToReport.map((cust) => {
+      customersToReport.forEach((cust, idx) => {
         const custTx = arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === cust);
         const gaps = computeMissingGapsForTx(custTx, missingCadence, selectedMonth, selectedYear);
-        return { customer: cust, gaps };
-      });
 
-      const totalMissingPeriods = customerSummaries.reduce((acc, curr) => acc + curr.gaps.length, 0);
-
-      txt += `EXECUTIVE SUMMARY BY CUSTOMER:\n`;
-      txt += `Total Customers Analyzed: ${customersToReport.length}\n`;
-      txt += `Total Missing Periods Across All Customers: ${totalMissingPeriods} ${unitLabel}\n\n`;
-      txt += `Breakdown:\n`;
-      customerSummaries.forEach((s) => {
-        txt += `  - ${s.customer}: ${s.gaps.length} missing ${unitLabel}\n`;
-      });
-      txt += '\n';
-
-      // Separate customer headings
-      customerSummaries.forEach((s) => {
-        txt += '================================================================================\n';
-        txt += `CUSTOMER: ${s.customer.toUpperCase()}\n`;
-        txt += `Total Missing: ${s.gaps.length} ${unitLabel}\n`;
-        txt += '================================================================================\n';
-
-        if (s.gaps.length === 0) {
-          txt += `Status: All periods recorded. No missing delivery slips for this customer in ${selectedMonth} ${selectedYear}.\n\n`;
+        if (idx > 0) txt += '\n';
+        txt += `Customer: ${cust}\n`;
+        if (gaps.length === 0) {
+          txt += 'No missing dates\n';
         } else {
-          txt += `Missing Periods:\n`;
-          s.gaps.forEach((g, idx) => {
-            txt += `  [ ] ${String(idx + 1).padStart(2, ' ')}. ${g.label}  (Ref Date: ${g.defaultDate})\n`;
+          gaps.forEach((g) => {
+            txt += `${missingCadence === 'daily' ? g.defaultDate : g.label}\n`;
           });
-          txt += '\n';
         }
       });
-
-      txt += '================================================================================\n';
-      txt += `End of Report - ${customersToReport.length} customers processed, ${totalMissingPeriods} total missing ${unitLabel}.\n`;
     }
 
     const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeScope = isFiltered ? dailyPropertyFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Customers';
-    const filename = `Missing_Activity_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.txt`;
+    const filename = `Missing_Dates_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.txt`;
 
     downloadTxt(filename, txt);
-    addLog('success', `Exported missing activity report to ${filename}`);
+    addLog('success', `Exported missing dates to ${filename}`);
   };
 
   // Slip-level KPI counts for the active Customer filter
