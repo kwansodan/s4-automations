@@ -353,6 +353,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [autoCreateMissingContacts, setAutoCreateMissingContacts] = useState<boolean>(false);
   const [autoCreateMissingItems, setAutoCreateMissingItems] = useState<boolean>(false);
 
+  // Missing Slip / Document Gap Cadence Reporting
+  const [missingCadence, setMissingCadence] = useState<'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled'>('daily');
+
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any; detected_month_folders?: string[]; suggested_hierarchy?: string } | null>(null);
@@ -500,6 +503,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setMoveProcessedFiles(initialArchiveLoc !== 'disabled');
         setAutoCreateMissingContacts(Boolean(initialPipeline.auto_create_missing_contacts ?? initialPipeline.source_config?.auto_create_missing_contacts));
         setAutoCreateMissingItems(Boolean(initialPipeline.auto_create_missing_items ?? initialPipeline.source_config?.auto_create_missing_items));
+        const initialCadence = (initialPipeline.source_config?.missing_cadence as any) || (initialPipeline as any).missing_cadence || 'daily';
+        setMissingCadence(initialCadence);
         setFieldMappings(initialPipeline.field_mappings || {});
       } else {
         const newId = `pipe_${Date.now()}`;
@@ -526,6 +531,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setMoveProcessedFiles(true);
         setAutoCreateMissingContacts(false);
         setAutoCreateMissingItems(false);
+        setMissingCadence('daily');
         setHumanInstructions('');
         setFieldMappings({});
       }
@@ -691,6 +697,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
         human_instructions: humanInstructions.trim() || undefined,
         field_mappings: Object.keys(fieldMappings).length > 0 ? fieldMappings : undefined,
+        missing_cadence: missingCadence,
         source_config: {
           folder_structure: folderStructure,
           enable_lookback_window: enableLookbackWindow,
@@ -699,6 +706,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           archive_location: archiveLocation,
           auto_create_missing_contacts: autoCreateMissingContacts,
           auto_create_missing_items: autoCreateMissingItems,
+          missing_cadence: missingCadence,
           allowed_senders: allowedSenders.trim() || undefined,
           tenant_id: oneDriveTenantId.trim() || undefined,
           client_id: oneDriveClientId.trim() || undefined,
@@ -2003,6 +2011,49 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                         </span>
                       </div>
                     </label>
+                  </div>
+
+                  {/* Missing Activity Gap Cadence */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                    <div>
+                      <span className="font-bold text-white text-xs block">
+                        Missing Activity Gap Reporting Cadence
+                      </span>
+                      <span className="text-slate-400 block text-[11px] mt-0.5">
+                        Select how the review ledger should audit and alert for missing delivery slips or vendor bills in each cycle.
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { id: 'daily', label: 'By Dates', desc: 'Daily slips / receipts' },
+                        { id: 'weekly', label: 'By Weeks', desc: 'Calendar weeks (W1-W5)' },
+                        { id: 'fortnightly', label: 'By Fortnights', desc: '14-day billing cycles' },
+                        { id: 'monthly', label: 'By Months', desc: 'Monthly statements / bills' },
+                      ].map((opt) => (
+                        <label
+                          key={opt.id}
+                          className={`flex flex-col p-2.5 rounded-lg border cursor-pointer transition ${
+                            missingCadence === opt.id
+                              ? 'bg-sky-500/10 border-sky-500 text-white'
+                              : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="radio"
+                              name="missingCadence"
+                              value={opt.id}
+                              checked={missingCadence === opt.id}
+                              onChange={() => setMissingCadence(opt.id as any)}
+                              className="text-sky-500 focus:ring-0"
+                            />
+                            <span className="font-bold text-xs">{opt.label}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 mt-1 leading-tight">{opt.desc}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

@@ -50,6 +50,12 @@ import {
   FolderOpen,
   FileSpreadsheet,
   Plus,
+  Sparkles,
+  Clock,
+  AlertCircle,
+  CheckSquare,
+  Square,
+  Filter,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
@@ -60,7 +66,7 @@ const YEARS = [2025, 2026, 2027];
 export interface SlipGroup {
   slipKey: string;
   sourceFileName: string;
-  propertyName: string;
+  propertyName: string; // Customer name
   slipDate: string;
   driveUrl?: string | null;
   items: any[];
@@ -72,6 +78,8 @@ export interface SlipGroup {
   isFullyApproved: boolean;
   isPartiallyApproved: boolean;
   isFullyReviewed: boolean;
+  hasLowConfidence: boolean;
+  minConfidence: number;
   status: string;
 }
 
@@ -105,8 +113,9 @@ export const ClientArTab: React.FC = () => {
   const [purgeTargetFileName, setPurgeTargetFileName] = useState<string>('');
 
   // Filters, Sorting & Pagination State
-  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED'>('ALL');
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'UNREVIEWED' | 'UNAPPROVED' | 'LOW_CONFIDENCE' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED'>('ALL');
   const [dailyPropertyFilter, setDailyPropertyFilter] = useState<string>('ALL');
+  const [groupedSortBy, setGroupedSortBy] = useState<string>('date_desc');
   const [dailySortField, setDailySortField] = useState<string>('transaction_date');
   const [dailySortDirection, setDailySortDirection] = useState<'asc' | 'desc'>('asc');
   const [dailyPageSize, setDailyPageSize] = useState<number | 'all'>(50);
@@ -116,6 +125,26 @@ export const ClientArTab: React.FC = () => {
   const [dailyViewMode, setDailyViewMode] = useState<'grouped' | 'flat'>('grouped');
   const [expandedSlips, setExpandedSlips] = useState<Record<string, boolean>>({});
   const [approvingSlipKey, setApprovingSlipKey] = useState<string | null>(null);
+
+  // Bulk Operations State
+  const [selectedSlipKeys, setSelectedSlipKeys] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [isBulkApproving, setIsBulkApproving] = useState<boolean>(false);
+  const [isBulkReviewing, setIsBulkReviewing] = useState<boolean>(false);
+
+  // Missing Activity Gap Cadence (Pipeline / Session configurable)
+  const [missingCadence, setMissingCadence] = useState<'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled'>('daily');
+
+  // Manual Add Slip Modal State
+  const [isAddSlipModalOpen, setIsAddSlipModalOpen] = useState<boolean>(false);
+  const [manualSlipCustomer, setManualSlipCustomer] = useState<string>('');
+  const [manualSlipDate, setManualSlipDate] = useState<string>('');
+  const [manualSlipDocName, setManualSlipDocName] = useState<string>('');
+  const [manualSlipItemName, setManualSlipItemName] = useState<string>('');
+  const [manualSlipPickQty, setManualSlipPickQty] = useState<number | string>(1);
+  const [manualSlipDelivQty, setManualSlipDelivQty] = useState<number | string>(1);
+  const [manualSlipRate, setManualSlipRate] = useState<number | string>(0);
+  const [isCreatingSlip, setIsCreatingSlip] = useState<boolean>(false);
 
   // Line Item Inline Editing State (Strictly Zoho Books Item Master)
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -156,7 +185,13 @@ export const ClientArTab: React.FC = () => {
       setCatalogItems(Array.isArray(res?.items) ? res.items : []);
       setClientContacts(Array.isArray(res?.contacts) ? res.contacts : []);
     });
-  }, [currentClient?.id, currentClient?.zoho_org_id]);
+
+    if (currentClient?.pipelines) {
+      const arPipe = currentClient.pipelines.find((p: any) => p.section === 'AR' || (p.entity_type && p.entity_type.includes('ar_')));
+      const cad = arPipe?.source_config?.missing_cadence || (arPipe as any)?.missing_cadence;
+      if (cad) setMissingCadence(cad);
+    }
+  }, [currentClient?.id, currentClient?.zoho_org_id, currentClient?.pipelines]);
 
   const [summarySortField, setSummarySortField] = useState<string>('item_name');
   const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
@@ -256,6 +291,173 @@ export const ClientArTab: React.FC = () => {
       addLog('error', `Failed to purge document: ${err.message}`);
     } finally {
       setDeletingSlipKey(null);
+    }
+  };
+
+  const handleToggleSelectSlip = (slipKey: string) => {
+    setSelectedSlipKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(slipKey)) next.delete(slipKey);
+      else next.add(slipKey);
+      return next;
+    });
+  };
+
+  const handleSelectAllVisibleSlips = () => {
+    if (paginatedGroupedSlips.length === 0) return;
+    const allSelected = paginatedGroupedSlips.every((s) => selectedSlipKeys.has(s.slipKey));
+    if (allSelected) {
+      setSelectedSlipKeys((prev) => {
+        const next = new Set(prev);
+        paginatedGroupedSlips.forEach((s) => next.delete(s.slipKey));
+        return next;
+      });
+    } else {
+      setSelectedSlipKeys((prev) => {
+        const next = new Set(prev);
+        paginatedGroupedSlips.forEach((s) => next.add(s.slipKey));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkDeleteSlips = async () => {
+    if (!currentClient?.id || selectedSlipKeys.size === 0) return;
+    const selectedSlips = groupedSlips.filter((s) => selectedSlipKeys.has(s.slipKey));
+    const totalItems = selectedSlips.reduce((sum, s) => sum + s.items.length, 0);
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete ${selectedSlips.length} selected slips (${totalItems} line items) from PostgreSQL? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setIsBulkDeleting(true);
+    try {
+      const allTxIds = selectedSlips.flatMap((s) => s.txIds);
+      await batchDeleteStagedTransactions(currentClient.id, { transaction_ids: allTxIds });
+      setTransactions((prev) => prev.filter((t) => !allTxIds.includes(t.id)));
+      setSelectedSlipKeys(new Set());
+      addLog('success', `Bulk deleted ${selectedSlips.length} slips (${allTxIds.length} items) from ledger.`);
+      loadSummaryData();
+    } catch (err: any) {
+      addLog('error', `Bulk delete failed: ${err.message}`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkApproveSlips = async () => {
+    if (!currentClient?.id || selectedSlipKeys.size === 0) return;
+    const selectedSlips = groupedSlips.filter((s) => selectedSlipKeys.has(s.slipKey));
+    const allTxIds = selectedSlips.flatMap((s) => s.txIds);
+    setIsBulkApproving(true);
+    try {
+      await batchApproveTransactions(currentClient.id, allTxIds, 'Bulk Approved via Ledger');
+      await batchToggleTransactions(currentClient.id, allTxIds, 'reviewed', true);
+      setTransactions((prev) =>
+        prev.map((t) => (allTxIds.includes(t.id) ? { ...t, approved: true, reviewed: true, status: 'APPROVED' } : t))
+      );
+      setSelectedSlipKeys(new Set());
+      addLog('success', `Bulk approved ${selectedSlips.length} slips (${allTxIds.length} items).`);
+      loadSummaryData();
+    } catch (err: any) {
+      addLog('error', `Bulk approve failed: ${err.message}`);
+    } finally {
+      setIsBulkApproving(false);
+    }
+  };
+
+  const handleBulkReviewSlips = async () => {
+    if (!currentClient?.id || selectedSlipKeys.size === 0) return;
+    const selectedSlips = groupedSlips.filter((s) => selectedSlipKeys.has(s.slipKey));
+    const allTxIds = selectedSlips.flatMap((s) => s.txIds);
+    setIsBulkReviewing(true);
+    try {
+      await batchToggleTransactions(currentClient.id, allTxIds, 'reviewed', true);
+      setTransactions((prev) =>
+        prev.map((t) => (allTxIds.includes(t.id) ? { ...t, reviewed: true } : t))
+      );
+      setSelectedSlipKeys(new Set());
+      addLog('success', `Bulk marked ${selectedSlips.length} slips (${allTxIds.length} items) as reviewed.`);
+      loadSummaryData();
+    } catch (err: any) {
+      addLog('error', `Bulk review failed: ${err.message}`);
+    } finally {
+      setIsBulkReviewing(false);
+    }
+  };
+
+  const handleOpenAddSlipModal = (prefillDate?: string) => {
+    const mIdx = MONTHS.indexOf(selectedMonth);
+    const mStr = String(mIdx !== -1 ? mIdx + 1 : new Date().getMonth() + 1).padStart(2, '0');
+    const dStr = String(new Date().getDate()).padStart(2, '0');
+    const defaultDate = prefillDate || `${selectedYear || new Date().getFullYear()}-${mStr}-${dStr}`;
+    const defaultCustomer = dailyPropertyFilter !== 'ALL' ? dailyPropertyFilter : (availableProperties[0] || currentClient?.name || '');
+
+    setManualSlipCustomer(defaultCustomer);
+    setManualSlipDate(defaultDate);
+    setManualSlipDocName(`Manual_Slip_${defaultCustomer ? defaultCustomer.replace(/\s+/g, '_') : 'Customer'}_${defaultDate}`);
+    setManualSlipItemName(catalogItems[0]?.name || '');
+    setManualSlipPickQty(1);
+    setManualSlipDelivQty(1);
+    setManualSlipRate(catalogItems[0]?.rate || 0);
+    setIsAddSlipModalOpen(true);
+  };
+
+  const handleCreateManualSlip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentClient?.id) return;
+    if (!manualSlipCustomer.trim()) {
+      alert('Please specify a customer name.');
+      return;
+    }
+    if (!manualSlipItemName.trim()) {
+      alert('Please specify an item description.');
+      return;
+    }
+
+    setIsCreatingSlip(true);
+    try {
+      const pick = Number(manualSlipPickQty) || 0;
+      const deliv = Number(manualSlipDelivQty) || 0;
+      const rate = Number(manualSlipRate) || 0;
+      const tot = Math.round(deliv * rate * 100) / 100;
+      const loss = isCustodyTracking ? Math.max(0, pick - deliv) : 0;
+      const refItem = catalogItems.find((c) => c.name.toLowerCase() === manualSlipItemName.trim().toLowerCase());
+
+      const docName = manualSlipDocName.trim() || `Manual_Slip_${manualSlipCustomer}_${manualSlipDate}`;
+
+      await createClientTransaction(currentClient.id, {
+        source_file_name: docName,
+        transaction_date: manualSlipDate,
+        item_or_description: manualSlipItemName.trim(),
+        quantity_or_debit: deliv,
+        credit_amount: pick,
+        rate_or_price: rate,
+        total_amount: tot,
+        discrepancy_amount: loss,
+        category_or_account: refItem?.category_or_account,
+        accounting_ref_id: refItem?.accounting_ref_id,
+        reviewed: true,
+        approved: true,
+        status: 'APPROVED',
+        metadata_json: {
+          customer_name: manualSlipCustomer.trim(),
+          is_manual_entry: true,
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      addLog('success', `Manually created delivery slip "${docName}" for ${manualSlipCustomer}`);
+      setIsAddSlipModalOpen(false);
+      await loadTransactions();
+      loadSummaryData();
+      setExpandedSlips((prev) => ({ ...prev, [docName]: true }));
+    } catch (err: any) {
+      addLog('error', `Failed to create manual slip: ${err.message}`);
+    } finally {
+      setIsCreatingSlip(false);
     }
   };
 
@@ -462,11 +664,24 @@ export const ClientArTab: React.FC = () => {
     return map;
   }, [arStagedTx]);
 
+  const isItemLowConf = (it: any): boolean => {
+    if (it.confidence_score !== undefined && it.confidence_score !== null) {
+      const val = Number(it.confidence_score);
+      if (!isNaN(val) && val < 0.80) return true;
+    }
+    if (it.metadata_json?.confidence_score === 'LOW' || it.metadata_json?.confidence_score === 'low') return true;
+    if (Array.isArray(it.metadata_json?.anomalies) && it.metadata_json.anomalies.some((a: any) => (a.rule_name || '').includes('LOW_CONFIDENCE'))) return true;
+    return false;
+  };
+
   const dailyCounts = useMemo(() => {
     let pending = 0;
     let approved = 0;
     let discrepancy = 0;
     let invoiced = 0;
+    let unreviewed = 0;
+    let unapproved = 0;
+    let lowConfidence = 0;
 
     const targetTx = dailyPropertyFilter === 'ALL'
       ? arStagedTx
@@ -476,6 +691,10 @@ export const ClientArTab: React.FC = () => {
       if (tx.status === 'INVOICED') invoiced++;
       else if (tx.approved) approved++;
       else pending++;
+
+      if (!tx.reviewed) unreviewed++;
+      if (!tx.approved && tx.status !== 'INVOICED') unapproved++;
+      if (isItemLowConf(tx)) lowConfidence++;
 
       if ((tx.discrepancy_amount || 0) > 0) {
         discrepancy++;
@@ -489,6 +708,9 @@ export const ClientArTab: React.FC = () => {
       approved,
       discrepancy,
       invoiced,
+      unreviewed,
+      unapproved,
+      lowConfidence,
     };
   }, [arStagedTx, dailyPropertyFilter]);
 
@@ -541,6 +763,9 @@ export const ClientArTab: React.FC = () => {
   const filteredArStagedTx = useMemo(() => {
     return arStagedTx.filter((t) => {
       // 1. Status Filter
+      if (dailyStatusFilter === 'UNREVIEWED' && t.reviewed) return false;
+      if (dailyStatusFilter === 'UNAPPROVED' && (t.approved || t.status === 'INVOICED')) return false;
+      if (dailyStatusFilter === 'LOW_CONFIDENCE' && !isItemLowConf(t)) return false;
       if (dailyStatusFilter === 'PENDING' && (t.approved || t.status === 'INVOICED')) return false;
       if (dailyStatusFilter === 'APPROVED' && (!t.approved || t.status === 'INVOICED')) return false;
       if (dailyStatusFilter === 'DISCREPANCY' && (t.discrepancy_amount || 0) <= 0) return false;
@@ -659,6 +884,8 @@ export const ClientArTab: React.FC = () => {
           isFullyApproved: true,
           isPartiallyApproved: false,
           isFullyReviewed: true,
+          hasLowConfidence: false,
+          minConfidence: 1.0,
           status: 'PENDING',
         };
         map.set(key, group);
@@ -673,6 +900,9 @@ export const ClientArTab: React.FC = () => {
       if (!tx.approved) group.isFullyApproved = false;
       if (tx.approved) group.isPartiallyApproved = true;
       if (!tx.reviewed) group.isFullyReviewed = false;
+      if (isItemLowConf(tx)) group.hasLowConfidence = true;
+      const conf = typeof tx.confidence_score === 'number' ? tx.confidence_score : 1.0;
+      if (conf < group.minConfidence) group.minConfidence = conf;
     });
 
     const list = Array.from(map.values());
@@ -684,16 +914,210 @@ export const ClientArTab: React.FC = () => {
     });
 
     list.sort((a, b) => {
-      const dateA = a.slipDate || '';
-      const dateB = b.slipDate || '';
-      if (dateA !== dateB) {
-        return dailySortDirection === 'asc' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+      if (groupedSortBy === 'date_desc') {
+        const diff = (b.slipDate || '').localeCompare(a.slipDate || '');
+        return diff !== 0 ? diff : a.sourceFileName.localeCompare(b.sourceFileName);
       }
-      return a.sourceFileName.localeCompare(b.sourceFileName);
+      if (groupedSortBy === 'date_asc') {
+        const diff = (a.slipDate || '').localeCompare(b.slipDate || '');
+        return diff !== 0 ? diff : a.sourceFileName.localeCompare(b.sourceFileName);
+      }
+      if (groupedSortBy === 'cust_asc') {
+        const diff = (a.propertyName || '').localeCompare(b.propertyName || '');
+        return diff !== 0 ? diff : (b.slipDate || '').localeCompare(a.slipDate || '');
+      }
+      if (groupedSortBy === 'cust_desc') {
+        const diff = (b.propertyName || '').localeCompare(a.propertyName || '');
+        return diff !== 0 ? diff : (b.slipDate || '').localeCompare(a.slipDate || '');
+      }
+      if (groupedSortBy === 'amount_desc') {
+        return b.totalAmount - a.totalAmount;
+      }
+      if (groupedSortBy === 'amount_asc') {
+        return a.totalAmount - b.totalAmount;
+      }
+      if (groupedSortBy === 'count_desc') {
+        return b.items.length - a.items.length;
+      }
+      if (groupedSortBy === 'low_conf_first') {
+        if (a.hasLowConfidence !== b.hasLowConfidence) {
+          return a.hasLowConfidence ? -1 : 1;
+        }
+        return (b.slipDate || '').localeCompare(a.slipDate || '');
+      }
+      if (groupedSortBy === 'unreviewed_first') {
+        if (a.isFullyReviewed !== b.isFullyReviewed) {
+          return !a.isFullyReviewed ? -1 : 1;
+        }
+        return (b.slipDate || '').localeCompare(a.slipDate || '');
+      }
+      if (groupedSortBy === 'unapproved_first') {
+        if (a.isFullyApproved !== b.isFullyApproved) {
+          return !a.isFullyApproved ? -1 : 1;
+        }
+        return (b.slipDate || '').localeCompare(a.slipDate || '');
+      }
+      return (b.slipDate || '').localeCompare(a.slipDate || '');
     });
 
     return list;
-  }, [filteredArStagedTx, currentClient, dailySortDirection]);
+  }, [filteredArStagedTx, currentClient, groupedSortBy]);
+
+  interface MissingPeriod {
+    key: string;
+    label: string;
+    defaultDate: string;
+  }
+
+  const missingPeriods = useMemo<MissingPeriod[]>(() => {
+    if (missingCadence === 'disabled') return [];
+    if (!selectedMonth || !selectedYear) return [];
+    const monthIdx = MONTHS.indexOf(selectedMonth);
+    if (monthIdx === -1) return [];
+
+    const yearNum = Number(selectedYear);
+    const daysInMonth = new Date(yearNum, monthIdx + 1, 0).getDate();
+    const today = new Date();
+    const isCurrentMonthYear = today.getFullYear() === yearNum && today.getMonth() === monthIdx;
+    const maxDay = isCurrentMonthYear ? today.getDate() : daysInMonth;
+
+    const targetTx = dailyPropertyFilter === 'ALL'
+      ? arStagedTx
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+
+    const presentDates = new Set(
+      targetTx.map((t) => t.transaction_date).filter(Boolean)
+    );
+
+    const gaps: MissingPeriod[] = [];
+
+    if (missingCadence === 'daily') {
+      for (let d = 1; d <= maxDay; d++) {
+        const dStr = String(d).padStart(2, '0');
+        const mStr = String(monthIdx + 1).padStart(2, '0');
+        const fullDate = `${yearNum}-${mStr}-${dStr}`;
+        if (!presentDates.has(fullDate)) {
+          const shortName = `${selectedMonth.slice(0, 3)} ${dStr}`;
+          gaps.push({ key: fullDate, label: shortName, defaultDate: fullDate });
+        }
+      }
+    } else if (missingCadence === 'weekly') {
+      const weeks = [
+        { name: 'Week 1', start: 1, end: 7 },
+        { name: 'Week 2', start: 8, end: 14 },
+        { name: 'Week 3', start: 15, end: 21 },
+        { name: 'Week 4', start: 22, end: 28 },
+        { name: 'Week 5', start: 29, end: daysInMonth },
+      ];
+      weeks.forEach((w) => {
+        if (w.start <= maxDay) {
+          const endDay = Math.min(w.end, maxDay);
+          let hasSlip = false;
+          for (let d = w.start; d <= endDay; d++) {
+            const dStr = String(d).padStart(2, '0');
+            const mStr = String(monthIdx + 1).padStart(2, '0');
+            if (presentDates.has(`${yearNum}-${mStr}-${dStr}`)) {
+              hasSlip = true;
+              break;
+            }
+          }
+          if (!hasSlip) {
+            const mStr = String(monthIdx + 1).padStart(2, '0');
+            const midDay = String(Math.min(w.start, maxDay)).padStart(2, '0');
+            gaps.push({
+              key: `${yearNum}-${mStr}-w${w.name}`,
+              label: `${w.name} (${selectedMonth.slice(0, 3)} ${w.start}-${endDay})`,
+              defaultDate: `${yearNum}-${mStr}-${midDay}`,
+            });
+          }
+        }
+      });
+    } else if (missingCadence === 'fortnightly') {
+      const fn1End = Math.min(14, maxDay);
+      let fn1HasSlip = false;
+      for (let d = 1; d <= fn1End; d++) {
+        const dStr = String(d).padStart(2, '0');
+        const mStr = String(monthIdx + 1).padStart(2, '0');
+        if (presentDates.has(`${yearNum}-${mStr}-${dStr}`)) {
+          fn1HasSlip = true;
+          break;
+        }
+      }
+      const mStr = String(monthIdx + 1).padStart(2, '0');
+      if (!fn1HasSlip) {
+        gaps.push({
+          key: `${yearNum}-${mStr}-fn1`,
+          label: `1st Fortnight (${selectedMonth.slice(0, 3)} 01-14)`,
+          defaultDate: `${yearNum}-${mStr}-01`,
+        });
+      }
+      if (maxDay >= 15) {
+        let fn2HasSlip = false;
+        for (let d = 15; d <= maxDay; d++) {
+          const dStr = String(d).padStart(2, '0');
+          if (presentDates.has(`${yearNum}-${mStr}-${dStr}`)) {
+            fn2HasSlip = true;
+            break;
+          }
+        }
+        if (!fn2HasSlip) {
+          gaps.push({
+            key: `${yearNum}-${mStr}-fn2`,
+            label: `2nd Fortnight (${selectedMonth.slice(0, 3)} 15-${daysInMonth})`,
+            defaultDate: `${yearNum}-${mStr}-15`,
+          });
+        }
+      }
+    } else if (missingCadence === 'monthly') {
+      if (presentDates.size === 0) {
+        const mStr = String(monthIdx + 1).padStart(2, '0');
+        gaps.push({
+          key: `${yearNum}-${mStr}-full`,
+          label: `${selectedMonth} ${yearNum}`,
+          defaultDate: `${yearNum}-${mStr}-01`,
+        });
+      }
+    }
+
+    return gaps;
+  }, [missingCadence, selectedMonth, selectedYear, arStagedTx, dailyPropertyFilter]);
+
+  // Slip-level KPI counts for the active Customer filter
+  const slipKpis = useMemo(() => {
+    const targetTx = dailyPropertyFilter === 'ALL'
+      ? arStagedTx
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+
+    const slipMap = new Map<string, { isFullyReviewed: boolean; isFullyApproved: boolean; hasLowConf: boolean }>();
+    targetTx.forEach((tx) => {
+      const key = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+      let cur = slipMap.get(key);
+      if (!cur) {
+        cur = { isFullyReviewed: true, isFullyApproved: true, hasLowConf: false };
+        slipMap.set(key, cur);
+      }
+      if (!tx.reviewed) cur.isFullyReviewed = false;
+      if (!tx.approved && tx.status !== 'INVOICED') cur.isFullyApproved = false;
+      if (isItemLowConf(tx)) cur.hasLowConf = true;
+    });
+
+    let unreviewed = 0;
+    let unapproved = 0;
+    let lowConf = 0;
+    slipMap.forEach((v) => {
+      if (!v.isFullyReviewed) unreviewed++;
+      if (!v.isFullyApproved) unapproved++;
+      if (v.hasLowConf) lowConf++;
+    });
+
+    return {
+      totalSlips: slipMap.size,
+      unreviewedSlips: unreviewed,
+      unapprovedSlips: unapproved,
+      lowConfidenceSlips: lowConf,
+      missingPeriodsCount: missingPeriods.length,
+    };
+  }, [arStagedTx, dailyPropertyFilter, missingPeriods.length]);
 
   const totalGroupedCount = groupedSlips.length;
   const totalGroupedPages = groupedPageSize === 'all' ? 1 : Math.ceil(totalGroupedCount / Number(groupedPageSize)) || 1;
@@ -1115,6 +1539,16 @@ export const ClientArTab: React.FC = () => {
             <span>{isRunningOcr ? 'Extracting Slips...' : 'Run AR Extraction'}</span>
           </button>
 
+          {/* Add Manual Slip */}
+          <button
+            onClick={() => handleOpenAddSlipModal()}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-xs transition cursor-pointer"
+            title="Manually create a new delivery slip in the ledger"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Slip</span>
+          </button>
+
           {/* Delete Ingested File */}
           <button
             onClick={() => {
@@ -1333,85 +1767,403 @@ export const ClientArTab: React.FC = () => {
         </div>
       )}
 
-      {/* Daily Slips Filter Toolbar: Status Pills & Property Filter */}
+      {/* Dynamic AR Slips KPI Review Metric Cards */}
       {activeLedgerView === 'daily' && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2.5 shadow-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={() => setDailyStatusFilter('ALL')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                dailyStatusFilter === 'ALL'
-                  ? 'bg-[#0F172A] text-white shadow-xs'
-                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
-              }`}
-            >
-              <span>All Slips</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200/70 text-slate-700">
-                {dailyCounts.all}
-              </span>
-              {dailyPropertyFilter !== 'ALL' && dailyCounts.all < dailyCounts.totalAcrossAllClients && (
-                <span className="text-[10px] text-slate-400 font-normal">
-                  of {dailyCounts.totalAcrossAllClients}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+          {/* Card 1: Total Processed Slips */}
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-400">Total Slips</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">{groupedSlips.length}</div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                {formatCurrency(groupedSlips.reduce((s, g) => s + g.totalAmount, 0))}
+              </div>
+            </div>
+            <div className="p-2.5 bg-slate-100 rounded-xl text-slate-600">
+              <FileText className="w-5 h-5" />
+            </div>
+          </div>
+
+          {/* Card 2: Unreviewed Slips */}
+          <button
+            type="button"
+            onClick={() => setDailyStatusFilter((prev) => (prev === 'UNREVIEWED' ? 'ALL' : 'UNREVIEWED'))}
+            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+              dailyStatusFilter === 'UNREVIEWED'
+                ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-400/40'
+                : 'bg-white border-[#E2E8F0] hover:border-sky-300'
+            }`}
+          >
+            <div>
+              <div className="text-[10px] uppercase font-bold text-sky-700">Unreviewed Slips</div>
+              <div className="text-lg font-bold text-sky-900 font-mono">{slipKpis.unreviewedSlips}</div>
+              <div className="text-[11px] text-sky-600 font-medium">Click to filter unreviewed</div>
+            </div>
+            <div className="p-2.5 bg-sky-100 text-sky-600 rounded-xl">
+              <Clock className="w-5 h-5" />
+            </div>
+          </button>
+
+          {/* Card 3: Unapproved Slips */}
+          <button
+            type="button"
+            onClick={() => setDailyStatusFilter((prev) => (prev === 'UNAPPROVED' ? 'ALL' : 'UNAPPROVED'))}
+            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+              dailyStatusFilter === 'UNAPPROVED'
+                ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/40'
+                : 'bg-white border-[#E2E8F0] hover:border-amber-300'
+            }`}
+          >
+            <div>
+              <div className="text-[10px] uppercase font-bold text-amber-700">Unapproved Slips</div>
+              <div className="text-lg font-bold text-amber-900 font-mono">{slipKpis.unapprovedSlips}</div>
+              <div className="text-[11px] text-amber-600 font-medium">Pending CPA sign-off</div>
+            </div>
+            <div className="p-2.5 bg-amber-100 text-amber-600 rounded-xl">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          </button>
+
+          {/* Card 4: AI Low Confidence */}
+          <button
+            type="button"
+            onClick={() => setDailyStatusFilter((prev) => (prev === 'LOW_CONFIDENCE' ? 'ALL' : 'LOW_CONFIDENCE'))}
+            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+              dailyStatusFilter === 'LOW_CONFIDENCE'
+                ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-400/40'
+                : 'bg-white border-[#E2E8F0] hover:border-purple-300'
+            }`}
+          >
+            <div>
+              <div className="text-[10px] uppercase font-bold text-purple-700">AI Low Confidence</div>
+              <div className="text-lg font-bold text-purple-900 font-mono">{slipKpis.lowConfidenceSlips}</div>
+              <div className="text-[11px] text-purple-600 font-medium">OCR &lt; 80% legibility</div>
+            </div>
+            <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl">
+              <Sparkles className="w-5 h-5" />
+            </div>
+          </button>
+
+          {/* Card 5: Missing Activity Gaps */}
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase font-bold text-rose-600">Missing Periods</div>
+              <div className="text-lg font-bold text-rose-900 font-mono">{slipKpis.missingPeriodsCount}</div>
+              <div className="text-[11px] text-slate-500 capitalize">{missingCadence} Gaps</div>
+            </div>
+            <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+              <Calendar className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Missing Periods Alert Banner */}
+      {activeLedgerView === 'daily' && missingCadence !== 'disabled' && missingPeriods.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50/90 via-white to-amber-50/60 border border-amber-200 rounded-xl p-3 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+              <AlertCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-900 text-xs">
+                  Missing Activity Detected ({missingPeriods.length} {missingCadence === 'daily' ? 'days' : missingCadence === 'weekly' ? 'weeks' : missingCadence === 'fortnightly' ? 'fortnights' : 'months'})
                 </span>
+                <span className="text-[10px] font-mono text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                  {dailyPropertyFilter === 'ALL' ? 'All Customers' : dailyPropertyFilter}
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-700/90 mt-0.5">
+                No slips recorded in PostgreSQL for these periods. Click any <strong className="font-semibold">[ + ]</strong> badge to manually record a slip.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto">
+            {missingPeriods.map((period) => (
+              <button
+                key={period.key}
+                type="button"
+                onClick={() => handleOpenAddSlipModal(period.defaultDate)}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 hover:border-amber-400 font-mono text-[11px] font-semibold transition cursor-pointer shadow-2xs"
+                title={`Click to manually add a slip for ${period.label}`}
+              >
+                <span>{period.label}</span>
+                <Plus className="w-3 h-3 text-amber-600" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Floating / Sticky Bulk Actions Toolbar */}
+      {activeLedgerView === 'daily' && selectedSlipKeys.size > 0 && (
+        <div className="sticky top-4 z-30 bg-[#0F172A] text-white rounded-xl p-3 shadow-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-sky-400" />
+            <span className="font-bold text-xs">
+              {selectedSlipKeys.size} {selectedSlipKeys.size === 1 ? 'Slip' : 'Slips'} Selected
+            </span>
+            <span className="text-slate-400 text-xs hidden sm:inline">•</span>
+            <span className="text-slate-400 text-xs hidden sm:inline">
+              {groupedSlips.filter((s) => selectedSlipKeys.has(s.slipKey)).reduce((sum, s) => sum + s.items.length, 0)} items total
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBulkApproveSlips}
+              disabled={isBulkApproving}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer disabled:opacity-50"
+            >
+              {isBulkApproving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              <span>Approve Selected</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleBulkReviewSlips}
+              disabled={isBulkReviewing}
+              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer disabled:opacity-50"
+            >
+              {isBulkReviewing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />}
+              <span>Mark Reviewed</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleBulkDeleteSlips}
+              disabled={isBulkDeleting}
+              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer disabled:opacity-50"
+            >
+              {isBulkDeleting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              <span>Delete Selected</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSlipKeys(new Set())}
+              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+              title="Deselect all slips"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Slips Filter Toolbar: Status Pills, Customer, Sorting & Cadence */}
+      {activeLedgerView === 'daily' && (
+        <div className="flex flex-col gap-2.5 bg-white border border-[#E2E8F0] rounded-xl p-2.5 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setDailyStatusFilter('ALL')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyStatusFilter === 'ALL'
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
+                }`}
+              >
+                <span>All Slips</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200/70 text-slate-700">
+                  {dailyCounts.all}
+                </span>
+                {dailyPropertyFilter !== 'ALL' && dailyCounts.all < dailyCounts.totalAcrossAllClients && (
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    of {dailyCounts.totalAcrossAllClients}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDailyStatusFilter('UNREVIEWED')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyStatusFilter === 'UNREVIEWED'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span>Unreviewed</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dailyStatusFilter === 'UNREVIEWED' ? 'bg-sky-700 text-white' : 'bg-sky-100 text-sky-800'}`}>
+                  {dailyCounts.unreviewed}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDailyStatusFilter('UNAPPROVED')}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  dailyStatusFilter === 'UNAPPROVED'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
+                }`}
+              >
+                <span>Unapproved</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dailyStatusFilter === 'UNAPPROVED' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                  {dailyCounts.unapproved}
+                </span>
+              </button>
+
+              {dailyCounts.lowConfidence > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDailyStatusFilter('LOW_CONFIDENCE')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    dailyStatusFilter === 'LOW_CONFIDENCE'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-purple-500" />
+                  <span>Low Conf</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dailyStatusFilter === 'LOW_CONFIDENCE' ? 'bg-purple-700 text-white' : 'bg-purple-100 text-purple-800'}`}>
+                    {dailyCounts.lowConfidence}
+                  </span>
+                </button>
               )}
-            </button>
-            <button
-              onClick={() => setDailyStatusFilter('PENDING')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                dailyStatusFilter === 'PENDING'
-                  ? 'bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] shadow-xs'
-                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
-              }`}
-            >
-              <span>Pending</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
-                {dailyCounts.pending}
-              </span>
-            </button>
-            <button
-              onClick={() => setDailyStatusFilter('APPROVED')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                dailyStatusFilter === 'APPROVED'
-                  ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] shadow-xs'
-                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
-              }`}
-            >
-              <span>Approved</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
-                {dailyCounts.approved}
-              </span>
-            </button>
-            {isCustodyTracking && (
+
               <button
-                onClick={() => setDailyStatusFilter('DISCREPANCY')}
+                type="button"
+                onClick={() => setDailyStatusFilter('PENDING')}
                 className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  dailyStatusFilter === 'DISCREPANCY'
-                    ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] shadow-xs'
+                  dailyStatusFilter === 'PENDING'
+                    ? 'bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
                 }`}
               >
-                <AlertTriangle className="w-3 h-3 text-[#E11D48]" />
-                <span>Loss Discrepancies</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
-                  {dailyCounts.discrepancy}
+                <span>Pending</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+                  {dailyCounts.pending}
                 </span>
               </button>
-            )}
-            {dailyCounts.invoiced > 0 && (
+
               <button
-                onClick={() => setDailyStatusFilter('INVOICED')}
+                type="button"
+                onClick={() => setDailyStatusFilter('APPROVED')}
                 className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  dailyStatusFilter === 'INVOICED'
-                    ? 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shadow-xs'
+                  dailyStatusFilter === 'APPROVED'
+                    ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
                 }`}
               >
-                <span>Invoiced</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]">
-                  {dailyCounts.invoiced}
+                <span>Approved</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+                  {dailyCounts.approved}
                 </span>
               </button>
-            )}
+
+              {isCustodyTracking && (
+                <button
+                  type="button"
+                  onClick={() => setDailyStatusFilter('DISCREPANCY')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    dailyStatusFilter === 'DISCREPANCY'
+                      ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
+                  }`}
+                >
+                  <AlertTriangle className="w-3 h-3 text-[#E11D48]" />
+                  <span>Loss Discrepancies</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
+                    {dailyCounts.discrepancy}
+                  </span>
+                </button>
+              )}
+
+              {dailyCounts.invoiced > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDailyStatusFilter('INVOICED')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    dailyStatusFilter === 'INVOICED'
+                      ? 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-[#E2E8F0]'
+                  }`}
+                >
+                  <span>Invoiced</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]">
+                    {dailyCounts.invoiced}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {/* Right side controls: Customer, Sort, Cadence */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Customer Selector */}
+              {availableProperties.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[#64748B] text-[11px]">Customer:</span>
+                  <select
+                    value={dailyPropertyFilter}
+                    onChange={(e) => setDailyPropertyFilter(e.target.value)}
+                    className="bg-transparent text-[#0F172A] font-semibold focus:outline-none cursor-pointer text-xs"
+                  >
+                    <option value="ALL" className="bg-white text-slate-800">
+                      All Customers ({arStagedTx.length} items)
+                    </option>
+                    {availableProperties.map((p) => {
+                      const stat = propertyStatsMap[p];
+                      const slipsCnt = stat?.slips.size || 0;
+                      const itemsCnt = stat?.items || 0;
+                      return (
+                        <option key={p} value={p} className="bg-white text-slate-800">
+                          {p} ({slipsCnt} {slipsCnt === 1 ? 'slip' : 'slips'} • {itemsCnt} {itemsCnt === 1 ? 'item' : 'items'})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+
+              {/* Grouped Slips Sort By */}
+              {dailyViewMode === 'grouped' && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[#64748B] text-[11px]">Sort:</span>
+                  <select
+                    value={groupedSortBy}
+                    onChange={(e) => setGroupedSortBy(e.target.value)}
+                    className="bg-transparent text-[#0F172A] font-semibold focus:outline-none cursor-pointer text-xs"
+                  >
+                    <option value="date_desc">Date (Newest First)</option>
+                    <option value="date_asc">Date (Oldest First)</option>
+                    <option value="cust_asc">Customer (A to Z)</option>
+                    <option value="cust_desc">Customer (Z to A)</option>
+                    <option value="amount_desc">Total Amount (Highest)</option>
+                    <option value="amount_asc">Total Amount (Lowest)</option>
+                    <option value="count_desc">Item Count (Most)</option>
+                    <option value="low_conf_first">Low Confidence First</option>
+                    <option value="unreviewed_first">Unreviewed First</option>
+                    <option value="unapproved_first">Unapproved First</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Cadence Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[#64748B] text-[11px]">Cadence:</span>
+                <select
+                  value={missingCadence}
+                  onChange={(e) => setMissingCadence(e.target.value as any)}
+                  className="bg-transparent text-[#0F172A] font-semibold focus:outline-none cursor-pointer text-xs"
+                >
+                  <option value="daily">By Dates (Daily)</option>
+                  <option value="weekly">By Weeks</option>
+                  <option value="fortnightly">By Fortnights</option>
+                  <option value="monthly">By Months</option>
+                  <option value="disabled">Cadence Off</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {availableProperties.length > 0 && (
@@ -1655,45 +2407,97 @@ export const ClientArTab: React.FC = () => {
 
           {/* VIEW 2A: IN-APP POSTGRESQL DAILY SLIPS - GROUPED BY SLIP */}
           {activeLedgerView === 'daily' && dailyViewMode === 'grouped' && (
-            <div className="divide-y divide-[#E2E8F0]">
-              {paginatedGroupedSlips.length > 0 ? (
-                paginatedGroupedSlips.map((slip) => {
-                  const expanded = isSlipExpanded(slip.slipKey);
-                  return (
-                    <div key={slip.slipKey} className="transition-colors">
-                      {/* Slip Card Header */}
-                      <div
-                        className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
-                          slip.isFullyApproved
-                            ? 'bg-[#ECFDF5]/50 hover:bg-[#ECFDF5]/80'
-                            : slip.totalLossQty > 0
-                            ? 'border-l-4 border-l-[#E11D48] bg-[#FFF1F2]/50 hover:bg-[#FFF1F2]/80'
-                            : 'bg-slate-50/70 hover:bg-slate-100/70'
-                        }`}
-                      >
-                        {/* Left: Expand Chevron, Property, Date, File Name Link, Item Count */}
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <button
-                            onClick={() => toggleSlipExpanded(slip.slipKey)}
-                            className="p-1 rounded hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 transition cursor-pointer shrink-0"
-                            title={expanded ? 'Collapse slip line items' : 'Expand slip line items'}
-                          >
-                            {expanded ? (
-                              <ChevronUp className="w-4 h-4 text-slate-600" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-600" />
-                            )}
-                          </button>
+            <div>
+              <div className="bg-slate-50/90 border-b border-[#E2E8F0] px-4 py-2 flex items-center justify-between text-xs text-slate-600 font-medium">
+                <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 select-none">
+                  <input
+                    type="checkbox"
+                    checked={
+                      paginatedGroupedSlips.length > 0 &&
+                      paginatedGroupedSlips.every((s) => selectedSlipKeys.has(s.slipKey))
+                    }
+                    onChange={handleSelectAllVisibleSlips}
+                    className="w-4 h-4 rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
+                  />
+                  <span className="font-semibold text-slate-800">
+                    Select All Visible Slips ({paginatedGroupedSlips.length})
+                  </span>
+                </label>
+                <div className="flex items-center gap-3 text-slate-500 font-mono text-[11px]">
+                  {selectedSlipKeys.size > 0 && (
+                    <span className="font-bold text-[#0284C7]">{selectedSlipKeys.size} selected</span>
+                  )}
+                  <span>Showing {paginatedGroupedSlips.length} of {groupedSlips.length} slips</span>
+                </div>
+              </div>
 
-                          <div className="flex flex-wrap items-center gap-2 min-w-0">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shrink-0">
-                              <Building2 className="w-3 h-3 text-[#0284C7]" />
-                              <span>{slip.propertyName}</span>
-                            </span>
+              <div className="divide-y divide-[#E2E8F0]">
+                {paginatedGroupedSlips.length > 0 ? (
+                  paginatedGroupedSlips.map((slip) => {
+                    const expanded = isSlipExpanded(slip.slipKey);
+                    return (
+                      <div key={slip.slipKey} className="transition-colors">
+                        {/* Slip Card Header */}
+                        <div
+                          className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
+                            slip.isFullyApproved
+                              ? 'bg-[#ECFDF5]/50 hover:bg-[#ECFDF5]/80'
+                              : slip.totalLossQty > 0
+                              ? 'border-l-4 border-l-[#E11D48] bg-[#FFF1F2]/50 hover:bg-[#FFF1F2]/80'
+                              : 'bg-slate-50/70 hover:bg-slate-100/70'
+                          }`}
+                        >
+                          {/* Left: Checkbox, Expand Chevron, Customer, Date, File Name Link, Badges */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={selectedSlipKeys.has(slip.slipKey)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleToggleSelectSlip(slip.slipKey);
+                              }}
+                              className="w-4 h-4 rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer shrink-0"
+                              title="Select slip for bulk actions"
+                            />
 
-                            <span className="font-mono text-xs font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] shrink-0 whitespace-nowrap shadow-xs">
-                              {slip.slipDate}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleSlipExpanded(slip.slipKey)}
+                              className="p-1 rounded hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 transition cursor-pointer shrink-0"
+                              title={expanded ? 'Collapse slip line items' : 'Expand slip line items'}
+                            >
+                              {expanded ? (
+                                <ChevronUp className="w-4 h-4 text-slate-600" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-slate-600" />
+                              )}
+                            </button>
+
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shrink-0">
+                                <Building2 className="w-3 h-3 text-[#0284C7]" />
+                                <span>{slip.propertyName}</span>
+                              </span>
+
+                              <span className="font-mono text-xs font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] shrink-0 whitespace-nowrap shadow-xs">
+                                {slip.slipDate}
+                              </span>
+
+                              {slip.hasLowConfidence && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shrink-0"
+                                  title={`AI OCR Confidence: ${Math.round(slip.minConfidence * 100)}% - Verify values`}
+                                >
+                                  <Sparkles className="w-3 h-3 text-purple-600" />
+                                  <span>Low Conf ({Math.round(slip.minConfidence * 100)}%)</span>
+                                </span>
+                              )}
+
+                              {!slip.isFullyReviewed && (
+                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
+                                  Unreviewed
+                                </span>
+                              )}
 
                             {slip.driveUrl ? (
                               <a
@@ -2234,6 +3038,7 @@ export const ClientArTab: React.FC = () => {
                     : 'No daily slips match the selected filter criteria.'}
                 </div>
               )}
+              </div>
             </div>
           )}
 
@@ -2686,6 +3491,177 @@ export const ClientArTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Manual Delivery / AR Slip Creation Modal */}
+      {isAddSlipModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-[#0284C7]" />
+                <h3 className="text-base font-bold text-[#0F172A]">Record Manual Delivery Slip</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddSlipModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualSlip} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Customer / Party Name <span className="text-rose-500">*</span>
+                </label>
+                {availableProperties.length > 0 ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      list="arCustomerSuggestions"
+                      value={manualSlipCustomer}
+                      onChange={(e) => {
+                        setManualSlipCustomer(e.target.value);
+                        setManualSlipDocName(`Manual_Slip_${e.target.value.replace(/\s+/g, '_')}_${manualSlipDate}`);
+                      }}
+                      placeholder="Select or enter customer name..."
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#0284C7]"
+                    />
+                    <datalist id="arCustomerSuggestions">
+                      {availableProperties.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={manualSlipCustomer}
+                    onChange={(e) => {
+                      setManualSlipCustomer(e.target.value);
+                      setManualSlipDocName(`Manual_Slip_${e.target.value.replace(/\s+/g, '_')}_${manualSlipDate}`);
+                    }}
+                    placeholder="e.g. Labadi Beach Hotel"
+                    required
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#0284C7]"
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Slip Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={manualSlipDate}
+                    onChange={(e) => {
+                      setManualSlipDate(e.target.value);
+                      setManualSlipDocName(`Manual_Slip_${manualSlipCustomer.replace(/\s+/g, '_')}_${e.target.value}`);
+                    }}
+                    required
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#0284C7]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Slip Document / Ref #</label>
+                  <input
+                    type="text"
+                    value={manualSlipDocName}
+                    onChange={(e) => setManualSlipDocName(e.target.value)}
+                    placeholder="e.g. Manual_Slip_Customer_2026-09-15"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#0284C7]"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">Initial Line Item</div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Item / Service <span className="text-rose-500">*</span>
+                  </label>
+                  <ZohoItemSearchableSelect
+                    items={zohoMasterItems}
+                    selectedItemName={manualSlipItemName}
+                    onSelect={(it) => {
+                      setManualSlipItemName(it.name);
+                      if (it.rate != null && it.rate > 0) setManualSlipRate(it.rate);
+                    }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {isCustodyTracking && (
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Pickup Qty</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={manualSlipPickQty}
+                        onChange={(e) => setManualSlipPickQty(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#0284C7]"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Delivered Qty <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={manualSlipDelivQty}
+                      onChange={(e) => setManualSlipDelivQty(e.target.value)}
+                      required
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Unit Rate</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={manualSlipRate}
+                      onChange={(e) => setManualSlipRate(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                  <span className="text-slate-500">Calculated Total:</span>
+                  <span className="font-mono font-bold text-emerald-600 text-sm">
+                    {formatCurrency((Number(manualSlipDelivQty) || 0) * (Number(manualSlipRate) || 0))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddSlipModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingSlip}
+                  className="flex items-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingSlip ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Save &amp; Record Slip</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Purge Ingested File Modal */}
       <PurgeIngestedFileModal
