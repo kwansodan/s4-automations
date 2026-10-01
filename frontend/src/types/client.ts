@@ -202,6 +202,7 @@ export interface IngestionPipeline {
   field_mappings?: Record<string, string>;
   sample_preview?: any;
   notes?: string;
+  missing_cadence?: 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled';
   last_run_summary?: PipelineRunSummary;
 }
 

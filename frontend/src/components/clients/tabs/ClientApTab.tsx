@@ -108,7 +108,7 @@ export const ClientApTab: React.FC = () => {
       (p: any) => p.pipeline_type === 'AP' || p.type === 'AP' || (p.name || '').toLowerCase().includes('payable') || (p.name || '').toLowerCase().includes('bill')
     );
     if (apPipeline) {
-      const cad = apPipeline.missing_cadence || apPipeline.source_config?.missing_cadence;
+      const cad = (apPipeline as any).missing_cadence || apPipeline.source_config?.missing_cadence;
       if (cad && ['daily', 'weekly', 'fortnightly', 'monthly', 'disabled'].includes(cad)) {
         setMissingCadence(cad as any);
       }
