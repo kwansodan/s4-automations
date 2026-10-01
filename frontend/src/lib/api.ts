@@ -827,6 +827,7 @@ export async function updateClientTransaction(
     reviewed?: boolean;
     approved?: boolean;
     status?: string;
+    transaction_date?: string;
   }
 ): Promise<{ success: boolean; transaction: any }> {
   const res = await resilientFetch(`/api/clients/${clientId}/transactions/${transactionId}`, {
@@ -953,6 +954,21 @@ export async function batchDeleteStagedTransactions(
     body: JSON.stringify(payload),
   });
   return handleResponse<any>(res, `Batch delete transactions for ${clientId}`);
+}
+
+export async function batchUpdateTransactionDate(
+  clientId: string,
+  payload: { transaction_ids: number[]; new_date: string }
+): Promise<{ success: boolean; updated_count: number; new_date: string }> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions/batch-update-date`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ success: boolean; updated_count: number; new_date: string }>(
+    res,
+    `Batch update date for transactions in ${clientId}`
+  );
 }
 
 export async function fetchAuditLogs(limit = 50, clientId?: string): Promise<any[]> {

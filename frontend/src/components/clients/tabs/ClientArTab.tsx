@@ -11,6 +11,7 @@ import {
   batchApproveTransactions,
   deleteStagedTransaction,
   batchDeleteStagedTransactions,
+  batchUpdateTransactionDate,
   updateClientTransaction,
   createClientTransaction,
   fetchItemCatalog,
@@ -153,12 +154,18 @@ export const ClientArTab: React.FC = () => {
   const [clientContacts, setClientContacts] = useState<any[]>([]);
   const [editingTxId, setEditingTxId] = useState<number | null>(null);
   const [editItemName, setEditItemName] = useState<string>('');
+  const [editTxDate, setEditTxDate] = useState<string>('');
   const [editPickQty, setEditPickQty] = useState<number | string>('');
   const [editDelivQty, setEditDelivQty] = useState<number | string>('');
   const [editRate, setEditRate] = useState<number | string>('');
   const [isSavingTx, setIsSavingTx] = useState<boolean>(false);
   const [deletingSlipKey, setDeletingSlipKey] = useState<string | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<number | null>(null);
+
+  // Slip-level Date Correction State
+  const [editingDateSlip, setEditingDateSlip] = useState<SlipGroup | null>(null);
+  const [newSlipDateValue, setNewSlipDateValue] = useState<string>('');
+  const [isSavingSlipDate, setIsSavingSlipDate] = useState<boolean>(false);
 
   // Adding Missed Item to Slip State
   const [addingItemSlipKey, setAddingItemSlipKey] = useState<string | null>(null);
@@ -1305,6 +1312,7 @@ export const ClientArTab: React.FC = () => {
     setEditingTxId(tx.id);
     const desc = (tx.item_or_description || '').trim();
     setEditItemName(desc);
+    setEditTxDate(tx.transaction_date || '');
     setEditPickQty(tx.credit_amount ?? tx.quantity_or_debit ?? 0);
     setEditDelivQty(tx.quantity_or_debit ?? 0);
     setEditRate(tx.rate_or_price ?? 0);
@@ -1315,6 +1323,7 @@ export const ClientArTab: React.FC = () => {
   const handleCancelEdit = () => {
     setEditingTxId(null);
     setEditItemName('');
+    setEditTxDate('');
     setEditPickQty('');
     setEditDelivQty('');
     setEditRate('');
@@ -1356,6 +1365,7 @@ export const ClientArTab: React.FC = () => {
     try {
       await updateClientTransaction(currentClient.id, txId, {
         item_or_description: finalDesc,
+        transaction_date: editTxDate.trim() || undefined,
         credit_amount: pick,
         quantity_or_debit: deliv,
         rate_or_price: rate,
@@ -1374,6 +1384,47 @@ export const ClientArTab: React.FC = () => {
       addLog('error', `Failed updating transaction: ${err.message}`);
     } finally {
       setIsSavingTx(false);
+    }
+  };
+
+  const handleOpenEditSlipDate = (slip: SlipGroup) => {
+    setEditingDateSlip(slip);
+    setNewSlipDateValue(
+      slip.slipDate && slip.slipDate !== '-'
+        ? slip.slipDate
+        : `${selectedYear}-${String(MONTHS.indexOf(selectedMonth) + 1).padStart(2, '0')}-01`
+    );
+  };
+
+  const handleSaveSlipDate = async () => {
+    if (!currentClient?.id || !editingDateSlip || !newSlipDateValue) return;
+    setIsSavingSlipDate(true);
+    try {
+      const res = await batchUpdateTransactionDate(currentClient.id, {
+        transaction_ids: editingDateSlip.txIds,
+        new_date: newSlipDateValue,
+      });
+
+      const parts = newSlipDateValue.split('-');
+      const yNum = parseInt(parts[0], 10);
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const targetMonth = MONTHS[mIdx] || selectedMonth;
+      const targetYear = yNum || selectedYear;
+
+      addLog('success', `Corrected slip date to ${newSlipDateValue} (${res.updated_count} line items updated).`);
+
+      if (targetMonth !== selectedMonth || targetYear !== selectedYear) {
+        setSelectedMonth(targetMonth);
+        setSelectedYear(targetYear);
+        addLog('info', `Switched active ledger view to ${targetMonth} ${targetYear}.`);
+      } else {
+        await Promise.all([loadTransactions(), loadSummaryData()]);
+      }
+      setEditingDateSlip(null);
+    } catch (err: any) {
+      addLog('error', `Failed updating slip date: ${err.message}`);
+    } finally {
+      setIsSavingSlipDate(false);
     }
   };
 
@@ -2577,9 +2628,18 @@ export const ClientArTab: React.FC = () => {
                                 <span>{slip.propertyName}</span>
                               </span>
 
-                              <span className="font-mono text-xs font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] shrink-0 whitespace-nowrap shadow-xs">
-                                {slip.slipDate}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditSlipDate(slip);
+                                }}
+                                className="font-mono text-xs font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] hover:border-[#0284C7] hover:text-[#0284C7] hover:bg-[#F0F9FF] transition shrink-0 whitespace-nowrap shadow-xs flex items-center gap-1 cursor-pointer group"
+                                title="Click to correct date for this delivery slip"
+                              >
+                                <span>{slip.slipDate}</span>
+                                <Edit3 className="w-2.5 h-2.5 text-slate-400 group-hover:text-[#0284C7]" />
+                              </button>
 
                               {slip.hasLowConfidence && (
                                 <span
@@ -2694,6 +2754,19 @@ export const ClientArTab: React.FC = () => {
                                 <span>Approve Slip ({slip.items.length})</span>
                               </>
                             )}
+                          </button>
+
+                          {/* Edit Slip Date */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditSlipDate(slip);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 bg-white border border-[#CBD5E1] hover:border-slate-400 transition cursor-pointer shadow-xs shrink-0"
+                            title={`Correct date for all ${slip.items.length} items on "${slip.sourceFileName || 'this slip'}"`}
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Edit Date</span>
                           </button>
 
                           {/* Add Missing Item to this Slip */}
@@ -3784,6 +3857,86 @@ export const ClientArTab: React.FC = () => {
           loadSummaryData();
         }}
       />
+
+      {/* Correct Slip Date Modal */}
+      {editingDateSlip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 bg-slate-50/80 border-b border-[#E2E8F0] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 text-[#0284C7] flex items-center justify-center shadow-xs">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0F172A]">Correct Slip Date</h3>
+                  <p className="text-xs text-[#64748B]">
+                    {editingDateSlip.propertyName} ({editingDateSlip.items.length} {editingDateSlip.items.length === 1 ? 'item' : 'items'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingDateSlip(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  New Delivery Slip Date
+                </label>
+                <input
+                  type="date"
+                  value={newSlipDateValue}
+                  onChange={(e) => setNewSlipDateValue(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] font-mono shadow-xs"
+                />
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Currently recorded as <strong className="font-mono text-slate-700">{editingDateSlip.slipDate}</strong>.
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
+                <p className="font-semibold flex items-center gap-1.5 text-amber-800 mb-1">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  Automatic Ledger Re-filing
+                </p>
+                Updating this date will update all <strong>{editingDateSlip.items.length} line items</strong> on this delivery slip in PostgreSQL. If moved to another month, the ledger view will switch automatically so you can continue reviewing it.
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E2E8F0] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEditingDateSlip(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSlipDate}
+                disabled={isSavingSlipDate || !newSlipDateValue}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0284C7] hover:bg-[#0369A1] rounded-lg transition cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isSavingSlipDate ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save Date</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1693,6 +1693,53 @@ async def batch_toggle_staged_transactions(
     }
 
 
+@router.post("/{client_id}/transactions/batch-update-date", summary="Batch Update Date for Slip Transactions")
+async def batch_update_transaction_date(
+    client_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Batch updates transaction_date across multiple staged transactions (e.g. when errand boys wrote wrong date/month on a slip)."""
+    tx_ids = payload.get("transaction_ids", [])
+    new_date = str(payload.get("new_date", "")).strip()
+
+    if not new_date:
+        raise HTTPException(status_code=400, detail="Must provide new_date in YYYY-MM-DD format.")
+
+    if not tx_ids:
+        return {"success": True, "updated_count": 0, "new_date": new_date}
+
+    aliases = get_client_id_aliases(client_id)
+    txs = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.id.in_(tx_ids),
+            StagedTransaction.client_id.in_(aliases),
+        )
+    ).all()
+
+    for tx in txs:
+        tx.transaction_date = new_date
+        meta = dict(tx.metadata_json or {})
+        meta["slip_date"] = new_date
+        meta["manual_date_correction"] = True
+        tx.metadata_json = meta
+        db.add(tx)
+
+    db.commit()
+
+    AuditService.log(
+        client_id=client_id,
+        action="SLIP_DATE_UPDATED",
+        details={"updated_count": len(txs), "new_date": new_date, "tx_ids": tx_ids},
+    )
+
+    return {
+        "success": True,
+        "updated_count": len(txs),
+        "new_date": new_date,
+    }
+
+
 class CreateStagedTransactionPayload(BaseModel):
     item_or_description: str
     quantity_or_debit: float = Field(default=0.0)
@@ -1848,6 +1895,12 @@ async def update_staged_transaction(
         tx.discrepancy_amount = max(0.0, tx.credit_amount - tx.quantity_or_debit)
     if "item_or_description" in payload:
         tx.item_or_description = str(payload["item_or_description"])
+    if "transaction_date" in payload and payload["transaction_date"]:
+        tx.transaction_date = str(payload["transaction_date"]).strip()
+        meta = dict(tx.metadata_json or {})
+        meta["slip_date"] = tx.transaction_date
+        meta["manual_date_correction"] = True
+        tx.metadata_json = meta
     if "reviewed" in payload:
         tx.reviewed = bool(payload["reviewed"])
     if "approved" in payload:

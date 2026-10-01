@@ -8,6 +8,7 @@ import {
   batchApproveTransactions,
   deleteStagedTransaction,
   batchDeleteStagedTransactions,
+  batchUpdateTransactionDate,
   createClientTransaction,
   triggerApPipeline,
 } from '../../../lib/api';
@@ -39,6 +40,7 @@ import {
   Save,
   X,
   Download,
+  Edit3,
 } from 'lucide-react';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 
@@ -84,6 +86,11 @@ export const ClientApTab: React.FC = () => {
   const [manualBillAmount, setManualBillAmount] = useState<number | string>(0);
   const [isCreatingBill, setIsCreatingBill] = useState<boolean>(false);
   const [createBillError, setCreateBillError] = useState<string | null>(null);
+
+  // Bill Date Correction State
+  const [editingDateBill, setEditingDateBill] = useState<any | null>(null);
+  const [newBillDateValue, setNewBillDateValue] = useState<string>('');
+  const [isSavingBillDate, setIsSavingBillDate] = useState<boolean>(false);
 
   const loadTransactions = async () => {
     if (!currentClient?.id) return;
@@ -358,6 +365,47 @@ export const ClientApTab: React.FC = () => {
       addLog('error', `Failed to create manual vendor bill: ${errMsg}`);
     } finally {
       setIsCreatingBill(false);
+    }
+  };
+
+  const handleOpenEditBillDate = (bill: any) => {
+    setEditingDateBill(bill);
+    setNewBillDateValue(
+      bill.transaction_date && bill.transaction_date !== '-'
+        ? bill.transaction_date
+        : `${selectedYear}-${String(MONTHS.indexOf(selectedMonth) + 1).padStart(2, '0')}-01`
+    );
+  };
+
+  const handleSaveBillDate = async () => {
+    if (!currentClient?.id || !editingDateBill || !newBillDateValue) return;
+    setIsSavingBillDate(true);
+    try {
+      const res = await batchUpdateTransactionDate(currentClient.id, {
+        transaction_ids: [editingDateBill.id],
+        new_date: newBillDateValue,
+      });
+
+      const parts = newBillDateValue.split('-');
+      const yNum = parseInt(parts[0], 10);
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const targetMonth = MONTHS[mIdx] || selectedMonth;
+      const targetYear = yNum || selectedYear;
+
+      addLog('success', `Corrected bill date to ${newBillDateValue} for "${editingDateBill.item_or_description}".`);
+
+      if (targetMonth !== selectedMonth || targetYear !== selectedYear) {
+        setSelectedMonth(targetMonth);
+        setSelectedYear(targetYear);
+        addLog('info', `Switched active AP ledger view to ${targetMonth} ${targetYear}.`);
+      } else {
+        await loadTransactions();
+      }
+      setEditingDateBill(null);
+    } catch (err: any) {
+      addLog('error', `Failed updating bill date: ${err.message}`);
+    } finally {
+      setIsSavingBillDate(false);
     }
   };
 
@@ -1476,7 +1524,20 @@ export const ClientApTab: React.FC = () => {
                             className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-sky-600 focus:ring-sky-500 cursor-pointer"
                           />
                         </td>
-                        <td className="py-3 px-4 text-slate-600 font-mono whitespace-nowrap">{tx.transaction_date}</td>
+                        <td className="py-3 px-4 text-slate-600 font-mono whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditBillDate(tx);
+                            }}
+                            className="hover:text-sky-600 hover:underline flex items-center gap-1 group cursor-pointer"
+                            title="Click to correct bill date"
+                          >
+                            <span>{tx.transaction_date}</span>
+                            <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-sky-600 transition" />
+                          </button>
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[#0F172A] font-semibold">{tx.item_or_description}</span>
@@ -1543,21 +1604,33 @@ export const ClientApTab: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {tx.status !== 'INVOICED' && tx.status !== 'BILLED' && (
-                            <button
-                              onClick={() => handleDeleteApTx(tx.id)}
-                              disabled={deletingTxId === tx.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 transition cursor-pointer"
-                              title="Delete this staged vendor bill"
-                            >
-                              {deletingTxId === tx.id ? (
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                              )}
-                              <span>Delete</span>
-                            </button>
-                          )}
+                          <div className="inline-flex items-center gap-1.5">
+                            {tx.status !== 'INVOICED' && tx.status !== 'BILLED' && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenEditBillDate(tx)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition cursor-pointer"
+                                  title="Correct bill date"
+                                >
+                                  <Calendar className="w-3 h-3 text-slate-500" />
+                                  <span>Date</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteApTx(tx.id)}
+                                  disabled={deletingTxId === tx.id}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 transition cursor-pointer"
+                                  title="Delete this staged vendor bill"
+                                >
+                                  {deletingTxId === tx.id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                  )}
+                                  <span>Delete</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1721,6 +1794,86 @@ export const ClientApTab: React.FC = () => {
           loadTransactions();
         }}
       />
+
+      {/* Correct Bill Date Modal */}
+      {editingDateBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 bg-slate-50/80 border-b border-[#E2E8F0] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shadow-xs">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0F172A]">Correct Bill Date</h3>
+                  <p className="text-xs text-[#64748B]">
+                    {editingDateBill.item_or_description} - {formatCurrency(editingDateBill.total_amount)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingDateBill(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  New Vendor Bill Date
+                </label>
+                <input
+                  type="date"
+                  value={newBillDateValue}
+                  onChange={(e) => setNewBillDateValue(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono shadow-xs"
+                />
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Currently recorded as <strong className="font-mono text-slate-700">{editingDateBill.transaction_date}</strong>.
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
+                <p className="font-semibold flex items-center gap-1.5 text-amber-800 mb-1">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  Automatic AP Ledger Re-filing
+                </p>
+                Updating this date will update the record in PostgreSQL. If moved to another month, the AP ledger view will switch automatically.
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E2E8F0] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEditingDateBill(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBillDate}
+                disabled={isSavingBillDate || !newBillDateValue}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isSavingBillDate ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save Date</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
