@@ -21,7 +21,6 @@ from app.db.session import get_engine
 from sqlmodel import select, Session
 from app.services.zoho_service import ZohoBooksService
 from app.services.google_drive_service import GoogleDriveService
-from app.services.google_sheets_service import GoogleSheetsService
 from app.services.ocr_service import GeminiOCRService
 from app.utils.logging import get_logger
 from app.utils.progress_tracker import pipeline_tracker
@@ -51,7 +50,7 @@ async def run_daily_pipeline_core(
         pipeline_tracker.update_progress(
             percent=15,
             stage_index=1,
-            current_step=f"Pre-flight: Syncing Zoho catalog & locating review sheet for {target_month} {target_year}...",
+            current_step=f"Pre-flight: Syncing Zoho catalog & scanning Drive folders for {target_month} {target_year}...",
         )
         pipeline_tracker.add_log("info", f"Pre-flight: Connecting to Zoho Books & Google Drive ({target_month} {target_year})...")
 
@@ -93,7 +92,7 @@ async def run_daily_pipeline_core(
             current_step=f"Discovered {len(clients_to_process)} hotel client folders in Google Drive.",
             stats_update={"clients_total": len(clients_to_process)},
         )
-        pipeline_tracker.add_log("info", f"Pre-flight complete: {len(clients_to_process)} client folders found. Spreadsheet: {sheet_url or sheet_id}")
+        pipeline_tracker.add_log("info", f"Pre-flight complete: {len(clients_to_process)} client folders found.")
 
         client_results: List[Dict[str, Any]] = []
         total_slips_processed = 0

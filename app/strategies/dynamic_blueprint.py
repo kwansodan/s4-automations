@@ -257,7 +257,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         pipeline_id: Optional[str] = None,
         **kwargs,
     ) -> List[ExtractedLineItem]:
-        """Extracts structured line items with SHA-256 de-duplication check, sheet-aware auto-resync, and Zoho contract validation."""
+        """Extracts structured line items with SHA-256 de-duplication check, database auto-heal, and Zoho contract validation."""
         if month:
             self.current_run_month = month
         if year:
@@ -278,8 +278,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
 
         # Query existing processed checksums in DB to ensure idempotency
-        sheet_id = kwargs.get("sheet_id") or kwargs.get("spreadsheet_id")
-        existing_filenames_in_sheet: set = set()
         existing_checksums = set()
         try:
             with Session(get_engine()) as session:
@@ -293,7 +291,6 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         async def _process_single_document(doc: SourceDocument, sem: asyncio.Semaphore) -> List[ExtractedLineItem]:
             doc_pipeline_id = doc.metadata.get("pipeline_id") or pipeline_id
             checksum = doc.get_checksum()
-            doc_file_lower = (doc.file_name or "").strip().lower()
 
             if checksum in existing_checksums:
                 should_reprocess = False
@@ -304,6 +301,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 else:
                     # Check database: are any existing staged records already finalized/posted in accounting?
                     has_posted_tx = False
+                    staged_records = []
                     try:
                         with Session(get_engine()) as session:
                             staged_records = session.exec(
@@ -319,15 +317,9 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     except Exception as tx_check_err:
                         logger.warning(f"Error checking staged records status: {tx_check_err}")
 
-                    # If not finalized in accounting, check if absent from active review sheet or if existing records are corrupted zero-value dummies
+                    # If not finalized in accounting, check if existing records are corrupted zero-value dummies to auto-heal
                     if not has_posted_tx:
-                        if sheet_id and existing_filenames_in_sheet and doc_file_lower not in existing_filenames_in_sheet:
-                            should_reprocess = True
-                            logger.info(
-                                f"🔄 Auto-resync: '{doc.file_name}' was previously staged but is missing from review sheet "
-                                f"(and unposted in accounting). Clearing stale ledger records and re-extracting fresh."
-                            )
-                        elif staged_records and any(
+                        if staged_records and any(
                             (r.rate_or_price == 0.0 and r.total_amount == 0.0) or (r.item_or_description and " - " in r.item_or_description and r.quantity_or_debit == 1.0)
                             for r in staged_records
                         ):
@@ -866,7 +858,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         auto_post: bool = False,
         pipeline_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Stages extracted transactions into PostgreSQL database ledger and Google Sheets with validation status."""
+        """Stages extracted transactions into PostgreSQL database review ledger with validation status."""
         logger.info(f"[{self.client_name}] Stage 3: Staging {len(items)} items in review ledger (auto_post={auto_post})...")
         self.log_step(
             "LEDGER_STAGING",
@@ -974,7 +966,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
     async def post_to_accounting(
         self, month: str, year: int, approved_items: Optional[List[Any]] = None, pipeline_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Posts approved staged transactions to the client's configured accounting platform and updates spreadsheet."""
+        """Posts approved staged transactions to the client's configured accounting platform."""
         from app.services.accounting.factory import AccountingAdapterFactory
         platform_id = self.client.accounting_software or "zoho_books"
         logger.info(f"[{self.client_name}] Stage 4: Posting approved transactions to {platform_id}...")

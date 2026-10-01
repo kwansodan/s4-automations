@@ -442,7 +442,7 @@ class LandingPageConfig(SQLModel, table=True):
     hero_highlights: List[str] = Field(
         default_factory=lambda: [
             "99.4% Extraction Accuracy",
-            "Human-in-the-Loop Review Sheet",
+            "Human-in-the-Loop Review Ledger",
             "Direct Bank & MoMo Reconciliation",
         ],
         sa_column=Column(JSON),
@@ -476,7 +476,7 @@ class LandingPageConfig(SQLModel, table=True):
         default_factory=lambda: [
             {
                 "question": "How does S4 Automations handle messy handwriting and low-light scans?",
-                "answer": "Our proprietary S4 Neural Ingestion Engine™ is trained on unstructured West African paperwork. Before any data reaches your ledger, low-confidence fields are flagged in a human-in-the-loop spreadsheet or web review inbox for your team to verify with 1 click.",
+                "answer": "Our proprietary S4 Neural Ingestion Engine™ is trained on unstructured West African paperwork. Before any data reaches your ledger, low-confidence fields are flagged in a human-in-the-loop web review ledger for your team to verify with 1 click.",
             },
             {
                 "question": "Will syncing create duplicate invoices or bills in our accounting software?",
@@ -512,7 +512,7 @@ class LandingPageConfig(SQLModel, table=True):
                 "features": [
                     "Up to 500 monthly documents",
                     "Gemini 2.5 Flash Vision OCR",
-                    "Google Sheets & Web Review Inbox",
+                    "Database Review Ledger & Web Inbox",
                     "1-Click Sync to Zoho / QuickBooks",
                     "Linen & stock discrepancy alerts",
                     "WhatsApp audit support",

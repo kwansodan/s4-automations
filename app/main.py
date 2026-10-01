@@ -244,7 +244,7 @@ async def health_check() -> Dict[str, Any]:
             "inngest": bool(settings.INNGEST_EVENT_KEY and settings.INNGEST_SIGNING_KEY),
             "gemini": bool(settings.GEMINI_API_KEY or settings.MOCK_MODE),
             "zoho_books": bool(settings.ZOHO_REFRESH_TOKEN and settings.ZOHO_ORG_ID or settings.MOCK_MODE),
-            "google_drive_sheets": bool(
+            "google_drive": bool(
                 settings.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64
                 or settings.GOOGLE_SERVICE_ACCOUNT_FILE
                 or settings.MOCK_MODE

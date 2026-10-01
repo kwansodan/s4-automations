@@ -5,7 +5,6 @@ from datetime import datetime
 
 from app.strategies.base import BaseAutomationStrategy, SourceDocument, SourceType, ExtractedLineItem
 from app.services.google_drive_service import GoogleDriveService
-from app.services.google_sheets_service import GoogleSheetsService
 from app.services.ocr_service import GeminiOCRService
 from app.services.zoho_service import ZohoBooksService
 from app.models.schemas import OCRSlipExtraction
@@ -28,7 +27,6 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
     def __init__(self, client_id: str = "anr_group", client_name: str = "ANR Group (Commercial Laundry)"):
         super().__init__(client_id=client_id, client_name=client_name)
         self.drive = GoogleDriveService()
-        self.sheets = GoogleSheetsService()
         self.ocr = GeminiOCRService()
         self.zoho = ZohoBooksService()
 
