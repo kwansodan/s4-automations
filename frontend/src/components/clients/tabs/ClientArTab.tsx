@@ -1792,6 +1792,8 @@ export const ClientArTab: React.FC = () => {
                                 <span>Approve Slip ({slip.items.length})</span>
                               </>
                             )}
+                          </button>
+
                           {/* Add Missing Item to this Slip */}
                           <button
                             onClick={(e) => {
