@@ -881,7 +881,7 @@ export const ClientArTab: React.FC = () => {
     setNewItemRate(0);
   };
 
-  const handleZohoNewItemSelect = (item: ZohoCatalogItem) => {
+  const handleZohoNewItemSelect = (item: CatalogItem) => {
     setNewItemName(item.name);
     if (item.rate != null && item.rate > 0) {
       setNewItemRate(item.rate);
