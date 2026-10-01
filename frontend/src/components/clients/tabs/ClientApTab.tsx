@@ -80,8 +80,9 @@ export const ClientApTab: React.FC = () => {
   const [manualBillDate, setManualBillDate] = useState<string>('');
   const [manualBillDocName, setManualBillDocName] = useState<string>('');
   const [manualBillCategory, setManualBillCategory] = useState<string>('Vendor Bill');
-  const [manualBillAmount, setManualBillAmount] = useState<number | string>('');
+  const [manualBillAmount, setManualBillAmount] = useState<number | string>(0);
   const [isCreatingBill, setIsCreatingBill] = useState<boolean>(false);
+  const [createBillError, setCreateBillError] = useState<string | null>(null);
 
   const loadTransactions = async () => {
     if (!currentClient?.id) return;
@@ -296,31 +297,35 @@ export const ClientApTab: React.FC = () => {
     setManualBillDocName(`Bill_${defaultVendor ? defaultVendor.replace(/\s+/g, '_') : 'Vendor'}_${defaultDate}`);
     setManualBillCategory('Vendor Bill');
     setManualBillAmount('');
+    setCreateBillError(null);
     setIsAddBillModalOpen(true);
   };
 
   const handleCreateManualBill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentClient?.id) return;
-    if (!manualBillVendor.trim()) {
-      alert('Please specify a vendor name.');
+    setCreateBillError(null);
+
+    const vendorName = manualBillVendor.trim();
+    if (!vendorName) {
+      setCreateBillError('Please specify a vendor name.');
       return;
     }
     const amt = Number(manualBillAmount) || 0;
     if (amt <= 0) {
-      alert('Please enter a valid bill total amount greater than 0.');
+      setCreateBillError('Please enter a valid bill total amount greater than 0.');
       return;
     }
 
     setIsCreatingBill(true);
     try {
-      const docName = manualBillDocName.trim() || `Manual_Bill_${manualBillVendor}_${manualBillDate}`;
+      const docName = manualBillDocName.trim() || `Manual_Bill_${vendorName.replace(/\s+/g, '_')}_${manualBillDate}`;
 
-      await createClientTransaction(currentClient.id, {
+      const res = await createClientTransaction(currentClient.id, {
         pipeline_type: 'AP',
         source_file_name: docName,
         transaction_date: manualBillDate,
-        item_or_description: manualBillVendor.trim(),
+        item_or_description: vendorName,
         quantity_or_debit: 1,
         rate_or_price: amt,
         total_amount: amt,
@@ -329,18 +334,27 @@ export const ClientApTab: React.FC = () => {
         approved: true,
         status: 'APPROVED',
         metadata_json: {
-          vendor_name: manualBillVendor.trim(),
+          vendor_name: vendorName,
           is_manual_entry: true,
           created_at: new Date().toISOString(),
         },
       });
 
-      addLog('success', `Manually created vendor bill "${docName}" for ${manualBillVendor}`);
+      // Optimistically insert newly created bill transaction
+      if (res?.transaction) {
+        setTransactions((prev) => [res.transaction, ...prev]);
+      }
+
+      addLog('success', `Manually created vendor bill "${docName}" for ${vendorName}`);
       setIsAddBillModalOpen(false);
+      setApStatusFilter('ALL');
+      setVendorFilter('ALL');
       await loadTransactions();
       setActiveSubTab('bills');
     } catch (err: any) {
-      addLog('error', `Failed to create manual vendor bill: ${err.message}`);
+      const errMsg = err?.message || 'Failed to create manual vendor bill. Please check backend connection.';
+      setCreateBillError(errMsg);
+      addLog('error', `Failed to create manual vendor bill: ${errMsg}`);
     } finally {
       setIsCreatingBill(false);
     }
@@ -1478,6 +1492,13 @@ export const ClientApTab: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {createBillError && (
+              <div className="mx-5 mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span className="flex-1">{createBillError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleCreateManualBill} className="p-5 space-y-4">
               {/* Vendor Name */}

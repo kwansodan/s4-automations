@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Search, ChevronDown, Check, AlertCircle, Package, X } from 'lucide-react';
+import { Search, ChevronDown, Check, AlertCircle, Package, X, Plus } from 'lucide-react';
 import { CatalogItem } from '../../../lib/api';
 import { formatCurrency } from '../../../lib/utils';
 
@@ -7,6 +7,7 @@ interface ZohoItemSearchableSelectProps {
   items: CatalogItem[];
   selectedItemName: string;
   onSelect: (item: CatalogItem) => void;
+  onTextChange?: (text: string) => void;
   disabled?: boolean;
 }
 
@@ -14,6 +15,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
   items,
   selectedItemName,
   onSelect,
+  onTextChange,
   disabled = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,11 +60,17 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
 
     const handleOutsideClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        if (searchQuery.trim()) {
+          onTextChange?.(searchQuery.trim());
+        }
         setIsOpen(false);
       }
     };
 
     const handleWindowBlur = () => {
+      if (searchQuery.trim()) {
+        onTextChange?.(searchQuery.trim());
+      }
       setIsOpen(false);
     };
 
@@ -73,7 +81,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
       document.removeEventListener('mousedown', handleOutsideClick);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [isOpen]);
+  }, [isOpen, searchQuery, onTextChange]);
 
   // Reset highlight index when filter results change length
   useEffect(() => {
@@ -83,10 +91,11 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
   const handleSelect = useCallback(
     (item: CatalogItem) => {
       onSelect(item);
+      onTextChange?.(item.name || '');
       setSearchQuery('');
       setIsOpen(false);
     },
-    [onSelect]
+    [onSelect, onTextChange]
   );
 
   // Scroll active element into view ONLY on explicit keyboard navigation (never on mouse hover)
@@ -104,6 +113,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        setSearchQuery(selectedItemName || '');
         setIsOpen(true);
       }
       return;
@@ -113,6 +123,14 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
       if (e.key === 'Escape') {
         e.preventDefault();
         setIsOpen(false);
+      } else if (e.key === 'Enter' && searchQuery.trim()) {
+        e.preventDefault();
+        handleSelect({
+          item_id: '',
+          name: searchQuery.trim(),
+          rate: 0,
+          status: 'active',
+        });
       }
       return;
     }
@@ -136,6 +154,13 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
         e.preventDefault();
         if (visibleItems[highlightedIndex]) {
           handleSelect(visibleItems[highlightedIndex]);
+        } else if (searchQuery.trim()) {
+          handleSelect({
+            item_id: '',
+            name: searchQuery.trim(),
+            rate: 0,
+            status: 'active',
+          });
         }
         break;
       }
@@ -151,6 +176,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
 
   const handleInputFocus = () => {
     if (!isOpen) {
+      setSearchQuery(selectedItemName || '');
       setIsOpen(true);
     }
   };
@@ -182,7 +208,9 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
               disabled={disabled}
               value={isOpen ? searchQuery : matchedZohoItem?.name || selectedItemName || ''}
               onChange={(e) => {
-                setSearchQuery(e.target.value);
+                const val = e.target.value;
+                setSearchQuery(val);
+                onTextChange?.(val);
                 if (!isOpen) setIsOpen(true);
               }}
               onFocus={handleInputFocus}
@@ -217,12 +245,12 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
         {!matchedZohoItem && selectedItemName && !isOpen && (
           <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-400 font-medium">
             <AlertCircle className="w-3 h-3 shrink-0 text-amber-400" />
-            <span className="truncate">Not in Zoho Master - click to select catalog item</span>
+            <span className="truncate">Not in Zoho Master - custom item active</span>
           </div>
         )}
       </div>
 
-      {/* Dropdown Popover (Strictly Zoho Books Item Master) */}
+      {/* Dropdown Popover (Strictly Zoho Books Item Master + Custom Item Fallback) */}
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 w-80 sm:w-96 max-h-72 bg-slate-900 border border-sky-500/60 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col">
           {/* Header Badge */}
@@ -238,6 +266,30 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
 
           {/* Items List */}
           <div ref={listRef} className="overflow-y-auto max-h-56 p-1.5 space-y-1 custom-scrollbar">
+            {searchQuery.trim() && !visibleItems.some((i) => i.name?.toLowerCase() === searchQuery.trim().toLowerCase()) && (
+              <div
+                onClick={() =>
+                  handleSelect({
+                    item_id: '',
+                    name: searchQuery.trim(),
+                    rate: 0,
+                    status: 'active',
+                  })
+                }
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer bg-sky-950/40 hover:bg-sky-900/60 border border-dashed border-sky-500/50 text-sky-200 transition"
+              >
+                <Plus className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="font-semibold text-xs text-sky-300">
+                    Use custom item: &ldquo;{searchQuery.trim()}&rdquo;
+                  </span>
+                  <span className="block text-[10px] text-slate-400">
+                    Custom item - rate will be set manually
+                  </span>
+                </div>
+              </div>
+            )}
+
             {visibleItems.length > 0 ? (
               visibleItems.map((item, index) => {
                 const isSelected =
@@ -286,12 +338,29 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                 );
               })
             ) : (
-              <div className="py-6 px-3 text-center text-xs">
+              <div className="py-4 px-3 text-center text-xs">
                 <p className="text-slate-400 font-medium">
                   {searchQuery ? `No Zoho Books items match "${searchQuery}"` : 'No active items registered in Zoho Books'}
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Only active items registered in your Zoho Books Item Master are available.
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSelect({
+                        item_id: '',
+                        name: searchQuery.trim(),
+                        rate: 0,
+                        status: 'active',
+                      })
+                    }
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Use &ldquo;{searchQuery.trim()}&rdquo; as custom item
+                  </button>
+                )}
+                <p className="text-[11px] text-slate-500 mt-2">
+                  You can proceed with this description and set the rate manually.
                 </p>
               </div>
             )}

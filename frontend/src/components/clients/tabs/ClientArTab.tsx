@@ -145,6 +145,7 @@ export const ClientArTab: React.FC = () => {
   const [manualSlipDelivQty, setManualSlipDelivQty] = useState<number | string>(1);
   const [manualSlipRate, setManualSlipRate] = useState<number | string>(0);
   const [isCreatingSlip, setIsCreatingSlip] = useState<boolean>(false);
+  const [createSlipError, setCreateSlipError] = useState<string | null>(null);
 
   // Line Item Inline Editing State (Strictly Zoho Books Item Master)
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -402,18 +403,24 @@ export const ClientArTab: React.FC = () => {
     setManualSlipPickQty(1);
     setManualSlipDelivQty(1);
     setManualSlipRate(catalogItems[0]?.rate || 0);
+    setCreateSlipError(null);
     setIsAddSlipModalOpen(true);
   };
 
   const handleCreateManualSlip = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentClient?.id) return;
-    if (!manualSlipCustomer.trim()) {
-      alert('Please specify a customer name.');
+    setCreateSlipError(null);
+
+    const custName = manualSlipCustomer.trim();
+    const itemName = manualSlipItemName.trim();
+
+    if (!custName) {
+      setCreateSlipError('Please specify a customer name.');
       return;
     }
-    if (!manualSlipItemName.trim()) {
-      alert('Please specify an item description.');
+    if (!itemName) {
+      setCreateSlipError('Please select or specify an item description.');
       return;
     }
 
@@ -424,14 +431,14 @@ export const ClientArTab: React.FC = () => {
       const rate = Number(manualSlipRate) || 0;
       const tot = Math.round(deliv * rate * 100) / 100;
       const loss = isCustodyTracking ? Math.max(0, pick - deliv) : 0;
-      const refItem = catalogItems.find((c) => c.name.toLowerCase() === manualSlipItemName.trim().toLowerCase());
+      const refItem = catalogItems.find((c) => c.name.toLowerCase() === itemName.toLowerCase());
 
-      const docName = manualSlipDocName.trim() || `Manual_Slip_${manualSlipCustomer}_${manualSlipDate}`;
+      const docName = manualSlipDocName.trim() || `Manual_Slip_${custName.replace(/\s+/g, '_')}_${manualSlipDate}`;
 
-      await createClientTransaction(currentClient.id, {
+      const res = await createClientTransaction(currentClient.id, {
         source_file_name: docName,
         transaction_date: manualSlipDate,
-        item_or_description: manualSlipItemName.trim(),
+        item_or_description: itemName,
         quantity_or_debit: deliv,
         credit_amount: pick,
         rate_or_price: rate,
@@ -443,19 +450,32 @@ export const ClientArTab: React.FC = () => {
         approved: true,
         status: 'APPROVED',
         metadata_json: {
-          customer_name: manualSlipCustomer.trim(),
+          customer_name: custName,
           is_manual_entry: true,
           created_at: new Date().toISOString(),
         },
       });
 
-      addLog('success', `Manually created delivery slip "${docName}" for ${manualSlipCustomer}`);
+      // Optimistically insert into transactions list immediately
+      if (res?.transaction) {
+        setTransactions((prev) => [res.transaction, ...prev]);
+      }
+
+      addLog('success', `Manually created delivery slip "${docName}" for ${custName}`);
       setIsAddSlipModalOpen(false);
+
+      // Switch to daily slips view and reset filters so the newly created slip is immediately visible
+      setActiveLedgerView('daily');
+      setDailyStatusFilter('ALL');
+      setDailyPropertyFilter('ALL');
+
       await loadTransactions();
       loadSummaryData();
       setExpandedSlips((prev) => ({ ...prev, [docName]: true }));
     } catch (err: any) {
-      addLog('error', `Failed to create manual slip: ${err.message}`);
+      const errMsg = err?.message || 'Failed to create manual slip. Please check backend connection.';
+      setCreateSlipError(errMsg);
+      addLog('error', `Failed to create manual slip: ${errMsg}`);
     } finally {
       setIsCreatingSlip(false);
     }
@@ -574,10 +594,15 @@ export const ClientArTab: React.FC = () => {
 
   const query = (search || '').trim().toLowerCase();
 
-  const extractPropertyName = (filename?: string): string => {
+  const extractPropertyName = (filename?: string, metadata?: any): string => {
+    if (metadata?.customer_name && typeof metadata.customer_name === 'string' && metadata.customer_name.trim()) {
+      return metadata.customer_name.trim();
+    }
     if (!filename) return '';
     let base = filename.replace(/\.[a-zA-Z0-9]+$/, '').trim();
     base = base.replace(/[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$/i, '').trim();
+    base = base.replace(/^(manual_slip_|manual_bill_|manual_|slip_)/i, '').trim();
+    base = base.replace(/_/g, ' ').trim();
     return base;
   };
 
@@ -631,7 +656,7 @@ export const ClientArTab: React.FC = () => {
   const availableProperties = useMemo(() => {
     const props = new Set<string>();
     arStagedTx.forEach((tx) => {
-      const p = extractPropertyName(tx.source_file_name);
+      const p = extractPropertyName(tx.source_file_name, tx.metadata_json);
       if (p && p.length > 1) props.add(p);
     });
     if (sourceMetricsData?.properties) {
@@ -645,7 +670,7 @@ export const ClientArTab: React.FC = () => {
   const propertyStatsMap = useMemo(() => {
     const map: Record<string, { slips: Set<string>; items: number; approvedItems: number; pendingItems: number; discrepancyItems: number }> = {};
     arStagedTx.forEach((tx) => {
-      const p = extractPropertyName(tx.source_file_name) || 'General';
+      const p = extractPropertyName(tx.source_file_name, tx.metadata_json) || 'General';
       if (!map[p]) {
         map[p] = { slips: new Set(), items: 0, approvedItems: 0, pendingItems: 0, discrepancyItems: 0 };
       }
@@ -685,7 +710,7 @@ export const ClientArTab: React.FC = () => {
 
     const targetTx = dailyPropertyFilter === 'ALL'
       ? arStagedTx
-      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
 
     targetTx.forEach((tx) => {
       if (tx.status === 'INVOICED') invoiced++;
@@ -718,7 +743,7 @@ export const ClientArTab: React.FC = () => {
     const isAll = dailyPropertyFilter === 'ALL';
     const targetTx = isAll
       ? arStagedTx
-      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
 
     const slipMap = new Map<string, { isApproved: boolean }>();
     targetTx.forEach((tx) => {
@@ -773,7 +798,7 @@ export const ClientArTab: React.FC = () => {
 
       // 2. Property Filter
       if (dailyPropertyFilter !== 'ALL') {
-        const prop = extractPropertyName(t.source_file_name);
+        const prop = extractPropertyName(t.source_file_name, t.metadata_json);
         if (prop !== dailyPropertyFilter) return false;
       }
 
@@ -866,7 +891,7 @@ export const ClientArTab: React.FC = () => {
       const key = tx.source_file_name || `slip-${tx.transaction_date || 'unknown'}`;
       let group = map.get(key);
       if (!group) {
-        const prop = extractPropertyName(tx.source_file_name) || currentClient?.name || 'Slip';
+        const prop = extractPropertyName(tx.source_file_name, tx.metadata_json) || currentClient?.name || 'Slip';
         const driveUrl = tx.metadata_json?.drive_file_url ||
           (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : null);
         group = {
@@ -983,7 +1008,7 @@ export const ClientArTab: React.FC = () => {
 
     const targetTx = dailyPropertyFilter === 'ALL'
       ? arStagedTx
-      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
 
     const presentDates = new Set(
       targetTx.map((t) => t.transaction_date).filter(Boolean)
@@ -1086,7 +1111,7 @@ export const ClientArTab: React.FC = () => {
   const slipKpis = useMemo(() => {
     const targetTx = dailyPropertyFilter === 'ALL'
       ? arStagedTx
-      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
 
     const slipMap = new Map<string, { isFullyReviewed: boolean; isFullyApproved: boolean; hasLowConf: boolean }>();
     targetTx.forEach((tx) => {
@@ -3484,6 +3509,13 @@ export const ClientArTab: React.FC = () => {
               </button>
             </div>
 
+            {createSlipError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span className="flex-1">{createSlipError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreateManualSlip} className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
@@ -3565,6 +3597,7 @@ export const ClientArTab: React.FC = () => {
                       setManualSlipItemName(it.name);
                       if (it.rate != null && it.rate > 0) setManualSlipRate(it.rate);
                     }}
+                    onTextChange={(val) => setManualSlipItemName(val)}
                   />
                 </div>
 
