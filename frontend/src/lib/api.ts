@@ -745,6 +745,46 @@ export async function fetchClientTransactionsSummary(
   return handleResponse<ClientTransactionSummaryResponse>(res, `Fetch transactions summary for ${clientId}`);
 }
 
+export interface SourceMetricsSummary {
+  property_name: string;
+  source_total_slips: number;
+  source_unprocessed_slips: number;
+  source_processed_slips: number;
+  ledger_slips_count: number;
+  ledger_items_count: number;
+  ledger_approved_slips: number;
+  ledger_pending_slips: number;
+  is_fully_processed: boolean;
+}
+
+export interface ClientSourceMetricsResponse {
+  client_id: string;
+  month?: string;
+  year?: number;
+  selected_property: string;
+  metrics: SourceMetricsSummary;
+  properties: Record<string, SourceMetricsSummary>;
+}
+
+export async function fetchClientSourceMetrics(
+  clientId: string,
+  month?: string,
+  year?: number,
+  property?: string,
+  pipelineType: string = 'AR'
+): Promise<ClientSourceMetricsResponse> {
+  const params = new URLSearchParams();
+  if (month) params.append('month', month);
+  if (year) params.append('year', year.toString());
+  if (property && property !== 'ALL') params.append('property', property);
+  if (pipelineType) params.append('pipeline_type', pipelineType);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+  const res = await resilientFetch(`/api/clients/${clientId}/source-metrics${qStr}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ClientSourceMetricsResponse>(res, `Fetch source metrics for ${clientId}`);
+}
+
 export async function toggleClientTransaction(
   clientId: string,
   transactionId: number,

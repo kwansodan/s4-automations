@@ -4,6 +4,8 @@ import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchClientTransactions,
   fetchClientTransactionsSummary,
+  fetchClientSourceMetrics,
+  ClientSourceMetricsResponse,
   toggleClientTransaction,
   batchToggleTransactions,
   batchApproveTransactions,
@@ -43,6 +45,9 @@ import {
   Edit3,
   Save,
   Trash2,
+  ArrowRight,
+  FolderOpen,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
@@ -146,6 +151,10 @@ export const ClientArTab: React.FC = () => {
   const [summarySortField, setSummarySortField] = useState<string>('item_name');
   const [summarySortDirection, setSummarySortDirection] = useState<'asc' | 'desc'>('asc');
 
+  // Live Storage vs Processed Metrics State
+  const [sourceMetricsData, setSourceMetricsData] = useState<ClientSourceMetricsResponse | null>(null);
+  const [isLoadingSourceMetrics, setIsLoadingSourceMetrics] = useState<boolean>(false);
+
   const loadTransactions = async () => {
     if (!currentClient?.id) return;
     setIsLoadingTx(true);
@@ -173,10 +182,30 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
+  const loadSourceMetrics = async () => {
+    if (!currentClient?.id) return;
+    setIsLoadingSourceMetrics(true);
+    try {
+      const res = await fetchClientSourceMetrics(
+        currentClient.id,
+        selectedMonth,
+        selectedYear,
+        dailyPropertyFilter,
+        'AR'
+      );
+      setSourceMetricsData(res);
+    } catch (err: any) {
+      console.warn('Failed loading client source metrics:', err);
+    } finally {
+      setIsLoadingSourceMetrics(false);
+    }
+  };
+
   useEffect(() => {
     loadTransactions();
     loadSummaryData();
-  }, [currentClient?.id, selectedMonth, selectedYear]);
+    loadSourceMetrics();
+  }, [currentClient?.id, selectedMonth, selectedYear, dailyPropertyFilter]);
 
   const handleDeleteRow = async (txId: number) => {
     if (!currentClient?.id) return;
@@ -393,7 +422,34 @@ export const ClientArTab: React.FC = () => {
       const p = extractPropertyName(tx.source_file_name);
       if (p && p.length > 1) props.add(p);
     });
+    if (sourceMetricsData?.properties) {
+      Object.keys(sourceMetricsData.properties).forEach((p) => {
+        if (p && p !== 'ALL' && p.length > 1) props.add(p);
+      });
+    }
     return Array.from(props).sort();
+  }, [arStagedTx, sourceMetricsData]);
+
+  const propertyStatsMap = useMemo(() => {
+    const map: Record<string, { slips: Set<string>; items: number; approvedItems: number; pendingItems: number; discrepancyItems: number }> = {};
+    arStagedTx.forEach((tx) => {
+      const p = extractPropertyName(tx.source_file_name) || 'General';
+      if (!map[p]) {
+        map[p] = { slips: new Set(), items: 0, approvedItems: 0, pendingItems: 0, discrepancyItems: 0 };
+      }
+      map[p].items++;
+      const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+      map[p].slips.add(slipKey);
+      if (tx.approved || tx.status === 'INVOICED') {
+        map[p].approvedItems++;
+      } else {
+        map[p].pendingItems++;
+      }
+      if ((tx.discrepancy_amount || 0) > 0) {
+        map[p].discrepancyItems++;
+      }
+    });
+    return map;
   }, [arStagedTx]);
 
   const dailyCounts = useMemo(() => {
@@ -402,7 +458,11 @@ export const ClientArTab: React.FC = () => {
     let discrepancy = 0;
     let invoiced = 0;
 
-    arStagedTx.forEach((tx) => {
+    const targetTx = dailyPropertyFilter === 'ALL'
+      ? arStagedTx
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+
+    targetTx.forEach((tx) => {
       if (tx.status === 'INVOICED') invoiced++;
       else if (tx.approved) approved++;
       else pending++;
@@ -413,13 +473,60 @@ export const ClientArTab: React.FC = () => {
     });
 
     return {
-      all: arStagedTx.length,
+      all: targetTx.length,
+      totalAcrossAllClients: arStagedTx.length,
       pending,
       approved,
       discrepancy,
       invoiced,
     };
-  }, [arStagedTx]);
+  }, [arStagedTx, dailyPropertyFilter]);
+
+  const currentPropertyMetrics = useMemo(() => {
+    const isAll = dailyPropertyFilter === 'ALL';
+    const targetTx = isAll
+      ? arStagedTx
+      : arStagedTx.filter((t) => extractPropertyName(t.source_file_name) === dailyPropertyFilter);
+
+    const slipMap = new Map<string, { isApproved: boolean }>();
+    targetTx.forEach((tx) => {
+      const key = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+      if (!slipMap.has(key)) {
+        slipMap.set(key, { isApproved: true });
+      }
+      if (!tx.approved && tx.status !== 'INVOICED') {
+        slipMap.get(key)!.isApproved = false;
+      }
+    });
+
+    const ledgerSlipsCount = slipMap.size;
+    const ledgerItemsCount = targetTx.length;
+    let ledgerApprovedSlips = 0;
+    slipMap.forEach((v) => {
+      if (v.isApproved) ledgerApprovedSlips++;
+    });
+    const ledgerPendingSlips = ledgerSlipsCount - ledgerApprovedSlips;
+
+    // Merge with remote metrics if available
+    const remote = sourceMetricsData?.metrics;
+    const remoteProp = !isAll && sourceMetricsData?.properties ? sourceMetricsData.properties[dailyPropertyFilter] : remote;
+
+    const sourceTotal = remoteProp?.source_total_slips ?? remote?.source_total_slips ?? ledgerSlipsCount;
+    const sourceUnprocessed = remoteProp?.source_unprocessed_slips ?? remote?.source_unprocessed_slips ?? 0;
+    const sourceProcessed = remoteProp?.source_processed_slips ?? remote?.source_processed_slips ?? ledgerSlipsCount;
+
+    return {
+      propertyName: dailyPropertyFilter,
+      sourceTotal: Math.max(sourceTotal, ledgerSlipsCount),
+      sourceUnprocessed,
+      sourceProcessed: Math.max(sourceProcessed, ledgerSlipsCount),
+      ledgerSlipsCount,
+      ledgerItemsCount,
+      ledgerApprovedSlips,
+      ledgerPendingSlips,
+      isFullyProcessed: sourceUnprocessed === 0,
+    };
+  }, [dailyPropertyFilter, arStagedTx, sourceMetricsData]);
 
   const filteredArStagedTx = useMemo(() => {
     return arStagedTx.filter((t) => {
@@ -1047,6 +1154,98 @@ export const ClientArTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Source vs Processed Slips Display Card */}
+      {activeLedgerView === 'daily' && (
+        <div className="bg-gradient-to-r from-sky-50/90 via-white to-sky-50/60 border border-sky-200 rounded-xl p-3 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-sky-100 text-sky-700 rounded-lg shrink-0">
+              <FileSpreadsheet className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-900 text-sm">
+                  {dailyPropertyFilter === 'ALL' ? 'All Customers & Properties' : dailyPropertyFilter}
+                </span>
+                <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                  Source vs Processed
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {dailyPropertyFilter === 'ALL'
+                  ? 'Comparing control slips detected in source storage folders against transactions committed to review ledger.'
+                  : `Comparing control slips detected for "${dailyPropertyFilter}" in source storage against transactions committed to review ledger.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Found in Source */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200/90 rounded-lg px-3 py-1.5 shadow-2xs">
+              <FolderOpen className="w-3.5 h-3.5 text-sky-600" />
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-400">Found in Source</div>
+                <div className="font-mono font-bold text-sky-900 text-xs flex items-center gap-1.5">
+                  <span>{currentPropertyMetrics.sourceTotal} Slips</span>
+                  {currentPropertyMetrics.sourceUnprocessed > 0 ? (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full">
+                      {currentPropertyMetrics.sourceUnprocessed} pending in Drive
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                      All Processed
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Arrow indicator */}
+            <ArrowRight className="w-4 h-4 text-slate-300 hidden sm:block shrink-0" />
+
+            {/* Processed into Ledger */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200/90 rounded-lg px-3 py-1.5 shadow-2xs">
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-400">Processed into Ledger</div>
+                <div className="font-mono font-bold text-emerald-800 text-xs flex items-center gap-1.5">
+                  <span>{currentPropertyMetrics.ledgerSlipsCount} Slips</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    ({currentPropertyMetrics.ledgerItemsCount} {currentPropertyMetrics.ledgerItemsCount === 1 ? 'item' : 'items'})
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ledger Review Status */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200/90 rounded-lg px-3 py-1.5 shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-400">Ledger Review Status</div>
+                <div className="font-mono font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                  <span className="text-emerald-700">{currentPropertyMetrics.ledgerApprovedSlips} Approved</span>
+                  {currentPropertyMetrics.ledgerPendingSlips > 0 ? (
+                    <span className="text-amber-600">({currentPropertyMetrics.ledgerPendingSlips} Pending)</span>
+                  ) : (
+                    <span className="text-slate-400 font-normal text-[11px]">(0 Pending)</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Refresh / Check Source button */}
+            <button
+              onClick={loadSourceMetrics}
+              disabled={isLoadingSourceMetrics}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-sky-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-300 rounded-lg transition cursor-pointer shadow-2xs"
+              title="Check live Google Drive source folder for new slips"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSourceMetrics ? 'animate-spin text-sky-600' : ''}`} />
+              <span className="hidden lg:inline">{isLoadingSourceMetrics ? 'Scanning...' : 'Check Source'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Daily Slips Filter Toolbar: Status Pills & Property Filter */}
       {activeLedgerView === 'daily' && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2.5 shadow-xs">
@@ -1063,6 +1262,11 @@ export const ClientArTab: React.FC = () => {
               <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200/70 text-slate-700">
                 {dailyCounts.all}
               </span>
+              {dailyPropertyFilter !== 'ALL' && dailyCounts.all < dailyCounts.totalAcrossAllClients && (
+                <span className="text-[10px] text-slate-400 font-normal">
+                  of {dailyCounts.totalAcrossAllClients}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setDailyStatusFilter('PENDING')}
@@ -1133,11 +1337,18 @@ export const ClientArTab: React.FC = () => {
                 className="bg-transparent text-[#0F172A] font-medium focus:outline-none cursor-pointer"
               >
                 <option value="ALL" className="bg-white text-slate-800">
-                  {isCustodyTracking ? 'All Properties' : 'All Customers / Sites'} ({arStagedTx.length})
+                  {isCustodyTracking ? 'All Properties' : 'All Customers / Sites'} ({arStagedTx.length} items)
                 </option>
-                {availableProperties.map((p) => (
-                  <option key={p} value={p} className="bg-white text-slate-800">{p}</option>
-                ))}
+                {availableProperties.map((p) => {
+                  const stat = propertyStatsMap[p];
+                  const slipsCnt = stat?.slips.size || 0;
+                  const itemsCnt = stat?.items || 0;
+                  return (
+                    <option key={p} value={p} className="bg-white text-slate-800">
+                      {p} ({slipsCnt} {slipsCnt === 1 ? 'slip' : 'slips'} • {itemsCnt} {itemsCnt === 1 ? 'item' : 'items'})
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}

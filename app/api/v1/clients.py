@@ -1387,6 +1387,218 @@ async def get_client_transactions_summary(
     }
 
 
+@router.get("/{client_id}/source-metrics", summary="Get Source Storage vs Processed Ledger Metrics")
+async def get_client_source_metrics(
+    client_id: str,
+    month: Optional[str] = None,
+    year: Optional[int] = None,
+    property_name: Optional[str] = Query(None, alias="property"),
+    pipeline_type: Optional[str] = "AR",
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Returns source discovery vs database ledger processed metrics.
+    Compares files present in external storage (e.g. Google Drive customer folders & Processed archive)
+    against staged transactions committed into the PostgreSQL review ledger.
+    """
+    aliases = get_client_id_aliases(client_id)
+    p_type = (pipeline_type or "AR").upper()
+
+    if p_type == "AR":
+        pipe_filter = (
+            (StagedTransaction.pipeline_type == "AR")
+            | (StagedTransaction.pipeline_type == "ar_sales_invoice")
+            | (StagedTransaction.pipeline_type.is_(None))
+            | (StagedTransaction.pipeline_type != "AP")
+        )
+    else:
+        pipe_filter = (StagedTransaction.pipeline_type == p_type)
+
+    query = select(StagedTransaction).where(
+        StagedTransaction.client_id.in_(aliases),
+        pipe_filter,
+    )
+    all_tx = db.exec(query).all()
+
+    # Filter by month and year
+    matched_tx = []
+    for t in all_tx:
+        if matches_month_and_year(
+            t_date_raw=t.transaction_date,
+            batch_id_raw=t.batch_id,
+            source_filename_raw=t.source_file_name,
+            month=month,
+            year=year,
+        ):
+            matched_tx.append(t)
+
+    if not matched_tx and all_tx:
+        matched_tx = all_tx
+
+    import re
+    def _clean_prop(filename: Optional[str], meta: Optional[dict]) -> str:
+        if meta and meta.get("customer_name_hint"):
+            return str(meta["customer_name_hint"]).strip()
+        if not filename:
+            return "General"
+        base = re.sub(r"\.[a-zA-Z0-9]+$", "", str(filename)).strip()
+        base = re.sub(r"[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$", "", base, flags=re.IGNORECASE).strip()
+        return base or "General"
+
+    # Map property -> set of slip keys & items
+    property_ledger_map: Dict[str, Dict[str, Any]] = {}
+    for t in matched_tx:
+        prop = _clean_prop(t.source_file_name, t.metadata_json)
+        if prop not in property_ledger_map:
+            property_ledger_map[prop] = {
+                "slips": set(),
+                "items_count": 0,
+                "approved_items_count": 0,
+                "pending_items_count": 0,
+                "invoiced_items_count": 0,
+                "slip_approval_map": {},
+            }
+        p_data = property_ledger_map[prop]
+        slip_key = t.source_file_name or f"slip_{t.transaction_date}_{t.id}"
+        p_data["slips"].add(slip_key)
+        p_data["items_count"] += 1
+        if t.status == "INVOICED":
+            p_data["invoiced_items_count"] += 1
+        elif t.approved:
+            p_data["approved_items_count"] += 1
+        else:
+            p_data["pending_items_count"] += 1
+
+        if slip_key not in p_data["slip_approval_map"]:
+            p_data["slip_approval_map"][slip_key] = True
+        if not t.approved and t.status != "INVOICED":
+            p_data["slip_approval_map"][slip_key] = False
+
+    # Check Google Drive storage if accessible
+    drive_properties: Dict[str, Dict[str, Any]] = {}
+    try:
+        drive = GoogleDriveService()
+        if drive.service:
+            month_str = month or "September"
+            year_int = year or 2026
+            m_folder_id = drive.get_month_folder(month_str, year_int)
+            if m_folder_id:
+                client_folders = drive.list_client_folders(m_folder_id)
+                for cf in client_folders:
+                    cf_name = cf.client_name.strip()
+                    unproc = drive.list_unprocessed_slips(cf.folder_id)
+                    unproc_count = len(unproc)
+
+                    proc_count = 0
+                    q = f"'{cf.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = 'Processed' and trashed = false"
+                    res = drive.service.files().list(q=q, spaces="drive", fields="files(id, name)").execute()
+                    proc_flds = res.get("files", [])
+                    if proc_flds:
+                        pf_id = proc_flds[0]["id"]
+                        q2 = f"'{pf_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
+                        res2 = drive.service.files().list(q=q2, spaces="drive", fields="files(id, name)", pageSize=200).execute()
+                        proc_count = len(res2.get("files", []))
+
+                    drive_properties[cf_name] = {
+                        "folder_id": cf.folder_id,
+                        "folder_name": cf_name,
+                        "unprocessed_count": unproc_count,
+                        "processed_count": proc_count,
+                        "total_found": unproc_count + proc_count,
+                    }
+    except Exception as drive_err:
+        logger.warning(f"Note during source metrics Google Drive scan: {drive_err}")
+
+    # Build consolidated per-property breakdown
+    all_props_names = set(property_ledger_map.keys()) | set(drive_properties.keys())
+    properties_breakdown: Dict[str, Any] = {}
+
+    for p in sorted(all_props_names):
+        l_info = property_ledger_map.get(p, {
+            "slips": set(),
+            "items_count": 0,
+            "approved_items_count": 0,
+            "pending_items_count": 0,
+            "invoiced_items_count": 0,
+            "slip_approval_map": {},
+        })
+        d_info = drive_properties.get(p)
+        l_slips_count = len(l_info["slips"])
+        l_items_count = l_info["items_count"]
+
+        slip_approved = sum(1 for is_app in l_info["slip_approval_map"].values() if is_app)
+        slip_pending = l_slips_count - slip_approved
+
+        if d_info:
+            d_unproc = d_info["unprocessed_count"]
+            d_proc = d_info["processed_count"]
+            source_total = max(d_info["total_found"], l_slips_count + d_unproc)
+        else:
+            d_unproc = 0
+            d_proc = l_slips_count
+            source_total = l_slips_count
+
+        properties_breakdown[p] = {
+            "property_name": p,
+            "source_total_slips": source_total,
+            "source_unprocessed_slips": d_unproc,
+            "source_processed_slips": max(d_proc, l_slips_count),
+            "ledger_slips_count": l_slips_count,
+            "ledger_items_count": l_items_count,
+            "ledger_approved_slips": slip_approved,
+            "ledger_pending_slips": slip_pending,
+            "is_fully_processed": d_unproc == 0,
+        }
+
+    # Selected property filter logic
+    target_prop = (property_name or "").strip()
+    if target_prop and target_prop.upper() != "ALL":
+        matched_key = next((k for k in properties_breakdown if k.lower() == target_prop.lower() or target_prop.lower() in k.lower()), None)
+        if matched_key:
+            selected_summary = properties_breakdown[matched_key]
+        else:
+            selected_summary = {
+                "property_name": target_prop,
+                "source_total_slips": 0,
+                "source_unprocessed_slips": 0,
+                "source_processed_slips": 0,
+                "ledger_slips_count": 0,
+                "ledger_items_count": 0,
+                "ledger_approved_slips": 0,
+                "ledger_pending_slips": 0,
+                "is_fully_processed": True,
+            }
+    else:
+        total_source = sum(pb["source_total_slips"] for pb in properties_breakdown.values())
+        total_unproc = sum(pb["source_unprocessed_slips"] for pb in properties_breakdown.values())
+        total_proc = sum(pb["source_processed_slips"] for pb in properties_breakdown.values())
+        total_l_slips = sum(pb["ledger_slips_count"] for pb in properties_breakdown.values())
+        total_l_items = sum(pb["ledger_items_count"] for pb in properties_breakdown.values())
+        total_l_app = sum(pb["ledger_approved_slips"] for pb in properties_breakdown.values())
+        total_l_pend = sum(pb["ledger_pending_slips"] for pb in properties_breakdown.values())
+
+        selected_summary = {
+            "property_name": "ALL",
+            "source_total_slips": total_source,
+            "source_unprocessed_slips": total_unproc,
+            "source_processed_slips": total_proc,
+            "ledger_slips_count": total_l_slips,
+            "ledger_items_count": total_l_items,
+            "ledger_approved_slips": total_l_app,
+            "ledger_pending_slips": total_l_pend,
+            "is_fully_processed": total_unproc == 0,
+        }
+
+    return {
+        "client_id": client_id,
+        "month": month,
+        "year": year,
+        "selected_property": property_name or "ALL",
+        "metrics": selected_summary,
+        "properties": properties_breakdown,
+    }
+
+
 @router.patch("/{client_id}/transactions/{tx_id}/toggle", summary="Toggle Reviewed or Approved on Staged Transaction")
 async def toggle_staged_transaction(
     client_id: str,
