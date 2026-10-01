@@ -1,6 +1,7 @@
 """Google Drive Service for managing control sheets folder hierarchy and files."""
 
 import io
+import re
 from typing import List, Dict, Optional, Any, Tuple
 from googleapiclient.http import MediaIoBaseDownload
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -269,6 +270,113 @@ class GoogleDriveService:
         except Exception as e:
             logger.warning(f"Note during misplaced Processed folder cleanup: {e}")
 
+    def reorganize_month_processed_to_customer_subfolders(
+        self, month_folder_id: str, processed_name: str = "Processed"
+    ) -> Dict[str, Any]:
+        """
+        Self-healing & Migration Utility:
+        Detects if an aggregate 'Processed' folder exists at the month folder level (e.g. September 2026/Processed).
+        If customer subfolders exist in the month folder (e.g. Active 8 Shiashie, The Lennox):
+        1. Matches files in month_folder/Processed to their corresponding customer subfolder.
+        2. Relocates files into month_folder/{Customer}/Processed.
+        3. Once empty, trashes the aggregate month_folder/Processed folder to keep Drive clean.
+        """
+        if not self.service or not month_folder_id:
+            return {"success": False, "message": "Google Drive service not connected or invalid month_folder_id", "moved_count": 0}
+
+        try:
+            clean_mfid = month_folder_id.replace("'", "\\'")
+            # 1. Locate month_folder/Processed
+            q_proc = f"'{clean_mfid}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '{processed_name}' and trashed = false"
+            p_res = self.service.files().list(q=q_proc, spaces="drive", fields="files(id, name)").execute()
+            month_proc_folders = p_res.get("files", [])
+            if not month_proc_folders:
+                return {"success": True, "message": f"No aggregate '{processed_name}' folder found in month folder.", "moved_count": 0}
+
+            month_proc_id = month_proc_folders[0]["id"]
+
+            # 2. Discover customer subfolders inside month_folder
+            q_cust = f"'{clean_mfid}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            c_res = self.service.files().list(q=q_cust, spaces="drive", fields="files(id, name)", pageSize=150).execute()
+            raw_folders = c_res.get("files", [])
+            ignored = {processed_name.lower(), "archive", "templates", "backup", "trash", "archived", "temp"}
+            customer_folders = [f for f in raw_folders if f.get("name", "").strip().lower() not in ignored]
+
+            if not customer_folders:
+                return {
+                    "success": True,
+                    "message": "No customer subfolders detected in month folder to relocate files to.",
+                    "moved_count": 0
+                }
+
+            # 3. List all files currently in month_folder/Processed
+            q_files = f"'{month_proc_id}' in parents and trashed = false"
+            f_res = self.service.files().list(
+                q=q_files, spaces="drive", fields="files(id, name, mimeType)", pageSize=200
+            ).execute()
+            files_to_check = f_res.get("files", [])
+            if not files_to_check:
+                try:
+                    self.service.files().update(fileId=month_proc_id, body={"trashed": True}).execute()
+                    logger.info(f"🧹 Cleaned up empty aggregate '{processed_name}' folder {month_proc_id}")
+                except Exception:
+                    pass
+                return {"success": True, "message": f"Aggregate '{processed_name}' folder was empty.", "moved_count": 0}
+
+            # Sort customer names by length descending so longer specific names match first
+            sorted_custs = sorted(customer_folders, key=lambda c: len(c.get("name", "")), reverse=True)
+
+            moved_count = 0
+            unmatched = []
+            relocation_log = []
+
+            for file_obj in files_to_check:
+                file_id = file_obj["id"]
+                file_name = file_obj.get("name", "")
+                norm_fn = re.sub(r"[_\-\s]+", " ", file_name).strip().lower()
+
+                matched_cust = None
+                for cf in sorted_custs:
+                    cname = cf.get("name", "").strip()
+                    norm_cname = re.sub(r"[_\-\s]+", " ", cname).strip().lower()
+                    if norm_cname and (norm_cname in norm_fn or norm_fn.startswith(norm_cname)):
+                        matched_cust = cf
+                        break
+
+                if matched_cust:
+                    cust_fid = matched_cust["id"]
+                    cust_name = matched_cust["name"].strip()
+                    cust_proc_id = self.find_or_create_folder(processed_name, cust_fid)
+                    self.archive_file(file_id, month_proc_id, cust_proc_id)
+                    moved_count += 1
+                    relocation_log.append({
+                        "file_name": file_name,
+                        "destination_customer": cust_name,
+                    })
+                    logger.info(f"🚚 Reorganized '{file_name}' from month/{processed_name} -> {cust_name}/{processed_name}")
+                else:
+                    unmatched.append(file_name)
+
+            # 4. If all files were relocated, trash the empty month_folder/Processed
+            if len(unmatched) == 0:
+                try:
+                    self.service.files().update(fileId=month_proc_id, body={"trashed": True}).execute()
+                    logger.info(f"🧹 Successfully removed empty aggregate '{processed_name}' folder {month_proc_id}")
+                except Exception as te:
+                    logger.warning(f"Could not trash empty month processed folder: {te}")
+
+            return {
+                "success": True,
+                "moved_count": moved_count,
+                "unmatched_count": len(unmatched),
+                "unmatched_files": unmatched,
+                "details": relocation_log,
+                "message": f"Successfully relocated {moved_count} file(s) into customer '{processed_name}' subfolders."
+            }
+        except Exception as e:
+            logger.error(f"Error reorganizing month processed folder: {e}")
+            return {"success": False, "error": str(e), "moved_count": 0}
+
     async def test_folder_access(self, folder_id: str) -> Dict[str, Any]:
         """Tests whether a Google Drive folder exists, is accessible, and inspects child hierarchy."""
         if not folder_id or folder_id in ("root", "your_folder_id", "default") or not self.service:
@@ -502,6 +610,13 @@ class GoogleDriveService:
                     self.relocate_root_processed_to_month(folder_id, active_month_folder_id)
                 except Exception as r_err:
                     logger.debug(f"Root processed folder migration note: {r_err}")
+
+            # Self-healing: if customer subfolders exist in month folder, reorganize any legacy month-level Processed slips
+            if active_month_folder_id:
+                try:
+                    self.reorganize_month_processed_to_customer_subfolders(active_month_folder_id)
+                except Exception as r_err:
+                    logger.debug(f"Month processed folder customer reorganization note: {r_err}")
 
             # If structure_hint is party_then_month, we skip Pass 1 initially to let Pass 2 check first
             should_run_pass1 = structure_hint != "party_then_month" and structure_hint != "flat_root"

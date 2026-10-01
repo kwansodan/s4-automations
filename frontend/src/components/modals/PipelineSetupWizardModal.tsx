@@ -347,6 +347,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [enableLookbackWindow, setEnableLookbackWindow] = useState<boolean>(true);
   const [autoCreateMonthFolder, setAutoCreateMonthFolder] = useState<boolean>(false);
   const [moveProcessedFiles, setMoveProcessedFiles] = useState<boolean>(false);
+  const [archiveLocation, setArchiveLocation] = useState<'immediate_parent' | 'month_folder' | 'disabled'>('immediate_parent');
 
   // Accounting Master Data Auto-Provisioning State (Zoho)
   const [autoCreateMissingContacts, setAutoCreateMissingContacts] = useState<boolean>(false);
@@ -493,7 +494,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setFolderStructure(initialPipeline.source_config?.folder_structure || 'auto_detect');
         setEnableLookbackWindow(initialPipeline.source_config?.enable_lookback_window !== false);
         setAutoCreateMonthFolder(!!initialPipeline.source_config?.auto_create_month_folder);
-        setMoveProcessedFiles(Boolean(initialPipeline.source_config?.move_processed_files));
+        const initialArchiveLoc = (initialPipeline.source_config?.archive_location as 'immediate_parent' | 'month_folder' | 'disabled') 
+          || (initialPipeline.source_config?.move_processed_files === false ? 'disabled' : 'immediate_parent');
+        setArchiveLocation(initialArchiveLoc);
+        setMoveProcessedFiles(initialArchiveLoc !== 'disabled');
         setAutoCreateMissingContacts(Boolean(initialPipeline.auto_create_missing_contacts ?? initialPipeline.source_config?.auto_create_missing_contacts));
         setAutoCreateMissingItems(Boolean(initialPipeline.auto_create_missing_items ?? initialPipeline.source_config?.auto_create_missing_items));
         setFieldMappings(initialPipeline.field_mappings || {});
@@ -518,7 +522,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setFolderStructure('auto_detect');
         setEnableLookbackWindow(true);
         setAutoCreateMonthFolder(false);
-        setMoveProcessedFiles(false);
+        setArchiveLocation('immediate_parent');
+        setMoveProcessedFiles(true);
         setAutoCreateMissingContacts(false);
         setAutoCreateMissingItems(false);
         setHumanInstructions('');
@@ -690,7 +695,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           folder_structure: folderStructure,
           enable_lookback_window: enableLookbackWindow,
           auto_create_month_folder: autoCreateMonthFolder,
-          move_processed_files: moveProcessedFiles,
+          move_processed_files: archiveLocation !== 'disabled',
+          archive_location: archiveLocation,
           auto_create_missing_contacts: autoCreateMissingContacts,
           auto_create_missing_items: autoCreateMissingItems,
           allowed_senders: allowedSenders.trim() || undefined,
@@ -1207,20 +1213,88 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       </div>
                     </label>
 
-                    <label className="flex items-start gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer text-xs text-slate-300 hover:border-slate-700 sm:col-span-2">
-                      <input
-                        type="checkbox"
-                        checked={moveProcessedFiles}
-                        onChange={(e) => setMoveProcessedFiles(e.target.checked)}
-                        className="rounded border-slate-700 text-sky-500 mt-0.5"
-                      />
+                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5 sm:col-span-2">
                       <div>
-                        <span className="font-semibold text-white block">Move Processed Files to "Processed" Folder</span>
+                        <span className="font-semibold text-white text-xs block">File Archival & Move Policy</span>
                         <span className="text-[10px] text-slate-400">
-                          Automatically archives successfully extracted documents into a subfolder named "Processed" inside the source folder.
+                          Select where successfully extracted documents are moved in Google Drive after processing.
                         </span>
                       </div>
-                    </label>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                        <label className={`flex flex-col p-2.5 rounded-lg border cursor-pointer transition-all ${
+                          archiveLocation === 'immediate_parent'
+                            ? 'bg-sky-500/10 border-sky-500 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <input
+                              type="radio"
+                              name="archiveLocation"
+                              value="immediate_parent"
+                              checked={archiveLocation === 'immediate_parent'}
+                              onChange={() => {
+                                setArchiveLocation('immediate_parent');
+                                setMoveProcessedFiles(true);
+                              }}
+                              className="text-sky-500 focus:ring-0"
+                            />
+                            <span className="font-semibold text-xs text-sky-400">Customer Subfolder</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 leading-tight">
+                            Archives inside each customer folder (e.g. <code>September 2026 / The Lennox / Processed</code>). Recommended for customer isolation.
+                          </span>
+                        </label>
+
+                        <label className={`flex flex-col p-2.5 rounded-lg border cursor-pointer transition-all ${
+                          archiveLocation === 'month_folder'
+                            ? 'bg-sky-500/10 border-sky-500 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <input
+                              type="radio"
+                              name="archiveLocation"
+                              value="month_folder"
+                              checked={archiveLocation === 'month_folder'}
+                              onChange={() => {
+                                setArchiveLocation('month_folder');
+                                setMoveProcessedFiles(true);
+                              }}
+                              className="text-sky-500 focus:ring-0"
+                            />
+                            <span className="font-semibold text-xs text-white">Month Aggregate</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 leading-tight">
+                            Pools all customer slips into the month-level folder (e.g. <code>September 2026 / Processed</code>).
+                          </span>
+                        </label>
+
+                        <label className={`flex flex-col p-2.5 rounded-lg border cursor-pointer transition-all ${
+                          archiveLocation === 'disabled'
+                            ? 'bg-sky-500/10 border-sky-500 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <input
+                              type="radio"
+                              name="archiveLocation"
+                              value="disabled"
+                              checked={archiveLocation === 'disabled'}
+                              onChange={() => {
+                                setArchiveLocation('disabled');
+                                setMoveProcessedFiles(false);
+                              }}
+                              className="text-sky-500 focus:ring-0"
+                            />
+                            <span className="font-semibold text-xs text-slate-300">Do Not Move</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 leading-tight">
+                            Leaves files in place. Relies on cryptographic SHA-256 database deduplication to prevent double-billing.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

@@ -67,13 +67,29 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         self.step_logs.append(entry)
 
     def _archive_file_if_needed(self, doc: SourceDocument, pipeline_id: Optional[str] = None):
-        """Archives document into 'Processed/' subfolder inside Month folder if configured on the pipeline."""
+        """Archives document into 'Processed/' subfolder based on pipeline archive_location policy."""
         pipe_obj = next((p for p in (self.pipelines or []) if p.get("id") == pipeline_id), None)
         p_cfg = (pipe_obj.get("source_config") or {}) if pipe_obj else {}
-        should_move = p_cfg.get("move_processed_files", False) or (pipe_obj.get("move_processed_files", False) if pipe_obj else False)
-        auto_create_month = p_cfg.get("auto_create_month_folder", False) or (pipe_obj.get("auto_create_month_folder", False) if pipe_obj else False)
+        
+        # Policy: archive_location can be:
+        # - "immediate_parent" / "customer_folder" / "subfolder" (Default & Recommended):
+        #   Always archives inside the immediate subfolder where the file was discovered (e.g. September 2026/Active 8 Shiashie/Processed)
+        # - "month_folder":
+        #   Consolidates all customer files into the Month folder (e.g. September 2026/Processed)
+        # - "disabled" / "no_move":
+        #   Leaves files in place in Google Drive (relies entirely on DB deduplication)
+        archive_location = p_cfg.get("archive_location") or (pipe_obj.get("archive_location") if pipe_obj else None) or "immediate_parent"
+        
+        # Check explicit move_processed_files boolean or archive_location policy
+        should_move = p_cfg.get("move_processed_files", True) if ("move_processed_files" in p_cfg) else (pipe_obj.get("move_processed_files", True) if pipe_obj and "move_processed_files" in pipe_obj else True)
+        if archive_location in ["disabled", "no_move", "none"]:
+            should_move = False
 
-        if should_move and doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
+        if not should_move:
+            logger.debug(f"File relocation skipped for '{doc.file_name}' (archive_location={archive_location}, move_processed_files={should_move})")
+            return
+
+        if doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
             current_parent_fid = doc.metadata.get("folder_id")
             if not current_parent_fid:
                 return
@@ -81,12 +97,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
             try:
                 drive = GoogleDriveService()
                 processed_name = p_cfg.get("processed_folder_name", "Processed")
-
-                # The destination container for Processed/ subfolder:
-                # If auto_create_month_folder is enabled or month_folder_id is set,
-                # Processed/ MUST be created INSIDE the month folder (e.g. "August 2026/Processed"),
-                # NOT at the client root level.
-                target_container_fid = doc.metadata.get("month_folder_id")
+                month_fid = doc.metadata.get("month_folder_id")
+                auto_create_month = p_cfg.get("auto_create_month_folder", False) or (pipe_obj.get("auto_create_month_folder", False) if pipe_obj else False)
 
                 root_fid = (
                     doc.metadata.get("root_folder_id")
@@ -95,30 +107,45 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     or current_parent_fid
                 )
 
-                if not target_container_fid and auto_create_month:
-                    doc_month = doc.metadata.get("month") or getattr(self, "current_run_month", None)
-                    doc_year = doc.metadata.get("year") or getattr(self, "current_run_year", None)
-                    if doc_month and doc_year and root_fid:
-                        m_name = f"{str(doc_month).capitalize()} {doc_year}"
-                        target_container_fid = drive.find_or_create_folder(m_name, root_fid)
-                        logger.info(f"📁 Resolved month container '{m_name}' (ID: {target_container_fid}) for Processed archive")
-
-                # Fallback to current parent folder if no month container applies
-                if not target_container_fid:
-                    target_container_fid = current_parent_fid
+                if archive_location == "month_folder":
+                    # User policy: consolidate all processed files into month folder
+                    target_container_fid = month_fid
+                    if not target_container_fid and auto_create_month:
+                        doc_month = doc.metadata.get("month") or getattr(self, "current_run_month", None)
+                        doc_year = doc.metadata.get("year") or getattr(self, "current_run_year", None)
+                        if doc_month and doc_year and root_fid:
+                            m_name = f"{str(doc_month).capitalize()} {doc_year}"
+                            target_container_fid = drive.find_or_create_folder(m_name, root_fid)
+                            logger.info(f"📁 Resolved month container '{m_name}' (ID: {target_container_fid}) for Processed archive")
+                    if not target_container_fid:
+                        target_container_fid = current_parent_fid
+                else:
+                    # Default: "immediate_parent" / "customer_folder" / "subfolder"
+                    # Archive inside the immediate folder where the document was discovered
+                    # (e.g. September 2026/The Lennox/Processed)
+                    target_container_fid = current_parent_fid or month_fid
 
                 processed_fid = drive.find_or_create_folder(processed_name, target_container_fid)
                 drive.archive_file(doc.source_identifier, current_parent_fid, processed_fid)
 
                 # Clean up any misplaced root-level Processed folder
-                if auto_create_month and root_fid and root_fid != target_container_fid:
-                    drive.relocate_root_processed_to_month(root_fid, target_container_fid, processed_name=processed_name)
+                if auto_create_month and month_fid and root_fid and root_fid != month_fid:
+                    drive.relocate_root_processed_to_month(root_fid, month_fid, processed_name=processed_name)
 
                 m_label = doc.metadata.get("month_folder_name")
-                dest_label = f"{m_label}/{processed_name}/" if m_label else f"{processed_name}/"
+                c_label = doc.metadata.get("customer_name_hint") or doc.metadata.get("party_name_hint")
+                if target_container_fid == current_parent_fid and c_label and m_label:
+                    dest_label = f"{m_label}/{c_label}/{processed_name}/"
+                elif target_container_fid == current_parent_fid and c_label:
+                    dest_label = f"{c_label}/{processed_name}/"
+                elif m_label:
+                    dest_label = f"{m_label}/{processed_name}/"
+                else:
+                    dest_label = f"{processed_name}/"
+
                 self.archived_documents.append({"file_name": doc.file_name, "destination": dest_label})
                 self.log_step("ARCHIVE", f"Archived '{doc.file_name}' to '{dest_label}' subfolder.", "info")
-                logger.info(f"📦 Archived file '{doc.file_name}' into '{processed_fid}' (container: '{target_container_fid}')")
+                logger.info(f"📦 Archived file '{doc.file_name}' into '{processed_fid}' (container: '{target_container_fid}', path: '{dest_label}')")
             except Exception as arch_err:
                 logger.warning(f"Could not move '{doc.file_name}' to Processed folder: {arch_err}")
 

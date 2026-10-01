@@ -1950,3 +1950,59 @@ async def delete_client(
         "client_id": client_id,
     }
 
+
+@router.post("/{client_id}/reorganize-drive-archive", summary="Reorganize Month-level Processed Folder into Customer Subfolders")
+async def reorganize_drive_archive(
+    client_id: str,
+    month: Optional[str] = Query(None, description="Month name, e.g. September"),
+    year: Optional[int] = Query(None, description="Year, e.g. 2026"),
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Scans a client's active month folder for an aggregate 'Processed' subfolder,
+    and reorganizes files into their respective customer subfolder 'Processed' archives.
+    """
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    from datetime import datetime
+    now = datetime.now()
+    m_name = (month or now.strftime("%B")).capitalize()
+    y_val = year or now.year
+
+    drive = GoogleDriveService()
+    root_folder = (client.folder_id or settings.CONTROL_SHEETS_FOLDER_ID or "").strip()
+    if not root_folder:
+        raise HTTPException(status_code=400, detail="Client does not have a Google Drive folder configured.")
+
+    # Find the month folder
+    month_aliases = drive.get_month_aliases(m_name, y_val)
+    aliases_lower = {a.lower() for a in month_aliases}
+    
+    clean_fid = root_folder.replace("'", "\\'")
+    res = drive.service.files().list(
+        q=f"'{clean_fid}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        spaces="drive",
+        fields="files(id, name)",
+    ).execute()
+    child_folders = res.get("files", [])
+    matching_months = [f for f in child_folders if f.get("name", "").strip().lower() in aliases_lower]
+    if not matching_months:
+        return {
+            "success": False,
+            "message": f"Month folder '{m_name} {y_val}' not found in client root drive.",
+            "moved_count": 0,
+        }
+
+    month_fid = matching_months[0]["id"]
+    result = drive.reorganize_month_processed_to_customer_subfolders(month_fid)
+    return {
+        "client_id": client_id,
+        "month": m_name,
+        "year": y_val,
+        "month_folder_name": matching_months[0]["name"],
+        **result,
+    }
+
+
