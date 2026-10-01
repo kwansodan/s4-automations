@@ -1685,7 +1685,7 @@ export const ClientArTab: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-900 text-sm">
-                  {dailyPropertyFilter === 'ALL' ? 'All Customers & Properties' : dailyPropertyFilter}
+                  {dailyPropertyFilter === 'ALL' ? 'All Customers' : dailyPropertyFilter}
                 </span>
                 <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
                   Source vs Processed
@@ -2165,32 +2165,6 @@ export const ClientArTab: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {availableProperties.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
-              <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-[#64748B] text-[11px]">{isCustodyTracking ? 'Property:' : 'Customer / Site:'}</span>
-              <select
-                value={dailyPropertyFilter}
-                onChange={(e) => setDailyPropertyFilter(e.target.value)}
-                className="bg-transparent text-[#0F172A] font-medium focus:outline-none cursor-pointer"
-              >
-                <option value="ALL" className="bg-white text-slate-800">
-                  {isCustodyTracking ? 'All Properties' : 'All Customers / Sites'} ({arStagedTx.length} items)
-                </option>
-                {availableProperties.map((p) => {
-                  const stat = propertyStatsMap[p];
-                  const slipsCnt = stat?.slips.size || 0;
-                  const itemsCnt = stat?.items || 0;
-                  return (
-                    <option key={p} value={p} className="bg-white text-slate-800">
-                      {p} ({slipsCnt} {slipsCnt === 1 ? 'slip' : 'slips'} • {itemsCnt} {itemsCnt === 1 ? 'item' : 'items'})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          )}
 
           {/* Sub-toolbar: View Mode Switcher (Group by Slip vs Flat Table) & Accordion Actions */}
           <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E2E8F0] mt-1">
@@ -3513,7 +3487,7 @@ export const ClientArTab: React.FC = () => {
             <form onSubmit={handleCreateManualSlip} className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Customer / Party Name <span className="text-rose-500">*</span>
+                  Customer Name <span className="text-rose-500">*</span>
                 </label>
                 {availableProperties.length > 0 ? (
                   <div className="flex gap-2">
