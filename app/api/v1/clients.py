@@ -1693,6 +1693,126 @@ async def batch_toggle_staged_transactions(
     }
 
 
+class CreateStagedTransactionPayload(BaseModel):
+    item_or_description: str
+    quantity_or_debit: float = Field(default=0.0)
+    credit_amount: Optional[float] = Field(default=0.0)
+    rate_or_price: float = Field(default=0.0)
+    total_amount: Optional[float] = Field(default=None)
+    discrepancy_amount: Optional[float] = Field(default=None)
+    transaction_date: Optional[str] = Field(default=None)
+    source_file_name: Optional[str] = Field(default=None)
+    source_identifier: Optional[str] = Field(default=None)
+    pipeline_id: Optional[str] = Field(default=None)
+    pipeline_name: Optional[str] = Field(default=None)
+    pipeline_type: Optional[str] = Field(default="AR")
+    entity_type: Optional[str] = Field(default="ar_sales_invoice")
+    category_or_account: Optional[str] = Field(default=None)
+    accounting_ref_id: Optional[str] = Field(default=None)
+    reviewed: bool = Field(default=True)
+    approved: bool = Field(default=True)
+    status: Optional[str] = Field(default="APPROVED")
+    metadata_json: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+@router.post("/{client_id}/transactions", summary="Add Staged Transaction Line Item")
+async def create_staged_transaction(
+    client_id: str,
+    payload: CreateStagedTransactionPayload,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Manually adds a line item to a staged slip/document in PostgreSQL."""
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id.in_(aliases))).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    qty = float(payload.quantity_or_debit or 0.0)
+    rate = float(payload.rate_or_price or 0.0)
+    total = float(payload.total_amount) if payload.total_amount is not None else round(qty * rate, 2)
+    credit = float(payload.credit_amount or 0.0)
+    discrepancy = float(payload.discrepancy_amount) if payload.discrepancy_amount is not None else max(0.0, credit - qty)
+
+    # Inherit context from existing slip items if source_file_name provided
+    tx_date = payload.transaction_date or datetime.now().strftime("%Y-%m-%d")
+    batch_id = f"manual_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    p_id = payload.pipeline_id
+    p_name = payload.pipeline_name
+    s_ident = payload.source_identifier
+    meta = payload.metadata_json or {}
+
+    if payload.source_file_name:
+        existing_tx = db.exec(
+            select(StagedTransaction).where(
+                StagedTransaction.client_id.in_(aliases),
+                StagedTransaction.source_file_name == payload.source_file_name,
+            )
+        ).first()
+        if existing_tx:
+            batch_id = existing_tx.batch_id
+            p_id = p_id or existing_tx.pipeline_id
+            p_name = p_name or existing_tx.pipeline_name
+            s_ident = s_ident or existing_tx.source_identifier
+            tx_date = existing_tx.transaction_date or tx_date
+            if not meta and existing_tx.metadata_json:
+                meta = dict(existing_tx.metadata_json)
+
+    import hashlib
+    raw_hash = f"{client.id}_{tx_date}_{payload.source_file_name or 'manual'}_{payload.item_or_description}_{qty}_{rate}_{datetime.now().timestamp()}"
+    checksum = hashlib.sha256(raw_hash.encode("utf-8")).hexdigest()
+
+    tx = StagedTransaction(
+        client_id=client.id,
+        batch_id=batch_id,
+        pipeline_id=p_id,
+        pipeline_name=p_name,
+        pipeline_type=payload.pipeline_type or "AR",
+        entity_type=payload.entity_type or "ar_sales_invoice",
+        transaction_date=tx_date,
+        source_type="manual_entry",
+        source_file_name=payload.source_file_name or "Manual Line Item",
+        source_identifier=s_ident,
+        checksum=checksum,
+        item_or_description=payload.item_or_description.strip(),
+        category_or_account=payload.category_or_account,
+        quantity_or_debit=qty,
+        credit_amount=credit,
+        rate_or_price=rate,
+        total_amount=total,
+        confidence_score=1.0,
+        discrepancy_amount=discrepancy,
+        accounting_ref_id=payload.accounting_ref_id,
+        reviewed=payload.reviewed,
+        approved=payload.approved,
+        status=payload.status or "APPROVED",
+        validation_status="VALID",
+        metadata_json=meta,
+    )
+
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    AuditService.log(
+        client_id=client.id,
+        action="STAGED_TRANSACTION_MANUALLY_CREATED",
+        details={
+            "tx_id": tx.id,
+            "file_name": tx.source_file_name,
+            "item": tx.item_or_description,
+            "qty": tx.quantity_or_debit,
+            "rate": tx.rate_or_price,
+            "total": tx.total_amount,
+        },
+    )
+
+    return {
+        "success": True,
+        "message": f"Successfully added '{tx.item_or_description}' to slip.",
+        "transaction": tx.model_dump(),
+    }
+
+
 @router.patch("/{client_id}/transactions/{tx_id}", summary="Update Cell Values on Staged Transaction")
 async def update_staged_transaction(
     client_id: str,

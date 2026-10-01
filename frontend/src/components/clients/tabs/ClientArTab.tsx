@@ -12,6 +12,7 @@ import {
   deleteStagedTransaction,
   batchDeleteStagedTransactions,
   updateClientTransaction,
+  createClientTransaction,
   fetchItemCatalog,
   fetchClientCatalog,
   CatalogItem,
@@ -48,6 +49,7 @@ import {
   ArrowRight,
   FolderOpen,
   FileSpreadsheet,
+  Plus,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
@@ -126,6 +128,14 @@ export const ClientArTab: React.FC = () => {
   const [isSavingTx, setIsSavingTx] = useState<boolean>(false);
   const [deletingSlipKey, setDeletingSlipKey] = useState<string | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<number | null>(null);
+
+  // Adding Missed Item to Slip State
+  const [addingItemSlipKey, setAddingItemSlipKey] = useState<string | null>(null);
+  const [newItemName, setNewItemName] = useState<string>('');
+  const [newItemPickQty, setNewItemPickQty] = useState<string>('1');
+  const [newItemDelivQty, setNewItemDelivQty] = useState<string>('1');
+  const [newItemRate, setNewItemRate] = useState<number | string>(0);
+  const [isAddingItem, setIsAddingItem] = useState<boolean>(false);
 
   // Determine if this client uses specialized 2-stage custody / linen loss tracking (e.g. laundry)
   // vs Universal Accounting Primitives (Quantity, Unit Rate, Total Amount)
@@ -850,6 +860,83 @@ export const ClientArTab: React.FC = () => {
       addLog('error', `Failed updating transaction: ${err.message}`);
     } finally {
       setIsSavingTx(false);
+    }
+  };
+
+  const handleStartAddItem = (slip: SlipGroup) => {
+    setAddingItemSlipKey(slip.slipKey);
+    setNewItemName('');
+    setNewItemPickQty('1');
+    setNewItemDelivQty('1');
+    setNewItemRate(0);
+    // Ensure the slip accordion is expanded
+    setExpandedSlips((prev) => ({ ...prev, [slip.slipKey]: true }));
+  };
+
+  const handleCancelAddItem = () => {
+    setAddingItemSlipKey(null);
+    setNewItemName('');
+    setNewItemPickQty('1');
+    setNewItemDelivQty('1');
+    setNewItemRate(0);
+  };
+
+  const handleZohoNewItemSelect = (item: ZohoCatalogItem) => {
+    setNewItemName(item.name);
+    if (item.rate != null && item.rate > 0) {
+      setNewItemRate(item.rate);
+    }
+  };
+
+  const handleSaveNewItem = async (slip: SlipGroup) => {
+    if (!currentClient?.id) return;
+    const finalDesc = newItemName.trim();
+    if (!finalDesc) {
+      addLog('warning', 'Please select or enter an item description.');
+      return;
+    }
+
+    const pick = Math.max(0, Number(newItemPickQty) || 0);
+    const deliv = Math.max(0, Number(newItemDelivQty) || 0);
+    const rate = Math.max(0, Number(newItemRate) || 0);
+    const total = Math.round(deliv * rate * 100) / 100;
+    const loss = Math.max(0, pick - deliv);
+    const refItem = slip.items[0];
+
+    setIsAddingItem(true);
+    try {
+      await createClientTransaction(currentClient.id, {
+        item_or_description: finalDesc,
+        quantity_or_debit: deliv,
+        credit_amount: pick,
+        rate_or_price: rate,
+        total_amount: total,
+        discrepancy_amount: loss,
+        transaction_date: slip.slipDate !== '-' ? slip.slipDate : (refItem?.transaction_date || undefined),
+        source_file_name: slip.sourceFileName,
+        source_identifier: refItem?.source_identifier,
+        pipeline_id: refItem?.pipeline_id,
+        pipeline_name: refItem?.pipeline_name,
+        pipeline_type: refItem?.pipeline_type || 'AR',
+        entity_type: refItem?.entity_type || 'ar_sales_invoice',
+        category_or_account: refItem?.category_or_account,
+        accounting_ref_id: refItem?.accounting_ref_id,
+        reviewed: true,
+        approved: true,
+        status: 'APPROVED',
+        metadata_json: refItem?.metadata_json || {},
+      });
+
+      addLog(
+        'success',
+        `Added "${toTitleCase(finalDesc)}" (${deliv} units @ GHS ${rate.toFixed(2)}) to slip "${slip.sourceFileName}".`
+      );
+      handleCancelAddItem();
+      await Promise.all([loadTransactions(), loadSummaryData()]);
+    } catch (err: any) {
+      addLog('error', `Failed to add line item: ${err.message}`);
+    } finally {
+      setIsAddingItem(false);
     }
   };
 
@@ -1705,6 +1792,17 @@ export const ClientArTab: React.FC = () => {
                                 <span>Approve Slip ({slip.items.length})</span>
                               </>
                             )}
+                          {/* Add Missing Item to this Slip */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartAddItem(slip);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#0284C7] hover:bg-[#F0F9FF] bg-white border border-[#BAE6FD] hover:border-[#0284C7] transition cursor-pointer shadow-xs shrink-0"
+                            title={`Add a line item missed by OCR to "${slip.sourceFileName || 'this slip'}"`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-[#0284C7]" />
+                            <span>Add Item</span>
                           </button>
 
                           {/* Purge / Delete Mistakenly Uploaded Slip */}
@@ -1998,6 +2096,126 @@ export const ClientArTab: React.FC = () => {
                                   </tr>
                                 );
                               })}
+
+                              {/* Inline New Item Form Row */}
+                              {addingItemSlipKey === slip.slipKey ? (
+                                <tr className="bg-[#F0FDF4] border-2 border-[#16A34A]/50 shadow-inner">
+                                  <td className="py-2 px-3 min-w-[280px]">
+                                    <ZohoItemSearchableSelect
+                                      items={zohoMasterItems}
+                                      selectedItemName={newItemName}
+                                      onSelect={handleZohoNewItemSelect}
+                                      disabled={isAddingItem}
+                                    />
+                                  </td>
+                                  {isCustodyTracking ? (
+                                    <>
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={newItemPickQty}
+                                          onChange={(e) => setNewItemPickQty(e.target.value)}
+                                          className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#16A34A]"
+                                          placeholder="Pick"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={newItemDelivQty}
+                                          onChange={(e) => setNewItemDelivQty(e.target.value)}
+                                          className="w-16 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#16A34A]"
+                                          placeholder="Deliv"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        {Math.max(0, (Number(newItemPickQty) || 0) - (Number(newItemDelivQty) || 0)) > 0 ? (
+                                          <span className="inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-[#FFF1F2] border border-[#FECDD3] text-[#E11D48]">
+                                            -{Math.max(0, (Number(newItemPickQty) || 0) - (Number(newItemDelivQty) || 0))}
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-400 font-mono text-xs">-</span>
+                                        )}
+                                      </td>
+                                    </>
+                                  ) : (
+                                    <td className="py-2 px-3 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={newItemDelivQty}
+                                        onChange={(e) => {
+                                          setNewItemDelivQty(e.target.value);
+                                          setNewItemPickQty(e.target.value);
+                                        }}
+                                        className="w-20 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-center font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#16A34A]"
+                                      />
+                                    </td>
+                                  )}
+                                  <td className="py-2 px-3 text-right">
+                                    <div className="inline-flex items-center justify-end gap-1">
+                                      <span className="text-[#64748B] text-[10px]">GHS</span>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={newItemRate}
+                                        onChange={(e) => setNewItemRate(e.target.value)}
+                                        className="w-20 bg-white border border-[#CBD5E1] rounded px-1.5 py-1 text-right font-mono text-xs text-[#0F172A] focus:outline-none focus:border-[#16A34A]"
+                                      />
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-[#059669] whitespace-nowrap">
+                                    {formatCurrency(Math.round((Number(newItemDelivQty) || 0) * (Number(newItemRate) || 0) * 100) / 100)}
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <span className="text-[#16A34A] text-[11px] font-semibold" title="Auto-reviewed">Auto</span>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <span className="text-[#16A34A] text-[11px] font-semibold" title="Auto-approved">Auto</span>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]">
+                                      NEW
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-center whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        onClick={() => handleSaveNewItem(slip)}
+                                        disabled={isAddingItem || !newItemName.trim()}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-[#16A34A] hover:bg-[#15803D] text-white transition shadow-xs cursor-pointer disabled:opacity-50"
+                                        title="Add item to slip"
+                                      >
+                                        <Save className="w-3.5 h-3.5" />
+                                        <span>{isAddingItem ? 'Adding...' : 'Add'}</span>
+                                      </button>
+                                      <button
+                                        onClick={handleCancelAddItem}
+                                        disabled={isAddingItem}
+                                        className="inline-flex items-center p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+                                        title="Cancel"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : (
+                                <tr className="bg-slate-50/50 hover:bg-[#F0F9FF]/60 transition border-t border-[#E2E8F0]">
+                                  <td colSpan={isCustodyTracking ? 10 : 8} className="py-2 px-3">
+                                    <button
+                                      onClick={() => handleStartAddItem(slip)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0284C7] hover:text-[#0369A1] hover:bg-[#E0F2FE] transition cursor-pointer border border-dashed border-[#BAE6FD]"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Add Missed Item to this Slip</span>
+                                    </button>
+                                  </td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>

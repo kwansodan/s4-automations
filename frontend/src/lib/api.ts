@@ -837,6 +837,42 @@ export async function updateClientTransaction(
   return handleResponse<{ success: boolean; transaction: any }>(res, `Update transaction ${transactionId}`);
 }
 
+export async function createClientTransaction(
+  clientId: string,
+  payload: {
+    item_or_description: string;
+    quantity_or_debit?: number;
+    credit_amount?: number;
+    rate_or_price?: number;
+    total_amount?: number;
+    discrepancy_amount?: number;
+    transaction_date?: string;
+    source_file_name?: string;
+    source_identifier?: string;
+    pipeline_id?: string;
+    pipeline_name?: string;
+    pipeline_type?: string;
+    entity_type?: string;
+    category_or_account?: string;
+    accounting_ref_id?: string;
+    reviewed?: boolean;
+    approved?: boolean;
+    status?: string;
+    metadata_json?: Record<string, any>;
+  }
+): Promise<{ success: boolean; transaction: any; message: string }> {
+  const res = await resilientFetch(`/api/clients/${clientId}/transactions`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ success: boolean; transaction: any; message: string }>(
+    res,
+    `Create transaction for ${clientId}`
+  );
+}
+
+
 export interface CatalogItem {
   item_id: string;
   name: string;
