@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
 import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
@@ -31,11 +31,12 @@ import { formatCurrency } from '../../lib/utils';
 import {
   ApiError,
   fetchClientTransactions,
+  fetchClientCatalog,
   fetchExistingInvoices,
   saveCustomerMapping,
   saveClientConfig,
 } from '../../lib/api';
-import type { ExistingDraftInvoice } from '../../lib/api';
+import type { ExistingDraftInvoice, CatalogItem } from '../../lib/api';
 import type { InvoicePreflightAudit } from '../../types/client';
 
 type InvoiceModalPhase = 'config' | 'live_progress' | 'receipt';
@@ -209,6 +210,87 @@ export const InvoiceModal: React.FC = () => {
     [clients, clientFilter, currentClient]
   );
 
+  // Client Zoho Catalog Cache (Items and Contacts)
+  const [clientCatalogItems, setClientCatalogItems] = useState<CatalogItem[]>([]);
+  const [clientContacts, setClientContacts] = useState<any[]>([]);
+
+  const allCatalogItems = useMemo(
+    () => (clientCatalogItems.length > 0 ? clientCatalogItems : catalog?.items || []),
+    [clientCatalogItems, catalog?.items]
+  );
+
+  const effectiveContacts = useMemo(
+    () => (clientContacts.length > 0 ? clientContacts : catalog?.contacts || []),
+    [clientContacts, catalog?.contacts]
+  );
+
+  // Active Zoho Item Master Map for Catalog Matching
+  const activeZohoItemMap = useMemo(() => {
+    const map = new Map<string, any>();
+    allCatalogItems.forEach((c: any) => {
+      if (c.status && c.status.toLowerCase() !== 'active') return;
+      const rawName = (c.name || '').trim();
+      if (!rawName) return;
+      const lower = rawName.toLowerCase();
+      const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+      map.set(lower, c);
+      if (cleanKey) map.set(cleanKey, c);
+      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+      if (singular) map.set(singular, c);
+      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (noPunct) map.set(noPunct, c);
+    });
+    return map;
+  }, [allCatalogItems]);
+
+  const isTxUncataloged = useCallback(
+    (tx: any, itemsList: any[] = allCatalogItems, itemMap: Map<string, any> = activeZohoItemMap): boolean => {
+      if (tx?.accounting_ref_id) return false;
+      if (tx?.zoho_item_id) return false;
+      if (tx?.metadata_json?.zoho_item_id) return false;
+      if (itemsList.length === 0) return false;
+
+      const raw = (tx?.item_or_description || '').trim();
+      if (!raw) return false;
+
+      const lower = raw.toLowerCase();
+      const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+
+      if (itemMap.has(lower) || itemMap.has(cleanKey) || itemMap.has(noPunct) || itemMap.has(singular)) {
+        return false;
+      }
+
+      const customItemMappings = targetClient?.custom_config?.item_mappings || {};
+      if (customItemMappings[raw] || customItemMappings[cleanKey] || customItemMappings[lower]) {
+        return false;
+      }
+
+      for (const catItem of itemsList) {
+        if (catItem.status && catItem.status.toLowerCase() !== 'active') continue;
+        const catName = (catItem.name || '').trim().toLowerCase();
+        if (!catName) continue;
+        const catClean = catName.replace(/^[:;\s\-•.]+/, '').trim();
+        const catSingular = catClean.replace(/\b([a-z]+)s\b/g, '$1');
+
+        if (catName === lower || catClean === cleanKey || catSingular === singular) return false;
+        if (catClean.includes(cleanKey) || cleanKey.includes(catClean)) return false;
+        if (catSingular && singular && (catSingular.includes(singular) || singular.includes(catSingular))) return false;
+
+        const wordsTx = cleanKey.split(/\s+/).filter(Boolean);
+        const wordsCat = catClean.split(/\s+/).filter(Boolean);
+        if (wordsTx.length > 0 && wordsCat.length > 0) {
+          if (wordsTx.every((w: string) => wordsCat.some((cw: string) => cw.includes(w) || w.includes(cw)))) return false;
+        }
+      }
+
+      return true;
+    },
+    [allCatalogItems, activeZohoItemMap, targetClient?.custom_config?.item_mappings]
+  );
+
+
   // Synchronize description preference with target client configuration
   useEffect(() => {
     if (isInvoiceModalOpen && targetClient) {
@@ -242,19 +324,56 @@ export const InvoiceModal: React.FC = () => {
     if (!targetClient) return;
 
     let isMounted = true;
-    fetchClientTransactions(targetClient.id, undefined, selectedMonth, Number(selectedYear), 'AR')
-      .then((txs) => {
+    Promise.all([
+      fetchClientTransactions(targetClient.id, undefined, selectedMonth, Number(selectedYear), 'AR'),
+      fetchClientCatalog(targetClient.id, targetClient.zoho_org_id).catch(() => ({ items: [], contacts: [] })),
+    ])
+      .then(([txs, catRes]) => {
         if (!isMounted) return;
         setRawTransactions(txs);
+
+        if (Array.isArray(catRes?.items) && catRes.items.length > 0) {
+          setClientCatalogItems(catRes.items);
+        }
+        if (Array.isArray(catRes?.contacts) && catRes.contacts.length > 0) {
+          setClientContacts(catRes.contacts);
+        }
+
+        const itemsCatalog =
+          Array.isArray(catRes?.items) && catRes.items.length > 0
+            ? catRes.items
+            : clientCatalogItems.length > 0
+            ? clientCatalogItems
+            : catalog?.items || [];
+
+        const contacts =
+          Array.isArray(catRes?.contacts) && catRes.contacts.length > 0
+            ? catRes.contacts
+            : clientContacts.length > 0
+            ? clientContacts
+            : catalog?.contacts || [];
+
+        const itemMap = new Map<string, any>();
+        itemsCatalog.forEach((c: any) => {
+          if (c.status && c.status.toLowerCase() !== 'active') return;
+          const rawName = (c.name || '').trim();
+          if (!rawName) return;
+          const lower = rawName.toLowerCase();
+          const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+          itemMap.set(lower, c);
+          if (cleanKey) itemMap.set(cleanKey, c);
+          const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+          if (singular) itemMap.set(singular, c);
+          const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+          if (noPunct) itemMap.set(noPunct, c);
+        });
 
         const approvedTx = txs.filter((t: any) => t.approved && t.status !== 'INVOICED');
         const unapprovedTx = txs.filter((t: any) => !t.approved && t.status !== 'INVOICED');
         const unapprovedAmount = unapprovedTx.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
         const approvedAmount = approvedTx.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
 
-        const uncatApproved = approvedTx.filter(
-          (t: any) => !t.accounting_ref_id && (!t.metadata_json || !t.metadata_json.zoho_item_id)
-        );
+        const uncatApproved = approvedTx.filter((t: any) => isTxUncataloged(t, itemsCatalog, itemMap));
         const uncatNames = Array.from(
           new Set(
             uncatApproved
@@ -277,7 +396,6 @@ export const InvoiceModal: React.FC = () => {
         );
 
         // Group approved transactions by Customer
-        const contacts = catalog?.contacts || [];
         const customerMap: Record<
           string,
           { itemsCount: number; totalAmount: number; isReconciled: boolean; zohoContactId?: string }
@@ -376,6 +494,9 @@ export const InvoiceModal: React.FC = () => {
     selectedMonth,
     selectedYear,
     setInvoicePreflight,
+    isTxUncataloged,
+    clientCatalogItems,
+    clientContacts,
   ]);
 
   // Query existing draft invoices from Zoho Books or PostgreSQL ledger
@@ -515,9 +636,7 @@ export const InvoiceModal: React.FC = () => {
   const scopedUnapprovedCount = scopedUnapprovedTx.length;
   const scopedUnapprovedAmount = scopedUnapprovedTx.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
 
-  const scopedUncatApproved = scopedApprovedTx.filter(
-    (t: any) => !t.accounting_ref_id && (!t.metadata_json || !t.metadata_json.zoho_item_id)
-  );
+  const scopedUncatApproved = scopedApprovedTx.filter((t: any) => isTxUncataloged(t));
   const scopedUncatNames = Array.from(
     new Set(
       scopedUncatApproved
@@ -653,7 +772,7 @@ export const InvoiceModal: React.FC = () => {
     if (!clientId || !selectedContactId) return;
     setIsLinkingCust((prev) => ({ ...prev, [custName]: true }));
     try {
-      const contacts = catalog?.contacts || [];
+      const contacts = effectiveContacts;
       const selectedContact = contacts.find((c: any) => c.contact_id === selectedContactId);
       await saveCustomerMapping(clientId, {
         alias: custName,
@@ -986,7 +1105,7 @@ export const InvoiceModal: React.FC = () => {
                                       className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
                                     >
                                       <option value="">Select official Zoho contact...</option>
-                                      {(catalog?.contacts || []).map((cont: any) => (
+                                      {effectiveContacts.map((cont: any) => (
                                         <option key={cont.contact_id} value={cont.contact_id}>
                                           {cont.contact_name} {cont.company_name ? `(${cont.company_name})` : ''} - ID: {cont.contact_id}
                                         </option>
