@@ -58,6 +58,7 @@ import {
   Square,
   Filter,
   Download,
+  Package,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
@@ -82,6 +83,8 @@ export interface SlipGroup {
   isPartiallyApproved: boolean;
   isFullyReviewed: boolean;
   hasLowConfidence: boolean;
+  hasUnmappedItem?: boolean;
+  unmappedItemsCount?: number;
   minConfidence: number;
   status: string;
 }
@@ -116,7 +119,7 @@ export const ClientArTab: React.FC = () => {
   const [purgeTargetFileName, setPurgeTargetFileName] = useState<string>('');
 
   // Filters, Sorting & Pagination State
-  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'UNREVIEWED' | 'UNAPPROVED' | 'LOW_CONFIDENCE' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED'>('ALL');
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'UNREVIEWED' | 'UNAPPROVED' | 'LOW_CONFIDENCE' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED' | 'UNMAPPED'>('ALL');
   const [dailyPropertyFilter, setDailyPropertyFilter] = useState<string>('ALL');
   const [groupedSortBy, setGroupedSortBy] = useState<string>('date_desc');
   const [dailySortField, setDailySortField] = useState<string>('transaction_date');
@@ -717,6 +720,58 @@ export const ClientArTab: React.FC = () => {
     return false;
   };
 
+  // Strictly Zoho Books Item Master (Active items only) scoped to this client
+  const officialZohoItemMap = useMemo(() => {
+    const map = new Map<string, CatalogItem>();
+    catalogItems.forEach((c: any) => {
+      if (c.status && c.status.toLowerCase() !== 'active') {
+        return;
+      }
+      const rawName = (c.name || '').trim();
+      const key = rawName.toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, {
+          item_id: c.item_id || `item_${key.replace(/\s+/g, '_')}`,
+          name: rawName,
+          rate: Number(c.rate) || 0,
+          description: c.description || '',
+          status: 'active',
+        });
+      }
+    });
+    return map;
+  }, [catalogItems]);
+
+  const isTxUnmappedCatalog = useCallback((tx: any): boolean => {
+    if (officialZohoItemMap.size === 0) return false;
+    const name = (tx?.item_or_description || '').trim().toLowerCase();
+    if (!name) return false;
+    return !officialZohoItemMap.has(name);
+  }, [officialZohoItemMap]);
+
+  const zohoMasterItems = useMemo(() => {
+    // Start with active items from Zoho Books Item Master
+    const map = new Map<string, CatalogItem>(officialZohoItemMap);
+
+    // Items from transactions that do not exist within the main catalog
+    // are assigned an item ID with the predictable 'staged_' prefix
+    transactions.forEach((tx: any) => {
+      const rawName = (tx.item_or_description || '').trim();
+      const key = rawName.toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, {
+          item_id: `staged_${key.replace(/\s+/g, '_')}`,
+          name: rawName,
+          rate: Number(tx.rate_or_price) || 0,
+          description: `${currentClient?.name || 'Client'} Staged Item`,
+          status: 'active',
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [officialZohoItemMap, transactions, currentClient?.name]);
+
   const dailyCounts = useMemo(() => {
     let pending = 0;
     let approved = 0;
@@ -725,6 +780,9 @@ export const ClientArTab: React.FC = () => {
     let unreviewed = 0;
     let unapproved = 0;
     let lowConfidence = 0;
+    let unmappedItems = 0;
+    const unmappedSlipsSet = new Set<string>();
+    const unmappedNamesSet = new Set<string>();
 
     const targetTx = dailyPropertyFilter === 'ALL'
       ? arStagedTx
@@ -738,6 +796,14 @@ export const ClientArTab: React.FC = () => {
       if (!tx.reviewed) unreviewed++;
       if (!tx.approved && tx.status !== 'INVOICED') unapproved++;
       if (isItemLowConf(tx)) lowConfidence++;
+
+      if (isTxUnmappedCatalog(tx)) {
+        unmappedItems++;
+        const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+        unmappedSlipsSet.add(slipKey);
+        const name = (tx.item_or_description || '').trim();
+        if (name) unmappedNamesSet.add(name);
+      }
 
       if ((tx.discrepancy_amount || 0) > 0) {
         discrepancy++;
@@ -754,8 +820,11 @@ export const ClientArTab: React.FC = () => {
       unreviewed,
       unapproved,
       lowConfidence,
+      unmappedItems,
+      unmappedSlips: unmappedSlipsSet.size,
+      distinctUnmappedNames: unmappedNamesSet.size,
     };
-  }, [arStagedTx, dailyPropertyFilter]);
+  }, [arStagedTx, dailyPropertyFilter, isTxUnmappedCatalog]);
 
   const currentPropertyMetrics = useMemo(() => {
     const isAll = dailyPropertyFilter === 'ALL';
@@ -813,6 +882,7 @@ export const ClientArTab: React.FC = () => {
       if (dailyStatusFilter === 'APPROVED' && (!t.approved || t.status === 'INVOICED')) return false;
       if (dailyStatusFilter === 'DISCREPANCY' && (t.discrepancy_amount || 0) <= 0) return false;
       if (dailyStatusFilter === 'INVOICED' && t.status !== 'INVOICED') return false;
+      if (dailyStatusFilter === 'UNMAPPED' && !isTxUnmappedCatalog(t)) return false;
 
       // 2. Property Filter
       if (dailyPropertyFilter !== 'ALL') {
@@ -835,7 +905,7 @@ export const ClientArTab: React.FC = () => {
         file.includes(query)
       );
     });
-  }, [arStagedTx, dailyStatusFilter, dailyPropertyFilter, query]);
+  }, [arStagedTx, dailyStatusFilter, dailyPropertyFilter, query, isTxUnmappedCatalog]);
 
   const handleDailySort = (field: string) => {
     if (dailySortField === field) {
@@ -928,6 +998,8 @@ export const ClientArTab: React.FC = () => {
           isPartiallyApproved: false,
           isFullyReviewed: true,
           hasLowConfidence: false,
+          hasUnmappedItem: false,
+          unmappedItemsCount: 0,
           minConfidence: 1.0,
           status: 'PENDING',
         };
@@ -944,6 +1016,10 @@ export const ClientArTab: React.FC = () => {
       if (tx.approved) group.isPartiallyApproved = true;
       if (!tx.reviewed) group.isFullyReviewed = false;
       if (isItemLowConf(tx)) group.hasLowConfidence = true;
+      if (isTxUnmappedCatalog(tx)) {
+        group.hasUnmappedItem = true;
+        group.unmappedItemsCount = (group.unmappedItemsCount || 0) + 1;
+      }
       const conf = typeof tx.confidence_score === 'number' ? tx.confidence_score : 1.0;
       if (conf < group.minConfidence) group.minConfidence = conf;
     });
@@ -1004,7 +1080,7 @@ export const ClientArTab: React.FC = () => {
     });
 
     return list;
-  }, [filteredArStagedTx, currentClient, groupedSortBy]);
+  }, [filteredArStagedTx, currentClient, groupedSortBy, isTxUnmappedCatalog]);
 
   interface MissingPeriod {
     key: string;
@@ -1195,26 +1271,37 @@ export const ClientArTab: React.FC = () => {
       ? arStagedTx
       : arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter);
 
-    const slipMap = new Map<string, { isFullyReviewed: boolean; isFullyApproved: boolean; hasLowConf: boolean }>();
+    const slipMap = new Map<string, { isFullyReviewed: boolean; isFullyApproved: boolean; hasLowConf: boolean; hasUnmapped: boolean }>();
+    let totalUnmappedItems = 0;
+    const distinctUnmappedNamesSet = new Set<string>();
+
     targetTx.forEach((tx) => {
       const key = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
       let cur = slipMap.get(key);
       if (!cur) {
-        cur = { isFullyReviewed: true, isFullyApproved: true, hasLowConf: false };
+        cur = { isFullyReviewed: true, isFullyApproved: true, hasLowConf: false, hasUnmapped: false };
         slipMap.set(key, cur);
       }
       if (!tx.reviewed) cur.isFullyReviewed = false;
       if (!tx.approved && tx.status !== 'INVOICED') cur.isFullyApproved = false;
       if (isItemLowConf(tx)) cur.hasLowConf = true;
+      if (isTxUnmappedCatalog(tx)) {
+        cur.hasUnmapped = true;
+        totalUnmappedItems++;
+        const name = (tx.item_or_description || '').trim();
+        if (name) distinctUnmappedNamesSet.add(name);
+      }
     });
 
     let unreviewed = 0;
     let unapproved = 0;
     let lowConf = 0;
+    let unmappedSlips = 0;
     slipMap.forEach((v) => {
       if (!v.isFullyReviewed) unreviewed++;
       if (!v.isFullyApproved) unapproved++;
       if (v.hasLowConf) lowConf++;
+      if (v.hasUnmapped) unmappedSlips++;
     });
 
     return {
@@ -1222,9 +1309,12 @@ export const ClientArTab: React.FC = () => {
       unreviewedSlips: unreviewed,
       unapprovedSlips: unapproved,
       lowConfidenceSlips: lowConf,
+      unmappedSlips,
+      unmappedItems: totalUnmappedItems,
+      distinctUnmappedNames: distinctUnmappedNamesSet.size,
       missingPeriodsCount: missingPeriods.length,
     };
-  }, [arStagedTx, dailyPropertyFilter, missingPeriods.length]);
+  }, [arStagedTx, dailyPropertyFilter, missingPeriods.length, isTxUnmappedCatalog]);
 
   const totalGroupedCount = groupedSlips.length;
   const totalGroupedPages = groupedPageSize === 'all' ? 1 : Math.ceil(totalGroupedCount / Number(groupedPageSize)) || 1;
@@ -1282,41 +1372,6 @@ export const ClientArTab: React.FC = () => {
       setApprovingSlipKey(null);
     }
   };
-
-  const zohoMasterItems = useMemo(() => {
-    // Strictly Zoho Books Item Master (Active items only) scoped to this client
-    const map = new Map<string, CatalogItem>();
-    catalogItems.forEach((c: any) => {
-      if (c.status && c.status.toLowerCase() !== 'active') {
-        return;
-      }
-      if (c.name && !map.has(c.name.trim().toLowerCase())) {
-        map.set(c.name.trim().toLowerCase(), {
-          item_id: c.item_id || `item_${c.name.toLowerCase().replace(/\s+/g, '_')}`,
-          name: c.name.trim(),
-          rate: Number(c.rate) || 0,
-          description: c.description || '',
-          status: 'active',
-        });
-      }
-    });
-
-    // Ensure distinct active items from THIS client's staged transactions are available as fallback
-    transactions.forEach((tx: any) => {
-      const name = (tx.item_or_description || '').trim();
-      if (name && !map.has(name.toLowerCase())) {
-        map.set(name.toLowerCase(), {
-          item_id: `staged_${name.toLowerCase().replace(/\s+/g, '_')}`,
-          name,
-          rate: Number(tx.rate_or_price) || 0,
-          description: `${currentClient?.name || 'Client'} Staged Item`,
-          status: 'active',
-        });
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogItems, transactions, currentClient?.name]);
 
   const handleStartEdit = (tx: any) => {
     setEditingTxId(tx.id);
@@ -1920,7 +1975,7 @@ export const ClientArTab: React.FC = () => {
 
       {/* Dynamic AR Slips KPI Review Metric Cards */}
       {activeLedgerView === 'daily' && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Card 1: Total Processed Slips */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
             <div>
@@ -1995,7 +2050,29 @@ export const ClientArTab: React.FC = () => {
             </div>
           </button>
 
-          {/* Card 5: Missing Activity Gaps */}
+          {/* Card 5: Uncataloged Items */}
+          <button
+            type="button"
+            onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
+            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+              dailyStatusFilter === 'UNMAPPED'
+                ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/40'
+                : 'bg-white border-[#E2E8F0] hover:border-rose-300'
+            }`}
+          >
+            <div>
+              <div className="text-[10px] uppercase font-bold text-rose-700">Uncataloged Items</div>
+              <div className="text-lg font-bold text-rose-900 font-mono">{slipKpis.unmappedItems}</div>
+              <div className="text-[11px] text-rose-600 font-medium">
+                {slipKpis.unmappedSlips} {slipKpis.unmappedSlips === 1 ? 'slip' : 'slips'} ({slipKpis.distinctUnmappedNames} distinct)
+              </div>
+            </div>
+            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+              <Package className="w-5 h-5" />
+            </div>
+          </button>
+
+          {/* Card 6: Missing Activity Gaps */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-bold text-rose-600">Missing Periods</div>
@@ -2196,6 +2273,29 @@ export const ClientArTab: React.FC = () => {
                   <span>Low Conf</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dailyStatusFilter === 'LOW_CONFIDENCE' ? 'bg-purple-700 text-white' : 'bg-purple-100 text-purple-800'}`}>
                     {dailyCounts.lowConfidence}
+                  </span>
+                </button>
+              )}
+
+              {dailyCounts.unmappedItems > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    dailyStatusFilter === 'UNMAPPED'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                  }`}
+                  title={`${dailyCounts.unmappedItems} unmapped line items across ${dailyCounts.unmappedSlips} slips (${dailyCounts.distinctUnmappedNames} distinct item names)`}
+                >
+                  <Package className="w-3 h-3 text-rose-500" />
+                  <span>Uncataloged</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      dailyStatusFilter === 'UNMAPPED' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}
+                  >
+                    {dailyCounts.unmappedItems}
                   </span>
                 </button>
               )}
@@ -2661,6 +2761,16 @@ export const ClientArTab: React.FC = () => {
                                 </span>
                               )}
 
+                              {slip.hasUnmappedItem && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
+                                  title={`${slip.unmappedItemsCount} uncataloged item(s) on this slip`}
+                                >
+                                  <Package className="w-3 h-3 text-rose-600" />
+                                  <span>Uncataloged ({slip.unmappedItemsCount})</span>
+                                </span>
+                              )}
+
                               {!slip.isFullyReviewed && (
                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
                                   Unreviewed
@@ -2991,6 +3101,14 @@ export const ClientArTab: React.FC = () => {
                                     <td className="py-2.5 px-3 font-bold text-[#0F172A] whitespace-nowrap">
                                       <div className="flex items-center gap-1.5 group">
                                         <span>{toTitleCase(tx.item_or_description)}</span>
+                                        {isTxUnmappedCatalog(tx) && (
+                                          <span
+                                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
+                                            title="Item not found in active Zoho Books Item Master"
+                                          >
+                                            Uncataloged
+                                          </span>
+                                        )}
                                         <button
                                           onClick={() => handleStartEdit(tx)}
                                           className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-[#0284C7] transition"
@@ -3439,6 +3557,14 @@ export const ClientArTab: React.FC = () => {
                         <td className="py-3 px-4 font-bold text-[#0F172A] whitespace-nowrap">
                           <div className="flex items-center gap-1.5 group">
                             <span>{toTitleCase(tx.item_or_description)}</span>
+                            {isTxUnmappedCatalog(tx) && (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
+                                title="Item not found in active Zoho Books Item Master"
+                              >
+                                Uncataloged
+                              </span>
+                            )}
                             <button
                               onClick={() => handleStartEdit(tx)}
                               className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-sky-600 transition"
