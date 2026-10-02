@@ -1,6 +1,7 @@
 """Zoho Books API Service integration with OAuth2 refresh, Catalog sync, and Invoicing."""
 
 import time
+import re
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import List, Dict, Optional, Any
@@ -220,36 +221,47 @@ class ZohoBooksService:
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
         url = f"{self.books_api_url}/contacts"
-        params = {
-            "organization_id": self.org_id,
-            "status": "active",
-            "contact_type": "customer",
-        }
+        contacts = []
+        page = 1
+        has_more_page = True
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers, params=params)
-            
-            if response.status_code == 401:
-                # Refresh token and retry
-                access_token = await self.get_access_token(force_refresh=True)
-                headers = self._get_headers(access_token)
+            while has_more_page:
+                params = {
+                    "organization_id": self.org_id,
+                    "status": "active",
+                    "contact_type": "customer",
+                    "per_page": 200,
+                    "page": page,
+                }
                 response = await client.get(url, headers=headers, params=params)
+                
+                if response.status_code == 401:
+                    # Refresh token and retry
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    response = await client.get(url, headers=headers, params=params)
 
-            response.raise_for_status()
-            data = response.json()
-            raw_contacts = data.get("contacts", [])
+                response.raise_for_status()
+                data = response.json()
+                raw_contacts = data.get("contacts", [])
 
-            contacts = []
-            for c in raw_contacts:
-                contacts.append(
-                    ZohoContact(
-                        contact_id=str(c.get("contact_id", "")),
-                        contact_name=c.get("contact_name", "") or c.get("company_name", ""),
-                        company_name=c.get("company_name", ""),
-                        email=c.get("email", ""),
-                        status=c.get("status", "active"),
+                for c in raw_contacts:
+                    contacts.append(
+                        ZohoContact(
+                            contact_id=str(c.get("contact_id", "")),
+                            contact_name=c.get("contact_name", "") or c.get("company_name", ""),
+                            company_name=c.get("company_name", ""),
+                            email=c.get("email", ""),
+                            status=c.get("status", "active"),
+                        )
                     )
-                )
+
+                page_context = data.get("page_context", {})
+                has_more_page = page_context.get("has_more_page", False)
+                page += 1
+                if page > 10:
+                    break
 
             self._cached_contacts = contacts
             ZohoBooksService._tenant_contacts[self._tenant_key] = contacts
@@ -447,36 +459,47 @@ class ZohoBooksService:
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
         url = f"{self.books_api_url}/items"
-        params = {
-            "organization_id": self.org_id,
-            "status": "active",
-        }
+        items = []
+        page = 1
+        has_more_page = True
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers, params=params)
-            if response.status_code == 401:
-                access_token = await self.get_access_token(force_refresh=True)
-                headers = self._get_headers(access_token)
+            while has_more_page:
+                params = {
+                    "organization_id": self.org_id,
+                    "status": "active",
+                    "per_page": 200,
+                    "page": page,
+                }
                 response = await client.get(url, headers=headers, params=params)
+                if response.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    response = await client.get(url, headers=headers, params=params)
 
-            response.raise_for_status()
-            data = response.json()
-            raw_items = data.get("items", [])
+                response.raise_for_status()
+                data = response.json()
+                raw_items = data.get("items", [])
 
-            items = []
-            for item in raw_items:
-                item_status = str(item.get("status", "active")).strip().lower()
-                if item_status != "active":
-                    continue
-                items.append(
-                    ZohoItem(
-                        item_id=str(item.get("item_id", "")),
-                        name=item.get("name", ""),
-                        rate=float(item.get("rate", 0.0)),
-                        description=item.get("description", ""),
-                        status="active",
+                for item in raw_items:
+                    item_status = str(item.get("status", "active")).strip().lower()
+                    if item_status != "active":
+                        continue
+                    items.append(
+                        ZohoItem(
+                            item_id=str(item.get("item_id", "")),
+                            name=item.get("name", ""),
+                            rate=float(item.get("rate", 0.0)),
+                            description=item.get("description", ""),
+                            status="active",
+                        )
                     )
-                )
+
+                page_context = data.get("page_context", {})
+                has_more_page = page_context.get("has_more_page", False)
+                page += 1
+                if page > 10:
+                    break
 
             self._cached_items = items
             ZohoBooksService._tenant_items[self._tenant_key] = items
@@ -538,28 +561,53 @@ class ZohoBooksService:
         if not item_name:
             return None
         cleaned_item = item_name.strip().lower()
+        clean_key = re.sub(r"^[:;\s\-•.]+", "", cleaned_item).strip()
+        no_spaces = re.sub(r"[^a-z0-9]", "", clean_key)
 
         # 1. Exact match
         for item in self._cached_items:
-            if item.name.strip().lower() == cleaned_item:
+            i_name = item.name.strip().lower()
+            i_clean = re.sub(r"^[:;\s\-•.]+", "", i_name).strip()
+            if i_name == cleaned_item or i_clean == clean_key:
                 return item
 
-        # 2. Substring match
+        # 2. No-spaces match (e.g. pillowcase vs pillow case, tablecloth vs table cloth)
+        if no_spaces:
+            for item in self._cached_items:
+                i_no_spaces = re.sub(r"[^a-z0-9]", "", item.name.lower())
+                if i_no_spaces == no_spaces or (len(no_spaces) >= 5 and (no_spaces in i_no_spaces or i_no_spaces in no_spaces)):
+                    return item
+
+        # 3. Substring match
         for item in self._cached_items:
             i_name = item.name.strip().lower()
-            if cleaned_item in i_name or i_name in cleaned_item:
+            i_clean = re.sub(r"^[:;\s\-•.]+", "", i_name).strip()
+            if clean_key in i_name or i_clean in clean_key:
                 return item
 
-        # 3. Fuzzy similarity match (>= 0.80)
+        # 4. Word-level token match (e.g. "Bath Towel" in "Bath Towel Large" or "Bed Sheet King" in "Bed Sheet (Double / King)")
+        words_tx = set([w for w in re.split(r"\s+", clean_key) if len(w) > 1])
+        if words_tx:
+            for item in self._cached_items:
+                i_clean = re.sub(r"^[:;\s\-•.]+", "", item.name.lower()).strip()
+                words_cat = set([w for w in re.split(r"\s+", i_clean) if len(w) > 1])
+                if words_cat:
+                    if words_cat.issubset(words_tx) or words_tx.issubset(words_cat):
+                        return item
+                    overlap = words_tx.intersection(words_cat)
+                    if len(overlap) >= 2:
+                        return item
+
+        # 5. Fuzzy similarity match (>= 0.70)
         best_match = None
         highest_ratio = 0.0
         for item in self._cached_items:
-            ratio = SequenceMatcher(None, cleaned_item, item.name.strip().lower()).ratio()
+            ratio = SequenceMatcher(None, clean_key, item.name.strip().lower()).ratio()
             if ratio > highest_ratio:
                 highest_ratio = ratio
                 best_match = item
 
-        if highest_ratio >= 0.80 and best_match:
+        if highest_ratio >= 0.70 and best_match:
             return best_match
 
         return None

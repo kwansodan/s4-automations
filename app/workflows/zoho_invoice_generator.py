@@ -393,11 +393,16 @@ async def run_zoho_invoices_core(
 
                     resolved_item_id = sku_data.get("zoho_item_id", "")
                     if not resolved_item_id or not str(resolved_item_id).isdigit():
-                        matched_item = zoho.find_item_by_name(sku_data["name"])
-                        if matched_item and str(matched_item.item_id).isdigit():
-                            resolved_item_id = str(matched_item.item_id)
+                        custom_item_mappings = (tenant_obj.custom_config or {}).get("item_mappings", {}) if tenant_obj else {}
+                        mapped_sku_id = custom_item_mappings.get(sku_data["name"]) or custom_item_mappings.get(sku_key)
+                        if mapped_sku_id and (str(mapped_sku_id).isdigit() or str(mapped_sku_id).startswith("item_")):
+                            resolved_item_id = str(mapped_sku_id)
                         else:
-                            resolved_item_id = ""
+                            matched_item = zoho.find_item_by_name(sku_data["name"])
+                            if matched_item and str(matched_item.item_id).isdigit():
+                                resolved_item_id = str(matched_item.item_id)
+                            else:
+                                resolved_item_id = ""
 
                     zoho_line_items.append(
                         ZohoInvoiceLineItem(

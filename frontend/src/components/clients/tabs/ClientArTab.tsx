@@ -734,45 +734,185 @@ export const ClientArTab: React.FC = () => {
     return false;
   };
 
+  // Active catalog items scoped to client, falling back to global catalog
+  const effectiveCatalogItems = useMemo(
+    () => (catalogItems.length > 0 ? catalogItems : catalog?.items || []),
+    [catalogItems, catalog?.items]
+  );
+
+  const stringSimilarity = (s1: string, s2: string): number => {
+    if (s1 === s2) return 1.0;
+    if (!s1 || !s2) return 0.0;
+    const l1 = s1.length;
+    const l2 = s2.length;
+    const matrix: number[][] = [];
+    for (let i = 0; i <= l2; i++) matrix[i] = [i];
+    for (let j = 0; j <= l1; j++) matrix[0][j] = j;
+    for (let i = 1; i <= l2; i++) {
+      for (let j = 1; j <= l1; j++) {
+        if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    const maxLen = Math.max(l1, l2);
+    return maxLen === 0 ? 1.0 : 1.0 - matrix[l2][l1] / maxLen;
+  };
+
   // Strictly Zoho Books Item Master (Active items only) scoped to this client
   const officialZohoItemMap = useMemo(() => {
     const map = new Map<string, CatalogItem>();
-    catalogItems.forEach((c: any) => {
+    effectiveCatalogItems.forEach((c: any) => {
       if (c.status && c.status.toLowerCase() !== 'active') {
         return;
       }
       const rawName = (c.name || '').trim();
-      const cleanKey = rawName.replace(/^[:;\s\-•.]+/, '').trim().toLowerCase();
-      const rawKey = rawName.toLowerCase();
+      if (!rawName) return;
+      const lower = rawName.toLowerCase();
+      const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+      const noSpaces = cleanKey.replace(/[^a-z0-9]/g, '');
+
       const itemObj: CatalogItem = {
-        item_id: c.item_id || `item_${(cleanKey || rawKey).replace(/\s+/g, '_')}`,
+        item_id: c.item_id || `item_${(cleanKey || lower).replace(/\s+/g, '_')}`,
         name: rawName,
         rate: Number(c.rate) || 0,
         description: c.description || '',
         status: 'active',
       };
-      if (cleanKey && !map.has(cleanKey)) {
-        map.set(cleanKey, itemObj);
-      }
-      if (rawKey && !map.has(rawKey)) {
-        map.set(rawKey, itemObj);
-      }
+
+      if (!map.has(lower)) map.set(lower, itemObj);
+      if (cleanKey && !map.has(cleanKey)) map.set(cleanKey, itemObj);
+      if (noPunct && !map.has(noPunct)) map.set(noPunct, itemObj);
+      if (singular && !map.has(singular)) map.set(singular, itemObj);
+      if (noSpaces && !map.has(noSpaces)) map.set(noSpaces, itemObj);
+      if (c.item_id && !map.has(String(c.item_id))) map.set(String(c.item_id), itemObj);
     });
     return map;
-  }, [catalogItems]);
+  }, [effectiveCatalogItems]);
 
-  const isTxUnmappedCatalog = useCallback((tx: any): boolean => {
-    if (officialZohoItemMap.size === 0) return false;
-    const raw = (tx?.item_or_description || '').trim();
-    if (!raw) return false;
-    const rawKey = raw.toLowerCase();
-    const cleanKey = raw.replace(/^[:;\s\-•.]+/, '').trim().toLowerCase();
-    return !officialZohoItemMap.has(cleanKey) && !officialZohoItemMap.has(rawKey);
-  }, [officialZohoItemMap]);
+  const isTxUnmappedCatalog = useCallback(
+    (tx: any): boolean => {
+      // 1. If line item already has a linked Zoho accounting reference or item ID, it is cataloged
+      if (tx?.accounting_ref_id) return false;
+      if (tx?.zoho_item_id) return false;
+      if (tx?.metadata_json?.zoho_item_id) return false;
+      if (tx?.metadata_json?.catalog_status === 'cataloged') return false;
+
+      // If catalog items are not loaded, do not falsely flag items as uncataloged
+      if (effectiveCatalogItems.length === 0) return false;
+
+      const raw = (tx?.item_or_description || '').trim();
+      if (!raw) return false;
+
+      const lower = raw.toLowerCase();
+      const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+      const noSpaces = cleanKey.replace(/[^a-z0-9]/g, '');
+
+      // 2. Direct map lookup
+      if (
+        officialZohoItemMap.has(lower) ||
+        officialZohoItemMap.has(cleanKey) ||
+        officialZohoItemMap.has(noPunct) ||
+        officialZohoItemMap.has(singular) ||
+        officialZohoItemMap.has(noSpaces)
+      ) {
+        return false;
+      }
+
+      // 3. Client custom item mappings configured in settings
+      const customItemMappings =
+        currentClient?.custom_config?.item_mappings ||
+        (currentClient as any)?.customConfig?.item_mappings ||
+        {};
+      if (
+        customItemMappings[raw] ||
+        customItemMappings[cleanKey] ||
+        customItemMappings[lower] ||
+        customItemMappings[noPunct] ||
+        customItemMappings[singular] ||
+        customItemMappings[noSpaces]
+      ) {
+        return false;
+      }
+
+      // 4. Catalog iteration: substring, word token matching, and similarity
+      const wordsTx = cleanKey.split(/\s+/).filter((w: string) => w.length > 1);
+
+      for (const catItem of effectiveCatalogItems) {
+        if (catItem.status && catItem.status.toLowerCase() !== 'active') continue;
+        const catName = (catItem.name || '').trim().toLowerCase();
+        if (!catName) continue;
+        const catClean = catName.replace(/^[:;\s\-•.]+/, '').trim();
+        const catNoPunct = catClean.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+        const catSingular = catClean.replace(/\b([a-z]+)s\b/g, '$1');
+        const catNoSpaces = catClean.replace(/[^a-z0-9]/g, '');
+
+        // Normalized string matches
+        if (
+          catName === lower ||
+          catClean === cleanKey ||
+          catNoPunct === noPunct ||
+          catSingular === singular ||
+          catNoSpaces === noSpaces
+        ) {
+          return false;
+        }
+
+        // Substring inclusion (matching backend zoho.find_item_by_name)
+        if (catClean.includes(cleanKey) || cleanKey.includes(catClean)) return false;
+        if (catNoPunct.includes(noPunct) || noPunct.includes(catNoPunct)) return false;
+        if (catSingular && singular && (catSingular.includes(singular) || singular.includes(catSingular))) return false;
+        if (catNoSpaces && noSpaces && (catNoSpaces.includes(noSpaces) || noSpaces.includes(catNoSpaces))) return false;
+
+        // Word token overlap
+        const wordsCat = catClean.split(/\s+/).filter((w) => w.length > 1);
+        if (wordsTx.length > 0 && wordsCat.length > 0) {
+          // If all words of catalog item are present in transaction name (e.g. "Bath Towel" in "Bath Towel Large")
+          if (wordsCat.every((cw: string) => wordsTx.some((w: string) => w.includes(cw) || cw.includes(w)))) return false;
+          // Or if all words of transaction name are in catalog item (e.g. "Duvet Cover" in "Duvet Cover (King)")
+          if (wordsTx.every((w: string) => wordsCat.some((cw: string) => cw.includes(w) || w.includes(cw)))) return false;
+          // Substantial word overlap (at least 2 matching words)
+          const matchedWords = wordsTx.filter((w: string) => wordsCat.some((cw: string) => cw === w || (cw.length > 3 && (cw.includes(w) || w.includes(cw)))));
+          if (matchedWords.length >= 2) return false;
+        }
+
+        // Fuzzy similarity match (>= 0.70, matching backend zoho.find_item_by_name SequenceMatcher)
+        if (stringSimilarity(cleanKey, catClean) >= 0.70 || stringSimilarity(noPunct, catNoPunct) >= 0.70) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [effectiveCatalogItems, officialZohoItemMap, currentClient?.custom_config]
+  );
 
   const zohoMasterItems = useMemo(() => {
     // Start with active items from Zoho Books Item Master
-    const map = new Map<string, CatalogItem>(officialZohoItemMap);
+    const map = new Map<string, CatalogItem>();
+    effectiveCatalogItems.forEach((c: any) => {
+      if (c.status && c.status.toLowerCase() !== 'active') return;
+      const key = (c.name || '').trim().toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, {
+          item_id: c.item_id || `item_${key.replace(/\s+/g, '_')}`,
+          name: c.name,
+          rate: Number(c.rate) || 0,
+          description: c.description || '',
+          status: 'active',
+        });
+      }
+    });
 
     // Items from transactions that do not exist within the main catalog
     // are assigned an item ID with the predictable 'staged_' prefix
@@ -793,7 +933,7 @@ export const ClientArTab: React.FC = () => {
     });
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [officialZohoItemMap, transactions, currentClient?.name]);
+  }, [effectiveCatalogItems, transactions, currentClient?.name]);
 
   const dailyCounts = useMemo(() => {
     let pending = 0;

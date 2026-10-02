@@ -224,6 +224,31 @@ export const InvoiceModal: React.FC = () => {
     [clientContacts, catalog?.contacts]
   );
 
+  const stringSimilarity = (s1: string, s2: string): number => {
+    if (s1 === s2) return 1.0;
+    if (!s1 || !s2) return 0.0;
+    const l1 = s1.length;
+    const l2 = s2.length;
+    const matrix: number[][] = [];
+    for (let i = 0; i <= l2; i++) matrix[i] = [i];
+    for (let j = 0; j <= l1; j++) matrix[0][j] = j;
+    for (let i = 1; i <= l2; i++) {
+      for (let j = 1; j <= l1; j++) {
+        if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    const maxLen = Math.max(l1, l2);
+    return maxLen === 0 ? 1.0 : 1.0 - matrix[l2][l1] / maxLen;
+  };
+
   // Active Zoho Item Master Map for Catalog Matching
   const activeZohoItemMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -233,12 +258,16 @@ export const InvoiceModal: React.FC = () => {
       if (!rawName) return;
       const lower = rawName.toLowerCase();
       const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
+      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+      const noSpaces = cleanKey.replace(/[^a-z0-9]/g, '');
+
       map.set(lower, c);
       if (cleanKey) map.set(cleanKey, c);
-      const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
       if (singular) map.set(singular, c);
-      const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
       if (noPunct) map.set(noPunct, c);
+      if (noSpaces) map.set(noSpaces, c);
+      if (c.item_id) map.set(String(c.item_id), c);
     });
     return map;
   }, [allCatalogItems]);
@@ -248,6 +277,7 @@ export const InvoiceModal: React.FC = () => {
       if (tx?.accounting_ref_id) return false;
       if (tx?.zoho_item_id) return false;
       if (tx?.metadata_json?.zoho_item_id) return false;
+      if (tx?.metadata_json?.catalog_status === 'cataloged') return false;
       if (itemsList.length === 0) return false;
 
       const raw = (tx?.item_or_description || '').trim();
@@ -257,37 +287,72 @@ export const InvoiceModal: React.FC = () => {
       const cleanKey = lower.replace(/^[:;\s\-•.]+/, '').trim();
       const noPunct = cleanKey.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
       const singular = cleanKey.replace(/\b([a-z]+)s\b/g, '$1');
+      const noSpaces = cleanKey.replace(/[^a-z0-9]/g, '');
 
-      if (itemMap.has(lower) || itemMap.has(cleanKey) || itemMap.has(noPunct) || itemMap.has(singular)) {
+      if (
+        itemMap.has(lower) ||
+        itemMap.has(cleanKey) ||
+        itemMap.has(noPunct) ||
+        itemMap.has(singular) ||
+        itemMap.has(noSpaces)
+      ) {
         return false;
       }
 
-      const customItemMappings = targetClient?.custom_config?.item_mappings || {};
-      if (customItemMappings[raw] || customItemMappings[cleanKey] || customItemMappings[lower]) {
+      const customItemMappings = targetClient?.custom_config?.item_mappings || (targetClient as any)?.customConfig?.item_mappings || {};
+      if (
+        customItemMappings[raw] ||
+        customItemMappings[cleanKey] ||
+        customItemMappings[lower] ||
+        customItemMappings[noPunct] ||
+        customItemMappings[singular] ||
+        customItemMappings[noSpaces]
+      ) {
         return false;
       }
+
+      const wordsTx = cleanKey.split(/\s+/).filter((w: string) => w.length > 1);
 
       for (const catItem of itemsList) {
         if (catItem.status && catItem.status.toLowerCase() !== 'active') continue;
         const catName = (catItem.name || '').trim().toLowerCase();
         if (!catName) continue;
         const catClean = catName.replace(/^[:;\s\-•.]+/, '').trim();
+        const catNoPunct = catClean.replace(/[,\-_/\\()]/g, ' ').replace(/\s+/g, ' ').trim();
         const catSingular = catClean.replace(/\b([a-z]+)s\b/g, '$1');
+        const catNoSpaces = catClean.replace(/[^a-z0-9]/g, '');
 
-        if (catName === lower || catClean === cleanKey || catSingular === singular) return false;
+        if (
+          catName === lower ||
+          catClean === cleanKey ||
+          catNoPunct === noPunct ||
+          catSingular === singular ||
+          catNoSpaces === noSpaces
+        ) {
+          return false;
+        }
+
         if (catClean.includes(cleanKey) || cleanKey.includes(catClean)) return false;
+        if (catNoPunct.includes(noPunct) || noPunct.includes(catNoPunct)) return false;
         if (catSingular && singular && (catSingular.includes(singular) || singular.includes(catSingular))) return false;
+        if (catNoSpaces && noSpaces && (catNoSpaces.includes(noSpaces) || noSpaces.includes(catNoSpaces))) return false;
 
-        const wordsTx = cleanKey.split(/\s+/).filter(Boolean);
-        const wordsCat = catClean.split(/\s+/).filter(Boolean);
+        const wordsCat = catClean.split(/\s+/).filter((w: string) => w.length > 1);
         if (wordsTx.length > 0 && wordsCat.length > 0) {
+          if (wordsCat.every((cw: string) => wordsTx.some((w: string) => w.includes(cw) || cw.includes(w)))) return false;
           if (wordsTx.every((w: string) => wordsCat.some((cw: string) => cw.includes(w) || w.includes(cw)))) return false;
+          const matchedWords = wordsTx.filter((w: string) => wordsCat.some((cw: string) => cw === w || (cw.length > 3 && (cw.includes(w) || w.includes(cw)))));
+          if (matchedWords.length >= 2) return false;
+        }
+
+        if (stringSimilarity(cleanKey, catClean) >= 0.70 || stringSimilarity(noPunct, catNoPunct) >= 0.70) {
+          return false;
         }
       }
 
       return true;
     },
-    [allCatalogItems, activeZohoItemMap, targetClient?.custom_config?.item_mappings]
+    [allCatalogItems, activeZohoItemMap, targetClient?.custom_config]
   );
 
 
