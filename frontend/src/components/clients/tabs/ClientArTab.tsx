@@ -20,6 +20,7 @@ import {
   runClientStrategy,
   ClientTransactionSummaryRow,
 } from '../../../lib/api';
+import type { InvoicePreflightAudit } from '../../../types/client';
 import { formatCurrency, downloadTxt, downloadCsv } from '../../../lib/utils';
 import {
   Receipt,
@@ -97,6 +98,7 @@ export const ClientArTab: React.FC = () => {
     selectedYear,
     setSelectedYear,
     setIsInvoiceModalOpen,
+    setInvoicePreflight,
     refreshAll,
     isLoading,
     addLog,
@@ -1579,7 +1581,7 @@ export const ClientArTab: React.FC = () => {
       if (isTxUnmappedCatalog(tx)) {
         cur.hasUnmapped = true;
         totalUnmappedItems++;
-        const name = (tx.item_or_description || '').trim();
+        const name = (tx.item_or_description || '').replace(/^[:;\s\-•.]+/, '').trim();
         if (name) distinctUnmappedNamesSet.add(name);
       }
     });
@@ -1902,8 +1904,59 @@ export const ClientArTab: React.FC = () => {
       );
       return;
     }
+
+    const approvedTx = transactions.filter((t) => t.approved && t.status !== 'INVOICED');
+    const unapprovedTx = transactions.filter((t) => !t.approved && t.status !== 'INVOICED');
+    const unapprovedAmount = unapprovedTx.reduce((sum, t) => sum + (t.total_amount || 0), 0);
+
+    const uncatalogedApproved = approvedTx.filter((t) => isTxUnmappedCatalog(t));
+    const uncatalogedNames = Array.from(
+      new Set(
+        uncatalogedApproved
+          .map((t) => (t.item_or_description || '').replace(/^[:;\s\-•.]+/, '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    const zeroRateApproved = approvedTx.filter((t) => (t.rate_or_price || t.total_amount || 0) <= 0);
+    const zeroRateNames = Array.from(
+      new Set(
+        zeroRateApproved
+          .map((t) => (t.item_or_description || '').replace(/^[:;\s\-•.]+/, '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    const lowConfApproved = approvedTx.filter((t) => isItemLowConf(t));
+    const totalLoss = approvedTx.reduce((sum, t) => sum + (t.discrepancy_amount || 0), 0);
+
+    const audit: InvoicePreflightAudit = {
+      clientId: currentClient.id,
+      clientName: currentClient.name,
+      month: selectedMonth,
+      year: selectedYear,
+      totalTransactions: transactions.length,
+      approvedTransactions: approvedTx.length,
+      unapprovedTransactions: unapprovedTx.length,
+      totalApprovedAmount: totalApprovedAmount,
+      unapprovedAmount: unapprovedAmount,
+      uncatalogedApprovedCount: uncatalogedApproved.length,
+      uncatalogedItemNames: uncatalogedNames,
+      zeroRateCount: zeroRateApproved.length,
+      zeroRateItemNames: zeroRateNames,
+      lowConfidenceApprovedCount: lowConfApproved.length,
+      unreviewedSlipsCount: slipKpis.unreviewedSlips,
+      zohoContactMatched: Boolean(matchedZohoContact || currentClient.zohoContactId),
+      zohoContactName: matchedZohoContact ? (matchedZohoContact.company_name || matchedZohoContact.contact_name) : undefined,
+      zohoContactId: matchedZohoContact ? matchedZohoContact.contact_id : (currentClient.zohoContactId || undefined),
+      lossCount: totalLoss,
+    };
+
+
+    setInvoicePreflight(audit);
     setIsInvoiceModalOpen(true);
   };
+
 
   const renderDailySortHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
     const isActive = dailySortField === field;

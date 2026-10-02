@@ -453,3 +453,26 @@ export interface DryRunResult {
   currency: string;
   ready_for_review_sheets: boolean;
 }
+
+export interface InvoicePreflightAudit {
+  clientId?: string;
+  clientName?: string;
+  month: string;
+  year: number;
+  totalTransactions: number;
+  approvedTransactions: number;
+  unapprovedTransactions: number;
+  totalApprovedAmount: number;
+  unapprovedAmount: number;
+  uncatalogedApprovedCount: number;
+  uncatalogedItemNames: string[];
+  zeroRateCount: number;
+  zeroRateItemNames: string[];
+  lowConfidenceApprovedCount: number;
+  unreviewedSlipsCount: number;
+  zohoContactMatched: boolean;
+  zohoContactName?: string;
+  zohoContactId?: string;
+  lossCount?: number;
+}
+

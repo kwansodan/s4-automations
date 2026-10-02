@@ -3,6 +3,7 @@ import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, LogEntry } from '../types/config';
+import type { InvoicePreflightAudit } from '../types/client';
 import {
   fetchHealth,
   fetchStats,
@@ -49,6 +50,8 @@ interface AutomationContextType {
   setIsPipelineModalOpen: (open: boolean) => void;
   isInvoiceModalOpen: boolean;
   setIsInvoiceModalOpen: (open: boolean) => void;
+  invoicePreflight: InvoicePreflightAudit | null;
+  setInvoicePreflight: (audit: InvoicePreflightAudit | null) => void;
 
   addLog: (type: 'info' | 'success' | 'warning' | 'error', message: string) => void;
   refreshAll: () => Promise<void>;
@@ -90,6 +93,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
+  const [invoicePreflight, setInvoicePreflight] = useState<InvoicePreflightAudit | null>(null);
 
   const setActiveTab = useCallback((tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -328,6 +332,8 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setIsPipelineModalOpen,
         isInvoiceModalOpen,
         setIsInvoiceModalOpen,
+        invoicePreflight,
+        setInvoicePreflight,
 
         addLog,
         refreshAll,

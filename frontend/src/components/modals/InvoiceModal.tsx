@@ -1,10 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
 import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
-import { Check, X, Receipt, AlertCircle, Terminal, Loader2 } from 'lucide-react';
+import {
+  Check,
+  X,
+  Receipt,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  ShieldAlert,
+  Terminal,
+  Loader2,
+  Info,
+} from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { ApiError } from '../../lib/api';
+import { ApiError, fetchClientTransactions } from '../../lib/api';
+import type { InvoicePreflightAudit } from '../../types/client';
 
 export const InvoiceModal: React.FC = () => {
   const {
@@ -14,6 +29,8 @@ export const InvoiceModal: React.FC = () => {
     selectedYear,
     stats,
     runInvoicing,
+    invoicePreflight,
+    setInvoicePreflight,
   } = useAutomation();
   const { currentClient, clients } = useClient();
   const { openDebugDrawer } = useErrors();
@@ -21,6 +38,8 @@ export const InvoiceModal: React.FC = () => {
   const [clientFilter, setClientFilter] = useState('');
   const [includeDescriptions, setIncludeDescriptions] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
+  const [isAuditExpanded, setIsAuditExpanded] = useState(true);
   const [modalError, setModalError] = useState<{
     message: string;
     status?: number;
@@ -28,19 +47,124 @@ export const InvoiceModal: React.FC = () => {
     troubleshootingHint?: string;
   } | null>(null);
 
+  // Fallback audit computation if opened directly or if clientFilter changes
+  useEffect(() => {
+    if (!isInvoiceModalOpen) return;
+    if (invoicePreflight && (!clientFilter || invoicePreflight.clientName === clientFilter)) return;
+
+    const targetClient = clients.find((c) => c.name === clientFilter) || currentClient;
+    if (!targetClient) return;
+
+    let isMounted = true;
+    fetchClientTransactions(targetClient.id, selectedMonth, String(selectedYear))
+      .then((txs) => {
+        if (!isMounted) return;
+        const approvedTx = txs.filter((t: any) => t.approved && t.status !== 'INVOICED');
+        const unapprovedTx = txs.filter((t: any) => !t.approved && t.status !== 'INVOICED');
+        const unapprovedAmount = unapprovedTx.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
+        const approvedAmount = approvedTx.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0);
+
+        const uncatApproved = approvedTx.filter(
+          (t: any) => !t.accounting_ref_id && (!t.metadata_json || !t.metadata_json.zoho_item_id)
+        );
+        const uncatNames = Array.from(
+          new Set(
+            uncatApproved
+              .map((t: any) => (t.item_or_description || '').replace(/^[:;\s\-•.]+/, '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const zeroRateApproved = approvedTx.filter((t: any) => (t.rate_or_price || t.total_amount || 0) <= 0);
+        const zeroRateNames = Array.from(
+          new Set(
+            zeroRateApproved
+              .map((t: any) => (t.item_or_description || '').replace(/^[:;\s\-•.]+/, '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const lowConfApproved = approvedTx.filter(
+          (t: any) => t.confidence_score === 'LOW' || (typeof t.confidence === 'number' && t.confidence < 0.8)
+        );
+
+        const audit: InvoicePreflightAudit = {
+          clientId: targetClient.id,
+          clientName: targetClient.name,
+          month: selectedMonth,
+          year: selectedYear,
+          totalTransactions: txs.length,
+          approvedTransactions: approvedTx.length,
+          unapprovedTransactions: unapprovedTx.length,
+          totalApprovedAmount: approvedAmount,
+          unapprovedAmount: unapprovedAmount,
+          uncatalogedApprovedCount: uncatApproved.length,
+          uncatalogedItemNames: uncatNames as string[],
+          zeroRateCount: zeroRateApproved.length,
+          zeroRateItemNames: zeroRateNames as string[],
+          lowConfidenceApprovedCount: lowConfApproved.length,
+          unreviewedSlipsCount: txs.filter((t: any) => !t.reviewed).length,
+          zohoContactMatched: Boolean(targetClient.zohoContactId),
+          zohoContactName: targetClient.name,
+          zohoContactId: targetClient.zohoContactId,
+        };
+
+        setInvoicePreflight(audit);
+      })
+
+      .catch((err) => {
+        console.warn('Could not compute preflight audit:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    isInvoiceModalOpen,
+    invoicePreflight,
+    clientFilter,
+    currentClient,
+    clients,
+    selectedMonth,
+    selectedYear,
+    setInvoicePreflight,
+  ]);
+
   if (!isInvoiceModalOpen) return null;
 
-  const totalApproved = stats?.approved_billing_total_ghs ?? 0;
-  const approvedRowsCount = stats?.approved_rows_count ?? stats?.pending_approval_count ?? 0;
+  const totalApproved = invoicePreflight?.totalApprovedAmount ?? stats?.approved_billing_total_ghs ?? 0;
+  const approvedRowsCount =
+    invoicePreflight?.approvedTransactions ?? stats?.approved_rows_count ?? stats?.pending_approval_count ?? 0;
+
+  // Pre-flight warning detections
+  const hasZohoMismatch = invoicePreflight ? !invoicePreflight.zohoContactMatched : false;
+  const hasUnapprovedItems = invoicePreflight ? invoicePreflight.unapprovedTransactions > 0 : false;
+  const hasUncatalogedItems = invoicePreflight ? invoicePreflight.uncatalogedApprovedCount > 0 : false;
+  const hasZeroRates = invoicePreflight ? invoicePreflight.zeroRateCount > 0 : false;
+  const hasLowConfidence = invoicePreflight ? invoicePreflight.lowConfidenceApprovedCount > 0 : false;
+
+  const warningCount =
+    (hasZohoMismatch ? 1 : 0) +
+    (hasUnapprovedItems ? 1 : 0) +
+    (hasUncatalogedItems ? 1 : 0) +
+    (hasZeroRates ? 1 : 0) +
+    (hasLowConfidence ? 1 : 0);
+
+  const isFormBlocked = isSubmitting || (warningCount > 0 && !acknowledgedWarnings);
 
   const handleClose = () => {
     if (isSubmitting) return;
     setModalError(null);
+    setAcknowledgedWarnings(false);
+    setInvoicePreflight(null);
     setIsInvoiceModalOpen(false);
   };
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (warningCount > 0 && !acknowledgedWarnings) {
+      return;
+    }
     setModalError(null);
     setIsSubmitting(true);
     try {
@@ -51,6 +175,8 @@ export const InvoiceModal: React.FC = () => {
         include_line_item_description: includeDescriptions,
       });
       // runInvoicing closes modal on success
+      setAcknowledgedWarnings(false);
+      setInvoicePreflight(null);
     } catch (err: any) {
       if (err instanceof ApiError) {
         setModalError({
@@ -71,8 +197,7 @@ export const InvoiceModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="w-full max-w-lg bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
-        
+      <div className="w-full max-w-xl bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[92vh] overflow-y-auto custom-scrollbar">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
           <div className="flex items-center gap-2">
@@ -148,8 +273,202 @@ export const InvoiceModal: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 text-[11px] text-sky-300">
-            ℹ️ Invoices are generated directly from approved line items in your In-App PostgreSQL Ledger.
+          {/* Pre-Flight Readiness Audit Checklist */}
+          <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div
+              className="flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setIsAuditExpanded((prev) => !prev)}
+            >
+              <div className="flex items-center gap-2">
+                {warningCount > 0 ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                )}
+                <span className="text-xs font-bold text-white tracking-tight">Pre-Flight Readiness Audit</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {warningCount > 0 ? (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-950/70 border border-amber-600/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    {warningCount} {warningCount === 1 ? 'Data Warning' : 'Data Warnings'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/70 border border-emerald-600/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    All Checks Passed
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-white"
+                  title={isAuditExpanded ? 'Collapse Audit' : 'Expand Audit'}
+                >
+                  {isAuditExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {isAuditExpanded && (
+              <div className="space-y-2 pt-1 text-xs">
+                {/* 1. Customer Reconciled Check */}
+                {!hasZohoMismatch ? (
+                  <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">Customer Reconciled: </span>
+                      <span>{invoicePreflight?.zohoContactName || currentClient?.name}</span>
+                      {invoicePreflight?.zohoContactId && (
+                        <span className="font-mono text-emerald-300/80 ml-1">
+                          (Zoho ID: {invoicePreflight.zohoContactId})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-200">Customer Not Reconciled: </span>
+                      <span>
+                        No linked Zoho Customer contact. The system will attempt fuzzy name matching or generate a
+                        fallback contact reference.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Incomplete Month / Period Coverage Check */}
+                {hasUnapprovedItems ? (
+                  <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-200">Incomplete Period Coverage: </span>
+                      <span>
+                        {invoicePreflight?.unapprovedTransactions} unapproved{' '}
+                        {invoicePreflight?.unapprovedTransactions === 1 ? 'item' : 'items'} (
+                        {formatCurrency(invoicePreflight?.unapprovedAmount || 0)}) will be <strong>omitted</strong> from
+                        this draft invoice.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">100% Period Coverage: </span>
+                      <span>
+                        All {invoicePreflight?.approvedTransactions || approvedRowsCount} recorded items in{' '}
+                        {selectedMonth} {selectedYear} are approved.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Catalog & SKU Verification Check */}
+                {hasUncatalogedItems ? (
+                  <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-200">
+                        Uncataloged Items ({invoicePreflight?.uncatalogedApprovedCount}):{' '}
+                      </span>
+                      <span>
+                        Approved items without standard catalog mapping:{' '}
+                        {invoicePreflight?.uncatalogedItemNames
+                          .slice(0, 3)
+                          .map((n) => `"${n}"`)
+                          .join(', ')}
+                        {invoicePreflight && invoicePreflight.uncatalogedItemNames.length > 3 ? '...' : ''}. They will
+                        generate as generic lines without Zoho inventory linkage.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">Catalog Mapping: </span>
+                      <span>All approved items are mapped to standard catalog items.</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Pricing & Zero-Rate Check */}
+                {hasZeroRates ? (
+                  <div className="flex items-start gap-2 text-rose-300 bg-rose-950/40 border border-rose-500/40 rounded-lg p-2.5">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-rose-200">
+                        Zero Rate Detected ({invoicePreflight?.zeroRateCount}):{' '}
+                      </span>
+                      <span>
+                        Items with GHS 0.00 unit price:{' '}
+                        {invoicePreflight?.zeroRateItemNames
+                          .slice(0, 3)
+                          .map((n) => `"${n}"`)
+                          .join(', ')}
+                        . Please verify pricing in the ledger before raising invoices.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">Pricing Verified: </span>
+                      <span>All approved items have positive unit rates and billing totals.</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. OCR Extraction Confidence Check */}
+                {hasLowConfidence ? (
+                  <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-200">
+                        Low OCR Confidence ({invoicePreflight?.lowConfidenceApprovedCount}):{' '}
+                      </span>
+                      <span>
+                        Some approved items contain unverified OCR digits or text. Review in the ledger if needed.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    <div>
+                      <span className="font-semibold text-white">OCR Confidence: </span>
+                      <span>High extraction confidence across all approved items.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Acknowledgment Guard when warnings exist */}
+            {warningCount > 0 && (
+              <div className="bg-amber-950/40 border border-amber-500/40 rounded-xl p-3 flex items-start gap-3 mt-2">
+                <input
+                  type="checkbox"
+                  id="ack-warnings"
+                  checked={acknowledgedWarnings}
+                  onChange={(e) => setAcknowledgedWarnings(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="mt-0.5 w-4 h-4 text-amber-500 rounded border-slate-700 bg-slate-900 focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                />
+                <label htmlFor="ack-warnings" className="text-xs text-amber-200 cursor-pointer select-none">
+                  <span className="font-bold block text-amber-100">
+                    I acknowledge the {warningCount} data {warningCount === 1 ? 'warning' : 'warnings'} above
+                  </span>
+                  <span className="text-[11px] text-amber-300/80 block mt-0.5">
+                    Confirm that you have reviewed the omitted items or pricing warnings and want to proceed with drafting
+                    invoices.
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           <div>
@@ -181,7 +500,8 @@ export const InvoiceModal: React.FC = () => {
             <label htmlFor="include-descriptions" className="text-xs text-slate-300 cursor-pointer select-none">
               <span className="font-semibold block text-white">Include Line Item Descriptions</span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
-                When enabled, detailed operational summaries (pickups, deliveries, and discrepancies) are added to each invoice line item. When unchecked, line descriptions remain blank.
+                When enabled, detailed operational summaries (pickups, deliveries, and discrepancies) are added to each
+                invoice line item. When unchecked, line descriptions remain blank.
               </span>
             </label>
           </div>
@@ -191,7 +511,9 @@ export const InvoiceModal: React.FC = () => {
               <span>⚡ Idempotent Append Engine</span>
             </div>
             <p>
-              If a draft invoice already exists for this client in {selectedMonth} {selectedYear}, newly approved line items will be appended via <code className="text-emerald-400">PUT /invoices/{`{id}`}</code> to prevent duplicate invoices.
+              If a draft invoice already exists for this client in {selectedMonth} {selectedYear}, newly approved line
+              items will be appended via <code className="text-emerald-400">PUT /invoices/{`{id}`}</code> to prevent
+              duplicate invoices.
             </p>
           </div>
 
@@ -206,8 +528,17 @@ export const InvoiceModal: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+              disabled={isFormBlocked}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition shadow-lg cursor-pointer ${
+                isFormBlocked
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+              }`}
+              title={
+                warningCount > 0 && !acknowledgedWarnings
+                  ? 'Please acknowledge the data warnings above to proceed'
+                  : 'Create Draft Invoices'
+              }
             >
               {isSubmitting ? (
                 <>
@@ -223,7 +554,6 @@ export const InvoiceModal: React.FC = () => {
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );
