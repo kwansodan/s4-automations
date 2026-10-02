@@ -207,20 +207,41 @@ async def run_zoho_invoices_core(
                         zoho.org_id = zoho_org_id
                 except Exception:
                     zoho = ZohoBooksService(org_id=zoho_org_id)
+
+                # Ensure active Zoho contacts are loaded into memory cache
+                try:
+                    await zoho.fetch_active_contacts()
+                except Exception as fetch_err:
+                    logger.debug(f"Could not fetch Zoho contacts into cache: {fetch_err}")
+
                 contact_id = items[0].get("zoho_contact_id")
+
+                # Check customer_mappings registry in tenant configuration
+                if not contact_id and tenant_obj:
+                    cfg = tenant_obj.custom_config or {}
+                    mappings = cfg.get("customer_mappings", {})
+                    if customer_name in mappings:
+                        contact_id = mappings[customer_name].get("zoho_contact_id")
+
                 if not contact_id:
                     contact = zoho.find_contact_by_name(customer_name)
                     contact_id = contact.contact_id if contact else ""
 
                 if not contact_id:
                     from app.config import settings
-                    if settings.MOCK_MODE or not zoho.org_id:
+                    if settings.MOCK_MODE or not zoho.org_id or not zoho.refresh_token:
                         contact_id = f"cnt_auto_{customer_name.lower().replace(' ', '_')[:16]}"
                         logger.info(f"Using default contact ID '{contact_id}' for customer '{customer_name}' in tenant '{tenant_slug}'.")
                     else:
-                        logger.warning(f"Could not determine Zoho Contact ID for customer '{customer_name}' in tenant '{tenant_obj.name if tenant_obj else tenant_slug}'. Skipping.")
-                        pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Contact ID not matched in Zoho Books.")
-                        continue
+                        try:
+                            logger.info(f"Auto-provisioning customer '{customer_name}' in Zoho Books for tenant '{tenant_slug}'...")
+                            new_cust = await zoho.create_customer_contact(customer_name)
+                            contact_id = new_cust.contact_id
+                            pipeline_tracker.add_log("info", f"Auto-created new Customer '{customer_name}' in Zoho Books (ID: {contact_id}).")
+                        except Exception as create_err:
+                            logger.error(f"Failed to auto-create customer '{customer_name}' in Zoho Books: {create_err}")
+                            pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Could not find or auto-create contact in Zoho Books.")
+                            continue
 
                 # Determine whether to include descriptions for this client's line items
                 should_include_desc = include_line_item_description

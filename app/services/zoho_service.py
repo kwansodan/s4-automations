@@ -323,6 +323,21 @@ class ZohoBooksService:
     )
     async def create_customer_contact(self, customer_name: str, email: str = "") -> ZohoContact:
         """Creates a new Customer contact in Zoho Books."""
+        if settings.MOCK_MODE or not self.refresh_token or not self.client_id or not self.client_secret:
+            if settings.MOCK_MODE:
+                clean_slug = customer_name.lower().replace(" ", "_")[:12]
+                new_customer = ZohoContact(
+                    contact_id=f"cnt_mock_{clean_slug}",
+                    contact_name=customer_name,
+                    company_name=customer_name,
+                    email=email or f"billing@{clean_slug}.com",
+                    status="active",
+                )
+                self._cached_contacts.append(new_customer)
+                ZohoBooksService._tenant_contacts[self._tenant_key] = self._cached_contacts
+                logger.info(f"[MOCK_MODE] Simulated customer creation: {customer_name} (ID: {new_customer.contact_id})")
+                return new_customer
+
         if not self.org_id:
             raise ValueError("Cannot create customer contact: Zoho Organization ID is not configured.")
 
