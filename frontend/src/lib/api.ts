@@ -1049,6 +1049,46 @@ export async function triggerInvoicing(payload?: any): Promise<{ message: string
   return handleResponse<{ message: string; event_id: string }>(res, 'Trigger invoicing');
 }
 
+export interface ExistingDraftInvoice {
+  invoice_id: string;
+  invoice_number: string;
+  customer_name: string;
+  total: number;
+  status: string;
+  [key: string]: any;
+}
+
+export interface ExistingInvoicesResponse {
+  has_existing: boolean;
+  existing_invoices: ExistingDraftInvoice[];
+}
+
+export async function fetchExistingInvoices(
+  clientId: string,
+  month: string,
+  year: number,
+  customerName?: string
+): Promise<ExistingInvoicesResponse> {
+  const params = new URLSearchParams();
+  if (clientId) params.append('client_id', clientId);
+  if (month) params.append('month', month);
+  if (year) params.append('year', year.toString());
+  if (customerName) params.append('customer_name', customerName);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+
+  try {
+    const res = await resilientFetch(`/api/v1/invoices/existing${qStr}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      return { has_existing: false, existing_invoices: [] };
+    }
+    return await handleResponse<ExistingInvoicesResponse>(res, 'Fetch existing invoices', undefined, { silent: true });
+  } catch (err) {
+    return { has_existing: false, existing_invoices: [] };
+  }
+}
+
 export async function toggleApproval(payloadOrId: any, approved?: boolean): Promise<{ success: boolean; message: string }> {
   if (typeof payloadOrId === 'string') {
     return updateTransactionStatus(payloadOrId, approved ? 'APPROVED' : 'PENDING');

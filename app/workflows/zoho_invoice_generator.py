@@ -49,6 +49,12 @@ async def run_zoho_invoices_core(
     step_runner=None,
     month: Optional[str] = None,
     year: Optional[int] = None,
+    mode: str = "append",
+    target_customer_name: Optional[str] = None,
+    invoice_date: Optional[str] = None,
+    due_date: Optional[str] = None,
+    terms: Optional[str] = None,
+    confirm_delete: bool = False,
     **kwargs,
 ) -> Dict[str, Any]:
     """
@@ -60,6 +66,11 @@ async def run_zoho_invoices_core(
     target_month = target_month or month or now.strftime("%B")
     target_year = int(target_year or year or now.year)
 
+    target_customer_name = target_customer_name.strip() if target_customer_name and str(target_customer_name).strip() else None
+
+    if mode == "regenerate" and not confirm_delete:
+        raise ValueError("Regeneration mode requires explicit confirmation (confirm_delete=True)")
+
     async def _run_step(step_name: str, fn):
         if step_runner:
             return await step_runner(step_name, fn)
@@ -68,27 +79,30 @@ async def run_zoho_invoices_core(
     pipeline_tracker.start_pipeline("1-Click Zoho Invoicing", target_month, target_year, total_stages=3)
 
     try:
-        # Calculate Invoice Date as the last day of the billing month (e.g. 2026-08-31)
-        try:
-            month_num = datetime.strptime(target_month, "%B").month
-        except ValueError:
+        # Calculate Invoice Date: either explicit invoice_date override or last day of billing month
+        if invoice_date and str(invoice_date).strip():
+            inv_date = str(invoice_date).strip()
+        else:
             try:
-                month_num = datetime.strptime(target_month, "%b").month
+                month_num = datetime.strptime(target_month, "%B").month
             except ValueError:
                 try:
-                    month_num = int(target_month)
+                    month_num = datetime.strptime(target_month, "%b").month
                 except ValueError:
-                    month_num = datetime.now().month
+                    try:
+                        month_num = int(target_month)
+                    except ValueError:
+                        month_num = datetime.now().month
 
-        last_day = calendar.monthrange(target_year, month_num)[1]
-        inv_date = f"{target_year:04d}-{month_num:02d}-{last_day:02d}"
+            last_day = calendar.monthrange(target_year, month_num)[1]
+            inv_date = f"{target_year:04d}-{month_num:02d}-{last_day:02d}"
 
         pipeline_tracker.update_progress(
             percent=20,
             stage_index=1,
             current_step="Scanning review workspace for manager-approved billing rows...",
         )
-        pipeline_tracker.add_log("info", f"Fetching approved items for {target_month} {target_year} (Invoice Date: {inv_date})...")
+        pipeline_tracker.add_log("info", f"Fetching approved items for {target_month} {target_year} (Invoice Date: {inv_date}, Mode: {mode})...")
 
         # Step 1: Query PostgreSQL staged_transactions Ledger for Approved Rows
         async def fetch_approved() -> Dict[str, Any]:
@@ -96,10 +110,11 @@ async def run_zoho_invoices_core(
 
             logger.info("Scanning PostgreSQL staged_transactions ledger for approved billing rows...")
             from app.models.db_models import StagedTransaction
+            status_list = ["PENDING", "APPROVED", "INVOICED"] if mode == "regenerate" else ["PENDING", "APPROVED"]
             with Session(get_engine()) as session:
                 query = select(StagedTransaction).where(
                     StagedTransaction.approved == True,
-                    StagedTransaction.status.in_(["PENDING", "APPROVED"]),
+                    StagedTransaction.status.in_(status_list),
                     StagedTransaction.pipeline_type != "AP",
                 )
                 if filter_client_name:
@@ -107,8 +122,20 @@ async def run_zoho_invoices_core(
                     aliases = get_client_id_aliases(filter_client_name)
                     query = query.where(StagedTransaction.client_id.in_(aliases))
                 staged_approved = session.exec(query).all()
+                if not staged_approved and mode != "regenerate":
+                    fallback_query = select(StagedTransaction).where(
+                        StagedTransaction.approved == True,
+                        StagedTransaction.status == "INVOICED",
+                        StagedTransaction.pipeline_type != "AP",
+                    )
+                    if filter_client_name:
+                        from app.api.v1.clients import get_client_id_aliases
+                        aliases = get_client_id_aliases(filter_client_name)
+                        fallback_query = fallback_query.where(StagedTransaction.client_id.in_(aliases))
+                    staged_approved = session.exec(fallback_query).all()
+
                 if staged_approved:
-                    logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger.")
+                    logger.info(f"Discovered {len(staged_approved)} approved transactions from PostgreSQL staged_transactions ledger (status in {status_list}).")
                     for idx, st in enumerate(staged_approved, start=1000):
                         match_month = True
                         if target_month and st.transaction_date:
@@ -122,6 +149,8 @@ async def run_zoho_invoices_core(
                                 pass
                         if match_month:
                             cust_name = extract_slip_customer_name(st.source_file_name, st.metadata_json)
+                            if target_customer_name and cust_name.strip().lower() != target_customer_name.strip().lower():
+                                continue
                             approved_rows.append({
                                 "row_index": idx,
                                 "tenant_id": st.client_id,
@@ -144,7 +173,6 @@ async def run_zoho_invoices_core(
                                 "_staged_transaction_id": st.id,
                             })
 
-
             logger.info(f"Retrieved {len(approved_rows)} approved items from PostgreSQL ledger ready for invoicing.")
             return {
                 "source": "in_app_ledger",
@@ -157,17 +185,15 @@ async def run_zoho_invoices_core(
 
         if not approved_rows:
             logger.info("No approved rows found for invoicing.")
-            pipeline_tracker.add_log("warning", "No approved rows found with Approved == True and Status == PENDING in Sheets or PostgreSQL ledger.")
-            pipeline_tracker.complete_pipeline({
+            status_desc = "[PENDING, APPROVED, INVOICED]" if mode == "regenerate" else "[PENDING, APPROVED]"
+            pipeline_tracker.add_log("warning", f"No approved rows found with Approved == True and Status in {status_desc} in PostgreSQL ledger.")
+            no_rows_result = {
                 "status": "NO_APPROVED_ROWS",
-                "message": "No rows with Approved == True and Status in [PENDING, APPROVED] were found. Please approve rows before generating invoices.",
-                "invoices_created": [],
-            })
-            return {
-                "status": "NO_APPROVED_ROWS",
-                "message": "No rows with Approved == True and Status in [PENDING, APPROVED] were found. Please approve rows before generating invoices.",
+                "message": f"No rows with Approved == True and Status in {status_desc} were found. Please approve rows before generating invoices.",
                 "invoices_created": [],
             }
+            pipeline_tracker.complete_pipeline(no_rows_result)
+            return no_rows_result
 
         pipeline_tracker.update_progress(
             percent=50,
@@ -182,11 +208,33 @@ async def run_zoho_invoices_core(
             customer_groups: Dict[str, List[Dict[str, Any]]] = {}
             for row in approved_rows:
                 customer = row.get("customer_name") or "General Customer"
+                if target_customer_name and customer.strip().lower() != target_customer_name.strip().lower():
+                    continue
                 customer_groups.setdefault(customer, []).append(row)
+
+            total_customers = len(customer_groups)
+            pipeline_tracker.update_step(
+                current_step=f"Processing draft invoices for {total_customers} Customer(s) ({len(approved_rows)} items)...",
+                percent=50,
+                stage_index=2,
+                stats_update={
+                    "customers_total": total_customers,
+                    "customers_done": 0,
+                    "items_extracted": len(approved_rows),
+                },
+            )
 
             created_invoices: List[Dict[str, Any]] = []
 
-            for customer_name, items in customer_groups.items():
+            for idx, (customer_name, items) in enumerate(customer_groups.items(), 1):
+                step_percent = 50 + int(((idx - 1) / max(total_customers, 1)) * 45)  # Progresses smoothly 50% to 95%
+                pipeline_tracker.update_step(
+                    current_step=f"Preparing Customer invoice ({idx}/{total_customers}): {customer_name}...",
+                    percent=step_percent,
+                    stage_index=2,
+                    stats_update={"customers_done": idx - 1},
+                )
+
                 tenant_slug = items[0].get("tenant_id") or filter_client_name or "anr_group"
                 zoho_org_id = None
                 tenant_custom_config = {}
@@ -362,16 +410,83 @@ async def run_zoho_invoices_core(
                     )
 
                 tenant_display_name = tenant_obj.name if tenant_obj else "Commercial Laundry"
+
+                # Calculate custom due_date and terms overrides
+                if due_date and str(due_date).strip():
+                    resolved_due_date = str(due_date).strip()
+                else:
+                    try:
+                        parsed_inv_dt = datetime.strptime(inv_date, "%Y-%m-%d")
+                        from datetime import timedelta
+                        resolved_due_date = (parsed_inv_dt + timedelta(days=14)).strftime("%Y-%m-%d")
+                    except Exception:
+                        resolved_due_date = inv_date
+
+                if terms and str(terms).strip():
+                    resolved_terms = str(terms).strip()
+                else:
+                    resolved_terms = "Payment due within 14 days of invoice date."
+
                 inv_request = ZohoDraftInvoiceRequest(
                     customer_id=contact_id,
                     date=inv_date,
+                    due_date=resolved_due_date,
                     line_items=zoho_line_items,
                     notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
-                    terms="Payment due within 14 days of invoice date.",
+                    terms=resolved_terms,
                 )
 
-                pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {customer_name} in {tenant_display_name}'s organization (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
-                response = await zoho.create_or_append_draft_invoice(inv_request, target_month, target_year)
+                if mode == "regenerate":
+                    pipeline_tracker.add_log(
+                        "info",
+                        f"Regenerating draft invoice for Customer '{customer_name}'...",
+                    )
+                    if confirm_delete:
+                        existing = await zoho.find_existing_draft_invoice(contact_id, target_month, target_year)
+                        if existing:
+                            existing_inv_id = str(existing.get("invoice_id", "")).strip()
+                            inv_num = existing.get("invoice_number", existing_inv_id)
+                            pipeline_tracker.add_log(
+                                "warning",
+                                f"Deleting existing draft invoice {inv_num} for Customer '{customer_name}'...",
+                            )
+                            await zoho.delete_draft_invoice(existing_inv_id)
+                            pipeline_tracker.add_log(
+                                "info",
+                                f"Deleted draft invoice {inv_num} from Zoho Books.",
+                            )
+                    pipeline_tracker.add_log(
+                        "info",
+                        f"Creating fresh Zoho Books draft invoice for Customer '{customer_name}' ({len(zoho_line_items)} items)...",
+                    )
+                    response = await zoho.create_draft_invoice(inv_request)
+                    if is_mock or not zoho.org_id:
+                        key = f"{contact_id}_{target_month}_{target_year}".lower()
+                        ZohoBooksService._global_mock_draft_invoices[key] = {
+                            "invoice_id": response.invoice_id,
+                            "invoice_number": response.invoice_number,
+                            "customer_id": contact_id,
+                            "customer_name": customer_name,
+                            "total": response.total,
+                            "status": "draft",
+                            "notes": inv_request.notes or "",
+                            "date": inv_request.date,
+                            "due_date": inv_request.due_date,
+                            "terms": inv_request.terms,
+                            "line_items": [li.model_dump() for li in inv_request.line_items],
+                        }
+                else:
+                    pipeline_tracker.add_log(
+                        "info",
+                        f"Drafting/Appending to Zoho Books Invoice for {customer_name} in {tenant_display_name}'s organization (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...",
+                    )
+                    response = await zoho.create_or_append_draft_invoice(
+                        inv_request,
+                        target_month,
+                        target_year,
+                        due_date=resolved_due_date,
+                        terms=resolved_terms,
+                    )
 
                 # Also update corresponding staged_transactions in PostgreSQL
                 staged_ids = [it.get("_staged_transaction_id") for it in items if it.get("_staged_transaction_id")]
@@ -388,16 +503,32 @@ async def run_zoho_invoices_core(
                     except Exception as db_err:
                         logger.warning(f"Could not update staged transactions in DB: {db_err}")
 
+                step_done_percent = 50 + int((idx / max(total_customers, 1)) * 45)
+                pipeline_tracker.update_step(
+                    current_step=f"Completed draft invoice for Customer ({idx}/{total_customers}): {customer_name}",
+                    percent=step_done_percent,
+                    stats_update={"customers_done": idx},
+                )
                 pipeline_tracker.add_log(
                     "success",
                     f"🎉 Processed Draft Invoice {response.invoice_number} for customer {customer_name} in {tenant_display_name}'s Zoho Books (Total: GHS {response.total:.2f}). Marked INVOICED.",
                 )
-                created_invoices.append(response.model_dump())
-
+                inv_dump = response.model_dump()
+                inv_dump["customer_name"] = customer_name
+                inv_dump["total_ghs"] = response.total
+                inv_dump["zoho_link"] = response.invoice_url or f"https://books.zoho.com/app#/invoices/{response.invoice_id}"
+                inv_dump["date"] = inv_request.date
+                inv_dump["due_date"] = inv_request.due_date
+                inv_dump["terms"] = inv_request.terms
+                created_invoices.append(inv_dump)
 
             return {
                 "status": "COMPLETED",
+                "mode": mode,
+                "month": target_month,
+                "year": target_year,
                 "invoices_count": len(created_invoices),
+                "total_billed_ghs": sum(inv.get("total_ghs", inv.get("total", 0.0)) for inv in created_invoices),
                 "invoices_created": created_invoices,
             }
 
@@ -435,6 +566,12 @@ async def execute_generate_zoho_invoices(
     explicit_sheet_id = event_data.get("spreadsheet_id")
     filter_client_name = event_data.get("client_id") or event_data.get("client_name")
     include_line_item_description = event_data.get("include_line_item_description")
+    mode = event_data.get("mode", "append")
+    target_customer_name = event_data.get("target_customer_name")
+    invoice_date = event_data.get("invoice_date")
+    due_date = event_data.get("due_date")
+    terms = event_data.get("terms")
+    confirm_delete = bool(event_data.get("confirm_delete", False))
 
     step_runner = None
     if hasattr(ctx, "step") and ctx.step:
@@ -453,6 +590,12 @@ async def execute_generate_zoho_invoices(
         filter_client_name=filter_client_name,
         include_line_item_description=include_line_item_description,
         step_runner=step_runner,
+        mode=mode,
+        target_customer_name=target_customer_name,
+        invoice_date=invoice_date,
+        due_date=due_date,
+        terms=terms,
+        confirm_delete=confirm_delete,
     )
 
 

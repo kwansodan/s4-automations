@@ -32,10 +32,11 @@ import {
   fetchLandingPageConfig,
 } from './lib/api';
 import { ShieldAlert } from 'lucide-react';
+import { PipelineFloatingWidget } from './components/common/PipelineFloatingWidget';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
-  const { activeTab, setActiveTab } = useAutomation();
+  const { activeTab, setActiveTab, pipelineProgress, isInvoiceModalOpen } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -256,6 +257,11 @@ const MainLayout: React.FC = () => {
       {/* Diagnostics & Debugging Overlays */}
       <ToastContainer />
       <DebugDrawer />
+
+      {/* Persistent Background Pipeline Progress Floating Widget */}
+      {pipelineProgress?.is_running && !isInvoiceModalOpen && (
+        <PipelineFloatingWidget />
+      )}
     </div>
   );
 };

@@ -157,6 +157,41 @@ export type FolderStructurePattern =
   | 'party_then_month'
   | 'flat_root';
 
+export type InvoiceDateRule =
+  | 'LAST_DAY_OF_MONTH'
+  | 'FIRST_DAY_OF_NEXT_MONTH'
+  | 'TODAY'
+  | 'FIXED_DAY'
+  | 'last_day_of_month'
+  | 'first_day_following_month'
+  | 'today'
+  | 'fixed_day';
+
+export type PaymentTermsRule =
+  | 'NET_0'
+  | 'NET_7'
+  | 'NET_14'
+  | 'NET_30'
+  | 'NET_60'
+  | 'CUSTOM'
+  | 'net_0'
+  | 'net_7'
+  | 'net_14'
+  | 'net_30'
+  | 'net_60'
+  | 'custom'
+  | 'custom_offset';
+
+export interface InvoicingDateSettings {
+  invoice_date_rule?: InvoiceDateRule;
+  fixed_invoice_day?: number;
+  payment_terms_rule?: PaymentTermsRule;
+  custom_due_days?: number;
+  custom_terms_note?: string;
+  override_date_rules?: boolean;
+  [key: string]: any;
+}
+
 export interface IngestionPipeline {
   id: string;
   name: string;
@@ -180,6 +215,12 @@ export interface IngestionPipeline {
     secret?: string;
     auto_create_missing_contacts?: boolean;
     auto_create_missing_items?: boolean;
+    override_date_rules?: boolean;
+    invoice_date_rule?: InvoiceDateRule;
+    fixed_invoice_day?: number;
+    payment_terms_rule?: PaymentTermsRule;
+    custom_due_days?: number;
+    custom_terms_note?: string;
     [key: string]: any;
   };
   default_account_code?: string;
@@ -339,9 +380,9 @@ export interface ClientProfile {
   team_members?: OrganizationTeamMember[];
   watched_accounts?: string[];
   sourceConfig?: Record<string, any>;
-  customConfig?: Record<string, any>;
+  customConfig?: Record<string, any> & InvoicingDateSettings;
   source_config?: Record<string, any>;
-  custom_config?: Record<string, any>;
+  custom_config?: Record<string, any> & InvoicingDateSettings;
   externalChecklist?: ExternalChecklistItem[];
   created_at?: string;
   updated_at?: string;

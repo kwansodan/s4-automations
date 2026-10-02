@@ -214,13 +214,13 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } finally {
         isRequestInFlight = false;
         if (isMounted) {
-          timeoutId = setTimeout(poll, 2500);
+          timeoutId = setTimeout(poll, 1200);
         }
       }
     };
 
     // Schedule initial poll
-    timeoutId = setTimeout(poll, 1500);
+    timeoutId = setTimeout(poll, 400);
 
     return () => {
       isMounted = false;
@@ -256,7 +256,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         year: selectedYear,
         ...payload,
       });
-      setIsInvoiceModalOpen(false);
+      // Do not dismiss InvoiceModal here so it stays open and switches to live execution view
       addLog('success', `Zoho Invoicing Task Dispatched: ${res.message}`);
       const initialProgress = await fetchPipelineStatus();
       setPipelineProgress(initialProgress);

@@ -1,6 +1,7 @@
 """Zoho Books API Service integration with OAuth2 refresh, Catalog sync, and Invoicing."""
 
 import time
+from datetime import datetime
 from difflib import SequenceMatcher
 from typing import List, Dict, Optional, Any
 import httpx
@@ -45,6 +46,7 @@ class ZohoBooksService:
     _tenant_tokens: Dict[str, Dict[str, Any]] = {}
     _tenant_contacts: Dict[str, List[ZohoContact]] = {}
     _tenant_items: Dict[str, List[ZohoItem]] = {}
+    _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
         self,
@@ -71,6 +73,11 @@ class ZohoBooksService:
         self._token_expiry_timestamp: float = cached_tok.get("expiry", 0.0)
         self._cached_contacts: List[ZohoContact] = ZohoBooksService._tenant_contacts.get(self._tenant_key, [])
         self._cached_items: List[ZohoItem] = ZohoBooksService._tenant_items.get(self._tenant_key, [])
+
+    @property
+    def organization_id(self) -> Optional[str]:
+        """Accessor for Zoho organization ID."""
+        return self.org_id
 
     @classmethod
     def from_client_id(cls, client_id: str) -> "ZohoBooksService":
@@ -198,9 +205,17 @@ class ZohoBooksService:
     )
     async def fetch_active_contacts(self) -> List[ZohoContact]:
         """Fetches all active customer contacts from Zoho Books."""
-        if not self.org_id:
-            logger.info("No live Zoho credentials/org_id; returning empty contacts list.")
-            return []
+        if settings.MOCK_MODE or not self.org_id:
+            logger.info("Using mock Zoho contacts list.")
+            self._cached_contacts = [
+                ZohoContact(contact_id="cnt_luxwood_001", contact_name="Luxwood", company_name="Luxwood Hotel & Suites", email="billing@luxwood.com"),
+                ZohoContact(contact_id="cnt_the_bantree_002", contact_name="The Bantree", company_name="The Bantree Luxury Living", email="accounts@thebantree.com"),
+                ZohoContact(contact_id="cnt_the_lennox_003", contact_name="The Lennox", company_name="The Lennox Apartments", email="info@thelennox.com"),
+                ZohoContact(contact_id="cnt_kwarleyz_004", contact_name="Kwarleyz Residence", company_name="Kwarleyz Residence", email="finance@kwarleyz.com"),
+                ZohoContact(contact_id="cnt_number_one_005", contact_name="Number One Oxford", company_name="Number One Oxford Street", email="ap@numberoneoxford.com"),
+            ]
+            ZohoBooksService._tenant_contacts[self._tenant_key] = self._cached_contacts
+            return self._cached_contacts
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -411,9 +426,23 @@ class ZohoBooksService:
     )
     async def fetch_item_catalog(self) -> List[ZohoItem]:
         """Fetches active linen/laundry items catalog from Zoho Books."""
-        if not self.org_id:
-            logger.info("No live Zoho credentials/org_id; returning empty item catalog.")
-            return []
+        if settings.MOCK_MODE or not self.org_id:
+            logger.info("Using mock Zoho item catalog.")
+            self._cached_items = [
+                ZohoItem(item_id="item_bed_sheet_dbl", name="Bed Sheet (Double / King)", rate=18.50, description="Commercial laundered double bed sheet"),
+                ZohoItem(item_id="item_bed_sheet_sgl", name="Bed Sheet (Single)", rate=14.00, description="Commercial laundered single bed sheet"),
+                ZohoItem(item_id="item_duvet_cover_king", name="Duvet Cover (King)", rate=25.00, description="Laundered king size duvet cover"),
+                ZohoItem(item_id="item_pillow_case", name="Pillow Case", rate=6.50, description="Laundered standard pillow case"),
+                ZohoItem(item_id="item_bath_towel", name="Bath Towel", rate=12.00, description="Heavyweight plush bath towel"),
+                ZohoItem(item_id="item_hand_towel", name="Hand Towel", rate=7.00, description="Cotton hand towel"),
+                ZohoItem(item_id="item_face_towel", name="Face Towel", rate=4.50, description="Small face towel / washcloth"),
+                ZohoItem(item_id="item_bath_mat", name="Bath Mat", rate=9.00, description="Hotel floor bath mat"),
+                ZohoItem(item_id="item_pool_towel", name="Pool Towel (Stripe)", rate=15.00, description="Large striped pool towel"),
+                ZohoItem(item_id="item_table_cloth", name="Table Cloth (Banquet)", rate=22.00, description="Pressed banquet table cloth"),
+                ZohoItem(item_id="item_napkin", name="Napkin / Serviet", rate=3.50, description="Pressed cloth napkin"),
+            ]
+            ZohoBooksService._tenant_items[self._tenant_key] = self._cached_items
+            return self._cached_items
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -588,7 +617,11 @@ class ZohoBooksService:
         Finds an existing draft invoice for this customer and billing month in Zoho Books.
         Returns the full invoice dict with line items if found, else None.
         """
-        if not self.org_id or settings.MOCK_MODE or not customer_id or not str(customer_id).strip().isdigit():
+        if settings.MOCK_MODE or not self.org_id:
+            key = f"{customer_id}_{month}_{year}".lower()
+            return ZohoBooksService._global_mock_draft_invoices.get(key)
+
+        if not customer_id or not str(customer_id).strip().isdigit():
             return None
 
         access_token = await self.get_access_token()
@@ -653,22 +686,40 @@ class ZohoBooksService:
         self, request: ZohoDraftInvoiceRequest
     ) -> ZohoDraftInvoiceResponse:
         """Creates a Draft Invoice in Zoho Books for approved monthly billing rows."""
-        if settings.MOCK_MODE or not self.refresh_token or not self.client_id or not self.client_secret:
-            if settings.MOCK_MODE:
-                total_amt = sum(li.rate * li.quantity for li in request.line_items)
-                inv_id = f"inv_mock_{int(time.time())}_{request.customer_id[-6:] if len(request.customer_id) >= 6 else '000000'}"
-                inv_num = f"INV-MOCK-{datetime.now().strftime('%Y%m')}-{request.customer_id[:4]}"
-                logger.info(f"[MOCK_MODE] Simulated Zoho draft invoice creation: {inv_num} (Total: GHS {total_amt:.2f})")
-                return ZohoDraftInvoiceResponse(
-                    invoice_id=inv_id,
-                    invoice_number=inv_num,
-                    customer_name=request.notes or "Simulated Customer",
-                    total=total_amt,
-                    status="draft",
-                    date=request.date,
-                    due_date=request.due_date or request.date,
-                    line_items_count=len(request.line_items),
-                )
+        if settings.MOCK_MODE or not self.refresh_token or not self.client_id or not self.client_secret or not self.org_id:
+            total_amt = sum(li.rate * li.quantity for li in request.line_items)
+            import uuid
+            uid = uuid.uuid4().hex[:6]
+            mock_id = f"inv_mock_{int(time.time())}_{uid}"
+            mock_num = f"INV-ANR-{(int(time.time()*1000) + int(uid, 16)) % 100000:05d}"
+            logger.info(f"[MOCK_MODE] Simulated Zoho draft invoice creation: {mock_num} (Total: GHS {total_amt:.2f})")
+            mock_entry = {
+                "invoice_id": mock_id,
+                "invoice_number": mock_num,
+                "customer_id": request.customer_id,
+                "customer_name": request.notes or "Customer",
+                "total": total_amt,
+                "status": "draft",
+                "date": request.date,
+                "due_date": request.due_date,
+                "terms": request.terms,
+                "notes": request.notes or "",
+                "line_items": [li.model_dump() for li in request.line_items],
+            }
+            ZohoBooksService._global_mock_draft_invoices[mock_id] = mock_entry
+            return ZohoDraftInvoiceResponse(
+                code=0,
+                message="Invoice created successfully (Mock)",
+                invoice_id=mock_id,
+                invoice_number=mock_num,
+                customer_id=request.customer_id,
+                customer_name=request.notes or "Customer",
+                total=total_amt,
+                status="draft",
+                invoice_url=f"https://books.zoho.com/app#/invoices/{mock_id}",
+                date=request.date,
+                due_date=request.due_date,
+            )
 
         if not self.org_id:
             raise ValueError("Cannot create draft invoice: Zoho Organization ID is not configured.")
@@ -725,23 +776,48 @@ class ZohoBooksService:
                 total=total_amt,
                 status="draft",
                 invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
+                date=invoice.get("date", request.date),
+                due_date=invoice.get("due_date", request.due_date),
             )
 
     async def create_or_append_draft_invoice(
-        self, request: ZohoDraftInvoiceRequest, month: str, year: int
+        self,
+        request: ZohoDraftInvoiceRequest,
+        month: str,
+        year: int,
+        due_date: Optional[str] = None,
+        terms: Optional[str] = None,
     ) -> ZohoDraftInvoiceResponse:
         """
         Checks for an existing draft invoice for this customer and month.
         If found: appends/merges new line items into the existing invoice.
         If not found: creates a fresh draft invoice.
         """
-        if not self.org_id:
-            raise ValueError("Cannot append draft invoice: Zoho Organization ID is not configured.")
+        if due_date:
+            request.due_date = due_date
+        if terms:
+            request.terms = terms
 
         existing = await self.find_existing_draft_invoice(request.customer_id, month, year)
+        key = f"{request.customer_id}_{month}_{year}".lower()
 
         if not existing:
-            return await self.create_draft_invoice(request)
+            created = await self.create_draft_invoice(request)
+            if settings.MOCK_MODE or not self.org_id:
+                ZohoBooksService._global_mock_draft_invoices[key] = {
+                    "invoice_id": created.invoice_id,
+                    "invoice_number": created.invoice_number,
+                    "customer_id": request.customer_id,
+                    "customer_name": created.customer_name,
+                    "total": created.total,
+                    "status": "draft",
+                    "notes": request.notes or "",
+                    "date": request.date,
+                    "due_date": request.due_date,
+                    "terms": request.terms,
+                    "line_items": [li.model_dump() for li in request.line_items],
+                }
+            return created
 
         # Append new items to existing invoice
         invoice_id = existing.get("invoice_id", "")
@@ -772,6 +848,33 @@ class ZohoBooksService:
             if new_li.item_id and str(new_li.item_id).strip().isdigit():
                 entry["item_id"] = str(new_li.item_id).strip()
             combined_items.append(entry)
+
+        if settings.MOCK_MODE or not self.org_id:
+            new_total = sum(i["rate"] * i["quantity"] for i in combined_items)
+            if key in ZohoBooksService._global_mock_draft_invoices:
+                ZohoBooksService._global_mock_draft_invoices[key]["line_items"] = combined_items
+                ZohoBooksService._global_mock_draft_invoices[key]["total"] = new_total
+                if request.due_date:
+                    ZohoBooksService._global_mock_draft_invoices[key]["due_date"] = request.due_date
+                if request.terms:
+                    ZohoBooksService._global_mock_draft_invoices[key]["terms"] = request.terms
+            logger.info(f"[MOCK_MODE] Appended {len(request.line_items)} items to existing Draft Invoice {invoice_num} (Total: GHS {new_total:.2f})")
+            return ZohoDraftInvoiceResponse(
+                code=0,
+                message=f"Appended items to existing draft invoice {invoice_num} (Mock)",
+                invoice_id=invoice_id,
+                invoice_number=invoice_num,
+                customer_id=request.customer_id,
+                customer_name=existing.get("customer_name", "Customer"),
+                total=new_total,
+                status="draft",
+                invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
+                date=request.date,
+                due_date=request.due_date,
+            )
+
+        if not self.org_id:
+            raise ValueError("Cannot append draft invoice: Zoho Organization ID is not configured.")
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
@@ -811,7 +914,71 @@ class ZohoBooksService:
                 total=updated_total,
                 status="draft",
                 invoice_url=f"https://books.zoho.com/app#/invoices/{invoice_id}",
+                date=updated_inv.get("date", request.date),
+                due_date=updated_inv.get("due_date", request.due_date),
             )
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def delete_draft_invoice(self, invoice_id: str) -> bool:
+        """
+        Deletes a draft invoice from Zoho Books.
+        HTTP Call: DELETE /api/v3/invoices/{invoice_id}?organization_id={org_id}
+        Returns True if deletion succeeded or invoice was already deleted (idempotent).
+        """
+        if not invoice_id or not str(invoice_id).strip():
+            raise ValueError("Cannot delete draft invoice: invoice_id is empty.")
+
+        invoice_id_clean = str(invoice_id).strip()
+
+        # 1. Mock mode simulation
+        if (
+            settings.MOCK_MODE
+            or not self.refresh_token
+            or not self.client_id
+            or not self.client_secret
+            or not self.org_id
+        ):
+            logger.info(f"[MOCK_MODE] Simulated deletion of Zoho draft invoice: {invoice_id_clean}")
+            for k in list(ZohoBooksService._global_mock_draft_invoices.keys()):
+                if ZohoBooksService._global_mock_draft_invoices[k].get("invoice_id") == invoice_id_clean:
+                    del ZohoBooksService._global_mock_draft_invoices[k]
+            return True
+
+        # 2. Prepare HTTP request
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        url = f"{self.books_api_url}/invoices/{invoice_id_clean}"
+        params = {"organization_id": self.org_id}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(url, headers=headers, params=params)
+
+            # 3. Handle token expiry retry
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                response = await client.delete(url, headers=headers, params=params)
+
+            # 4. Idempotent handling for already-deleted invoices
+            if response.status_code == 404:
+                logger.info(f"Draft invoice {invoice_id_clean} already deleted or not found in Zoho Books (404).")
+                return True
+
+            # 5. Check response
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 0:
+                    logger.info(f"Successfully deleted Zoho draft invoice {invoice_id_clean} for org {self.org_id}.")
+                    return True
+
+            self._check_response(response, f"Zoho Books delete draft invoice {invoice_id_clean}")
+            logger.info(f"Successfully deleted Zoho draft invoice {invoice_id_clean} for org {self.org_id}.")
+            return True
 
     @retry(
         reraise=True,

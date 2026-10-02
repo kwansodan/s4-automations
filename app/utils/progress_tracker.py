@@ -22,6 +22,8 @@ class PipelineProgressTracker:
         self.total_stages: int = 5
         self.percent: int = 0
         self.stats: Dict[str, Any] = {
+            "customers_total": 0,
+            "customers_done": 0,
             "clients_total": 0,
             "clients_done": 0,
             "slips_processed": 0,
@@ -48,6 +50,8 @@ class PipelineProgressTracker:
             self.total_stages = total_stages
             self.percent = 5
             self.stats = {
+                "customers_total": 0,
+                "customers_done": 0,
                 "clients_total": 0,
                 "clients_done": 0,
                 "slips_processed": 0,
@@ -77,6 +81,25 @@ class PipelineProgressTracker:
                 self.stage_index = stage_index
             if current_step is not None:
                 self.current_step = current_step
+            if stats_update:
+                self.stats.update(stats_update)
+            if self.start_timestamp > 0:
+                self.elapsed_seconds = round(time.time() - self.start_timestamp, 1)
+
+    def update_step(
+        self,
+        current_step: str,
+        percent: Optional[int] = None,
+        stage_index: Optional[int] = None,
+        stats_update: Optional[Dict[str, Any]] = None,
+    ):
+        """Convenience method to stream current stage step, percent, and stats counters."""
+        with self._lock:
+            if percent is not None:
+                self.percent = min(max(percent, 0), 100)
+            if stage_index is not None:
+                self.stage_index = stage_index
+            self.current_step = current_step
             if stats_update:
                 self.stats.update(stats_update)
             if self.start_timestamp > 0:

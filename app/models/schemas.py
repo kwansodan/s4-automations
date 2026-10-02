@@ -307,6 +307,29 @@ class ZohoDraftInvoiceResponse(BaseModel):
     total: float
     status: str
     invoice_url: Optional[str] = ""
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class ExistingInvoiceItem(BaseModel):
+    """Item description for an existing draft invoice in Zoho Books or ledger."""
+    invoice_id: str
+    invoice_number: str
+    customer_name: str
+    total: float
+    status: str = "draft"
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class ExistingInvoicesQueryResponse(BaseModel):
+    """Response payload for existing draft invoices check."""
+    has_existing: bool
+    existing_invoices: List[ExistingInvoiceItem] = Field(default_factory=list)
+    count: int = 0
+    client_id: Optional[str] = None
+    month: Optional[str] = None
+    year: Optional[int] = None
 
 
 class ZohoDraftBillRequest(BaseModel):
@@ -545,8 +568,8 @@ class PreflightDiscoveryResult(BaseModel):
     month_name: str
     year: int
     month_folder_id: str
-    spreadsheet_id: str
-    spreadsheet_url: str
+    spreadsheet_id: Optional[str] = None
+    spreadsheet_url: Optional[str] = None
     clients: List[ClientFolderInfo] = Field(default_factory=list)
     active_contacts_count: int = 0
     active_items_count: int = 0
@@ -567,8 +590,8 @@ class PipelineRunResult(BaseModel):
     run_id: str
     month_name: str
     year: int
-    spreadsheet_id: str
-    spreadsheet_url: str
+    spreadsheet_id: Optional[str] = None
+    spreadsheet_url: Optional[str] = None
     total_clients_discovered: int
     clients_processed: List[ClientProcessingResult] = Field(default_factory=list)
     total_slips_processed: int = 0

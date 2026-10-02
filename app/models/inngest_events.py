@@ -1,7 +1,7 @@
 """Inngest event payload schemas."""
 
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PipelineTriggerEvent(BaseModel):
@@ -21,4 +21,18 @@ class InvoiceGenerateEvent(BaseModel):
     client_id: Optional[str] = Field(default=None, description="Optional tenant or client organization ID")
     send_email: bool = Field(default=False, description="Whether to automatically send invoice to client after creation")
     include_line_item_description: Optional[bool] = Field(default=None, description="Whether to include detailed operational descriptions on invoice line items. If None, falls back to client settings.")
+    mode: str = Field(default="append", description="Invoicing mode: 'append' or 'regenerate'")
+    target_customer_name: Optional[str] = Field(default=None, description="Optional single Customer name to filter invoicing")
+    invoice_date: Optional[str] = Field(default=None, description="Explicit invoice date in YYYY-MM-DD format")
+    due_date: Optional[str] = Field(default=None, description="Explicit due date in YYYY-MM-DD format")
+    terms: Optional[str] = Field(default=None, description="Explicit payment terms note")
+    confirm_delete: bool = Field(default=False, description="Explicit confirmation to delete existing draft invoices when regenerating")
+
+    @model_validator(mode="after")
+    def validate_regeneration_confirmation(self):
+        if self.mode == "regenerate" and not self.confirm_delete:
+            raise ValueError("Regeneration mode requires explicit confirmation (confirm_delete=True)")
+        return self
+
+
 

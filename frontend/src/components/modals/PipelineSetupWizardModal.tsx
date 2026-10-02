@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import type { IngestionPipeline, AccountingSection, AccountingEntityType, TriggerType, PipelineSimulationResult, ChartOfAccountItem, FolderStructurePattern } from '../../types/client';
+import type {
+  IngestionPipeline,
+  AccountingSection,
+  AccountingEntityType,
+  TriggerType,
+  PipelineSimulationResult,
+  ChartOfAccountItem,
+  FolderStructurePattern,
+  InvoiceDateRule,
+  PaymentTermsRule,
+} from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import { probeExternalConnection, simulatePipelineExtraction, fetchChartOfAccounts } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
@@ -356,6 +366,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   // Missing Slip / Document Gap Cadence Reporting
   const [missingCadence, setMissingCadence] = useState<'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled'>('daily');
 
+  // Stream-Level Invoicing Date & Payment Terms Override State
+  const [overrideDateRules, setOverrideDateRules] = useState<boolean>(false);
+  const [invoiceDateRule, setInvoiceDateRule] = useState<InvoiceDateRule>('LAST_DAY_OF_MONTH');
+  const [fixedInvoiceDay, setFixedInvoiceDay] = useState<number>(1);
+  const [paymentTermsRule, setPaymentTermsRule] = useState<PaymentTermsRule>('NET_14');
+  const [customDueDays, setCustomDueDays] = useState<number>(14);
+  const [customTermsNote, setCustomTermsNote] = useState<string>('');
+
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any; detected_month_folders?: string[]; suggested_hierarchy?: string } | null>(null);
@@ -506,6 +524,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         const initialCadence = (initialPipeline.source_config?.missing_cadence as any) || (initialPipeline as any).missing_cadence || 'daily';
         setMissingCadence(initialCadence);
         setFieldMappings(initialPipeline.field_mappings || {});
+
+        const sc = initialPipeline.source_config || {};
+        const hasDateOverride = Boolean(sc.override_date_rules || sc.invoice_date_rule || sc.payment_terms_rule);
+        setOverrideDateRules(hasDateOverride);
+        setInvoiceDateRule(sc.invoice_date_rule || 'LAST_DAY_OF_MONTH');
+        setFixedInvoiceDay(sc.fixed_invoice_day || 1);
+        setPaymentTermsRule(sc.payment_terms_rule || 'NET_14');
+        setCustomDueDays(sc.custom_due_days || 14);
+        setCustomTermsNote(sc.custom_terms_note || '');
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
@@ -532,6 +559,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setAutoCreateMissingContacts(false);
         setAutoCreateMissingItems(false);
         setMissingCadence('daily');
+        setOverrideDateRules(false);
+        setInvoiceDateRule('LAST_DAY_OF_MONTH');
+        setFixedInvoiceDay(1);
+        setPaymentTermsRule('NET_14');
+        setCustomDueDays(14);
+        setCustomTermsNote('');
         setHumanInstructions('');
         setFieldMappings({});
       }
@@ -711,6 +744,21 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           tenant_id: oneDriveTenantId.trim() || undefined,
           client_id: oneDriveClientId.trim() || undefined,
           secret: oneDriveSecret.trim() || undefined,
+          override_date_rules: overrideDateRules,
+          invoice_date_rule: overrideDateRules ? invoiceDateRule : undefined,
+          fixed_invoice_day:
+            overrideDateRules && (invoiceDateRule === 'FIXED_DAY' || (invoiceDateRule as any) === 'fixed_day')
+              ? Number(fixedInvoiceDay)
+              : undefined,
+          payment_terms_rule: overrideDateRules ? paymentTermsRule : undefined,
+          custom_due_days:
+            overrideDateRules &&
+            (paymentTermsRule === 'CUSTOM' ||
+              (paymentTermsRule as any) === 'custom' ||
+              (paymentTermsRule as any) === 'custom_offset')
+              ? Number(customDueDays)
+              : undefined,
+          custom_terms_note: overrideDateRules && customTermsNote.trim() ? customTermsNote.trim() : undefined,
         },
       };
 
@@ -998,6 +1046,120 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   Line items extracted from this stream's documents will default to this account if not explicitly overridden by AI SKU matching.
                 </span>
               </div>
+
+              {/* Stream-Level Invoicing Date & Payment Terms Override */}
+              {section === 'AR' && (
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3.5 mt-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div>
+                        <span className="text-xs font-bold text-white block">
+                          Invoice Date &amp; Payment Terms Stream Override
+                        </span>
+                        <span className="text-[11px] text-slate-400 block mt-0.5">
+                          Override the client organization default invoice date and due date rules specifically for this stream.
+                        </span>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={overrideDateRules}
+                        onChange={(e) => setOverrideDateRules(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+
+                  {overrideDateRules && (
+                    <div className="space-y-3.5 pt-3 border-t border-slate-850 animate-in fade-in">
+                      {/* Invoice Date Rule */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-semibold text-slate-300">
+                          Stream Invoice Date Rule
+                        </label>
+                        <select
+                          value={invoiceDateRule}
+                          onChange={(e) => setInvoiceDateRule(e.target.value as InvoiceDateRule)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        >
+                          <option value="LAST_DAY_OF_MONTH">Last day of billing month (Default, e.g. Aug 31)</option>
+                          <option value="FIRST_DAY_OF_NEXT_MONTH">First day of following month (e.g. Sep 1)</option>
+                          <option value="TODAY">Today (Date of invoice generation)</option>
+                          <option value="FIXED_DAY">Fixed day of month (e.g. 15th)</option>
+                        </select>
+
+                        {(invoiceDateRule === 'FIXED_DAY' || (invoiceDateRule as any) === 'fixed_day') && (
+                          <div className="pl-3 border-l-2 border-emerald-500/40 space-y-1 pt-1">
+                            <label className="block text-[10px] font-semibold text-slate-400">
+                              Fixed Day of Month (1 - 31)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={fixedInvoiceDay}
+                              onChange={(e) => setFixedInvoiceDay(Math.min(Math.max(Number(e.target.value) || 1, 1), 31))}
+                              className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Payment Terms Rule */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-semibold text-slate-300">
+                          Stream Payment Terms / Due Date Rule
+                        </label>
+                        <select
+                          value={paymentTermsRule}
+                          onChange={(e) => setPaymentTermsRule(e.target.value as PaymentTermsRule)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        >
+                          <option value="NET_0">Net 0 / Due on Receipt</option>
+                          <option value="NET_7">Net 7 (7 days from invoice date)</option>
+                          <option value="NET_14">Net 14 (Default, 14 days from invoice date)</option>
+                          <option value="NET_30">Net 30 (30 days from invoice date)</option>
+                          <option value="NET_60">Net 60 (60 days from invoice date)</option>
+                          <option value="CUSTOM">Custom Day Offset</option>
+                        </select>
+
+                        {(paymentTermsRule === 'CUSTOM' || (paymentTermsRule as any) === 'custom' || (paymentTermsRule as any) === 'custom_offset') && (
+                          <div className="pl-3 border-l-2 border-emerald-500/40 space-y-1 pt-1">
+                            <label className="block text-[10px] font-semibold text-slate-400">
+                              Custom Due Days from Invoice Date
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={365}
+                              value={customDueDays}
+                              onChange={(e) => setCustomDueDays(Math.max(Number(e.target.value) || 0, 0))}
+                              className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Custom Terms Note */}
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-semibold text-slate-300">
+                          Stream Payment Terms Note
+                        </label>
+                        <textarea
+                          rows={2}
+                          placeholder="e.g. Payment due within 14 days of invoice date. Bank transfer to Account No: 1234567890."
+                          value={customTermsNote}
+                          onChange={(e) => setCustomTermsNote(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

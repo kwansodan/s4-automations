@@ -40,6 +40,8 @@ import {
   ChevronDown,
   Copy,
   Building2,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 
 export const ClientSettingsTab: React.FC = () => {
@@ -737,6 +739,150 @@ export const ClientSettingsTab: React.FC = () => {
                   </span>
                 </div>
               </label>
+            </div>
+
+            {/* Invoice Date and Payment Terms Rules */}
+            <div className="pt-3 border-t border-slate-800 space-y-4">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Invoice Date &amp; Payment Terms Rules</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Set default accounting issue dates and due date calculations for draft customer invoices created in Zoho Books.
+                </p>
+              </div>
+
+              {/* Invoice Date Rule */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-400">
+                  Default Invoice Date Rule
+                </label>
+                <select
+                  value={
+                    clientConfig.custom_config?.invoice_date_rule?.toUpperCase() === 'FIRST_DAY_FOLLOWING_MONTH'
+                      ? 'FIRST_DAY_OF_NEXT_MONTH'
+                      : (clientConfig.custom_config?.invoice_date_rule?.toUpperCase() || 'LAST_DAY_OF_MONTH')
+                  }
+                  onChange={(e) =>
+                    setClientConfig({
+                      ...clientConfig,
+                      custom_config: {
+                        ...clientConfig.custom_config,
+                        invoice_date_rule: e.target.value as any,
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="LAST_DAY_OF_MONTH">Last day of billing month (Default, e.g. Aug 31)</option>
+                  <option value="FIRST_DAY_OF_NEXT_MONTH">First day of following month (e.g. Sep 1)</option>
+                  <option value="TODAY">Today (Date of invoice generation)</option>
+                  <option value="FIXED_DAY">Fixed day of month (e.g. 15th)</option>
+                </select>
+
+                {(clientConfig.custom_config?.invoice_date_rule?.toUpperCase() === 'FIXED_DAY') && (
+                  <div className="pl-3 border-l-2 border-emerald-500/40 space-y-1">
+                    <label className="block text-[10px] font-semibold text-slate-400">
+                      Fixed Day of Month (1 - 31)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={clientConfig.custom_config?.fixed_invoice_day ?? 1}
+                      onChange={(e) =>
+                        setClientConfig({
+                          ...clientConfig,
+                          custom_config: {
+                            ...clientConfig.custom_config,
+                            fixed_invoice_day: Math.min(Math.max(Number(e.target.value) || 1, 1), 31),
+                          },
+                        })
+                      }
+                      className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Terms / Due Date Rule */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-400">
+                  Payment Terms / Due Date Rule
+                </label>
+                <select
+                  value={
+                    clientConfig.custom_config?.payment_terms_rule?.toUpperCase() === 'CUSTOM_OFFSET'
+                      ? 'CUSTOM'
+                      : (clientConfig.custom_config?.payment_terms_rule?.toUpperCase() || 'NET_14')
+                  }
+                  onChange={(e) =>
+                    setClientConfig({
+                      ...clientConfig,
+                      custom_config: {
+                        ...clientConfig.custom_config,
+                        payment_terms_rule: e.target.value as any,
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="NET_0">Net 0 / Due on Receipt</option>
+                  <option value="NET_7">Net 7 (7 days from invoice date)</option>
+                  <option value="NET_14">Net 14 (Default, 14 days from invoice date)</option>
+                  <option value="NET_30">Net 30 (30 days from invoice date)</option>
+                  <option value="NET_60">Net 60 (60 days from invoice date)</option>
+                  <option value="CUSTOM">Custom Day Offset</option>
+                </select>
+
+                {(clientConfig.custom_config?.payment_terms_rule?.toUpperCase() === 'CUSTOM' ||
+                  clientConfig.custom_config?.payment_terms_rule?.toLowerCase() === 'custom_offset') && (
+                  <div className="pl-3 border-l-2 border-emerald-500/40 space-y-1">
+                    <label className="block text-[10px] font-semibold text-slate-400">
+                      Custom Due Days from Invoice Date
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={clientConfig.custom_config?.custom_due_days ?? 14}
+                      onChange={(e) =>
+                        setClientConfig({
+                          ...clientConfig,
+                          custom_config: {
+                            ...clientConfig.custom_config,
+                            custom_due_days: Math.max(Number(e.target.value) || 0, 0),
+                          },
+                        })
+                      }
+                      className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Custom Terms Note Textarea */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-slate-400">
+                  Custom Terms Note on Invoices
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Payment due within 14 days of invoice date. Bank transfer to Account No: 1234567890."
+                  value={clientConfig.custom_config?.custom_terms_note || ''}
+                  onChange={(e) =>
+                    setClientConfig({
+                      ...clientConfig,
+                      custom_config: {
+                        ...clientConfig.custom_config,
+                        custom_terms_note: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
             </div>
 
             {/* Collapsible Advanced Manual App Keys */}
