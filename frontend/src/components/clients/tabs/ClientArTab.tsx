@@ -626,7 +626,9 @@ export const ClientArTab: React.FC = () => {
 
   const toTitleCase = (str?: string): string => {
     if (!str) return '-';
-    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+    const cleaned = str.replace(/^[:;\s\-•.]+/, '').trim();
+    if (!cleaned) return str;
+    return cleaned.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
   };
 
   const handleSummarySort = (field: string) => {
@@ -728,15 +730,20 @@ export const ClientArTab: React.FC = () => {
         return;
       }
       const rawName = (c.name || '').trim();
-      const key = rawName.toLowerCase();
-      if (key && !map.has(key)) {
-        map.set(key, {
-          item_id: c.item_id || `item_${key.replace(/\s+/g, '_')}`,
-          name: rawName,
-          rate: Number(c.rate) || 0,
-          description: c.description || '',
-          status: 'active',
-        });
+      const cleanKey = rawName.replace(/^[:;\s\-•.]+/, '').trim().toLowerCase();
+      const rawKey = rawName.toLowerCase();
+      const itemObj: CatalogItem = {
+        item_id: c.item_id || `item_${(cleanKey || rawKey).replace(/\s+/g, '_')}`,
+        name: rawName,
+        rate: Number(c.rate) || 0,
+        description: c.description || '',
+        status: 'active',
+      };
+      if (cleanKey && !map.has(cleanKey)) {
+        map.set(cleanKey, itemObj);
+      }
+      if (rawKey && !map.has(rawKey)) {
+        map.set(rawKey, itemObj);
       }
     });
     return map;
@@ -744,9 +751,11 @@ export const ClientArTab: React.FC = () => {
 
   const isTxUnmappedCatalog = useCallback((tx: any): boolean => {
     if (officialZohoItemMap.size === 0) return false;
-    const name = (tx?.item_or_description || '').trim().toLowerCase();
-    if (!name) return false;
-    return !officialZohoItemMap.has(name);
+    const raw = (tx?.item_or_description || '').trim();
+    if (!raw) return false;
+    const rawKey = raw.toLowerCase();
+    const cleanKey = raw.replace(/^[:;\s\-•.]+/, '').trim().toLowerCase();
+    return !officialZohoItemMap.has(cleanKey) && !officialZohoItemMap.has(rawKey);
   }, [officialZohoItemMap]);
 
   const zohoMasterItems = useMemo(() => {
@@ -757,11 +766,13 @@ export const ClientArTab: React.FC = () => {
     // are assigned an item ID with the predictable 'staged_' prefix
     transactions.forEach((tx: any) => {
       const rawName = (tx.item_or_description || '').trim();
-      const key = rawName.toLowerCase();
-      if (key && !map.has(key)) {
-        map.set(key, {
-          item_id: `staged_${key.replace(/\s+/g, '_')}`,
-          name: rawName,
+      const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim();
+      const cleanKey = cleanName.toLowerCase();
+      const rawKey = rawName.toLowerCase();
+      if (cleanKey && !map.has(cleanKey) && !map.has(rawKey)) {
+        map.set(cleanKey, {
+          item_id: `staged_${cleanKey.replace(/\s+/g, '_')}`,
+          name: cleanName || rawName,
           rate: Number(tx.rate_or_price) || 0,
           description: `${currentClient?.name || 'Client'} Staged Item`,
           status: 'active',
@@ -801,8 +812,10 @@ export const ClientArTab: React.FC = () => {
         unmappedItems++;
         const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
         unmappedSlipsSet.add(slipKey);
-        const name = (tx.item_or_description || '').trim();
-        if (name) unmappedNamesSet.add(name);
+        const rawName = (tx.item_or_description || '').trim();
+        const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim();
+        const finalName = cleanName || rawName;
+        if (finalName) unmappedNamesSet.add(finalName);
       }
 
       if ((tx.discrepancy_amount || 0) > 0) {
@@ -1296,7 +1309,9 @@ export const ClientArTab: React.FC = () => {
 
     uncatalogedTx.forEach((tx) => {
       const rawName = (tx.item_or_description || '').trim();
-      const key = rawName.toLowerCase();
+      const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim();
+      const displayName = cleanName || rawName;
+      const key = displayName.toLowerCase();
       if (!key) return;
 
       const cust = extractPropertyName(tx.source_file_name, tx.metadata_json) || clientName;
@@ -1310,7 +1325,7 @@ export const ClientArTab: React.FC = () => {
       let entry = itemsMap.get(key);
       if (!entry) {
         entry = {
-          itemName: rawName,
+          itemName: displayName,
           occurrences: 0,
           slips: new Set<string>(),
           customers: new Set<string>(),

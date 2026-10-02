@@ -457,6 +457,29 @@ def init_db():
             except Exception as purge_corrupted_err:
                 logger.debug(f"Notice purging corrupted dummy staged records: {purge_corrupted_err}")
 
+            # Auto-heal leading colons and punctuation in StagedTransaction item descriptions
+            try:
+                colon_staged = session.exec(
+                    select(StagedTransaction).where(
+                        (StagedTransaction.item_or_description.like(":%"))
+                        | (StagedTransaction.item_or_description.like(";%"))
+                        | (StagedTransaction.item_or_description.like("-%"))
+                    )
+                ).all()
+                if colon_staged:
+                    import re
+                    updated_count = 0
+                    for ctx in colon_staged:
+                        cleaned_desc = re.sub(r"^[:;\s\-•.]+", "", ctx.item_or_description or "").strip()
+                        if cleaned_desc and cleaned_desc != ctx.item_or_description:
+                            ctx.item_or_description = cleaned_desc
+                            session.add(ctx)
+                            updated_count += 1
+                    session.commit()
+                    logger.info(f"Auto-healed {updated_count} StagedTransaction records with leading punctuation in item description.")
+            except Exception as auto_heal_desc_err:
+                logger.debug(f"Notice auto-healing item descriptions: {auto_heal_desc_err}")
+
             # Ensure the primary firm partner exists
             admin_email = (settings.AUTH_EMAIL or "cdanso@service4gh.com").strip().lower()
             existing_admin_member = session.exec(

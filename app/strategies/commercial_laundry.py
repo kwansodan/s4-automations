@@ -1,5 +1,4 @@
-"""Commercial Laundry Automation Strategy for Daily Handwritten Pickup/Delivery Slips."""
-
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -83,9 +82,11 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                 unit_rate = line.unit_rate or 15.0
                 total_billed = (line.delivery_qty or 0) * unit_rate
 
+                raw_desc = line.standard_item_name or line.raw_item_name or "Linen Item"
+                clean_desc = re.sub(r"^[:;\s\-•.]+", "", str(raw_desc)).strip()
                 items.append(
                     ExtractedLineItem(
-                        item_or_description=line.standard_item_name or line.raw_item_name,
+                        item_or_description=clean_desc,
                         category_or_account="Linen Laundry Service",
                         quantity_or_debit=float(line.delivery_qty or 0),
                         credit_amount=float(line.pickup_qty or 0),
@@ -146,7 +147,7 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                         source_type="google_drive",
                         source_file_name=str(file_name),
                         source_identifier=source_identifier,
-                        item_or_description=i.item_or_description,
+                        item_or_description=re.sub(r"^[:;\s\-•.]+", "", str(i.item_or_description or "")).strip(),
                         category_or_account=i.category_or_account or "Linen Laundry Service",
                         quantity_or_debit=i.quantity_or_debit,
                         credit_amount=i.credit_amount,

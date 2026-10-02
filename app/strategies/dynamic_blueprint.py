@@ -482,6 +482,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         ext_items = []
                         total_amt = 0.0
                         for it in extraction_obj.items:
+                            raw_desc = it.standard_item_name or it.raw_item_name or "Linen Item"
+                            clean_name = re.sub(r"^[:;\s\-•.]+", "", str(raw_desc)).strip()
+                            clean_std = re.sub(r"^[:;\s\-•.]+", "", str(it.standard_item_name)).strip() if it.standard_item_name else None
+                            clean_raw = re.sub(r"^[:;\s\-•.]+", "", str(it.raw_item_name)).strip() if it.raw_item_name else None
                             p_qty = float(it.pickup_qty or 0)
                             d_qty = float(it.delivery_qty or 0)
                             loss = float(it.unreturned_loss_qty or max(0, p_qty - d_qty))
@@ -490,10 +494,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             line_tot = float(billed_qty * u_rate)
                             total_amt += line_tot
                             ext_items.append({
-                                "name": it.standard_item_name or it.raw_item_name,
-                                "item_name": it.standard_item_name or it.raw_item_name,
-                                "standard_item_name": it.standard_item_name,
-                                "raw_item_name": it.raw_item_name,
+                                "name": clean_name,
+                                "item_name": clean_name,
+                                "standard_item_name": clean_std or clean_name,
+                                "raw_item_name": clean_raw or clean_name,
                                 "pickup_qty": p_qty,
                                 "delivery_qty": d_qty,
                                 "quantity": billed_qty,
@@ -776,6 +780,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                                 or f"Line Item ({doc.file_name})"
                             )
 
+                        item_desc = re.sub(r"^[:;\s\-•.]+", "", str(item_desc)).strip()
+
                         raw_qty = raw_it.get(mapped_qty_col) if (mapped_qty_col and raw_it.get(mapped_qty_col) is not None) else raw_it.get("quantity")
                         raw_pickup = raw_it.get(mapped_custody_col) if (mapped_custody_col and raw_it.get(mapped_custody_col) is not None) else (raw_it.get("pickup_qty") or raw_it.get("picked_up") or raw_it.get("pickup"))
                         raw_deliv = raw_it.get(mapped_qty_col) if (mapped_qty_col and raw_it.get(mapped_qty_col) is not None) else (raw_it.get("delivery_qty") or raw_it.get("delivered") or raw_it.get("delivery"))
@@ -948,7 +954,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     source_type=self.client.source_type or "google_drive",
                     source_file_name=str(file_name),
                     source_identifier=source_identifier,
-                    item_or_description=it.item_or_description,
+                    item_or_description=re.sub(r"^[:;\s\-•.]+", "", str(it.item_or_description or "")).strip(),
                     category_or_account=it.category_or_account,
                     quantity_or_debit=it.quantity_or_debit,
                     credit_amount=it.credit_amount,

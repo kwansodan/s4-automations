@@ -315,6 +315,7 @@ Return strictly valid JSON conforming to the schema.
         import json
         cleaned = re.sub(r"^```json\s*", "", text.strip(), flags=re.MULTILINE)
         cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
+        parsed: Optional[OCRSlipExtraction] = None
         try:
             data = json.loads(cleaned)
             if isinstance(data, dict):
@@ -322,14 +323,28 @@ Return strictly valid JSON conforming to the schema.
                     data["file_name"] = file_name
                 if not data.get("client_name") and client_name:
                     data["client_name"] = client_name
-                return OCRSlipExtraction.model_validate(data)
+                parsed = OCRSlipExtraction.model_validate(data)
         except Exception:
             pass
-        return OCRSlipExtraction.model_validate_json(cleaned)
+        if not parsed:
+            parsed = OCRSlipExtraction.model_validate_json(cleaned)
+
+        if parsed and parsed.items:
+            for it in parsed.items:
+                if it.raw_item_name:
+                    it.raw_item_name = re.sub(r"^[:;\s\-•.]+", "", str(it.raw_item_name)).strip()
+                if it.standard_item_name:
+                    it.standard_item_name = re.sub(r"^[:;\s\-•.]+", "", str(it.standard_item_name)).strip()
+        return parsed
 
     def _reconcile_with_catalog(self, extraction: OCRSlipExtraction, item_catalog: List[ZohoItem]):
         """Fuzzy matches and sets missing zoho_item_id and unit_rate for extracted items."""
         for item in extraction.items:
+            if item.raw_item_name:
+                item.raw_item_name = re.sub(r"^[:;\s\-•.]+", "", str(item.raw_item_name)).strip()
+            if item.standard_item_name:
+                item.standard_item_name = re.sub(r"^[:;\s\-•.]+", "", str(item.standard_item_name)).strip()
+
             matched_item = self.find_best_matching_item(
                 item.standard_item_name or item.raw_item_name, item_catalog
             )
@@ -352,7 +367,7 @@ Return strictly valid JSON conforming to the schema.
         if not text or not item_catalog:
             return None
 
-        cleaned = text.lower().strip()
+        cleaned = re.sub(r"^[:;\s\-•.]+", "", str(text)).strip().lower()
         
         # 1. Direct synonym mapping
         SYNONYMS = {

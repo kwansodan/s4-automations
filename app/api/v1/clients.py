@@ -1169,6 +1169,15 @@ async def list_client_transactions(
                     db.add(t)
                     has_healed = True
 
+            # Auto-heal item descriptions with leading punctuation (e.g. :Bath mat -> Bath mat)
+            desc = str(t.item_or_description or "").strip()
+            if desc and re.match(r"^[:;\s\-•.]+", desc):
+                cleaned_desc = re.sub(r"^[:;\s\-•.]+", "", desc).strip()
+                if cleaned_desc and cleaned_desc != desc:
+                    t.item_or_description = cleaned_desc
+                    db.add(t)
+                    has_healed = True
+
             meta = dict(t.metadata_json or {})
             if not meta.get("drive_file_url") and t.source_identifier:
                 meta["drive_file_url"] = f"https://drive.google.com/file/d/{t.source_identifier}/view"
@@ -1251,6 +1260,15 @@ async def get_client_transactions_summary(
                 )
                 if resolved and resolved != t.transaction_date:
                     t.transaction_date = resolved
+                    db.add(t)
+                    has_healed = True
+
+            # Auto-heal item descriptions with leading punctuation (e.g. :Bath mat -> Bath mat)
+            desc = str(t.item_or_description or "").strip()
+            if desc and re.match(r"^[:;\s\-•.]+", desc):
+                cleaned_desc = re.sub(r"^[:;\s\-•.]+", "", desc).strip()
+                if cleaned_desc and cleaned_desc != desc:
+                    t.item_or_description = cleaned_desc
                     db.add(t)
                     has_healed = True
 
@@ -1824,7 +1842,7 @@ async def create_staged_transaction(
         source_file_name=payload.source_file_name or "Manual Line Item",
         source_identifier=s_ident,
         checksum=checksum,
-        item_or_description=payload.item_or_description.strip(),
+        item_or_description=re.sub(r"^[:;\s\-•.]+", "", str(payload.item_or_description)).strip(),
         category_or_account=payload.category_or_account,
         quantity_or_debit=qty,
         credit_amount=credit,
@@ -1898,7 +1916,7 @@ async def update_staged_transaction(
     else:
         tx.discrepancy_amount = max(0.0, tx.credit_amount - tx.quantity_or_debit)
     if "item_or_description" in payload:
-        tx.item_or_description = str(payload["item_or_description"])
+        tx.item_or_description = re.sub(r"^[:;\s\-•.]+", "", str(payload["item_or_description"])).strip()
     if "transaction_date" in payload and payload["transaction_date"]:
         tx.transaction_date = str(payload["transaction_date"]).strip()
         meta = dict(tx.metadata_json or {})
