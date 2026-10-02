@@ -1543,7 +1543,7 @@ export const ClientArTab: React.FC = () => {
         row.slips_count || 0,
         row.is_fully_reviewed ? 'Yes' : 'No',
         row.is_fully_approved ? 'Yes' : 'No',
-        escapeCsv(row.status || 'PENDING'),
+        escapeCsv(row.is_fully_approved ? 'Approved' : 'Pending'),
       ];
       rows.push(r.join(','));
     });
