@@ -1,4 +1,5 @@
 import calendar
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import inngest
@@ -17,6 +18,26 @@ from app.utils.logging import get_logger
 from app.utils.progress_tracker import pipeline_tracker
 
 logger = get_logger("zoho_invoice_generator")
+
+
+def extract_slip_customer_name(source_file_name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Extracts customer / property name from slip metadata or source filename."""
+    metadata = metadata or {}
+    if metadata.get("customer_name") and str(metadata["customer_name"]).strip():
+        return str(metadata["customer_name"]).strip()
+    if metadata.get("customer") and str(metadata["customer"]).strip():
+        return str(metadata["customer"]).strip()
+    if metadata.get("property_name") and str(metadata["property_name"]).strip():
+        return str(metadata["property_name"]).strip()
+    if metadata.get("customer_name_hint") and str(metadata["customer_name_hint"]).strip():
+        return str(metadata["customer_name_hint"]).strip()
+    if not source_file_name:
+        return "General Customer"
+    base = re.sub(r"\.[a-zA-Z0-9]+$", "", source_file_name).strip()
+    base = re.sub(r"[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$", "", base, flags=re.I).strip()
+    base = re.sub(r"^(manual_slip_|manual_bill_|manual_|slip_)", "", base, flags=re.I).strip()
+    base = base.replace("_", " ").strip()
+    return base if base else "General Customer"
 
 
 async def run_zoho_invoices_core(
@@ -100,8 +121,11 @@ async def run_zoho_invoices_core(
                             except Exception:
                                 pass
                         if match_month:
+                            cust_name = extract_slip_customer_name(st.source_file_name, st.metadata_json)
                             approved_rows.append({
                                 "row_index": idx,
+                                "tenant_id": st.client_id,
+                                "customer_name": cust_name,
                                 "client_name": st.client_id,
                                 "zoho_contact_id": (st.metadata_json or {}).get("zoho_contact_id", ""),
                                 "zoho_item_id": st.accounting_ref_id or (st.metadata_json or {}).get("zoho_item_id", ""),
@@ -119,6 +143,7 @@ async def run_zoho_invoices_core(
                                 "status": "APPROVED",
                                 "_staged_transaction_id": st.id,
                             })
+
 
             logger.info(f"Retrieved {len(approved_rows)} approved items from PostgreSQL ledger ready for invoicing.")
             return {
@@ -152,52 +177,48 @@ async def run_zoho_invoices_core(
         )
         pipeline_tracker.add_log("info", f"Found {len(approved_rows)} approved line items to invoice.")
 
-        # Step 2: Group by Client & Generate Draft Invoices
+        # Step 2: Group by Customer (recipient on delivery slip) & Generate Draft Invoices in Tenant's Zoho Books
         async def generate_invoices() -> Dict[str, Any]:
-            client_groups: Dict[str, List[Dict[str, Any]]] = {}
+            customer_groups: Dict[str, List[Dict[str, Any]]] = {}
             for row in approved_rows:
-                client = row.get("client_name", "Unknown Client")
-                client_groups.setdefault(client, []).append(row)
+                customer = row.get("customer_name") or "General Customer"
+                customer_groups.setdefault(customer, []).append(row)
 
             created_invoices: List[Dict[str, Any]] = []
 
-            for client_name, items in client_groups.items():
+            for customer_name, items in customer_groups.items():
+                tenant_slug = items[0].get("tenant_id") or filter_client_name or "anr_group"
                 zoho_org_id = None
-                client_obj = None
+                tenant_obj = None
                 with Session(get_engine()) as session:
-                    client_slug = client_name.lower().replace(" ", "_")
-                    client_obj = session.exec(
+                    tenant_obj = session.exec(
                         select(ClientOrganization).where(
-                            (ClientOrganization.id == client_slug) | (ClientOrganization.name == client_name)
+                            (ClientOrganization.id == tenant_slug) | (ClientOrganization.name == tenant_slug)
                         )
                     ).first()
-                    if client_obj:
-                        zoho_org_id = client_obj.zoho_org_id
+                    if tenant_obj:
+                        zoho_org_id = tenant_obj.zoho_org_id
 
                 zoho = ZohoBooksService(org_id=zoho_org_id)
-                contact_id = items[0].get("zoho_contact_id") or (client_obj.zoho_contact_id if client_obj else None)
+                contact_id = items[0].get("zoho_contact_id")
                 if not contact_id:
-                    contact = zoho.find_contact_by_name(client_name)
-                    contact_id = contact.contact_id if contact else ""
-
-                if not contact_id and client_obj:
-                    contact = zoho.find_contact_by_name(client_obj.name) or zoho.find_contact_by_name(client_obj.id)
+                    contact = zoho.find_contact_by_name(customer_name)
                     contact_id = contact.contact_id if contact else ""
 
                 if not contact_id:
                     from app.config import settings
                     if settings.MOCK_MODE or not zoho.org_id:
-                        contact_id = f"cnt_auto_{client_name.lower().replace(' ', '_')[:16]}"
-                        logger.info(f"Using default contact ID '{contact_id}' for client '{client_name}'.")
+                        contact_id = f"cnt_auto_{customer_name.lower().replace(' ', '_')[:16]}"
+                        logger.info(f"Using default contact ID '{contact_id}' for customer '{customer_name}' in tenant '{tenant_slug}'.")
                     else:
-                        logger.warning(f"Could not determine Zoho Contact ID for client '{client_name}'. Skipping.")
-                        pipeline_tracker.add_log("warning", f"Skipping {client_name}: Contact ID not matched in Zoho Books.")
+                        logger.warning(f"Could not determine Zoho Contact ID for customer '{customer_name}' in tenant '{tenant_obj.name if tenant_obj else tenant_slug}'. Skipping.")
+                        pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Contact ID not matched in Zoho Books.")
                         continue
 
                 # Determine whether to include descriptions for this client's line items
                 should_include_desc = include_line_item_description
-                if should_include_desc is None and client_obj:
-                    should_include_desc = (client_obj.custom_config or {}).get("include_line_item_description", True)
+                if should_include_desc is None and tenant_obj:
+                    should_include_desc = (tenant_obj.custom_config or {}).get("include_line_item_description", True)
                 if should_include_desc is None:
                     should_include_desc = True
 
@@ -226,15 +247,16 @@ async def run_zoho_invoices_core(
                         )
                     )
 
+                tenant_display_name = tenant_obj.name if tenant_obj else "Commercial Laundry"
                 inv_request = ZohoDraftInvoiceRequest(
                     customer_id=contact_id,
                     date=inv_date,
                     line_items=zoho_line_items,
-                    notes=f"ANR Commercial Laundry Service Billing for {target_month} {target_year}. (Source: In-App PostgreSQL Ledger)",
+                    notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
                     terms="Payment due within 14 days of invoice date.",
                 )
 
-                pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {client_name} (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
+                pipeline_tracker.add_log("info", f"Drafting/Appending to Zoho Books Invoice for {customer_name} in {tenant_display_name}'s organization (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...")
                 response = await zoho.create_or_append_draft_invoice(inv_request, target_month, target_year)
 
                 # Also update corresponding staged_transactions in PostgreSQL
@@ -254,9 +276,10 @@ async def run_zoho_invoices_core(
 
                 pipeline_tracker.add_log(
                     "success",
-                    f"🎉 Processed Draft Invoice {response.invoice_number} for {client_name} (Total: GHS {response.total:.2f}). Marked INVOICED.",
+                    f"🎉 Processed Draft Invoice {response.invoice_number} for customer {customer_name} in {tenant_display_name}'s Zoho Books (Total: GHS {response.total:.2f}). Marked INVOICED.",
                 )
                 created_invoices.append(response.model_dump())
+
 
             return {
                 "status": "COMPLETED",

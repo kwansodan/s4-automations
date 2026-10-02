@@ -454,6 +454,14 @@ export interface DryRunResult {
   ready_for_review_sheets: boolean;
 }
 
+export interface CustomerInvoiceGroupSummary {
+  customerName: string;
+  itemsCount: number;
+  totalAmount: number;
+  isReconciled: boolean;
+  zohoContactId?: string;
+}
+
 export interface InvoicePreflightAudit {
   clientId?: string;
   clientName?: string;
@@ -471,8 +479,12 @@ export interface InvoicePreflightAudit {
   lowConfidenceApprovedCount: number;
   unreviewedSlipsCount: number;
   zohoContactMatched: boolean;
+  matchedCustomersCount: number;
+  unmatchedCustomers: string[];
+  customerSummaries: CustomerInvoiceGroupSummary[];
   zohoContactName?: string;
   zohoContactId?: string;
   lossCount?: number;
 }
+
 

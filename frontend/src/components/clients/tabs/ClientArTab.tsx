@@ -1930,6 +1930,54 @@ export const ClientArTab: React.FC = () => {
     const lowConfApproved = approvedTx.filter((t) => isItemLowConf(t));
     const totalLoss = approvedTx.reduce((sum, t) => sum + (t.discrepancy_amount || 0), 0);
 
+    // Group approved items by Customer (recipient on slip) and reconcile against tenant's Zoho contacts
+    const customerMap: Record<
+      string,
+      { itemsCount: number; totalAmount: number; zohoContactId?: string; isReconciled: boolean }
+    > = {};
+    const contacts = clientContacts.length > 0 ? clientContacts : catalog?.contacts || [];
+
+    approvedTx.forEach((tx) => {
+      const cust = extractPropertyName(tx.source_file_name, tx.metadata_json) || 'General Customer';
+      if (!customerMap[cust]) {
+        const cLower = cust.toLowerCase();
+        const found = contacts.find((c: any) => {
+          const cName = (c.contact_name || '').trim().toLowerCase();
+          const compName = (c.company_name || '').trim().toLowerCase();
+          return (
+            cName === cLower ||
+            compName === cLower ||
+            (cLower.length > 2 &&
+              (cName.includes(cLower) ||
+                compName.includes(cLower) ||
+                cLower.includes(cName) ||
+                cLower.includes(compName)))
+          );
+        });
+
+        customerMap[cust] = {
+          itemsCount: 0,
+          totalAmount: 0,
+          isReconciled: Boolean(found),
+          zohoContactId: found ? found.contact_id : undefined,
+        };
+      }
+      customerMap[cust].itemsCount++;
+      customerMap[cust].totalAmount += tx.total_amount || 0;
+    });
+
+    const customerSummaries = Object.entries(customerMap).map(([custName, data]) => ({
+      customerName: custName,
+      itemsCount: data.itemsCount,
+      totalAmount: data.totalAmount,
+      isReconciled: data.isReconciled,
+      zohoContactId: data.zohoContactId,
+    }));
+
+    const unmatchedCustomers = customerSummaries.filter((c) => !c.isReconciled).map((c) => c.customerName);
+    const matchedCustomersCount = customerSummaries.filter((c) => c.isReconciled).length;
+    const allCustomersReconciled = customerSummaries.length > 0 && unmatchedCustomers.length === 0;
+
     const audit: InvoicePreflightAudit = {
       clientId: currentClient.id,
       clientName: currentClient.name,
@@ -1946,12 +1994,12 @@ export const ClientArTab: React.FC = () => {
       zeroRateItemNames: zeroRateNames,
       lowConfidenceApprovedCount: lowConfApproved.length,
       unreviewedSlipsCount: slipKpis.unreviewedSlips,
-      zohoContactMatched: Boolean(matchedZohoContact || currentClient.zohoContactId),
-      zohoContactName: matchedZohoContact ? (matchedZohoContact.company_name || matchedZohoContact.contact_name) : undefined,
-      zohoContactId: matchedZohoContact ? matchedZohoContact.contact_id : (currentClient.zohoContactId || undefined),
+      zohoContactMatched: allCustomersReconciled,
+      matchedCustomersCount: matchedCustomersCount,
+      unmatchedCustomers: unmatchedCustomers,
+      customerSummaries: customerSummaries,
       lossCount: totalLoss,
     };
-
 
     setInvoicePreflight(audit);
     setIsInvoiceModalOpen(true);

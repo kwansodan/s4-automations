@@ -88,6 +88,40 @@ export const InvoiceModal: React.FC = () => {
           (t: any) => t.confidence_score === 'LOW' || (typeof t.confidence === 'number' && t.confidence < 0.8)
         );
 
+        // Group by customer (recipient on delivery slip)
+        const customerMap: Record<string, { itemsCount: number; totalAmount: number; isReconciled: boolean }> = {};
+        approvedTx.forEach((tx: any) => {
+          let cust = 'General Customer';
+          if (tx.metadata_json?.customer_name) cust = String(tx.metadata_json.customer_name).trim();
+          else if (tx.metadata_json?.customer) cust = String(tx.metadata_json.customer).trim();
+          else if (tx.metadata_json?.property_name) cust = String(tx.metadata_json.property_name).trim();
+          else if (tx.source_file_name) {
+            cust =
+              tx.source_file_name
+                .replace(/\.[a-zA-Z0-9]+$/, '')
+                .replace(/[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$/i, '')
+                .replace(/^(manual_slip_|manual_bill_|manual_|slip_)/i, '')
+                .replace(/_/g, ' ')
+                .trim() || 'General Customer';
+          }
+          if (!customerMap[cust]) {
+            customerMap[cust] = { itemsCount: 0, totalAmount: 0, isReconciled: false };
+          }
+          customerMap[cust].itemsCount++;
+          customerMap[cust].totalAmount += tx.total_amount || 0;
+        });
+
+        const customerSummaries = Object.entries(customerMap).map(([custName, data]) => ({
+          customerName: custName,
+          itemsCount: data.itemsCount,
+          totalAmount: data.totalAmount,
+          isReconciled: data.isReconciled,
+        }));
+
+        const unmatchedCustomers = customerSummaries.filter((c) => !c.isReconciled).map((c) => c.customerName);
+        const matchedCustomersCount = customerSummaries.filter((c) => c.isReconciled).length;
+        const allCustomersReconciled = customerSummaries.length > 0 && unmatchedCustomers.length === 0;
+
         const audit: InvoicePreflightAudit = {
           clientId: targetClient.id,
           clientName: targetClient.name,
@@ -104,13 +138,17 @@ export const InvoiceModal: React.FC = () => {
           zeroRateItemNames: zeroRateNames as string[],
           lowConfidenceApprovedCount: lowConfApproved.length,
           unreviewedSlipsCount: txs.filter((t: any) => !t.reviewed).length,
-          zohoContactMatched: Boolean(targetClient.zohoContactId),
+          zohoContactMatched: allCustomersReconciled,
+          matchedCustomersCount: matchedCustomersCount,
+          unmatchedCustomers: unmatchedCustomers,
+          customerSummaries: customerSummaries,
           zohoContactName: targetClient.name,
           zohoContactId: targetClient.zohoContactId,
         };
 
         setInvoicePreflight(audit);
       })
+
 
       .catch((err) => {
         console.warn('Could not compute preflight audit:', err);
@@ -311,32 +349,71 @@ export const InvoiceModal: React.FC = () => {
 
             {isAuditExpanded && (
               <div className="space-y-2 pt-1 text-xs">
-                {/* 1. Customer Reconciled Check */}
+                {/* 1. Customer Reconciliation Check */}
                 {!hasZohoMismatch ? (
                   <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                    <div>
-                      <span className="font-semibold text-white">Customer Reconciled: </span>
-                      <span>{invoicePreflight?.zohoContactName || currentClient?.name}</span>
-                      {invoicePreflight?.zohoContactId && (
-                        <span className="font-mono text-emerald-300/80 ml-1">
-                          (Zoho ID: {invoicePreflight.zohoContactId})
-                        </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-white">
+                        All Customers Reconciled ({invoicePreflight?.customerSummaries?.length || 1}):{' '}
+                      </span>
+                      <span>
+                        Every customer on approved slips matches an active contact in {currentClient?.name || 'tenant'}'s Zoho Books.
+                      </span>
+                      {invoicePreflight?.customerSummaries && invoicePreflight.customerSummaries.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {invoicePreflight.customerSummaries.map((c) => (
+                            <span
+                              key={c.customerName}
+                              className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded"
+                            >
+                              <span className="font-bold text-white">{c.customerName}:</span>
+                              <span>
+                                {c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}
+                              </span>
+                              <span className="text-emerald-400 font-semibold">({formatCurrency(c.totalAmount)})</span>
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-semibold text-amber-200">Customer Not Reconciled: </span>
-                      <span>
-                        No linked Zoho Customer contact. The system will attempt fuzzy name matching or generate a
-                        fallback contact reference.
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-amber-200">
+                        Unmatched Customers ({invoicePreflight?.unmatchedCustomers?.length || 1}):{' '}
                       </span>
+                      <span>
+                        The following customer(s) on approved slips were not found in {currentClient?.name || 'tenant'}'s Zoho Books contacts:{' '}
+                        <strong className="text-amber-100">{invoicePreflight?.unmatchedCustomers?.join(', ')}</strong>. The system will attempt fuzzy name matching or fallback contact creation.
+                      </span>
+                      {invoicePreflight?.customerSummaries && invoicePreflight.customerSummaries.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {invoicePreflight.customerSummaries.map((c) => (
+                            <span
+                              key={c.customerName}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border ${
+                                c.isReconciled
+                                  ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                              }`}
+                            >
+                              <span>{c.isReconciled ? '✓' : '⚠️'}</span>
+                              <span className="font-bold">{c.customerName}:</span>
+                              <span>
+                                {c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}
+                              </span>
+                              <span className="font-semibold">({formatCurrency(c.totalAmount)})</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
+
 
                 {/* 2. Incomplete Month / Period Coverage Check */}
                 {hasUnapprovedItems ? (
