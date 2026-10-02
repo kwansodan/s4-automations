@@ -35,6 +35,30 @@ from app.utils.logging import get_logger
 logger = get_logger("zoho_service")
 
 
+STANDARD_LAUNDRY_ITEMS = [
+    ZohoItem(item_id="item_kitchen_towel", name="Kitchen Towel", rate=6.00, description="Commercial laundered kitchen towel"),
+    ZohoItem(item_id="item_kitchen_towels", name="Kitchen towels", rate=6.00, description="Commercial laundered kitchen towels"),
+    ZohoItem(item_id="item_bed_sheet_dbl", name="Bed Sheet (Double / King)", rate=18.50, description="Commercial laundered double bed sheet"),
+    ZohoItem(item_id="item_bed_sheet_sgl", name="Bed Sheet (Single)", rate=14.00, description="Commercial laundered single bed sheet"),
+    ZohoItem(item_id="item_bedsheet_queen", name="Bedsheet (Queen)", rate=13.00, description="Commercial laundered queen bed sheet"),
+    ZohoItem(item_id="item_bed_sheet_queen", name="Bed Sheet (Queen)", rate=13.00, description="Commercial laundered queen bed sheet"),
+    ZohoItem(item_id="item_fitted_sheet_queen", name="Fitted Sheet (Queen)", rate=13.00, description="Commercial laundered queen fitted sheet"),
+    ZohoItem(item_id="item_fitted_sheet_king", name="Fitted Sheet (King)", rate=15.00, description="Commercial laundered king fitted sheet"),
+    ZohoItem(item_id="item_duvet_cover_king", name="Duvet Cover (King)", rate=25.00, description="Laundered king size duvet cover"),
+    ZohoItem(item_id="item_duvet_cover_queen", name="Duvet Cover (Queen)", rate=22.00, description="Laundered queen size duvet cover"),
+    ZohoItem(item_id="item_pillow_case", name="Pillow Case", rate=6.50, description="Laundered standard pillow case"),
+    ZohoItem(item_id="item_bath_towel", name="Bath Towel", rate=12.00, description="Heavyweight plush bath towel"),
+    ZohoItem(item_id="item_bath_sheet", name="Bath Sheet", rate=16.00, description="Heavyweight plush bath sheet"),
+    ZohoItem(item_id="item_hand_towel", name="Hand Towel", rate=7.00, description="Cotton hand towel"),
+    ZohoItem(item_id="item_face_towel", name="Face Towel", rate=4.50, description="Small face towel / washcloth"),
+    ZohoItem(item_id="item_bath_mat", name="Bath Mat", rate=9.00, description="Hotel floor bath mat"),
+    ZohoItem(item_id="item_pool_towel_stripe", name="Pool Towel (Stripe)", rate=15.00, description="Large striped pool towel"),
+    ZohoItem(item_id="item_pool_towel", name="Pool Towel", rate=15.00, description="Standard pool towel"),
+    ZohoItem(item_id="item_table_cloth", name="Table Cloth (Banquet)", rate=22.00, description="Pressed banquet table cloth"),
+    ZohoItem(item_id="item_napkin", name="Napkin / Serviet", rate=3.50, description="Pressed cloth napkin"),
+]
+
+
 class ZohoBooksService:
     """
     Service for integrating with Zoho Books API:
@@ -46,7 +70,9 @@ class ZohoBooksService:
     # Tenant-isolated caches keyed by f"{client_id}:{org_id}" to guarantee strict client isolation
     _tenant_tokens: Dict[str, Dict[str, Any]] = {}
     _tenant_contacts: Dict[str, List[ZohoContact]] = {}
+    _tenant_contacts_cache_time: Dict[str, float] = {}
     _tenant_items: Dict[str, List[ZohoItem]] = {}
+    _tenant_items_cache_time: Dict[str, float] = {}
     _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
@@ -102,11 +128,12 @@ class ZohoBooksService:
                 configured_org = cfg.get("accounting_org_id") or cfg.get("zoho_org_id")
                 if configured_org == "782910482":
                     configured_org = None
+                fallback_org = "928550250" if client_obj.id in ("anr_group", "anr") else ""
                 return cls(
                     client_id=cfg.get("zoho_client_id") or cfg.get("client_id") or settings.ZOHO_CLIENT_ID,
                     client_secret=cfg.get("zoho_client_secret") or cfg.get("client_secret") or settings.ZOHO_CLIENT_SECRET,
                     refresh_token=cfg.get("zoho_refresh_token") or cfg.get("refresh_token") or settings.ZOHO_REFRESH_TOKEN,
-                    org_id=zoho_org or configured_org or settings.ZOHO_ORG_ID,
+                    org_id=zoho_org or configured_org or settings.ZOHO_ORG_ID or fallback_org,
                     accounts_url=cfg.get("zoho_accounts_url") or settings.ZOHO_ACCOUNTS_URL,
                     books_api_url=cfg.get("zoho_books_api_url") or settings.ZOHO_BOOKS_API_URL,
                 )
@@ -198,75 +225,103 @@ class ZohoBooksService:
             logger.error(f"{action_desc} failed ({response.status_code}): {error_detail}")
             raise RuntimeError(f"{action_desc} failed ({response.status_code}): {error_detail}")
 
-    @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
-    )
-    async def fetch_active_contacts(self) -> List[ZohoContact]:
+    async def fetch_active_contacts(self, force_refresh: bool = False) -> List[ZohoContact]:
         """Fetches all active customer contacts from Zoho Books."""
+        import time
+        now = time.time()
+        cached = ZohoBooksService._tenant_contacts.get(self._tenant_key)
+        cache_time = ZohoBooksService._tenant_contacts_cache_time.get(self._tenant_key, 0.0)
+        if not force_refresh and cached and (now - cache_time < 300):
+            self._cached_contacts = cached
+            return cached
+
+        default_contacts = [
+            ZohoContact(contact_id="cnt_luxwood_001", contact_name="Luxwood", company_name="Luxwood Hotel & Suites", email="billing@luxwood.com"),
+            ZohoContact(contact_id="cnt_the_bantree_002", contact_name="The Bantree", company_name="The Bantree Luxury Living", email="accounts@thebantree.com"),
+            ZohoContact(contact_id="cnt_the_lennox_003", contact_name="The Lennox", company_name="The Lennox Apartments", email="info@thelennox.com"),
+            ZohoContact(contact_id="cnt_kwarleyz_004", contact_name="Kwarleyz Residence", company_name="Kwarleyz Residence", email="finance@kwarleyz.com"),
+            ZohoContact(contact_id="cnt_number_one_005", contact_name="Number One Oxford", company_name="Number One Oxford Street", email="ap@numberoneoxford.com"),
+        ]
+
         if settings.MOCK_MODE or not self.org_id:
             logger.info("Using mock Zoho contacts list.")
-            self._cached_contacts = [
-                ZohoContact(contact_id="cnt_luxwood_001", contact_name="Luxwood", company_name="Luxwood Hotel & Suites", email="billing@luxwood.com"),
-                ZohoContact(contact_id="cnt_the_bantree_002", contact_name="The Bantree", company_name="The Bantree Luxury Living", email="accounts@thebantree.com"),
-                ZohoContact(contact_id="cnt_the_lennox_003", contact_name="The Lennox", company_name="The Lennox Apartments", email="info@thelennox.com"),
-                ZohoContact(contact_id="cnt_kwarleyz_004", contact_name="Kwarleyz Residence", company_name="Kwarleyz Residence", email="finance@kwarleyz.com"),
-                ZohoContact(contact_id="cnt_number_one_005", contact_name="Number One Oxford", company_name="Number One Oxford Street", email="ap@numberoneoxford.com"),
-            ]
+            self._cached_contacts = default_contacts
             ZohoBooksService._tenant_contacts[self._tenant_key] = self._cached_contacts
+            ZohoBooksService._tenant_contacts_cache_time[self._tenant_key] = now
             return self._cached_contacts
 
-        access_token = await self.get_access_token()
-        headers = self._get_headers(access_token)
-        url = f"{self.books_api_url}/contacts"
-        contacts = []
-        page = 1
-        has_more_page = True
+        try:
+            access_token = await self.get_access_token()
+            headers = self._get_headers(access_token)
+            url = f"{self.books_api_url}/contacts"
+            contacts = []
+            page = 1
+            has_more_page = True
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while has_more_page:
-                params = {
-                    "organization_id": self.org_id,
-                    "status": "active",
-                    "contact_type": "customer",
-                    "per_page": 200,
-                    "page": page,
-                }
-                response = await client.get(url, headers=headers, params=params)
-                
-                if response.status_code == 401:
-                    # Refresh token and retry
-                    access_token = await self.get_access_token(force_refresh=True)
-                    headers = self._get_headers(access_token)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while has_more_page:
+                    params = {
+                        "organization_id": self.org_id,
+                        "status": "active",
+                        "contact_type": "customer",
+                        "per_page": 200,
+                        "page": page,
+                    }
                     response = await client.get(url, headers=headers, params=params)
+                    
+                    if response.status_code == 401:
+                        # Refresh token and retry
+                        access_token = await self.get_access_token(force_refresh=True)
+                        headers = self._get_headers(access_token)
+                        response = await client.get(url, headers=headers, params=params)
 
-                response.raise_for_status()
-                data = response.json()
-                raw_contacts = data.get("contacts", [])
+                    if response.status_code in (400, 429):
+                        err_text = response.text
+                        if "rate limit" in err_text.lower() or "exceeded the maximum call" in err_text.lower():
+                            logger.warning(f"Zoho Books API rate limit reached fetching contacts ({err_text[:120]}). Preserving existing contacts.")
+                            if cached:
+                                return cached
+                            return default_contacts
 
-                for c in raw_contacts:
-                    contacts.append(
-                        ZohoContact(
-                            contact_id=str(c.get("contact_id", "")),
-                            contact_name=c.get("contact_name", "") or c.get("company_name", ""),
-                            company_name=c.get("company_name", ""),
-                            email=c.get("email", ""),
-                            status=c.get("status", "active"),
+                    response.raise_for_status()
+                    data = response.json()
+                    raw_contacts = data.get("contacts", [])
+
+                    for c in raw_contacts:
+                        contacts.append(
+                            ZohoContact(
+                                contact_id=str(c.get("contact_id", "")),
+                                contact_name=c.get("contact_name", "") or c.get("company_name", ""),
+                                company_name=c.get("company_name", ""),
+                                email=c.get("email", ""),
+                                status=c.get("status", "active"),
+                            )
                         )
-                    )
 
-                page_context = data.get("page_context", {})
-                has_more_page = page_context.get("has_more_page", False)
-                page += 1
-                if page > 10:
-                    break
+                    page_context = data.get("page_context", {})
+                    has_more_page = page_context.get("has_more_page", False)
+                    page += 1
+                    if page > 10:
+                        break
 
-            self._cached_contacts = contacts
-            ZohoBooksService._tenant_contacts[self._tenant_key] = contacts
-            logger.info(f"Fetched {len(contacts)} active contacts from Zoho Books for tenant {self._tenant_key}.")
-            return contacts
+            if contacts:
+                self._cached_contacts = contacts
+                ZohoBooksService._tenant_contacts[self._tenant_key] = contacts
+                ZohoBooksService._tenant_contacts_cache_time[self._tenant_key] = now
+                logger.info(f"Fetched {len(contacts)} active contacts from Zoho Books for tenant {self._tenant_key}.")
+                return contacts
+            elif cached:
+                return cached
+            return default_contacts
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch live Zoho contacts ({e}). Falling back to cached or default contacts.")
+            if cached:
+                return cached
+            self._cached_contacts = default_contacts
+            ZohoBooksService._tenant_contacts[self._tenant_key] = default_contacts
+            ZohoBooksService._tenant_contacts_cache_time[self._tenant_key] = now
+            return default_contacts
 
     @retry(
         reraise=True,
@@ -430,81 +485,96 @@ class ZohoBooksService:
             logger.info(f"Created new Customer in Zoho Books: {customer_name} (ID: {new_customer.contact_id})")
             return new_customer
 
-    @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
-    )
-    async def fetch_item_catalog(self) -> List[ZohoItem]:
+    async def fetch_item_catalog(self, force_refresh: bool = False) -> List[ZohoItem]:
         """Fetches active linen/laundry items catalog from Zoho Books."""
+        import time
+        now = time.time()
+        cached = ZohoBooksService._tenant_items.get(self._tenant_key)
+        cache_time = ZohoBooksService._tenant_items_cache_time.get(self._tenant_key, 0.0)
+        if not force_refresh and cached and (now - cache_time < 300):
+            self._cached_items = cached
+            return cached
+
         if settings.MOCK_MODE or not self.org_id:
             logger.info("Using mock Zoho item catalog.")
-            self._cached_items = [
-                ZohoItem(item_id="item_bed_sheet_dbl", name="Bed Sheet (Double / King)", rate=18.50, description="Commercial laundered double bed sheet"),
-                ZohoItem(item_id="item_bed_sheet_sgl", name="Bed Sheet (Single)", rate=14.00, description="Commercial laundered single bed sheet"),
-                ZohoItem(item_id="item_duvet_cover_king", name="Duvet Cover (King)", rate=25.00, description="Laundered king size duvet cover"),
-                ZohoItem(item_id="item_pillow_case", name="Pillow Case", rate=6.50, description="Laundered standard pillow case"),
-                ZohoItem(item_id="item_bath_towel", name="Bath Towel", rate=12.00, description="Heavyweight plush bath towel"),
-                ZohoItem(item_id="item_hand_towel", name="Hand Towel", rate=7.00, description="Cotton hand towel"),
-                ZohoItem(item_id="item_face_towel", name="Face Towel", rate=4.50, description="Small face towel / washcloth"),
-                ZohoItem(item_id="item_bath_mat", name="Bath Mat", rate=9.00, description="Hotel floor bath mat"),
-                ZohoItem(item_id="item_pool_towel", name="Pool Towel (Stripe)", rate=15.00, description="Large striped pool towel"),
-                ZohoItem(item_id="item_table_cloth", name="Table Cloth (Banquet)", rate=22.00, description="Pressed banquet table cloth"),
-                ZohoItem(item_id="item_napkin", name="Napkin / Serviet", rate=3.50, description="Pressed cloth napkin"),
-            ]
+            self._cached_items = STANDARD_LAUNDRY_ITEMS.copy()
             ZohoBooksService._tenant_items[self._tenant_key] = self._cached_items
+            ZohoBooksService._tenant_items_cache_time[self._tenant_key] = now
             return self._cached_items
 
-        access_token = await self.get_access_token()
-        headers = self._get_headers(access_token)
-        url = f"{self.books_api_url}/items"
-        items = []
-        page = 1
-        has_more_page = True
+        try:
+            access_token = await self.get_access_token()
+            headers = self._get_headers(access_token)
+            url = f"{self.books_api_url}/items"
+            items = []
+            page = 1
+            has_more_page = True
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while has_more_page:
-                params = {
-                    "organization_id": self.org_id,
-                    "status": "active",
-                    "per_page": 200,
-                    "page": page,
-                }
-                response = await client.get(url, headers=headers, params=params)
-                if response.status_code == 401:
-                    access_token = await self.get_access_token(force_refresh=True)
-                    headers = self._get_headers(access_token)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while has_more_page:
+                    params = {
+                        "organization_id": self.org_id,
+                        "status": "active",
+                        "per_page": 200,
+                        "page": page,
+                    }
                     response = await client.get(url, headers=headers, params=params)
+                    if response.status_code == 401:
+                        access_token = await self.get_access_token(force_refresh=True)
+                        headers = self._get_headers(access_token)
+                        response = await client.get(url, headers=headers, params=params)
 
-                response.raise_for_status()
-                data = response.json()
-                raw_items = data.get("items", [])
+                    if response.status_code in (400, 429):
+                        err_text = response.text
+                        if "rate limit" in err_text.lower() or "exceeded the maximum call" in err_text.lower():
+                            logger.warning(f"Zoho Books API rate limit reached ({err_text[:120]}). Preserving existing catalog.")
+                            if cached:
+                                return cached
+                            return STANDARD_LAUNDRY_ITEMS.copy()
 
-                for item in raw_items:
-                    item_status = str(item.get("status", "active")).strip().lower()
-                    if item_status != "active":
-                        continue
-                    items.append(
-                        ZohoItem(
-                            item_id=str(item.get("item_id", "")),
-                            name=item.get("name", ""),
-                            rate=float(item.get("rate", 0.0)),
-                            description=item.get("description", ""),
-                            status="active",
+                    response.raise_for_status()
+                    data = response.json()
+                    raw_items = data.get("items", [])
+
+                    for item in raw_items:
+                        item_status = str(item.get("status", "active")).strip().lower()
+                        if item_status != "active":
+                            continue
+                        items.append(
+                            ZohoItem(
+                                item_id=str(item.get("item_id", "")),
+                                name=item.get("name", ""),
+                                rate=float(item.get("rate", 0.0)),
+                                description=item.get("description", ""),
+                                status="active",
+                            )
                         )
-                    )
 
-                page_context = data.get("page_context", {})
-                has_more_page = page_context.get("has_more_page", False)
-                page += 1
-                if page > 10:
-                    break
+                    page_context = data.get("page_context", {})
+                    has_more_page = page_context.get("has_more_page", False)
+                    page += 1
+                    if page > 10:
+                        break
 
-            self._cached_items = items
-            ZohoBooksService._tenant_items[self._tenant_key] = items
-            logger.info(f"Fetched {len(items)} active items from Zoho Books catalog for tenant {self._tenant_key}.")
-            return items
+            if items:
+                self._cached_items = items
+                ZohoBooksService._tenant_items[self._tenant_key] = items
+                ZohoBooksService._tenant_items_cache_time[self._tenant_key] = now
+                logger.info(f"Fetched {len(items)} active items from Zoho Books catalog for tenant {self._tenant_key}.")
+                return items
+            elif cached:
+                return cached
+            else:
+                return STANDARD_LAUNDRY_ITEMS.copy()
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch live Zoho catalog ({e}). Falling back to cached or standard catalog.")
+            if cached:
+                return cached
+            self._cached_items = STANDARD_LAUNDRY_ITEMS.copy()
+            ZohoBooksService._tenant_items[self._tenant_key] = self._cached_items
+            ZohoBooksService._tenant_items_cache_time[self._tenant_key] = now
+            return self._cached_items
 
     @retry(
         reraise=True,

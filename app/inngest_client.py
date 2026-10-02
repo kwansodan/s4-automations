@@ -37,7 +37,7 @@ if has_cloud_signing_key:
     )
 elif has_dev_server:
     # 2. Local Inngest Dev Server Mode
-    dev_url = settings.INNGEST_DEV_SERVER_URL.strip()
+    dev_url = (settings.INNGEST_DEV_SERVER_URL or "http://127.0.0.1:8288").strip()
     os.environ["INNGEST_BASE_URL"] = dev_url
     os.environ["INNGEST_DEV"] = "1"
     os.environ.pop("INNGEST_SIGNING_KEY", None)

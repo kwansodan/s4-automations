@@ -2284,7 +2284,7 @@ async def get_customer_mappings(
 
     contacts_list = []
     try:
-        from app.services.accounting.zoho_books_service import ZohoBooksService
+        from app.services.zoho_service import ZohoBooksService
         zoho = ZohoBooksService.from_client_id(client.id)
         if client.zoho_org_id:
             zoho.org_id = client.zoho_org_id

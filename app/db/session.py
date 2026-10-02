@@ -341,7 +341,13 @@ def init_db():
                         new_pipes.append(p_dict)
                     db_client.pipelines = new_pipes
 
-                if db_client.zoho_org_id == "782910482":
+                if db_client.id in ("anr_group", "anr"):
+                    if not db_client.zoho_org_id or db_client.zoho_org_id == "782910482":
+                        target_org = settings.ZOHO_ORG_ID or "928550250"
+                        logger.info(f"Auto-migrating client '{db_client.id}' zoho_org_id to '{target_org}'...")
+                        db_client.zoho_org_id = target_org
+                        needs_update = True
+                elif db_client.zoho_org_id == "782910482":
                     logger.info(f"Auto-migrating client '{db_client.id}' legacy dummy org ID 782910482 to dynamic ZOHO_ORG_ID: '{settings.ZOHO_ORG_ID}'...")
                     db_client.zoho_org_id = settings.ZOHO_ORG_ID or None
                     needs_update = True
