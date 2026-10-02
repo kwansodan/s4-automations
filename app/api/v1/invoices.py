@@ -58,13 +58,7 @@ async def trigger_invoice_generation(
         finally:
             worker_loop.close()
 
-    threading.Thread(
-        target=_run_invoices_worker,
-        daemon=True,
-        name=f"invoices-{target_month}-{target_year}",
-    ).start()
-
-
+    inngest_sent = False
     try:
         await inngest_client.send(
             inngest.Event(
@@ -72,8 +66,17 @@ async def trigger_invoice_generation(
                 data=event_data,
             )
         )
+        inngest_sent = True
+        logger.info(f"Dispatched invoice generation to Inngest for {target_month} {target_year}.")
     except Exception as e:
-        logger.warning(f"Inngest invoice dispatch skipped or unavailable ({e}). Running via background task.")
+        logger.warning(f"Inngest invoice dispatch skipped or unavailable ({e}). Running via fallback background task.")
+
+    if not inngest_sent:
+        threading.Thread(
+            target=_run_invoices_worker,
+            daemon=True,
+            name=f"invoices-{target_month}-{target_year}",
+        ).start()
 
     return {
         "status": "PROCESSING",

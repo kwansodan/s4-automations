@@ -175,6 +175,21 @@ class ZohoBooksService:
             "Content-Type": "application/json;charset=UTF-8",
         }
 
+    @staticmethod
+    def _check_response(response: httpx.Response, action_desc: str = "Zoho API call"):
+        if response.is_error:
+            error_detail = response.text
+            try:
+                err_json = response.json()
+                msg = err_json.get("message")
+                code = err_json.get("code")
+                if msg:
+                    error_detail = f"Zoho Books error [{code}]: {msg}" if code is not None else f"Zoho Books error: {msg}"
+            except Exception:
+                pass
+            logger.error(f"{action_desc} failed ({response.status_code}): {error_detail}")
+            raise RuntimeError(f"{action_desc} failed ({response.status_code}): {error_detail}")
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
@@ -360,7 +375,20 @@ class ZohoBooksService:
                 headers = self._get_headers(access_token)
                 response = await client.post(url, headers=headers, params=params, json=payload)
 
-            response.raise_for_status()
+            if response.status_code == 400:
+                try:
+                    err_json = response.json()
+                    # 3062: Contact name already exists
+                    if err_json.get("code") == 3062 or "already exists" in str(err_json.get("message", "")).lower():
+                        logger.info(f"Customer '{customer_name}' already exists in Zoho Books. Re-fetching active contacts...")
+                        contacts = await self.fetch_active_contacts()
+                        existing = self.find_contact_by_name(customer_name)
+                        if existing:
+                            return existing
+                except Exception:
+                    pass
+
+            self._check_response(response, f"Zoho Books customer contact creation for '{customer_name}'")
             data = response.json()
             c = data.get("contact", {})
             new_customer = ZohoContact(
@@ -560,7 +588,7 @@ class ZohoBooksService:
         Finds an existing draft invoice for this customer and billing month in Zoho Books.
         Returns the full invoice dict with line items if found, else None.
         """
-        if not self.org_id or settings.MOCK_MODE:
+        if not self.org_id or settings.MOCK_MODE or not customer_id or not str(customer_id).strip().isdigit():
             return None
 
         access_token = await self.get_access_token()
@@ -650,24 +678,27 @@ class ZohoBooksService:
         url = f"{self.books_api_url}/invoices"
         params = {"organization_id": self.org_id}
 
-        payload = {
+        line_items_payload = []
+        for li in request.line_items:
+            item_entry: Dict[str, Any] = {
+                "name": li.name,
+                "description": li.description,
+                "rate": float(li.rate),
+                "quantity": float(li.quantity),
+            }
+            if li.item_id and str(li.item_id).strip().isdigit():
+                item_entry["item_id"] = str(li.item_id).strip()
+            line_items_payload.append(item_entry)
+
+        payload: Dict[str, Any] = {
             "customer_id": request.customer_id,
             "date": request.date,
-            "due_date": request.due_date,
-            "line_items": [
-                {
-                    "item_id": li.item_id,
-                    "name": li.name,
-                    "description": li.description,
-                    "rate": li.rate,
-                    "quantity": li.quantity,
-                }
-                for li in request.line_items
-            ],
-            "notes": request.notes,
-            "terms": request.terms,
-            "status": "draft",
+            "line_items": line_items_payload,
+            "notes": request.notes or "",
+            "terms": request.terms or "",
         }
+        if request.due_date:
+            payload["due_date"] = request.due_date
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers, params=params, json=payload)
@@ -676,7 +707,7 @@ class ZohoBooksService:
                 headers = self._get_headers(access_token)
                 response = await client.post(url, headers=headers, params=params, json=payload)
 
-            response.raise_for_status()
+            self._check_response(response, f"Zoho Books create draft invoice for customer {request.customer_id}")
             data = response.json()
             invoice = data.get("invoice", {})
             invoice_id = str(invoice.get("invoice_id", ""))
@@ -720,37 +751,42 @@ class ZohoBooksService:
         # Build merged line items
         combined_items = []
         for old in existing_items:
-            combined_items.append({
-                "item_id": old.get("item_id", ""),
+            entry: Dict[str, Any] = {
                 "name": old.get("name", ""),
                 "description": old.get("description", ""),
                 "rate": float(old.get("rate", 0.0)),
-                "quantity": int(old.get("quantity", 0)),
-            })
+                "quantity": float(old.get("quantity", 0)),
+            }
+            old_item_id = old.get("item_id", "")
+            if old_item_id and str(old_item_id).strip().isdigit():
+                entry["item_id"] = str(old_item_id).strip()
+            combined_items.append(entry)
 
         for new_li in request.line_items:
-            combined_items.append({
-                "item_id": new_li.item_id,
+            entry = {
                 "name": new_li.name,
                 "description": new_li.description,
-                "rate": new_li.rate,
-                "quantity": new_li.quantity,
-            })
+                "rate": float(new_li.rate),
+                "quantity": float(new_li.quantity),
+            }
+            if new_li.item_id and str(new_li.item_id).strip().isdigit():
+                entry["item_id"] = str(new_li.item_id).strip()
+            combined_items.append(entry)
 
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
         url = f"{self.books_api_url}/invoices/{invoice_id}"
         params = {"organization_id": self.org_id}
 
-        payload = {
+        payload: Dict[str, Any] = {
             "customer_id": request.customer_id,
             "date": request.date,
-            "due_date": request.due_date,
             "line_items": combined_items,
-            "notes": request.notes,
-            "terms": request.terms,
-            "status": "draft",
+            "notes": request.notes or "",
+            "terms": request.terms or "",
         }
+        if request.due_date:
+            payload["due_date"] = request.due_date
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.put(url, headers=headers, params=params, json=payload)
@@ -759,7 +795,7 @@ class ZohoBooksService:
                 headers = self._get_headers(access_token)
                 response = await client.put(url, headers=headers, params=params, json=payload)
 
-            response.raise_for_status()
+            self._check_response(response, f"Zoho Books append to draft invoice {invoice_num}")
             data = response.json()
             updated_inv = data.get("invoice", {})
             updated_total = float(updated_inv.get("total", 0.0))

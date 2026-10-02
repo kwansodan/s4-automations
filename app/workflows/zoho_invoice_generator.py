@@ -128,7 +128,7 @@ async def run_zoho_invoices_core(
                                 "customer_name": cust_name,
                                 "client_name": st.client_id,
                                 "zoho_contact_id": (st.metadata_json or {}).get("zoho_contact_id", ""),
-                                "zoho_item_id": st.accounting_ref_id or (st.metadata_json or {}).get("zoho_item_id", ""),
+                                "zoho_item_id": (st.metadata_json or {}).get("zoho_item_id", ""),
                                 "standard_item_name": st.item_or_description,
                                 "raw_names_seen": st.item_or_description,
                                 "confidence_score": "HIGH",
@@ -211,32 +211,42 @@ async def run_zoho_invoices_core(
                 except Exception:
                     zoho = ZohoBooksService(org_id=zoho_org_id)
 
-                # Ensure active Zoho contacts are loaded into memory cache
+                # Ensure active Zoho contacts and items are loaded into memory cache
                 try:
                     await zoho.fetch_active_contacts()
+                    await zoho.fetch_item_catalog()
                 except Exception as fetch_err:
-                    logger.debug(f"Could not fetch Zoho contacts into cache: {fetch_err}")
+                    logger.debug(f"Could not fetch Zoho contacts/items into cache: {fetch_err}")
+
+                from app.config import settings
+                is_mock = getattr(settings, "MOCK_MODE", False) or not zoho.org_id
 
                 contact_id = items[0].get("zoho_contact_id")
+                if not contact_id or (not is_mock and not str(contact_id).strip().isdigit()):
+                    contact_id = ""
 
                 # Check customer_mappings registry in tenant configuration (case-insensitive)
                 if not contact_id:
                     mappings = tenant_custom_config.get("customer_mappings", {})
                     if customer_name in mappings:
-                        contact_id = mappings[customer_name].get("zoho_contact_id")
-                    else:
+                        cand = mappings[customer_name].get("zoho_contact_id")
+                        if cand and (is_mock or str(cand).strip().isdigit()):
+                            contact_id = str(cand).strip()
+                    if not contact_id:
                         c_lower = customer_name.strip().lower()
                         for m_key, m_val in mappings.items():
                             if m_key.strip().lower() == c_lower:
-                                contact_id = m_val.get("zoho_contact_id")
-                                break
+                                cand = m_val.get("zoho_contact_id")
+                                if cand and (is_mock or str(cand).strip().isdigit()):
+                                    contact_id = str(cand).strip()
+                                    break
 
                 if not contact_id:
                     contact = zoho.find_contact_by_name(customer_name)
-                    contact_id = contact.contact_id if contact else ""
+                    if contact and (is_mock or str(contact.contact_id).strip().isdigit()):
+                        contact_id = str(contact.contact_id).strip()
 
                 if not contact_id:
-                    from app.config import settings
                     from datetime import timezone
                     from sqlalchemy.orm.attributes import flag_modified
                     auto_create_policy = bool(
@@ -296,25 +306,58 @@ async def run_zoho_invoices_core(
                 zoho_line_items: List[ZohoInvoiceLineItem] = []
                 row_indices: List[int] = []
 
+                # Aggregate line items by linen SKU / item name to prevent duplicate lines and respect Zoho Books 200 line item limit
+                sku_groups: Dict[str, Dict[str, Any]] = {}
                 for item in items:
                     row_indices.append(item["row_index"])
                     total_qty = item.get("total_picked_up", 0) or item.get("total_delivered", 0)
                     loss_qty = item.get("linen_discrepancy", 0)
-                    
+                    item_name = item.get("standard_item_name") or "Laundry Item"
+                    raw_sku_id = item.get("zoho_item_id")
+                    sku_key = str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else item_name.strip().lower()
+
+                    if sku_key not in sku_groups:
+                        sku_groups[sku_key] = {
+                            "zoho_item_id": str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else "",
+                            "name": item_name,
+                            "unit_rate": float(item.get("unit_rate", 0.0)),
+                            "total_qty": 0,
+                            "total_pickup": 0,
+                            "total_delivery": 0,
+                            "total_loss": 0,
+                            "slips_count": 0,
+                        }
+                    sku_groups[sku_key]["total_qty"] += total_qty
+                    sku_groups[sku_key]["total_pickup"] += item.get("total_picked_up", 0)
+                    sku_groups[sku_key]["total_delivery"] += item.get("total_delivered", 0)
+                    sku_groups[sku_key]["total_loss"] += loss_qty
+                    sku_groups[sku_key]["slips_count"] += 1
+                    if float(item.get("unit_rate", 0.0)) > 0:
+                        sku_groups[sku_key]["unit_rate"] = float(item.get("unit_rate", 0.0))
+
+                for sku_key, sku_data in sku_groups.items():
                     desc = ""
                     if should_include_desc:
-                        desc = f"Linen service: {item.get('raw_names_seen', item.get('standard_item_name'))}. "
-                        desc += f"Pickups: {item.get('total_picked_up', 0)}, Deliveries: {item.get('total_delivered', 0)}."
-                        if loss_qty > 0:
-                            desc += f" (Unreturned loss discrepancy: {loss_qty} pcs)"
+                        desc = f"Linen service: {sku_data['name']} ({sku_data['slips_count']} slips). "
+                        desc += f"Pickups: {sku_data['total_pickup']}, Deliveries: {sku_data['total_delivery']}."
+                        if sku_data["total_loss"] > 0:
+                            desc += f" (Unreturned loss discrepancy: {sku_data['total_loss']} pcs)"
+
+                    resolved_item_id = sku_data.get("zoho_item_id", "")
+                    if not resolved_item_id or not str(resolved_item_id).isdigit():
+                        matched_item = zoho.find_item_by_name(sku_data["name"])
+                        if matched_item and str(matched_item.item_id).isdigit():
+                            resolved_item_id = str(matched_item.item_id)
+                        else:
+                            resolved_item_id = ""
 
                     zoho_line_items.append(
                         ZohoInvoiceLineItem(
-                            item_id=item.get("zoho_item_id", ""),
-                            name=item.get("standard_item_name", "Laundry Item"),
+                            item_id=resolved_item_id,
+                            name=sku_data["name"],
                             description=desc,
-                            rate=item.get("unit_rate", 0.0),
-                            quantity=total_qty,
+                            rate=sku_data["unit_rate"],
+                            quantity=sku_data["total_qty"],
                         )
                     )
 
@@ -365,9 +408,19 @@ async def run_zoho_invoices_core(
     except Exception as e:
         if e.__class__.__name__ in ("StepInterrupt", "InngestStepInterrupt"):
             raise
-        logger.error(f"Invoice generation failed: {e}")
-        pipeline_tracker.fail_pipeline(str(e))
-        raise
+        err_msg = str(e)
+        if hasattr(e, "response") and hasattr(e.response, "text"):
+            try:
+                err_data = e.response.json()
+                msg = err_data.get("message")
+                code = err_data.get("code")
+                if msg:
+                    err_msg = f"Zoho Books error [{code}]: {msg}" if code is not None else f"Zoho Books error: {msg}"
+            except Exception:
+                err_msg = e.response.text
+        logger.error(f"Invoice generation failed: {err_msg}")
+        pipeline_tracker.fail_pipeline(err_msg)
+        raise RuntimeError(err_msg) from e
 
 
 async def execute_generate_zoho_invoices(
