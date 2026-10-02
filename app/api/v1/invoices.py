@@ -27,8 +27,8 @@ async def check_existing_draft_invoices(
     """
     from app.services.zoho_service import ZohoBooksService
     from app.api.v1.clients import get_client_id_aliases
-    from app.models.db_models import StagedTransaction
-    from app.workflows.zoho_invoice_generator import extract_slip_customer_name
+    from app.models.db_models import StagedTransaction, ClientOrganization
+    from app.workflows.zoho_invoice_generator import extract_slip_customer_name, resolve_slip_customer
     from sqlmodel import Session, select
     from app.db.session import get_engine
     from app.config import settings
@@ -129,6 +129,15 @@ async def check_existing_draft_invoices(
     try:
         aliases = get_client_id_aliases(client_id)
         with Session(get_engine()) as session:
+            tenant_custom_config: Dict[str, Any] = {}
+            tenant_obj = session.exec(
+                select(ClientOrganization).where(
+                    (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+                )
+            ).first()
+            if tenant_obj:
+                tenant_custom_config = dict(tenant_obj.custom_config or {})
+
             query = select(StagedTransaction).where(
                 StagedTransaction.client_id.in_(aliases),
                 StagedTransaction.approved == True,
@@ -147,9 +156,17 @@ async def check_existing_draft_invoices(
                     except Exception:
                         pass
                 if match_month:
-                    cust_name = extract_slip_customer_name(st.source_file_name, st.metadata_json)
-                    if customer_name and cust_name.strip().lower() != customer_name.strip().lower():
-                        continue
+                    cust_info = resolve_slip_customer(
+                        source_file_name=st.source_file_name,
+                        metadata=st.metadata_json,
+                        customer_mappings=tenant_custom_config.get("customer_mappings", {}),
+                    )
+                    cust_name = cust_info["customer_name"]
+                    prop_name = cust_info["property_name"]
+                    if customer_name:
+                        c_target = customer_name.strip().lower()
+                        if cust_name.strip().lower() != c_target and prop_name.strip().lower() != c_target:
+                            continue
                     ref_id = st.accounting_ref_id or f"inv_staged_{st.id}"
                     if ref_id not in seen_ids:
                         seen_ids.add(ref_id)
