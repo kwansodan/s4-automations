@@ -47,6 +47,7 @@ import {
   List,
   CheckCircle2,
   Edit3,
+  Link2,
   Save,
   Trash2,
   ArrowRight,
@@ -88,6 +89,8 @@ export interface SlipGroup {
   hasUnmappedItem?: boolean;
   unmappedItemsCount?: number;
   isCustomerReconciled?: boolean;
+  reconciledContactId?: string;
+  reconciledContactName?: string;
   minConfidence: number;
   status: string;
 }
@@ -1054,15 +1057,25 @@ export const ClientArTab: React.FC = () => {
       else if (g.isFullyApproved) g.status = 'APPROVED';
       else g.status = 'PENDING';
 
+      const directItem = g.items.find((i) => i.metadata_json?.zoho_contact_id);
+      const directContactId = directItem?.metadata_json?.zoho_contact_id;
+      const directContactName = directItem?.metadata_json?.customer_name;
+
       const pLower = g.propertyName.toLowerCase();
-      const mappedEntry = customerMappings[g.propertyName] || customerMappings[Object.keys(customerMappings).find((k) => k.toLowerCase() === pLower) || ''];
+      const mappedEntryKey = Object.keys(customerMappings).find((k) => k.toLowerCase() === pLower);
+      const mappedEntry = customerMappings[g.propertyName] || (mappedEntryKey ? customerMappings[mappedEntryKey] : undefined);
       const matchedContact = clientContacts.find((c: any) => {
         const cn = (c.contact_name || '').toLowerCase();
         const co = (c.company_name || '').toLowerCase();
         return cn === pLower || co === pLower || (pLower.length > 2 && (cn.includes(pLower) || co.includes(pLower)));
       });
-      const hasDirectContact = g.items.some((i) => i.metadata_json?.zoho_contact_id);
-      g.isCustomerReconciled = Boolean(hasDirectContact || mappedEntry || matchedContact);
+
+      const effectiveContactId = directContactId || mappedEntry?.zoho_contact_id || matchedContact?.contact_id;
+      const effectiveContactName = mappedEntry?.name || directContactName || matchedContact?.contact_name;
+
+      g.isCustomerReconciled = Boolean(effectiveContactId);
+      g.reconciledContactId = effectiveContactId;
+      g.reconciledContactName = effectiveContactName;
     });
 
     list.sort((a, b) => {
@@ -1809,6 +1822,7 @@ export const ClientArTab: React.FC = () => {
     setIsSavingCustomerLink(true);
     try {
       const selectedContact = clientContacts.find((c: any) => c.contact_id === quickLinkSelectedContactId);
+      const wasReconciled = quickLinkCustomerSlip.isCustomerReconciled;
       const res = await saveCustomerMapping(currentClient.id, {
         alias: quickLinkCustomerSlip.propertyName,
         zoho_contact_id: quickLinkSelectedContactId,
@@ -1825,7 +1839,7 @@ export const ClientArTab: React.FC = () => {
         };
       }
 
-      addLog('success', `Linked customer '${quickLinkCustomerSlip.propertyName}' to Zoho contact '${selectedContact?.contact_name || quickLinkSelectedContactId}' (${res.retroactive_staged_updated} slips updated).`);
+      addLog('success', `${wasReconciled ? 'Re-mapped' : 'Linked'} customer '${quickLinkCustomerSlip.propertyName}' to Zoho contact '${selectedContact?.contact_name || quickLinkSelectedContactId}' (${res.retroactive_staged_updated} slips updated).`);
       setQuickLinkCustomerSlip(null);
       setQuickLinkSelectedContactId('');
       await Promise.all([loadTransactions(), loadSummaryData(), refreshClients()]);
@@ -3223,7 +3237,7 @@ export const ClientArTab: React.FC = () => {
                                 <span>{slip.propertyName}</span>
                               </span>
 
-                              {!slip.isCustomerReconciled && (
+                              {!slip.isCustomerReconciled ? (
                                 <div className="inline-flex items-center gap-1 shrink-0">
                                   <span
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
@@ -3237,14 +3251,28 @@ export const ClientArTab: React.FC = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setQuickLinkCustomerSlip(slip);
-                                      setQuickLinkSelectedContactId('');
+                                      setQuickLinkSelectedContactId(slip.reconciledContactId || '');
                                     }}
                                     className="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2 py-0.5 rounded-full transition cursor-pointer"
-                                    title="Link this property/customer to an official Zoho Books contact"
+                                    title="Link this customer to an official Zoho Books contact"
                                   >
                                     Link
                                   </button>
                                 </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setQuickLinkCustomerSlip(slip);
+                                    setQuickLinkSelectedContactId(slip.reconciledContactId || '');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-500 hover:text-[#0284C7] bg-slate-50 hover:bg-[#F0F9FF] border border-slate-200 hover:border-[#BAE6FD] transition shrink-0 cursor-pointer group"
+                                  title={`Customer is mapped${slip.reconciledContactName ? ` to '${slip.reconciledContactName}'` : ''}. Click to re-map.`}
+                                >
+                                  <Link2 className="w-2.5 h-2.5 text-slate-400 group-hover:text-[#0284C7]" />
+                                  <span>Re-map</span>
+                                </button>
                               )}
 
                               <button
@@ -4583,19 +4611,27 @@ export const ClientArTab: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Link Customer to Zoho Contact Modal */}
+      {/* Quick Link / Re-map Customer to Zoho Contact Modal */}
       {quickLinkCustomerSlip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white border border-[#E2E8F0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 bg-slate-50/80 border-b border-[#E2E8F0] flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-xs">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shadow-xs ${
+                  quickLinkCustomerSlip.isCustomerReconciled
+                    ? 'bg-sky-50 border-sky-200 text-sky-700'
+                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                }`}>
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#0F172A]">Link Slip Customer</h3>
+                  <h3 className="text-base font-bold text-[#0F172A]">
+                    {quickLinkCustomerSlip.isCustomerReconciled ? 'Re-map Slip Customer' : 'Link Slip Customer'}
+                  </h3>
                   <p className="text-xs text-[#64748B]">
-                    Map "{quickLinkCustomerSlip.propertyName}" to Zoho Books
+                    {quickLinkCustomerSlip.isCustomerReconciled
+                      ? `Re-assign "${quickLinkCustomerSlip.propertyName}" to a different Zoho Books contact`
+                      : `Map "${quickLinkCustomerSlip.propertyName}" to Zoho Books`}
                   </p>
                 </div>
               </div>
@@ -4621,9 +4657,16 @@ export const ClientArTab: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Official Zoho Books Customer
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Official Zoho Books Customer
+                  </label>
+                  {quickLinkCustomerSlip.isCustomerReconciled && quickLinkCustomerSlip.reconciledContactName && (
+                    <span className="text-[11px] text-slate-500 font-normal">
+                      Current: <strong className="text-slate-700">{quickLinkCustomerSlip.reconciledContactName}</strong>
+                    </span>
+                  )}
+                </div>
                 <select
                   value={quickLinkSelectedContactId}
                   onChange={(e) => setQuickLinkSelectedContactId(e.target.value)}
@@ -4664,12 +4707,12 @@ export const ClientArTab: React.FC = () => {
                 {isSavingCustomerLink ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Linking...</span>
+                    <span>{quickLinkCustomerSlip.isCustomerReconciled ? 'Updating...' : 'Linking...'}</span>
                   </>
                 ) : (
                   <>
                     <Check className="w-3.5 h-3.5" />
-                    <span>Confirm Link</span>
+                    <span>{quickLinkCustomerSlip.isCustomerReconciled ? 'Update Mapping' : 'Confirm Link'}</span>
                   </>
                 )}
               </button>
