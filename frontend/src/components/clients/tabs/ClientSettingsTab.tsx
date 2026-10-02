@@ -716,7 +716,7 @@ export const ClientSettingsTab: React.FC = () => {
               <label className="flex items-start gap-2.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={clientConfig.custom_config?.include_line_item_description !== false}
+                  checked={Boolean(clientConfig.custom_config?.include_line_item_description)}
                   onChange={(e) =>
                     setClientConfig({
                       ...clientConfig,
@@ -733,7 +733,7 @@ export const ClientSettingsTab: React.FC = () => {
                     Include Line Item Descriptions on Invoices
                   </span>
                   <span className="text-[11px] text-slate-400 block mt-0.5">
-                    Automatically inject operational notes (pickups, deliveries, discrepancy quantities) into invoice line items. Uncheck to leave line item descriptions blank.
+                    Automatically inject operational notes (pickups, deliveries, discrepancy quantities) into invoice line items. When unchecked (default), line item descriptions remain completely blank.
                   </span>
                 </div>
               </label>

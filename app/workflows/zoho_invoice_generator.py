@@ -299,9 +299,9 @@ async def run_zoho_invoices_core(
                 # Determine whether to include descriptions for this client's line items
                 should_include_desc = include_line_item_description
                 if should_include_desc is None:
-                    should_include_desc = tenant_custom_config.get("include_line_item_description", True)
+                    should_include_desc = tenant_custom_config.get("include_line_item_description", False)
                 if should_include_desc is None:
-                    should_include_desc = True
+                    should_include_desc = False
 
                 zoho_line_items: List[ZohoInvoiceLineItem] = []
                 row_indices: List[int] = []

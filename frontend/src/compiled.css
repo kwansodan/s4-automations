@@ -1329,6 +1329,12 @@
       border-color: color-mix(in oklab, var(--color-emerald-500) 60%, transparent);
     }
   }
+  .border-emerald-500\/80 {
+    border-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-emerald-500) 80%, transparent);
+    }
+  }
   .border-emerald-600\/40 {
     border-color: color-mix(in srgb, oklch(59.6% 0.145 163.225) 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3845,6 +3851,12 @@
     --tw-ring-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-ring-color: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);
+    }
+  }
+  .ring-emerald-500\/50 {
+    --tw-ring-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-ring-color: color-mix(in oklab, var(--color-emerald-500) 50%, transparent);
     }
   }
   .ring-purple-400\/40 {

@@ -16,9 +16,11 @@ import {
   Terminal,
   Loader2,
   Info,
+  FileText,
+  List,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { ApiError, fetchClientTransactions, saveCustomerMapping } from '../../lib/api';
+import { ApiError, fetchClientTransactions, saveCustomerMapping, saveClientConfig } from '../../lib/api';
 import type { InvoicePreflightAudit } from '../../types/client';
 
 export const InvoiceModal: React.FC = () => {
@@ -37,7 +39,8 @@ export const InvoiceModal: React.FC = () => {
   const { openDebugDrawer } = useErrors();
 
   const [clientFilter, setClientFilter] = useState('');
-  const [includeDescriptions, setIncludeDescriptions] = useState(true);
+  const [includeDescriptions, setIncludeDescriptions] = useState(false);
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
   const [isAuditExpanded, setIsAuditExpanded] = useState(true);
@@ -57,6 +60,15 @@ export const InvoiceModal: React.FC = () => {
     () => clients.find((c) => c.name === clientFilter || c.id === clientFilter) || currentClient,
     [clients, clientFilter, currentClient]
   );
+
+  // Synchronize description preference with target client configuration
+  useEffect(() => {
+    if (isInvoiceModalOpen && targetClient) {
+      const clientPref = targetClient.custom_config?.include_line_item_description;
+      setIncludeDescriptions(clientPref !== undefined ? Boolean(clientPref) : false);
+      setSaveAsDefault(false);
+    }
+  }, [isInvoiceModalOpen, targetClient]);
 
   // Fallback audit computation if opened directly or if clientFilter changes
   useEffect(() => {
@@ -255,6 +267,23 @@ export const InvoiceModal: React.FC = () => {
         client_name: targetClient?.name || currentClient?.name || clientFilter || null,
         include_line_item_description: includeDescriptions,
       });
+
+      if (saveAsDefault && targetClient?.id) {
+        try {
+          const updatedConfig = {
+            ...targetClient,
+            custom_config: {
+              ...(targetClient.custom_config || {}),
+              include_line_item_description: includeDescriptions,
+            },
+          };
+          await saveClientConfig(targetClient.id, updatedConfig);
+          await refreshClients();
+        } catch (saveErr) {
+          console.warn('Could not save default invoice description preference:', saveErr);
+        }
+      }
+
       // runInvoicing closes modal on success
       setAcknowledgedWarnings(false);
       setInvoicePreflight(null);
@@ -697,22 +726,99 @@ export const InvoiceModal: React.FC = () => {
             </select>
           </div>
 
-          <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="include-descriptions"
-              checked={includeDescriptions}
-              onChange={(e) => setIncludeDescriptions(e.target.checked)}
-              disabled={isSubmitting}
-              className="mt-0.5 w-4 h-4 text-emerald-500 rounded border-slate-700 bg-slate-900 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
-            />
-            <label htmlFor="include-descriptions" className="text-xs text-slate-300 cursor-pointer select-none">
-              <span className="font-semibold block text-white">Include Line Item Descriptions</span>
-              <span className="text-[11px] text-slate-400 block mt-0.5">
-                When enabled, detailed operational summaries (pickups, deliveries, and discrepancies) are added to each
-                invoice line item. When unchecked, line descriptions remain blank.
+          {/* Line Item Description Choice */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-slate-200">
+                Line Item Format & Descriptions
+              </label>
+              <span className="text-[11px] text-slate-400">
+                Select line description detail
               </span>
-            </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Option 1: Clean SKU Lines (Blank Descriptions) */}
+              <button
+                type="button"
+                onClick={() => setIncludeDescriptions(false)}
+                disabled={isSubmitting}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                  !includeDescriptions
+                    ? 'bg-emerald-950/40 border-emerald-500/80 text-white ring-1 ring-emerald-500/50 shadow-sm'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold flex items-center gap-1.5 text-white">
+                      <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                      Clean SKU Lines
+                    </span>
+                    {!includeDescriptions && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Leave line item descriptions <strong>blank</strong>. Invoices only display Item Name, Quantity, Rate, and Billing Total.
+                  </p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono flex items-center gap-1.5 text-slate-400">
+                  <span className="text-slate-500 font-sans">Line Description:</span>
+                  <span className="text-slate-400 italic font-semibold">(Blank / None)</span>
+                </div>
+              </button>
+
+              {/* Option 2: Detailed Operational Breakdown */}
+              <button
+                type="button"
+                onClick={() => setIncludeDescriptions(true)}
+                disabled={isSubmitting}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                  includeDescriptions
+                    ? 'bg-emerald-950/40 border-emerald-500/80 text-white ring-1 ring-emerald-500/50 shadow-sm'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold flex items-center gap-1.5 text-white">
+                      <List className="w-3.5 h-3.5 text-sky-400" />
+                      Detailed Breakdown
+                    </span>
+                    {includeDescriptions && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Inject operational slips summary, pickup/delivery volumes, and unreturned linen loss discrepancies into each line item description.
+                  </p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono flex items-center gap-1.5 text-sky-400 truncate">
+                  <span className="text-slate-500 font-sans shrink-0">Line Description:</span>
+                  <span className="truncate text-slate-300">"Pickups: 40, Deliveries: 40..."</span>
+                </div>
+              </button>
+            </div>
+
+            {/* Remember as default for this client */}
+            <div className="flex items-center gap-2 pt-1 px-1">
+              <input
+                type="checkbox"
+                id="save-as-default-desc"
+                checked={saveAsDefault}
+                onChange={(e) => setSaveAsDefault(e.target.checked)}
+                disabled={isSubmitting}
+                className="w-3.5 h-3.5 text-emerald-500 rounded border-slate-700 bg-slate-900 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
+              />
+              <label htmlFor="save-as-default-desc" className="text-[11px] text-slate-400 cursor-pointer select-none">
+                Save this format as default preference for {targetClient?.name || 'this client'}
+              </label>
+            </div>
           </div>
 
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1.5">

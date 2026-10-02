@@ -1072,7 +1072,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         except Exception as c_err:
                             logger.warning(f"Could not auto-create customer contact '{raw_cust_name}': {c_err}")
 
-                include_desc = (self.custom_config or {}).get("include_line_item_description", True)
+                include_desc = (self.custom_config or {}).get("include_line_item_description", False)
                 line_items = []
                 for t in inv_items:
                     li_dict = {
