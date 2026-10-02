@@ -1437,12 +1437,16 @@ async def get_client_source_metrics(
 
     import re
     def _clean_prop(filename: Optional[str], meta: Optional[dict]) -> str:
-        if meta and meta.get("customer_name_hint"):
-            return str(meta["customer_name_hint"]).strip()
+        if meta:
+            cust = meta.get("customer_name") or meta.get("customer") or meta.get("customer_name_hint")
+            if cust and str(cust).strip():
+                return str(cust).strip()
         if not filename:
             return "General"
         base = re.sub(r"\.[a-zA-Z0-9]+$", "", str(filename)).strip()
         base = re.sub(r"[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$", "", base, flags=re.IGNORECASE).strip()
+        base = re.sub(r"^(manual_slip_|manual_bill_|manual_|slip_)", "", base, flags=re.IGNORECASE).strip()
+        base = base.replace("_", " ").strip()
         return base or "General"
 
     # Map property -> set of slip keys & items

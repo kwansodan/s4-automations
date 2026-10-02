@@ -606,6 +606,12 @@ export const ClientArTab: React.FC = () => {
     if (metadata?.customer_name && typeof metadata.customer_name === 'string' && metadata.customer_name.trim()) {
       return metadata.customer_name.trim();
     }
+    if (metadata?.customer && typeof metadata.customer === 'string' && metadata.customer.trim()) {
+      return metadata.customer.trim();
+    }
+    if (metadata?.customer_name_hint && typeof metadata.customer_name_hint === 'string' && metadata.customer_name_hint.trim()) {
+      return metadata.customer_name_hint.trim();
+    }
     if (!filename) return '';
     let base = filename.replace(/\.[a-zA-Z0-9]+$/, '').trim();
     base = base.replace(/[\s._-]+(\d{1,2}[\s._\/-]\d{1,2}[\s._\/-]\d{2,4}|\d{4}[\s._\/-]\d{1,2}[\s._\/-]\d{1,2})$/i, '').trim();
@@ -665,11 +671,14 @@ export const ClientArTab: React.FC = () => {
     const props = new Set<string>();
     arStagedTx.forEach((tx) => {
       const p = extractPropertyName(tx.source_file_name, tx.metadata_json);
-      if (p && p.length > 1) props.add(p);
+      if (p && p.length > 1 && !p.toLowerCase().startsWith('manual_slip_')) props.add(p);
     });
     if (sourceMetricsData?.properties) {
       Object.keys(sourceMetricsData.properties).forEach((p) => {
-        if (p && p !== 'ALL' && p.length > 1) props.add(p);
+        const cleaned = extractPropertyName(p);
+        if (cleaned && cleaned !== 'ALL' && cleaned.length > 1 && !cleaned.toLowerCase().startsWith('manual_slip_')) {
+          props.add(cleaned);
+        }
       });
     }
     return Array.from(props).sort();
