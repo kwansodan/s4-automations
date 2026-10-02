@@ -60,13 +60,21 @@ interface AutomationContextType {
 
 const AutomationContext = createContext<AutomationContextType | undefined>(undefined);
 
+const ALL_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => parseCurrentRoute().tab);
   const [workspaceSubTab, setWorkspaceSubTabState] = useState<WorkspaceSubTab>(() => parseCurrentRoute().subTab || 'requests');
-  const [selectedMonth, setSelectedMonth] = useState<string>('August');
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const currentMonthIndex = new Date().getMonth();
+    return ALL_MONTHS[currentMonthIndex] || 'January';
+  });
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [sheetsSubTab, setSheetsSubTab] = useState<'monthly' | 'daily'>('monthly');
 
   const [health, setHealth] = useState<{ status: string; service: string; mock_mode: boolean } | null>(null);

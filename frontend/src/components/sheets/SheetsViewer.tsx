@@ -5,7 +5,8 @@ import { ExternalLink, Check, AlertTriangle, AlertCircle, FileSpreadsheet, Refre
 import { formatCurrency } from '../../lib/utils';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const YEARS = [2025, 2026, 2027];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from(new Set([2024, 2025, 2026, 2027, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1])).sort((a, b) => a - b);
 
 export const SheetsViewer: React.FC = () => {
   const {

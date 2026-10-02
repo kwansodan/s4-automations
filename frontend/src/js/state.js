@@ -81,8 +81,8 @@ export const state = {
   currentClientId: getInitialClientId(initialClients),
   clients: initialClients,
   activeTab: 'dashboard', // 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace'
-  selectedMonth: 'August',
-  selectedYear: 2026,
+  selectedMonth: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][new Date().getMonth()] || 'January',
+  selectedYear: new Date().getFullYear(),
   sheetsSubTab: 'monthly', // 'monthly' | 'daily'
   
   health: null,
