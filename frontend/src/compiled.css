@@ -951,6 +951,9 @@
   .items-center {
     align-items: center;
   }
+  .items-end {
+    align-items: flex-end;
+  }
   .items-start {
     align-items: flex-start;
   }
@@ -4195,6 +4198,9 @@
     .hover\:bg-amber-100:hover {
       background-color: var(--color-amber-100);
     }
+    .hover\:bg-amber-200:hover {
+      background-color: var(--color-amber-200);
+    }
     .hover\:bg-amber-500:hover {
       background-color: var(--color-amber-500);
     }
@@ -4582,6 +4588,9 @@
   .focus\:border-\[\#0284C7\]:focus {
     border-color: #0284C7;
   }
+  .focus\:border-amber-400:focus {
+    border-color: var(--color-amber-400);
+  }
   .focus\:border-amber-500:focus {
     border-color: var(--color-amber-500);
   }
@@ -4674,6 +4683,9 @@
     .sm\:col-span-2 {
       grid-column: span 2 / span 2;
     }
+    .sm\:col-span-5 {
+      grid-column: span 5 / span 5;
+    }
     .sm\:block {
       display: block;
     }
@@ -4715,6 +4727,9 @@
     }
     .sm\:grid-cols-4 {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .sm\:grid-cols-12 {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
     }
     .sm\:flex-row {
       flex-direction: row;

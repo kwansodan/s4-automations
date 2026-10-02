@@ -18,7 +18,7 @@ import {
   Info,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { ApiError, fetchClientTransactions } from '../../lib/api';
+import { ApiError, fetchClientTransactions, saveCustomerMapping } from '../../lib/api';
 import type { InvoicePreflightAudit } from '../../types/client';
 
 export const InvoiceModal: React.FC = () => {
@@ -47,6 +47,11 @@ export const InvoiceModal: React.FC = () => {
     traceback?: string;
     troubleshootingHint?: string;
   } | null>(null);
+
+  // Quick Customer Mapping State
+  const [openQuickMapCust, setOpenQuickMapCust] = useState<string | null>(null);
+  const [quickMapSelectedId, setQuickMapSelectedId] = useState<string>('');
+  const [isLinkingCust, setIsLinkingCust] = useState<Record<string, boolean>>({});
 
   const targetClient = useMemo(
     () => clients.find((c) => c.name === clientFilter || c.id === clientFilter) || currentClient,
@@ -116,6 +121,8 @@ export const InvoiceModal: React.FC = () => {
           }
           if (!customerMap[cust]) {
             const cLower = cust.toLowerCase();
+            const customerMappings = targetClient?.custom_config?.customer_mappings || {};
+            const mappedEntry = customerMappings[cust] || customerMappings[Object.keys(customerMappings).find((k) => k.toLowerCase() === cLower) || ''];
             const found = contacts.find((c: any) => {
               const cName = (c.contact_name || '').trim().toLowerCase();
               const compName = (c.company_name || '').trim().toLowerCase();
@@ -129,12 +136,12 @@ export const InvoiceModal: React.FC = () => {
                     cLower.includes(compName)))
               );
             });
-            const directContactId = tx.metadata_json?.zoho_contact_id || (found ? found.contact_id : undefined);
+            const directContactId = tx.metadata_json?.zoho_contact_id || (mappedEntry ? mappedEntry.zoho_contact_id : undefined) || (found ? found.contact_id : undefined);
 
             customerMap[cust] = {
               itemsCount: 0,
               totalAmount: 0,
-              isReconciled: Boolean(directContactId || found),
+              isReconciled: Boolean(directContactId || mappedEntry || found),
               zohoContactId: directContactId,
             };
           } else if (tx.metadata_json?.zoho_contact_id && !customerMap[cust].isReconciled) {
@@ -266,6 +273,53 @@ export const InvoiceModal: React.FC = () => {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleQuickMapCustomer = async (custName: string, selectedContactId: string) => {
+    const clientId = targetClient?.id || currentClient?.id;
+    if (!clientId || !selectedContactId) return;
+    setIsLinkingCust((prev) => ({ ...prev, [custName]: true }));
+    try {
+      const contacts = catalog?.contacts || [];
+      const selectedContact = contacts.find((c: any) => c.contact_id === selectedContactId);
+      await saveCustomerMapping(clientId, {
+        alias: custName,
+        zoho_contact_id: selectedContactId,
+        name: selectedContact?.contact_name || custName,
+      });
+
+      if (targetClient && targetClient.custom_config) {
+        targetClient.custom_config.customer_mappings = {
+          ...(targetClient.custom_config.customer_mappings || {}),
+          [custName]: {
+            zoho_contact_id: selectedContactId,
+            name: selectedContact?.contact_name || custName,
+          },
+        };
+      }
+
+      if (invoicePreflight) {
+        const updatedSummaries = invoicePreflight.customerSummaries.map((s: any) =>
+          s.customerName === custName
+            ? { ...s, isReconciled: true, zohoContactId: selectedContactId }
+            : s
+        );
+        const remainingUnmatched = updatedSummaries.filter((s: any) => !s.isReconciled).map((s: any) => s.customerName);
+        setInvoicePreflight({
+          ...invoicePreflight,
+          customerSummaries: updatedSummaries,
+          unmatchedCustomers: remainingUnmatched,
+          matchedCustomersCount: updatedSummaries.filter((s: any) => s.isReconciled).length,
+          zohoContactMatched: remainingUnmatched.length === 0,
+        });
+      }
+      setOpenQuickMapCust(null);
+      setQuickMapSelectedId('');
+    } catch (err) {
+      console.error('Failed to quick-map customer:', err);
+    } finally {
+      setIsLinkingCust((prev) => ({ ...prev, [custName]: false }));
     }
   };
 
@@ -422,27 +476,68 @@ export const InvoiceModal: React.FC = () => {
                         Unmatched Customers ({invoicePreflight?.unmatchedCustomers?.length || 1}):{' '}
                       </span>
                       <span>
-                        The following customer(s) on approved slips were not found in {currentClient?.name || 'tenant'}'s Zoho Books contacts:{' '}
-                        <strong className="text-amber-100">{invoicePreflight?.unmatchedCustomers?.join(', ')}</strong>. The system will attempt fuzzy name matching or fallback contact creation.
+                        The following customer(s) on approved slips are not mapped to official Zoho Books contacts:{' '}
+                        <strong className="text-amber-100">{invoicePreflight?.unmatchedCustomers?.join(', ')}</strong>.
+                        Map them below to resolve before invoice dispatch:
                       </span>
                       {invoicePreflight?.customerSummaries && invoicePreflight.customerSummaries.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
+                        <div className="mt-2.5 space-y-2">
                           {invoicePreflight.customerSummaries.map((c) => (
-                            <span
+                            <div
                               key={c.customerName}
-                              className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border ${
+                              className={`p-2 rounded-lg border text-[11px] ${
                                 c.isReconciled
-                                  ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-                                  : 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center justify-between'
+                                  : 'bg-amber-950/60 border-amber-500/40 text-amber-200 space-y-2'
                               }`}
                             >
-                              <span>{c.isReconciled ? '✓' : '⚠️'}</span>
-                              <span className="font-bold">{c.customerName}:</span>
-                              <span>
-                                {c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}
-                              </span>
-                              <span className="font-semibold">({formatCurrency(c.totalAmount)})</span>
-                            </span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-mono">
+                                  <span>{c.isReconciled ? '✓' : '⚠️'}</span>
+                                  <span className="font-bold text-white font-sans">{c.customerName}</span>
+                                  <span className="text-slate-400">
+                                    ({c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}, {formatCurrency(c.totalAmount)})
+                                  </span>
+                                </div>
+                                {!c.isReconciled && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenQuickMapCust(openQuickMapCust === c.customerName ? null : c.customerName);
+                                      setQuickMapSelectedId('');
+                                    }}
+                                    className="text-[10px] font-bold bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded shadow transition cursor-pointer"
+                                  >
+                                    {openQuickMapCust === c.customerName ? 'Cancel' : 'Map to Zoho Contact'}
+                                  </button>
+                                )}
+                              </div>
+
+                              {!c.isReconciled && openQuickMapCust === c.customerName && (
+                                <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                                  <select
+                                    value={quickMapSelectedId}
+                                    onChange={(e) => setQuickMapSelectedId(e.target.value)}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                                  >
+                                    <option value="">Select official Zoho contact...</option>
+                                    {(catalog?.contacts || []).map((cont: any) => (
+                                      <option key={cont.contact_id} value={cont.contact_id}>
+                                        {cont.contact_name} {cont.company_name ? `(${cont.company_name})` : ''} - ID: {cont.contact_id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    disabled={!quickMapSelectedId || isLinkingCust[c.customerName]}
+                                    onClick={() => handleQuickMapCustomer(c.customerName, quickMapSelectedId)}
+                                    className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-3 py-1 rounded text-xs transition cursor-pointer"
+                                  >
+                                    {isLinkingCust[c.customerName] ? 'Linking...' : 'Link'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           ))}
                         </div>
                       )}

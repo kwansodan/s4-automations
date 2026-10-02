@@ -121,7 +121,7 @@ async def run_daily_pipeline_core(
                 drive = GoogleDriveService()
                 ocr = GeminiOCRService()
 
-                zoho_org_id = None
+                customer_mappings = {}
                 try:
                     with Session(get_engine()) as session:
                         client_obj = session.exec(
@@ -131,6 +131,7 @@ async def run_daily_pipeline_core(
                         ).first()
                         if client_obj:
                             zoho_org_id = client_obj.zoho_org_id
+                            customer_mappings = (client_obj.custom_config or {}).get("customer_mappings", {})
                 except Exception as db_err:
                     logger.warning(f"Could not load ClientOrganization for '{client_slug}' ({db_err}). Proceeding with default configuration.")
 
@@ -140,9 +141,15 @@ async def run_daily_pipeline_core(
                 contacts = await zoho.fetch_active_contacts()
                 items = await zoho.fetch_item_catalog()
 
-                # Find matching Zoho Contact ID
-                zoho_contact = zoho.find_contact_by_name(client_name)
-                zoho_contact_id = zoho_contact.contact_id if zoho_contact else ""
+                # First Line of Defence: Check Customer Mapping Registry
+                zoho_contact_id = ""
+                mapping_entry = customer_mappings.get(client_name)
+                if mapping_entry and mapping_entry.get("zoho_contact_id"):
+                    zoho_contact_id = mapping_entry.get("zoho_contact_id")
+                else:
+                    # Find matching Zoho Contact ID via active contacts cache
+                    zoho_contact = zoho.find_contact_by_name(client_name)
+                    zoho_contact_id = zoho_contact.contact_id if zoho_contact else ""
 
                 # Check / Create Processed/ subfolder
                 processed_folder_id = drive.find_or_create_folder("Processed", client_folder_id)

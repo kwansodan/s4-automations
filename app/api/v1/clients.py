@@ -2257,3 +2257,145 @@ async def reorganize_drive_archive(
     }
 
 
+class CustomerMappingPayload(BaseModel):
+    alias: str = Field(description="Slip, property, or folder name alias, e.g. 'Active 8 Shiashie'")
+    zoho_contact_id: str = Field(description="Target Zoho Books contact identifier")
+    name: Optional[str] = Field(default=None, description="Official Zoho Books customer contact name")
+    currency_code: Optional[str] = Field(default="GHS", description="Billing currency code")
+
+
+@router.get("/{client_id}/customer-mappings", summary="List Customer Aliases & Zoho Mappings")
+async def get_customer_mappings(
+    client_id: str,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Retrieve customer alias mappings and active Zoho contacts for a tenant."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    custom_cfg = client.custom_config or {}
+    mappings = custom_cfg.get("customer_mappings", {})
+
+    contacts_list = []
+    try:
+        from app.services.accounting.zoho_books_service import ZohoBooksService
+        zoho = ZohoBooksService.from_client_id(client.id)
+        if client.zoho_org_id:
+            zoho.org_id = client.zoho_org_id
+        active_contacts = await zoho.fetch_active_contacts()
+        contacts_list = [
+            {
+                "contact_id": c.contact_id,
+                "contact_name": c.contact_name,
+                "company_name": c.company_name,
+                "currency_code": c.currency_code or "GHS",
+            }
+            for c in active_contacts
+        ]
+    except Exception as e:
+        logger.debug(f"Could not load live contacts for customer mappings: {e}")
+
+    return {
+        "client_id": client.id,
+        "client_name": client.name,
+        "mappings": mappings,
+        "active_contacts": contacts_list,
+        "auto_create_missing_contacts": bool(custom_cfg.get("auto_create_missing_contacts", False)),
+    }
+
+
+@router.post("/{client_id}/customer-mappings", summary="Create or Update Customer Alias Mapping")
+async def save_customer_mapping(
+    client_id: str,
+    payload: CustomerMappingPayload,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Save a customer alias mapping and retroactively update matching staged transactions."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    custom_cfg = dict(client.custom_config or {})
+    mappings = dict(custom_cfg.get("customer_mappings", {}))
+
+    clean_alias = payload.alias.strip()
+    if not clean_alias:
+        raise HTTPException(status_code=400, detail="Customer alias cannot be empty.")
+    if not payload.zoho_contact_id:
+        raise HTTPException(status_code=400, detail="Zoho contact ID is required.")
+
+    mappings[clean_alias] = {
+        "zoho_contact_id": payload.zoho_contact_id.strip(),
+        "name": (payload.name or clean_alias).strip(),
+        "currency_code": (payload.currency_code or "GHS").strip(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    custom_cfg["customer_mappings"] = mappings
+    client.custom_config = custom_cfg
+    flag_modified(client, "custom_config")
+    db.add(client)
+
+    # Retroactively update existing un-invoiced staged transactions matching this alias
+    alias_lower = clean_alias.lower()
+    staged_txs = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.client_id == client.id,
+            StagedTransaction.status != "INVOICED",
+        )
+    ).all()
+
+    updated_tx_count = 0
+    for tx in staged_txs:
+        meta = dict(tx.metadata_json or {})
+        c_name = str(meta.get("customer_name") or meta.get("customer") or meta.get("property_name") or "").strip().lower()
+        f_name = str(tx.source_file_name or "").strip().lower()
+        if c_name == alias_lower or alias_lower in c_name or alias_lower in f_name:
+            meta["zoho_contact_id"] = payload.zoho_contact_id.strip()
+            meta["customer_name"] = (payload.name or clean_alias).strip()
+            meta["customer_reconciled"] = True
+            tx.metadata_json = meta
+            flag_modified(tx, "metadata_json")
+            db.add(tx)
+            updated_tx_count += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "alias": clean_alias,
+        "mapping": mappings[clean_alias],
+        "retroactive_staged_updated": updated_tx_count,
+        "message": f"Successfully mapped '{clean_alias}' to Zoho contact '{payload.name or payload.zoho_contact_id}'.",
+    }
+
+
+@router.delete("/{client_id}/customer-mappings/{alias}", summary="Remove Customer Alias Mapping")
+async def delete_customer_mapping(
+    client_id: str,
+    alias: str,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Remove a customer alias mapping from client configuration."""
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    custom_cfg = dict(client.custom_config or {})
+    mappings = dict(custom_cfg.get("customer_mappings", {}))
+
+    if alias in mappings:
+        del mappings[alias]
+        custom_cfg["customer_mappings"] = mappings
+        client.custom_config = custom_cfg
+        flag_modified(client, "custom_config")
+        db.add(client)
+        db.commit()
+
+    return {
+        "success": True,
+        "alias": alias,
+        "message": f"Removed customer mapping for '{alias}'.",
+    }
+
+

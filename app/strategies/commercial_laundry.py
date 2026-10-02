@@ -113,18 +113,28 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
         self, month: str, year: int, items: List[ExtractedLineItem]
     ) -> Dict[str, Any]:
         """Stages extracted line items into PostgreSQL staged_transactions."""
-        from app.models.db_models import StagedTransaction
+        from app.models.db_models import StagedTransaction, ClientOrganization
         from app.db.session import get_engine
-        from sqlmodel import Session
+        from sqlmodel import Session, select
         import uuid
 
         batch_id = f"batch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}"
         staged_count = 0
 
+        # Load customer_mappings from client custom_config
+        customer_mappings = {}
+        try:
+            with Session(get_engine()) as cfg_session:
+                c_org = cfg_session.exec(select(ClientOrganization).where(ClientOrganization.id == self.client_id)).first()
+                if c_org:
+                    customer_mappings = (c_org.custom_config or {}).get("customer_mappings", {})
+        except Exception as e:
+            logger.debug(f"Could not load customer_mappings for {self.client_id}: {e}")
+
         try:
             with Session(get_engine()) as session:
                 for i in items:
-                    raw = i.raw_extracted_data or {}
+                    raw = dict(i.raw_extracted_data or {})
                     file_name = raw.get("file_name") or "slip.jpg"
                     source_identifier = raw.get("source_identifier")
                     tx_date = resolve_transaction_date(
@@ -135,6 +145,31 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                     )
                     drive_url = raw.get("drive_file_url") or (f"https://drive.google.com/file/d/{source_identifier}/view" if source_identifier else "")
                     raw["drive_file_url"] = drive_url
+
+                    # Shift-Left Customer Resolution (Second Line of Defence)
+                    hotel_or_cust = str(raw.get("hotel_name") or raw.get("customer_name") or "").strip()
+                    zoho_contact_id = raw.get("zoho_contact_id")
+                    if not zoho_contact_id and hotel_or_cust:
+                        map_entry = customer_mappings.get(hotel_or_cust)
+                        if map_entry and map_entry.get("zoho_contact_id"):
+                            raw["zoho_contact_id"] = map_entry["zoho_contact_id"]
+                            raw["customer_name"] = map_entry.get("name") or hotel_or_cust
+                            raw["customer_reconciled"] = True
+                        else:
+                            try:
+                                matched_c = self.zoho.find_contact_by_name(hotel_or_cust)
+                                if matched_c:
+                                    raw["zoho_contact_id"] = matched_c.contact_id
+                                    raw["customer_name"] = matched_c.contact_name or hotel_or_cust
+                                    raw["customer_reconciled"] = True
+                                else:
+                                    raw["customer_reconciled"] = False
+                            except Exception:
+                                raw["customer_reconciled"] = False
+                    elif zoho_contact_id:
+                        raw["customer_reconciled"] = True
+                    else:
+                        raw["customer_reconciled"] = False
 
                     staged = StagedTransaction(
                         client_id=self.client_id,

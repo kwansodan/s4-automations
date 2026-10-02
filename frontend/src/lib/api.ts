@@ -2579,6 +2579,67 @@ export async function updatePlatformPricingConfig(
   );
 }
 
+export interface CustomerMappingEntry {
+  zoho_contact_id: string;
+  name: string;
+  currency_code?: string;
+  updated_at?: string;
+}
+
+export interface CustomerMappingsResponse {
+  client_id: string;
+  client_name: string;
+  mappings: Record<string, CustomerMappingEntry>;
+  active_contacts: Array<{
+    contact_id: string;
+    contact_name: string;
+    company_name?: string;
+    currency_code?: string;
+  }>;
+  auto_create_missing_contacts: boolean;
+}
+
+export async function fetchCustomerMappings(clientId: string): Promise<CustomerMappingsResponse> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/customer-mappings`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<CustomerMappingsResponse>(res, 'Fetch Customer Mappings');
+}
+
+export async function saveCustomerMapping(
+  clientId: string,
+  payload: {
+    alias: string;
+    zoho_contact_id: string;
+    name?: string;
+    currency_code?: string;
+  }
+): Promise<{
+  success: boolean;
+  alias: string;
+  mapping: CustomerMappingEntry;
+  retroactive_staged_updated: number;
+  message: string;
+}> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/customer-mappings`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Save Customer Mapping');
+}
+
+export async function deleteCustomerMapping(
+  clientId: string,
+  alias: string
+): Promise<{ success: boolean; alias: string; message: string }> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/customer-mappings/${encodeURIComponent(alias)}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Delete Customer Mapping');
+}
+
 
 
 

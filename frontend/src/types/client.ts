@@ -340,6 +340,8 @@ export interface ClientProfile {
   watched_accounts?: string[];
   sourceConfig?: Record<string, any>;
   customConfig?: Record<string, any>;
+  source_config?: Record<string, any>;
+  custom_config?: Record<string, any>;
   externalChecklist?: ExternalChecklistItem[];
   created_at?: string;
   updated_at?: string;

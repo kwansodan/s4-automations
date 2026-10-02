@@ -1987,10 +1987,10 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       />
                       <div className="text-xs">
                         <span className="font-semibold text-white block">
-                          Auto-Create Missing Customers &amp; Vendors
+                          Auto-provision Missing Customers &amp; Vendors (Opt-in Policy)
                         </span>
                         <span className="text-slate-400 block text-[11px] mt-0.5">
-                          If an extracted document references a customer or vendor that does not yet exist in Zoho, the pipeline will provision them in Zoho Books and link them.
+                          Default: Disabled. When enabled, unmapped customer names will auto-create new contacts in Zoho Books. When disabled, unmapped customers are safely flagged for mapping in the Customer Registry.
                         </span>
                       </div>
                     </label>

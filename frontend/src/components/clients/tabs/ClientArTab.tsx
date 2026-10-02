@@ -19,6 +19,7 @@ import {
   CatalogItem,
   runClientStrategy,
   ClientTransactionSummaryRow,
+  saveCustomerMapping,
 } from '../../../lib/api';
 import type { InvoicePreflightAudit } from '../../../types/client';
 import { formatCurrency, downloadTxt, downloadCsv } from '../../../lib/utils';
@@ -86,6 +87,7 @@ export interface SlipGroup {
   hasLowConfidence: boolean;
   hasUnmappedItem?: boolean;
   unmappedItemsCount?: number;
+  isCustomerReconciled?: boolean;
   minConfidence: number;
   status: string;
 }
@@ -172,6 +174,11 @@ export const ClientArTab: React.FC = () => {
   const [editingDateSlip, setEditingDateSlip] = useState<SlipGroup | null>(null);
   const [newSlipDateValue, setNewSlipDateValue] = useState<string>('');
   const [isSavingSlipDate, setIsSavingSlipDate] = useState<boolean>(false);
+
+  // Quick Link Customer from Daily Review
+  const [quickLinkCustomerSlip, setQuickLinkCustomerSlip] = useState<SlipGroup | null>(null);
+  const [quickLinkSelectedContactId, setQuickLinkSelectedContactId] = useState<string>('');
+  const [isSavingCustomerLink, setIsSavingCustomerLink] = useState<boolean>(false);
 
   // Adding Missed Item to Slip State
   const [addingItemSlipKey, setAddingItemSlipKey] = useState<string | null>(null);
@@ -1040,11 +1047,22 @@ export const ClientArTab: React.FC = () => {
     });
 
     const list = Array.from(map.values());
+    const customerMappings = currentClient?.custom_config?.customer_mappings || {};
     list.forEach((g) => {
       const allInvoiced = g.items.every((i) => i.status === 'INVOICED');
       if (allInvoiced) g.status = 'INVOICED';
       else if (g.isFullyApproved) g.status = 'APPROVED';
       else g.status = 'PENDING';
+
+      const pLower = g.propertyName.toLowerCase();
+      const mappedEntry = customerMappings[g.propertyName] || customerMappings[Object.keys(customerMappings).find((k) => k.toLowerCase() === pLower) || ''];
+      const matchedContact = clientContacts.find((c: any) => {
+        const cn = (c.contact_name || '').toLowerCase();
+        const co = (c.company_name || '').toLowerCase();
+        return cn === pLower || co === pLower || (pLower.length > 2 && (cn.includes(pLower) || co.includes(pLower)));
+      });
+      const hasDirectContact = g.items.some((i) => i.metadata_json?.zoho_contact_id);
+      g.isCustomerReconciled = Boolean(hasDirectContact || mappedEntry || matchedContact);
     });
 
     list.sort((a, b) => {
@@ -1783,6 +1801,38 @@ export const ClientArTab: React.FC = () => {
       addLog('error', `Failed updating slip date: ${err.message}`);
     } finally {
       setIsSavingSlipDate(false);
+    }
+  };
+
+  const handleConfirmQuickLinkCustomer = async () => {
+    if (!quickLinkCustomerSlip || !quickLinkSelectedContactId || !currentClient?.id) return;
+    setIsSavingCustomerLink(true);
+    try {
+      const selectedContact = clientContacts.find((c: any) => c.contact_id === quickLinkSelectedContactId);
+      const res = await saveCustomerMapping(currentClient.id, {
+        alias: quickLinkCustomerSlip.propertyName,
+        zoho_contact_id: quickLinkSelectedContactId,
+        name: selectedContact?.contact_name || quickLinkCustomerSlip.propertyName,
+      });
+
+      if (currentClient.custom_config) {
+        currentClient.custom_config.customer_mappings = {
+          ...(currentClient.custom_config.customer_mappings || {}),
+          [quickLinkCustomerSlip.propertyName]: {
+            zoho_contact_id: quickLinkSelectedContactId,
+            name: selectedContact?.contact_name || quickLinkCustomerSlip.propertyName,
+          },
+        };
+      }
+
+      addLog('success', `Linked customer '${quickLinkCustomerSlip.propertyName}' to Zoho contact '${selectedContact?.contact_name || quickLinkSelectedContactId}' (${res.retroactive_staged_updated} slips updated).`);
+      setQuickLinkCustomerSlip(null);
+      setQuickLinkSelectedContactId('');
+      await Promise.all([loadTransactions(), loadSummaryData()]);
+    } catch (err: any) {
+      addLog('error', `Failed to link customer: ${err.message || err}`);
+    } finally {
+      setIsSavingCustomerLink(false);
     }
   };
 
@@ -3173,6 +3223,30 @@ export const ClientArTab: React.FC = () => {
                                 <span>{slip.propertyName}</span>
                               </span>
 
+                              {!slip.isCustomerReconciled && (
+                                <div className="inline-flex items-center gap-1 shrink-0">
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
+                                    title={`Customer '${slip.propertyName}' is not mapped to an active Zoho Books contact`}
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    <span>Unmapped Customer</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setQuickLinkCustomerSlip(slip);
+                                      setQuickLinkSelectedContactId('');
+                                    }}
+                                    className="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2 py-0.5 rounded-full transition cursor-pointer"
+                                    title="Link this property/customer to an official Zoho Books contact"
+                                  >
+                                    Link
+                                  </button>
+                                </div>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -4501,6 +4575,101 @@ export const ClientArTab: React.FC = () => {
                   <>
                     <Check className="w-3.5 h-3.5" />
                     <span>Save Date</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Link Customer to Zoho Contact Modal */}
+      {quickLinkCustomerSlip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 bg-slate-50/80 border-b border-[#E2E8F0] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shadow-xs">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0F172A]">Link Slip Customer</h3>
+                  <p className="text-xs text-[#64748B]">
+                    Map "{quickLinkCustomerSlip.propertyName}" to Zoho Books
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setQuickLinkCustomerSlip(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Slip Customer / Destination Name
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={quickLinkCustomerSlip.propertyName}
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700 font-sans shadow-xs cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Official Zoho Books Customer
+                </label>
+                <select
+                  value={quickLinkSelectedContactId}
+                  onChange={(e) => setQuickLinkSelectedContactId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0284C7] focus:border-[#0284C7] shadow-xs"
+                >
+                  <option value="">Select official Zoho contact...</option>
+                  {clientContacts.map((c: any) => (
+                    <option key={c.contact_id} value={c.contact_id}>
+                      {c.contact_name} {c.company_name ? `(${c.company_name})` : ''} - ID: {c.contact_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900 leading-relaxed">
+                <p className="font-semibold flex items-center gap-1.5 text-sky-800 mb-1">
+                  <Info className="w-4 h-4 text-sky-600 shrink-0" />
+                  First Line of Defence Registry
+                </p>
+                This will save "{quickLinkCustomerSlip.propertyName}" in the Customer Mapping Registry and automatically update all <strong>{quickLinkCustomerSlip.items.length} line items</strong> on this slip so they are recognized immediately during draft invoicing.
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E2E8F0] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setQuickLinkCustomerSlip(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmQuickLinkCustomer}
+                disabled={isSavingCustomerLink || !quickLinkSelectedContactId}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isSavingCustomerLink ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Linking...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Confirm Link</span>
                   </>
                 )}
               </button>

@@ -11,6 +11,10 @@ import {
   fetchZohoOrganizations,
   confirmXeroTenant,
   fetchXeroTenants,
+  fetchCustomerMappings,
+  saveCustomerMapping,
+  deleteCustomerMapping,
+  type CustomerMappingEntry,
   type AccountingOAuthStatusResponse,
   type ZohoOrganizationOption,
 } from '../../../lib/api';
@@ -125,6 +129,73 @@ export const ClientSettingsTab: React.FC = () => {
     };
     prefetchOAuthDetails();
   }, [currentClient.id, activePlatform]);
+
+  // Customer Mapping Registry State (First Line of Defence)
+  const [customerMappings, setCustomerMappings] = useState<Record<string, CustomerMappingEntry>>({});
+  const [activeContacts, setActiveContacts] = useState<Array<{ contact_id: string; contact_name: string; company_name?: string }>>([]);
+  const [isLoadingMappings, setIsLoadingMappings] = useState<boolean>(false);
+  const [isSavingMapping, setIsSavingMapping] = useState<boolean>(false);
+  const [newAlias, setNewAlias] = useState<string>('');
+  const [selectedContactId, setSelectedContactId] = useState<string>('');
+  const [mappingFeedback, setMappingFeedback] = useState<string | null>(null);
+
+  const loadMappings = async () => {
+    if (!currentClient?.id) return;
+    setIsLoadingMappings(true);
+    try {
+      const res = await fetchCustomerMappings(currentClient.id);
+      setCustomerMappings(res.mappings || {});
+      setActiveContacts(res.active_contacts || []);
+    } catch (err) {
+      console.warn('Could not load customer mappings:', err);
+    } finally {
+      setIsLoadingMappings(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMappings();
+  }, [currentClient.id]);
+
+  const handleAddCustomerMapping = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAlias.trim() || !selectedContactId) return;
+    setIsSavingMapping(true);
+    setMappingFeedback(null);
+    try {
+      const targetContact = activeContacts.find((c) => c.contact_id === selectedContactId);
+      const res = await saveCustomerMapping(currentClient.id, {
+        alias: newAlias.trim(),
+        zoho_contact_id: selectedContactId,
+        name: targetContact?.contact_name || newAlias.trim(),
+      });
+      setCustomerMappings((prev) => ({
+        ...prev,
+        [res.alias]: res.mapping,
+      }));
+      setNewAlias('');
+      setSelectedContactId('');
+      setMappingFeedback(`Saved mapping: ${res.alias} -> ${res.mapping.name} (${res.retroactive_staged_updated} pending slips updated)`);
+      setTimeout(() => setMappingFeedback(null), 4000);
+    } catch (err: any) {
+      setMappingFeedback(`Failed to save mapping: ${err.message || err}`);
+    } finally {
+      setIsSavingMapping(false);
+    }
+  };
+
+  const handleDeleteCustomerMapping = async (alias: string) => {
+    try {
+      await deleteCustomerMapping(currentClient.id, alias);
+      setCustomerMappings((prev) => {
+        const next = { ...prev };
+        delete next[alias];
+        return next;
+      });
+    } catch (err: any) {
+      console.warn('Could not delete customer mapping:', err);
+    }
+  };
 
   // Listen for popup success message across platforms
   useEffect(() => {
@@ -787,6 +858,34 @@ export const ClientSettingsTab: React.FC = () => {
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
               />
             </div>
+
+            {/* Deliberate Policy: Guarded Contact Auto-Provisioning */}
+            <div className="pt-2 border-t border-slate-800">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(clientConfig.custom_config?.auto_create_missing_contacts)}
+                  onChange={(e) =>
+                    setClientConfig({
+                      ...clientConfig,
+                      custom_config: {
+                        ...clientConfig.custom_config,
+                        auto_create_missing_contacts: e.target.checked,
+                      },
+                    })
+                  }
+                  className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">
+                    Auto-provision Missing Customers in Zoho Books (Opt-in Policy)
+                  </span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    When enabled, unmapped customer names on control slips will automatically spawn new customer contacts in Zoho Books. Recommended: Keep unchecked to require explicit mapping in the Customer Registry.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
         </div>
@@ -803,6 +902,126 @@ export const ClientSettingsTab: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Customer Mapping Registry (First Line of Defence) */}
+      <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Building2 className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h3 className="text-base font-bold text-white tracking-tight">
+                Customer Mapping Registry (First Line of Defence)
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Map handwritten slip names, hotel abbreviations, and delivery destinations to official Zoho Books Customer contacts.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadMappings}
+            disabled={isLoadingMappings}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMappings ? 'animate-spin' : ''}`} />
+            <span>Refresh Mappings</span>
+          </button>
+        </div>
+
+        {mappingFeedback && (
+          <div className="text-xs p-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-300 flex items-center justify-between">
+            <span>{mappingFeedback}</span>
+            <button type="button" onClick={() => setMappingFeedback(null)} className="text-slate-400 hover:text-white">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Add New Alias Mapping Form */}
+        <form onSubmit={handleAddCustomerMapping} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 space-y-3">
+          <span className="text-xs font-bold text-slate-300 block">Add Customer Alias Mapping</span>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div className="sm:col-span-5">
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                Slip / Property Alias Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Active 8 Shiashie or The Lennox"
+                value={newAlias}
+                onChange={(e) => setNewAlias(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div className="sm:col-span-5">
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                Official Zoho Books Customer
+              </label>
+              <select
+                value={selectedContactId}
+                onChange={(e) => setSelectedContactId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Select official Zoho contact...</option>
+                {activeContacts.map((c) => (
+                  <option key={c.contact_id} value={c.contact_id}>
+                    {c.contact_name} {c.company_name ? `(${c.company_name})` : ''} - ID: {c.contact_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <button
+                type="submit"
+                disabled={isSavingMapping || !newAlias.trim() || !selectedContactId}
+                className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3 rounded-lg shadow transition cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSavingMapping ? 'Linking...' : 'Link'}</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* Existing Customer Mappings Table */}
+        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/50">
+          {Object.keys(customerMappings).length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-500">
+              No customer alias mappings registered yet. Add mappings above to eliminate unmatched customer warnings during invoicing.
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-2.5 px-4 font-semibold">Slip / Property Alias</th>
+                  <th className="py-2.5 px-4 font-semibold">Official Zoho Customer</th>
+                  <th className="py-2.5 px-4 font-semibold">Zoho Contact ID</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono">
+                {Object.entries(customerMappings).map(([alias, map]) => (
+                  <tr key={alias} className="hover:bg-slate-900/40 transition">
+                    <td className="py-2.5 px-4 font-semibold text-white font-sans">{alias}</td>
+                    <td className="py-2.5 px-4 text-emerald-400 font-sans">{map.name || alias}</td>
+                    <td className="py-2.5 px-4 text-slate-400 text-[11px]">{map.zoho_contact_id}</td>
+                    <td className="py-2.5 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomerMapping(alias)}
+                        className="text-slate-500 hover:text-rose-400 transition cursor-pointer p-1"
+                        title="Remove mapping"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
 
       {/* Stakeholders & Notification Routing */}
       <div className="glass-panel rounded-2xl p-6 shadow-xl border border-slate-800 space-y-4">

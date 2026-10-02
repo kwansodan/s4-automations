@@ -229,15 +229,50 @@ async def run_zoho_invoices_core(
 
                 if not contact_id:
                     from app.config import settings
+                    from datetime import timezone
+                    from sqlalchemy.orm.attributes import flag_modified
+                    auto_create_policy = bool(
+                        (tenant_obj.custom_config or {}).get("auto_create_missing_contacts", False)
+                    ) if tenant_obj else False
+
+                    if not auto_create_policy:
+                        logger.warning(
+                            f"Skipping customer '{customer_name}' in tenant '{tenant_slug}': Not mapped to a Zoho contact and auto_create_missing_contacts is disabled by policy."
+                        )
+                        pipeline_tracker.add_log(
+                            "warning",
+                            f"Skipping Customer '{customer_name}': Not mapped in Customer Registry and auto-provisioning is disabled by policy. Please map this customer in Client Settings or Daily Slip Review.",
+                        )
+                        continue
+
                     if settings.MOCK_MODE or not zoho.org_id or not zoho.refresh_token:
                         contact_id = f"cnt_auto_{customer_name.lower().replace(' ', '_')[:16]}"
                         logger.info(f"Using default contact ID '{contact_id}' for customer '{customer_name}' in tenant '{tenant_slug}'.")
                     else:
                         try:
-                            logger.info(f"Auto-provisioning customer '{customer_name}' in Zoho Books for tenant '{tenant_slug}'...")
+                            logger.info(f"Auto-provisioning customer '{customer_name}' in Zoho Books for tenant '{tenant_slug}' (opt-in policy enabled)...")
                             new_cust = await zoho.create_customer_contact(customer_name)
                             contact_id = new_cust.contact_id
                             pipeline_tracker.add_log("info", f"Auto-created new Customer '{customer_name}' in Zoho Books (ID: {contact_id}).")
+
+                            # Register into customer_mappings so subsequent runs resolve immediately
+                            if tenant_obj:
+                                with Session(get_engine()) as reg_session:
+                                    t_ref = reg_session.exec(select(ClientOrganization).where(ClientOrganization.id == tenant_obj.id)).first()
+                                    if t_ref:
+                                        t_cfg = dict(t_ref.custom_config or {})
+                                        t_maps = dict(t_cfg.get("customer_mappings", {}))
+                                        t_maps[customer_name] = {
+                                            "zoho_contact_id": contact_id,
+                                            "name": customer_name,
+                                            "currency_code": "GHS",
+                                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                                        }
+                                        t_cfg["customer_mappings"] = t_maps
+                                        t_ref.custom_config = t_cfg
+                                        flag_modified(t_ref, "custom_config")
+                                        reg_session.add(t_ref)
+                                        reg_session.commit()
                         except Exception as create_err:
                             logger.error(f"Failed to auto-create customer '{customer_name}' in Zoho Books: {create_err}")
                             pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Could not find or auto-create contact in Zoho Books.")
