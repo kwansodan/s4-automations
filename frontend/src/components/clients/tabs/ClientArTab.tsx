@@ -1404,6 +1404,158 @@ export const ClientArTab: React.FC = () => {
     addLog('success', `Exported ${sortedItems.length} distinct uncataloged items to ${filename}`);
   };
 
+  const handleExportCustomerListingCsv = () => {
+    const isFiltered = dailyPropertyFilter !== 'ALL';
+    const clientName = currentClient?.name || 'Client';
+    const targetTx = filteredArStagedTx.length > 0 ? filteredArStagedTx : arStagedTx;
+
+    if (targetTx.length === 0) {
+      alert('No transactions found to export for the current selection.');
+      return;
+    }
+
+    const escapeCsv = (val: any): string => {
+      if (val == null) return '""';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = [
+      'Customer',
+      'Transaction Date',
+      'Slip Document',
+      'Item Description',
+      isCustodyTracking ? 'Delivered Qty' : 'Quantity',
+      ...(isCustodyTracking ? ['Picked Up Qty', 'Linen Loss'] : []),
+      'Unit Rate (GHS)',
+      'Total Amount (GHS)',
+      'Review Status',
+      'Approval Status',
+      'Catalog Status',
+      'Source Drive Link',
+    ];
+
+    const rows: string[] = [headers.join(',')];
+
+    // Sort by Customer, then Date desc, then Document, then Item
+    const sorted = [...targetTx].sort((a, b) => {
+      const custA = extractPropertyName(a.source_file_name, a.metadata_json) || clientName;
+      const custB = extractPropertyName(b.source_file_name, b.metadata_json) || clientName;
+      const custDiff = custA.localeCompare(custB);
+      if (custDiff !== 0) return custDiff;
+
+      const dateA = a.transaction_date || '';
+      const dateB = b.transaction_date || '';
+      const dateDiff = dateB.localeCompare(dateA);
+      if (dateDiff !== 0) return dateDiff;
+
+      const fileA = a.source_file_name || '';
+      const fileB = b.source_file_name || '';
+      const fileDiff = fileA.localeCompare(fileB);
+      if (fileDiff !== 0) return fileDiff;
+
+      const descA = a.item_or_description || '';
+      const descB = b.item_or_description || '';
+      return descA.localeCompare(descB);
+    });
+
+    sorted.forEach((tx) => {
+      const cust = extractPropertyName(tx.source_file_name, tx.metadata_json) || clientName;
+      const rawName = (tx.item_or_description || '').trim();
+      const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim();
+      const displayName = toTitleCase(cleanName || rawName);
+      const delivQty = Number(tx.quantity_or_debit) || 0;
+      const pickQty = Number(tx.credit_amount ?? tx.quantity_or_debit) || 0;
+      const lossQty = Number(tx.discrepancy_amount) || 0;
+      const rate = Number(tx.rate_or_price) || 0;
+      const amount = Number(tx.total_amount) || (delivQty * rate);
+      const reviewStatus = tx.reviewed ? 'Reviewed' : 'Unreviewed';
+      const approvalStatus = tx.status === 'INVOICED' ? 'Invoiced' : (tx.approved ? 'Approved' : 'Pending');
+      const catalogStatus = isTxUnmappedCatalog(tx) ? 'Uncataloged' : 'Cataloged';
+      const driveUrl = tx.metadata_json?.drive_file_url || (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : '');
+
+      const row = [
+        escapeCsv(cust),
+        escapeCsv(tx.transaction_date || ''),
+        escapeCsv(tx.source_file_name || ''),
+        escapeCsv(displayName),
+        delivQty,
+        ...(isCustodyTracking ? [pickQty, lossQty] : []),
+        rate.toFixed(2),
+        amount.toFixed(2),
+        escapeCsv(reviewStatus),
+        escapeCsv(approvalStatus),
+        escapeCsv(catalogStatus),
+        escapeCsv(driveUrl),
+      ];
+      rows.push(row.join(','));
+    });
+
+    const csvContent = rows.join('\r\n');
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeScope = isFiltered ? dailyPropertyFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Customers';
+    const filename = `Customer_Listing_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.csv`;
+
+    downloadCsv(filename, csvContent);
+    addLog('success', `Exported ${sorted.length} transactions to ${filename}`);
+  };
+
+  const handleExportMonthlySummaryCsv = () => {
+    if (!sortedSummaryRows || sortedSummaryRows.length === 0) {
+      alert('No monthly summary data to export.');
+      return;
+    }
+
+    const clientName = currentClient?.name || 'Client';
+    const escapeCsv = (val: any): string => {
+      if (val == null) return '""';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = [
+      'Standard Item Name',
+      ...(isCustodyTracking ? ['Total Picked Up', 'Total Delivered', 'Linen Loss Discrepancy'] : ['Total Quantity']),
+      'Unit Rate (GHS)',
+      'Total Billed (GHS)',
+      isCustodyTracking ? 'Slips Count' : 'Documents Count',
+      'Reviewed',
+      'Approved',
+      'Status',
+    ];
+
+    const rows: string[] = [headers.join(',')];
+
+    sortedSummaryRows.forEach((row) => {
+      const r = [
+        escapeCsv(toTitleCase(row.item_name)),
+        ...(isCustodyTracking
+          ? [row.total_picked_up || 0, row.total_delivered || 0, row.linen_discrepancy || 0]
+          : [row.total_delivered || 0]),
+        Number(row.unit_rate ?? row.unit_price ?? 0).toFixed(2),
+        Number(row.total_billed || 0).toFixed(2),
+        row.slips_count || 0,
+        row.is_fully_reviewed ? 'Yes' : 'No',
+        row.is_fully_approved ? 'Yes' : 'No',
+        escapeCsv(row.status || 'PENDING'),
+      ];
+      rows.push(r.join(','));
+    });
+
+    const csvContent = rows.join('\r\n');
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `Monthly_Summary_${safeClient}_${selectedMonth}_${selectedYear}.csv`;
+
+    downloadCsv(filename, csvContent);
+    addLog('success', `Exported monthly summary to ${filename}`);
+  };
+
   // Slip-level KPI counts for the active Customer filter
   const slipKpis = useMemo(() => {
     const targetTx = dailyPropertyFilter === 'ALL'
@@ -2611,6 +2763,17 @@ export const ClientArTab: React.FC = () => {
                   <span className="sm:hidden">Export</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={handleExportCustomerListingCsv}
+                className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] hover:bg-slate-50 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer shrink-0"
+                title={`Export customer transaction listing to .csv (${dailyPropertyFilter === 'ALL' ? 'All Customers' : dailyPropertyFilter})`}
+              >
+                <Download className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden sm:inline">Export Listing (.csv)</span>
+                <span className="sm:hidden">Export CSV</span>
+              </button>
             </div>
           </div>
 
@@ -2702,6 +2865,14 @@ export const ClientArTab: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleExportMonthlySummaryCsv}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 rounded-lg transition cursor-pointer shadow-xs"
+              title="Export monthly SKU summary to CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export Summary (.csv)</span>
+            </button>
             <button
               onClick={() => setActiveLedgerView('daily')}
               className="px-2.5 py-1 text-xs font-bold bg-white text-[#0284C7] border border-[#BAE6FD] hover:bg-sky-50 rounded-lg transition cursor-pointer shadow-xs"
