@@ -2270,7 +2270,12 @@ async def get_customer_mappings(
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Retrieve customer alias mappings and active Zoho contacts for a tenant."""
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(
+        select(ClientOrganization).where(
+            (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+        )
+    ).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
 
@@ -2312,7 +2317,12 @@ async def save_customer_mapping(
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Save a customer alias mapping and retroactively update matching staged transactions."""
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(
+        select(ClientOrganization).where(
+            (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+        )
+    ).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
 
@@ -2325,6 +2335,12 @@ async def save_customer_mapping(
     if not payload.zoho_contact_id:
         raise HTTPException(status_code=400, detail="Zoho contact ID is required.")
 
+    # Remove existing case-insensitive duplicates
+    alias_lower = clean_alias.lower()
+    for existing_key in list(mappings.keys()):
+        if existing_key.strip().lower() == alias_lower:
+            del mappings[existing_key]
+
     mappings[clean_alias] = {
         "zoho_contact_id": payload.zoho_contact_id.strip(),
         "name": (payload.name or clean_alias).strip(),
@@ -2336,11 +2352,10 @@ async def save_customer_mapping(
     flag_modified(client, "custom_config")
     db.add(client)
 
-    # Retroactively update existing un-invoiced staged transactions matching this alias
-    alias_lower = clean_alias.lower()
+    # Retroactively update existing un-invoiced staged transactions across all client aliases
     staged_txs = db.exec(
         select(StagedTransaction).where(
-            StagedTransaction.client_id == client.id,
+            StagedTransaction.client_id.in_(aliases),
             StagedTransaction.status != "INVOICED",
         )
     ).all()
@@ -2377,15 +2392,27 @@ async def delete_customer_mapping(
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Remove a customer alias mapping from client configuration."""
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(
+        select(ClientOrganization).where(
+            (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+        )
+    ).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
 
     custom_cfg = dict(client.custom_config or {})
     mappings = dict(custom_cfg.get("customer_mappings", {}))
 
-    if alias in mappings:
-        del mappings[alias]
+    target_key = None
+    alias_lower = alias.strip().lower()
+    for existing_key in list(mappings.keys()):
+        if existing_key.strip().lower() == alias_lower:
+            target_key = existing_key
+            break
+
+    if target_key:
+        del mappings[target_key]
         custom_cfg["customer_mappings"] = mappings
         client.custom_config = custom_cfg
         flag_modified(client, "custom_config")

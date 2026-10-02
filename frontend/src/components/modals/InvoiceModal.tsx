@@ -33,7 +33,7 @@ export const InvoiceModal: React.FC = () => {
     setInvoicePreflight,
     catalog,
   } = useAutomation();
-  const { currentClient, clients } = useClient();
+  const { currentClient, clients, refreshClients } = useClient();
   const { openDebugDrawer } = useErrors();
 
   const [clientFilter, setClientFilter] = useState('');
@@ -314,6 +314,7 @@ export const InvoiceModal: React.FC = () => {
           zohoContactMatched: remainingUnmatched.length === 0,
         });
       }
+      await refreshClients();
       setOpenQuickMapCust(null);
       setQuickMapSelectedId('');
     } catch (err) {

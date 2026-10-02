@@ -151,6 +151,12 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                     zoho_contact_id = raw.get("zoho_contact_id")
                     if not zoho_contact_id and hotel_or_cust:
                         map_entry = customer_mappings.get(hotel_or_cust)
+                        if not map_entry:
+                            h_lower = hotel_or_cust.lower()
+                            for m_key, m_val in customer_mappings.items():
+                                if m_key.strip().lower() == h_lower:
+                                    map_entry = m_val
+                                    break
                         if map_entry and map_entry.get("zoho_contact_id"):
                             raw["zoho_contact_id"] = map_entry["zoho_contact_id"]
                             raw["customer_name"] = map_entry.get("name") or hotel_or_cust

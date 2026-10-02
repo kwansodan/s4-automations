@@ -141,9 +141,16 @@ async def run_daily_pipeline_core(
                 contacts = await zoho.fetch_active_contacts()
                 items = await zoho.fetch_item_catalog()
 
-                # First Line of Defence: Check Customer Mapping Registry
+                # First Line of Defence: Check Customer Mapping Registry (with case-insensitive fallback)
                 zoho_contact_id = ""
                 mapping_entry = customer_mappings.get(client_name)
+                if not mapping_entry:
+                    c_lower = client_name.strip().lower()
+                    for m_key, m_val in customer_mappings.items():
+                        if m_key.strip().lower() == c_lower:
+                            mapping_entry = m_val
+                            break
+
                 if mapping_entry and mapping_entry.get("zoho_contact_id"):
                     zoho_contact_id = mapping_entry.get("zoho_contact_id")
                 else:

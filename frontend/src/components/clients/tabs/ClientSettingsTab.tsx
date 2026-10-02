@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 
 export const ClientSettingsTab: React.FC = () => {
-  const { currentClient, deleteClient } = useClient();
+  const { currentClient, deleteClient, refreshClients } = useClient();
   const { addLog } = useAutomation();
 
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -176,6 +176,7 @@ export const ClientSettingsTab: React.FC = () => {
       setNewAlias('');
       setSelectedContactId('');
       setMappingFeedback(`Saved mapping: ${res.alias} -> ${res.mapping.name} (${res.retroactive_staged_updated} pending slips updated)`);
+      await refreshClients();
       setTimeout(() => setMappingFeedback(null), 4000);
     } catch (err: any) {
       setMappingFeedback(`Failed to save mapping: ${err.message || err}`);
@@ -192,6 +193,7 @@ export const ClientSettingsTab: React.FC = () => {
         delete next[alias];
         return next;
       });
+      await refreshClients();
     } catch (err: any) {
       console.warn('Could not delete customer mapping:', err);
     }

@@ -93,7 +93,7 @@ export interface SlipGroup {
 }
 
 export const ClientArTab: React.FC = () => {
-  const { currentClient } = useClient();
+  const { currentClient, refreshClients } = useClient();
   const {
     selectedMonth,
     setSelectedMonth,
@@ -1828,7 +1828,7 @@ export const ClientArTab: React.FC = () => {
       addLog('success', `Linked customer '${quickLinkCustomerSlip.propertyName}' to Zoho contact '${selectedContact?.contact_name || quickLinkSelectedContactId}' (${res.retroactive_staged_updated} slips updated).`);
       setQuickLinkCustomerSlip(null);
       setQuickLinkSelectedContactId('');
-      await Promise.all([loadTransactions(), loadSummaryData()]);
+      await Promise.all([loadTransactions(), loadSummaryData(), refreshClients()]);
     } catch (err: any) {
       addLog('error', `Failed to link customer: ${err.message || err}`);
     } finally {

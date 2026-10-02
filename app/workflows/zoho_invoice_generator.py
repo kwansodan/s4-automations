@@ -189,7 +189,8 @@ async def run_zoho_invoices_core(
             for customer_name, items in customer_groups.items():
                 tenant_slug = items[0].get("tenant_id") or filter_client_name or "anr_group"
                 zoho_org_id = None
-                tenant_obj = None
+                tenant_custom_config = {}
+                tenant_db_id = None
                 with Session(get_engine()) as session:
                     from app.api.v1.clients import get_client_id_aliases
                     slug_aliases = get_client_id_aliases(tenant_slug)
@@ -200,6 +201,8 @@ async def run_zoho_invoices_core(
                     ).first()
                     if tenant_obj:
                         zoho_org_id = tenant_obj.zoho_org_id
+                        tenant_custom_config = dict(tenant_obj.custom_config or {})
+                        tenant_db_id = tenant_obj.id
 
                 try:
                     zoho = ZohoBooksService.from_client_id(tenant_slug)
@@ -216,12 +219,17 @@ async def run_zoho_invoices_core(
 
                 contact_id = items[0].get("zoho_contact_id")
 
-                # Check customer_mappings registry in tenant configuration
-                if not contact_id and tenant_obj:
-                    cfg = tenant_obj.custom_config or {}
-                    mappings = cfg.get("customer_mappings", {})
+                # Check customer_mappings registry in tenant configuration (case-insensitive)
+                if not contact_id:
+                    mappings = tenant_custom_config.get("customer_mappings", {})
                     if customer_name in mappings:
                         contact_id = mappings[customer_name].get("zoho_contact_id")
+                    else:
+                        c_lower = customer_name.strip().lower()
+                        for m_key, m_val in mappings.items():
+                            if m_key.strip().lower() == c_lower:
+                                contact_id = m_val.get("zoho_contact_id")
+                                break
 
                 if not contact_id:
                     contact = zoho.find_contact_by_name(customer_name)
@@ -232,8 +240,8 @@ async def run_zoho_invoices_core(
                     from datetime import timezone
                     from sqlalchemy.orm.attributes import flag_modified
                     auto_create_policy = bool(
-                        (tenant_obj.custom_config or {}).get("auto_create_missing_contacts", False)
-                    ) if tenant_obj else False
+                        tenant_custom_config.get("auto_create_missing_contacts", False)
+                    )
 
                     if not auto_create_policy:
                         logger.warning(
@@ -256,9 +264,9 @@ async def run_zoho_invoices_core(
                             pipeline_tracker.add_log("info", f"Auto-created new Customer '{customer_name}' in Zoho Books (ID: {contact_id}).")
 
                             # Register into customer_mappings so subsequent runs resolve immediately
-                            if tenant_obj:
+                            if tenant_db_id:
                                 with Session(get_engine()) as reg_session:
-                                    t_ref = reg_session.exec(select(ClientOrganization).where(ClientOrganization.id == tenant_obj.id)).first()
+                                    t_ref = reg_session.exec(select(ClientOrganization).where(ClientOrganization.id == tenant_db_id)).first()
                                     if t_ref:
                                         t_cfg = dict(t_ref.custom_config or {})
                                         t_maps = dict(t_cfg.get("customer_mappings", {}))
@@ -280,8 +288,8 @@ async def run_zoho_invoices_core(
 
                 # Determine whether to include descriptions for this client's line items
                 should_include_desc = include_line_item_description
-                if should_include_desc is None and tenant_obj:
-                    should_include_desc = (tenant_obj.custom_config or {}).get("include_line_item_description", True)
+                if should_include_desc is None:
+                    should_include_desc = tenant_custom_config.get("include_line_item_description", True)
                 if should_include_desc is None:
                     should_include_desc = True
 
