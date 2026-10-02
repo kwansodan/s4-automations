@@ -1028,7 +1028,7 @@ export const InvoiceModal: React.FC = () => {
                     <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
                       <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold" style={{ color: '#ffffff' }}>
                           Customer Reconciliation Verified ({scopedCustomerSummaries.length}):{' '}
                         </span>
                         <span>
@@ -1041,7 +1041,7 @@ export const InvoiceModal: React.FC = () => {
                                 key={c.customerName}
                                 className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded"
                               >
-                                <span className="font-bold text-white">{c.customerName}:</span>
+                                <span className="font-bold" style={{ color: '#ffffff' }}>{c.customerName}:</span>
                                 <span>
                                   {c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}
                                 </span>
@@ -1078,7 +1078,7 @@ export const InvoiceModal: React.FC = () => {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 font-mono">
                                     <span>{c.isReconciled ? '✓' : '⚠️'}</span>
-                                    <span className="font-bold text-white font-sans">{c.customerName}</span>
+                                    <span className="font-bold font-sans" style={{ color: '#ffffff' }}>{c.customerName}</span>
                                     <span className="text-slate-400">
                                       ({c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}, {formatCurrency(c.totalAmount)})
                                     </span>
