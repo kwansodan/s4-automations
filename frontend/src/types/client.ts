@@ -503,7 +503,6 @@ export interface CustomerInvoiceGroupSummary {
   totalAmount: number;
   isReconciled: boolean;
   zohoContactId?: string;
-  properties?: string[];
 }
 
 export interface InvoicePreflightAudit {

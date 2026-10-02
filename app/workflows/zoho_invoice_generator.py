@@ -40,117 +40,6 @@ def extract_slip_customer_name(source_file_name: Optional[str] = None, metadata:
     return base if base else "General Customer"
 
 
-def resolve_slip_customer(
-    source_file_name: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    customer_mappings: Optional[Dict[str, Any]] = None,
-    active_contacts: Optional[List[Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Resolves canonical customer name, property name, and zoho_contact_id for a transaction or slip.
-    Matches direct metadata, tenant customer_mappings, prefix splits on [-:], and active Zoho contacts.
-    """
-    metadata = metadata or {}
-    customer_mappings = customer_mappings or {}
-    active_contacts = active_contacts or []
-
-    raw_prop = extract_slip_customer_name(source_file_name, metadata)
-
-    # 1. Direct contact ID check on metadata
-    direct_cid = str(metadata.get("zoho_contact_id") or "").strip()
-    if direct_cid and active_contacts:
-        for c in active_contacts:
-            cid = str(getattr(c, "contact_id", None) or (c.get("contact_id") if isinstance(c, dict) else "")).strip()
-            if cid == direct_cid:
-                cname = getattr(c, "contact_name", None) or getattr(c, "company_name", None) or (c.get("contact_name") if isinstance(c, dict) else "")
-                if cname:
-                    return {
-                        "customer_name": str(cname).strip(),
-                        "property_name": raw_prop,
-                        "zoho_contact_id": direct_cid,
-                        "is_reconciled": True,
-                    }
-
-    p_lower = raw_prop.lower()
-
-    # 2. Check customer_mappings registry (exact or case-insensitive)
-    for k, v in customer_mappings.items():
-        if k.strip().lower() == p_lower:
-            cid = str(v.get("zoho_contact_id") or "").strip()
-            cname = v.get("name") or raw_prop
-            return {
-                "customer_name": cname,
-                "property_name": raw_prop,
-                "zoho_contact_id": cid,
-                "is_reconciled": bool(cid),
-            }
-
-    # Split on [-:]
-    parts = re.split(r"[-:]", raw_prop, maxsplit=1)
-    if len(parts) > 1:
-        prefix = parts[0].strip()
-        pref_lower = prefix.lower()
-        for k, v in customer_mappings.items():
-            if k.strip().lower() == pref_lower:
-                cid = str(v.get("zoho_contact_id") or "").strip()
-                cname = v.get("name") or prefix
-                return {
-                    "customer_name": cname,
-                    "property_name": raw_prop,
-                    "zoho_contact_id": cid,
-                    "is_reconciled": bool(cid),
-                }
-
-    # 3. Match against active Zoho contacts
-    if active_contacts:
-        if len(parts) > 1:
-            pref_lower = parts[0].strip().lower()
-            for c in active_contacts:
-                cn = (getattr(c, "contact_name", None) or (c.get("contact_name") if isinstance(c, dict) else "") or "").strip().lower()
-                co = (getattr(c, "company_name", None) or (c.get("company_name") if isinstance(c, dict) else "") or "").strip().lower()
-                if cn == pref_lower or co == pref_lower:
-                    real_name = getattr(c, "contact_name", None) or getattr(c, "company_name", None) or (c.get("contact_name") if isinstance(c, dict) else parts[0].strip())
-                    cid = str(getattr(c, "contact_id", None) or (c.get("contact_id") if isinstance(c, dict) else "")).strip()
-                    return {
-                        "customer_name": real_name,
-                        "property_name": raw_prop,
-                        "zoho_contact_id": cid,
-                        "is_reconciled": True,
-                    }
-
-        for c in active_contacts:
-            cn = (getattr(c, "contact_name", None) or (c.get("contact_name") if isinstance(c, dict) else "") or "").strip().lower()
-            co = (getattr(c, "company_name", None) or (c.get("company_name") if isinstance(c, dict) else "") or "").strip().lower()
-            if not cn and not co:
-                continue
-            if cn == p_lower or co == p_lower or p_lower.startswith(cn) or p_lower.startswith(co):
-                real_name = getattr(c, "contact_name", None) or getattr(c, "company_name", None) or (c.get("contact_name") if isinstance(c, dict) else raw_prop)
-                cid = str(getattr(c, "contact_id", None) or (c.get("contact_id") if isinstance(c, dict) else "")).strip()
-                return {
-                    "customer_name": real_name,
-                    "property_name": raw_prop,
-                    "zoho_contact_id": cid,
-                    "is_reconciled": True,
-                }
-            if len(p_lower) > 2 and (p_lower in cn or p_lower in co):
-                real_name = getattr(c, "contact_name", None) or getattr(c, "company_name", None) or (c.get("contact_name") if isinstance(c, dict) else raw_prop)
-                cid = str(getattr(c, "contact_id", None) or (c.get("contact_id") if isinstance(c, dict) else "")).strip()
-                return {
-                    "customer_name": real_name,
-                    "property_name": raw_prop,
-                    "zoho_contact_id": cid,
-                    "is_reconciled": True,
-                }
-
-    # 4. Fallback to raw property
-    return {
-        "customer_name": raw_prop,
-        "property_name": raw_prop,
-        "zoho_contact_id": direct_cid,
-        "is_reconciled": False,
-    }
-
-
 async def run_zoho_invoices_core(
     target_month: Optional[str] = None,
     target_year: Optional[int] = None,
@@ -219,31 +108,6 @@ async def run_zoho_invoices_core(
         async def fetch_approved() -> Dict[str, Any]:
             approved_rows = []
 
-            # Pre-load tenant custom config and active Zoho contacts for customer resolution
-            tenant_slug = filter_client_name or "anr_group"
-            tenant_custom_config: Dict[str, Any] = {}
-            active_contacts: List[Any] = []
-            try:
-                with Session(get_engine()) as session:
-                    from app.api.v1.clients import get_client_id_aliases
-                    slug_aliases = get_client_id_aliases(tenant_slug)
-                    tenant_obj = session.exec(
-                        select(ClientOrganization).where(
-                            (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
-                        )
-                    ).first()
-                    if tenant_obj:
-                        tenant_custom_config = dict(tenant_obj.custom_config or {})
-                        if tenant_obj.zoho_org_id:
-                            try:
-                                pre_zoho = ZohoBooksService.from_client_id(tenant_slug)
-                                pre_zoho.org_id = tenant_obj.zoho_org_id
-                                active_contacts = await pre_zoho.fetch_active_contacts()
-                            except Exception as zoho_err:
-                                logger.debug(f"Pre-fetch active contacts note: {zoho_err}")
-            except Exception as pre_err:
-                logger.debug(f"Pre-loading client config note: {pre_err}")
-
             logger.info("Scanning PostgreSQL staged_transactions ledger for approved billing rows...")
             from app.models.db_models import StagedTransaction
             status_list = ["PENDING", "APPROVED", "INVOICED"] if mode == "regenerate" else ["PENDING", "APPROVED"]
@@ -284,27 +148,15 @@ async def run_zoho_invoices_core(
                             except Exception:
                                 pass
                         if match_month:
-                            cust_info = resolve_slip_customer(
-                                source_file_name=st.source_file_name,
-                                metadata=st.metadata_json,
-                                customer_mappings=tenant_custom_config.get("customer_mappings", {}),
-                                active_contacts=active_contacts,
-                            )
-                            canonical_cust = cust_info["customer_name"]
-                            property_name = cust_info["property_name"]
-                            zoho_cid = cust_info["zoho_contact_id"] or (st.metadata_json or {}).get("zoho_contact_id", "")
-
-                            if target_customer_name:
-                                t_clean = target_customer_name.strip().lower()
-                                if canonical_cust.strip().lower() != t_clean and property_name.strip().lower() != t_clean:
-                                    continue
+                            cust_name = extract_slip_customer_name(st.source_file_name, st.metadata_json)
+                            if target_customer_name and cust_name.strip().lower() != target_customer_name.strip().lower():
+                                continue
                             approved_rows.append({
                                 "row_index": idx,
                                 "tenant_id": st.client_id,
-                                "customer_name": canonical_cust,
-                                "property_name": property_name,
+                                "customer_name": cust_name,
                                 "client_name": st.client_id,
-                                "zoho_contact_id": zoho_cid,
+                                "zoho_contact_id": (st.metadata_json or {}).get("zoho_contact_id", ""),
                                 "zoho_item_id": (st.metadata_json or {}).get("zoho_item_id", ""),
                                 "standard_item_name": st.item_or_description,
                                 "raw_names_seen": st.item_or_description,
@@ -356,11 +208,8 @@ async def run_zoho_invoices_core(
             customer_groups: Dict[str, List[Dict[str, Any]]] = {}
             for row in approved_rows:
                 customer = row.get("customer_name") or "General Customer"
-                if target_customer_name:
-                    t_clean = target_customer_name.strip().lower()
-                    prop = (row.get("property_name") or "").strip().lower()
-                    if customer.strip().lower() != t_clean and prop != t_clean:
-                        continue
+                if target_customer_name and customer.strip().lower() != target_customer_name.strip().lower():
+                    continue
                 customer_groups.setdefault(customer, []).append(row)
 
             total_customers = len(customer_groups)
@@ -420,10 +269,9 @@ async def run_zoho_invoices_core(
                 from app.config import settings
                 is_mock = getattr(settings, "MOCK_MODE", False) or not zoho.org_id
 
-                contact_id = next(
-                    (str(it.get("zoho_contact_id")).strip() for it in items if it.get("zoho_contact_id") and (is_mock or str(it.get("zoho_contact_id")).strip().isdigit())),
-                    ""
-                )
+                contact_id = items[0].get("zoho_contact_id")
+                if not contact_id or (not is_mock and not str(contact_id).strip().isdigit()):
+                    contact_id = ""
 
                 # Check customer_mappings registry in tenant configuration (case-insensitive)
                 if not contact_id:
@@ -526,25 +374,19 @@ async def run_zoho_invoices_core(
                             "total_delivery": 0,
                             "total_loss": 0,
                             "slips_count": 0,
-                            "properties": set(),
                         }
                     sku_groups[sku_key]["total_qty"] += total_qty
                     sku_groups[sku_key]["total_pickup"] += item.get("total_picked_up", 0)
                     sku_groups[sku_key]["total_delivery"] += item.get("total_delivered", 0)
                     sku_groups[sku_key]["total_loss"] += loss_qty
                     sku_groups[sku_key]["slips_count"] += 1
-                    prop_name = item.get("property_name")
-                    if prop_name and prop_name != customer_name:
-                        sku_groups[sku_key]["properties"].add(prop_name)
                     if float(item.get("unit_rate", 0.0)) > 0:
                         sku_groups[sku_key]["unit_rate"] = float(item.get("unit_rate", 0.0))
 
                 for sku_key, sku_data in sku_groups.items():
                     desc = ""
                     if should_include_desc:
-                        props = sku_data.get("properties")
-                        prop_str = f" [{', '.join(sorted(props))}]" if props else ""
-                        desc = f"Linen service: {sku_data['name']}{prop_str} ({sku_data['slips_count']} slips). "
+                        desc = f"Linen service: {sku_data['name']} ({sku_data['slips_count']} slips). "
                         desc += f"Pickups: {sku_data['total_pickup']}, Deliveries: {sku_data['total_delivery']}."
                         if sku_data["total_loss"] > 0:
                             desc += f" (Unreturned loss discrepancy: {sku_data['total_loss']} pcs)"
@@ -585,14 +427,12 @@ async def run_zoho_invoices_core(
                 else:
                     resolved_terms = "Payment due within 14 days of invoice date."
 
-                props_all = {it.get("property_name") for it in items if it.get("property_name") and it.get("property_name") != customer_name}
-                props_summary = f" (Properties: {', '.join(sorted(props_all))})" if props_all else ""
                 inv_request = ZohoDraftInvoiceRequest(
                     customer_id=contact_id,
                     date=inv_date,
                     due_date=resolved_due_date,
                     line_items=zoho_line_items,
-                    notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name}{props_summary} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
+                    notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
                     terms=resolved_terms,
                 )
 

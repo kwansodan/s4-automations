@@ -130,11 +130,10 @@ function computeInvoicingDates(cfg: DateRuleConfig): {
   return { invoiceDate, dueDate, termsNote };
 }
 
-function getTxRawPropertyName(tx: any): string {
-  if (tx.metadata_json?.property_name) return String(tx.metadata_json.property_name).trim();
-  if (tx.metadata_json?.hotel_name) return String(tx.metadata_json.hotel_name).trim();
+function getTxCustomer(tx: any): string {
   if (tx.metadata_json?.customer_name) return String(tx.metadata_json.customer_name).trim();
   if (tx.metadata_json?.customer) return String(tx.metadata_json.customer).trim();
+  if (tx.metadata_json?.property_name) return String(tx.metadata_json.property_name).trim();
   if (tx.source_file_name) {
     return (
       tx.source_file_name
@@ -146,120 +145,6 @@ function getTxRawPropertyName(tx: any): string {
     );
   }
   return 'General Customer';
-}
-
-interface ResolvedTxCustomer {
-  customerName: string;
-  isReconciled: boolean;
-  zohoContactId?: string;
-  propertyName: string;
-}
-
-function resolveTxCustomer(
-  tx: any,
-  contacts: any[] = [],
-  customerMappings: Record<string, any> = {}
-): ResolvedTxCustomer {
-  const rawProp = getTxRawPropertyName(tx);
-  const pLower = rawProp.toLowerCase();
-
-  // 1. Direct Zoho Contact ID on transaction
-  if (tx.metadata_json?.zoho_contact_id) {
-    const directContact = contacts.find((c: any) => c.contact_id === tx.metadata_json.zoho_contact_id);
-    if (directContact) {
-      return {
-        customerName: directContact.contact_name || directContact.company_name || rawProp,
-        isReconciled: true,
-        zohoContactId: directContact.contact_id,
-        propertyName: rawProp,
-      };
-    }
-  }
-
-  // 2. Check Customer Mapping registry (exact, case-insensitive, or prefix)
-  const mapKey = Object.keys(customerMappings).find((k) => k.toLowerCase() === pLower);
-  const mapped = customerMappings[rawProp] || (mapKey ? customerMappings[mapKey] : undefined);
-  if (mapped) {
-    const mappedContact = mapped.zoho_contact_id
-      ? contacts.find((c: any) => c.contact_id === mapped.zoho_contact_id)
-      : undefined;
-    const resolvedName = mapped.name || mappedContact?.contact_name || mappedContact?.company_name || rawProp;
-    return {
-      customerName: resolvedName,
-      isReconciled: Boolean(mapped.zoho_contact_id),
-      zohoContactId: mapped.zoho_contact_id,
-      propertyName: rawProp,
-    };
-  }
-
-  // Check prefix before hyphen or colon in customerMappings (e.g. "Melcom - Active8 Shiashie" -> "Melcom")
-  const parts = rawProp.split(/[-:]/);
-  if (parts.length > 1) {
-    const prefix = parts[0].trim();
-    const prefLower = prefix.toLowerCase();
-    const prefKey = Object.keys(customerMappings).find((k) => k.toLowerCase() === prefLower);
-    const prefMapped = customerMappings[prefix] || (prefKey ? customerMappings[prefKey] : undefined);
-    if (prefMapped) {
-      const mappedContact = prefMapped.zoho_contact_id
-        ? contacts.find((c: any) => c.contact_id === prefMapped.zoho_contact_id)
-        : undefined;
-      const resolvedName = prefMapped.name || mappedContact?.contact_name || mappedContact?.company_name || prefix;
-      return {
-        customerName: resolvedName,
-        isReconciled: Boolean(prefMapped.zoho_contact_id),
-        zohoContactId: prefMapped.zoho_contact_id,
-        propertyName: rawProp,
-      };
-    }
-  }
-
-  // 3. Match against official active Zoho contacts
-  if (contacts.length > 0) {
-    // Check if prefix before hyphen matches a Zoho contact
-    if (parts.length > 1) {
-      const prefLower = parts[0].trim().toLowerCase();
-      const prefMatched = contacts.find((c: any) => {
-        const cn = (c.contact_name || '').trim().toLowerCase();
-        const co = (c.company_name || '').trim().toLowerCase();
-        return cn === prefLower || co === prefLower;
-      });
-      if (prefMatched) {
-        return {
-          customerName: prefMatched.contact_name || prefMatched.company_name || parts[0].trim(),
-          isReconciled: true,
-          zohoContactId: prefMatched.contact_id,
-          propertyName: rawProp,
-        };
-      }
-    }
-
-    // Check full rawProp exact, startsWith, or substring match
-    const matched = contacts.find((c: any) => {
-      const cn = (c.contact_name || '').trim().toLowerCase();
-      const co = (c.company_name || '').trim().toLowerCase();
-      if (!cn && !co) return false;
-      if (cn === pLower || co === pLower) return true;
-      if (pLower.startsWith(cn) || pLower.startsWith(co)) return true;
-      if (pLower.length > 2 && (cn.includes(pLower) || co.includes(pLower))) return true;
-      return false;
-    });
-
-    if (matched) {
-      return {
-        customerName: matched.contact_name || matched.company_name || rawProp,
-        isReconciled: true,
-        zohoContactId: matched.contact_id,
-        propertyName: rawProp,
-      };
-    }
-  }
-
-  // 4. Fallback to unmapped raw property
-  return {
-    customerName: rawProp,
-    isReconciled: false,
-    propertyName: rawProp,
-  };
 }
 
 export const InvoiceModal: React.FC = () => {
@@ -510,42 +395,50 @@ export const InvoiceModal: React.FC = () => {
           (t: any) => t.confidence_score === 'LOW' || (typeof t.confidence === 'number' && t.confidence < 0.8)
         );
 
-        // Group approved transactions by canonical Customer
+        // Group approved transactions by Customer
         const customerMap: Record<
           string,
-          {
-            itemsCount: number;
-            totalAmount: number;
-            isReconciled: boolean;
-            zohoContactId?: string;
-            properties: Set<string>;
-          }
+          { itemsCount: number; totalAmount: number; isReconciled: boolean; zohoContactId?: string }
         > = {};
 
-        const customerMappings = targetClient?.custom_config?.customer_mappings || {};
-
         approvedTx.forEach((tx: any) => {
-          const res = resolveTxCustomer(tx, contacts, customerMappings);
-          const cust = res.customerName;
-
+          const cust = getTxCustomer(tx);
           if (!customerMap[cust]) {
+            const cLower = cust.toLowerCase();
+            const customerMappings = targetClient?.custom_config?.customer_mappings || {};
+            const mappedEntry =
+              customerMappings[cust] ||
+              customerMappings[Object.keys(customerMappings).find((k) => k.toLowerCase() === cLower) || ''];
+            const found = contacts.find((c: any) => {
+              const cName = (c.contact_name || '').trim().toLowerCase();
+              const compName = (c.company_name || '').trim().toLowerCase();
+              return (
+                cName === cLower ||
+                compName === cLower ||
+                (cLower.length > 2 &&
+                  (cName.includes(cLower) ||
+                    compName.includes(cLower) ||
+                    cLower.includes(cName) ||
+                    cLower.includes(compName)))
+              );
+            });
+            const directContactId =
+              tx.metadata_json?.zoho_contact_id ||
+              (mappedEntry ? mappedEntry.zoho_contact_id : undefined) ||
+              (found ? found.contact_id : undefined);
+
             customerMap[cust] = {
               itemsCount: 0,
               totalAmount: 0,
-              isReconciled: res.isReconciled,
-              zohoContactId: res.zohoContactId,
-              properties: new Set<string>(),
+              isReconciled: Boolean(directContactId || mappedEntry || found),
+              zohoContactId: directContactId,
             };
-          } else if (res.zohoContactId && !customerMap[cust].isReconciled) {
+          } else if (tx.metadata_json?.zoho_contact_id && !customerMap[cust].isReconciled) {
             customerMap[cust].isReconciled = true;
-            customerMap[cust].zohoContactId = res.zohoContactId;
+            customerMap[cust].zohoContactId = tx.metadata_json.zoho_contact_id;
           }
-
           customerMap[cust].itemsCount++;
           customerMap[cust].totalAmount += tx.total_amount || 0;
-          if (res.propertyName && res.propertyName !== cust) {
-            customerMap[cust].properties.add(res.propertyName);
-          }
         });
 
         const customerSummaries = Object.entries(customerMap).map(([custName, data]) => ({
@@ -554,7 +447,6 @@ export const InvoiceModal: React.FC = () => {
           totalAmount: data.totalAmount,
           isReconciled: data.isReconciled,
           zohoContactId: data.zohoContactId,
-          properties: Array.from(data.properties),
         }));
 
         const unmatchedCustomers = customerSummaries.filter((c) => !c.isReconciled).map((c) => c.customerName);
@@ -620,12 +512,9 @@ export const InvoiceModal: React.FC = () => {
           setHasExistingDrafts(true);
           setExistingInvoices(res.existing_invoices);
         } else {
-          const customerMappings = targetClient?.custom_config?.customer_mappings || {};
+          // Fallback: check PostgreSQL transactions for already invoiced records
           const invoicedTxs = rawTransactions.filter((tx) => {
-            if (custFilter) {
-              const res = resolveTxCustomer(tx, effectiveContacts, customerMappings);
-              if (res.customerName !== custFilter && res.propertyName !== custFilter) return false;
-            }
+            if (custFilter && getTxCustomer(tx) !== custFilter) return false;
             return tx.status === 'INVOICED' || Boolean(tx.accounting_ref_id);
           });
 
@@ -633,8 +522,7 @@ export const InvoiceModal: React.FC = () => {
             setHasExistingDrafts(true);
             const grouped: Record<string, ExistingDraftInvoice> = {};
             invoicedTxs.forEach((tx) => {
-              const res = resolveTxCustomer(tx, effectiveContacts, customerMappings);
-              const cName = res.customerName;
+              const cName = getTxCustomer(tx);
               const refId = tx.accounting_ref_id || 'DRAFT-INVOICE';
               if (!grouped[cName]) {
                 grouped[cName] = {
@@ -663,16 +551,7 @@ export const InvoiceModal: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [
-    isInvoiceModalOpen,
-    targetClient?.id,
-    targetClient?.custom_config?.customer_mappings,
-    selectedMonth,
-    selectedYear,
-    customerScope,
-    rawTransactions,
-    effectiveContacts,
-  ]);
+  }, [isInvoiceModalOpen, targetClient?.id, selectedMonth, selectedYear, customerScope, rawTransactions]);
 
   // Multi-Phase View Transition Listeners
   useEffect(() => {
@@ -709,25 +588,19 @@ export const InvoiceModal: React.FC = () => {
     if (customerScope === 'ALL') {
       return rawTransactions.filter((t: any) => t.approved && t.status !== 'INVOICED');
     }
-    const customerMappings = targetClient?.custom_config?.customer_mappings || {};
-    return rawTransactions.filter((t: any) => {
-      if (!t.approved || t.status === 'INVOICED') return false;
-      const res = resolveTxCustomer(t, effectiveContacts, customerMappings);
-      return res.customerName === customerScope || res.propertyName === customerScope;
-    });
-  }, [rawTransactions, customerScope, effectiveContacts, targetClient?.custom_config?.customer_mappings]);
+    return rawTransactions.filter(
+      (t: any) => t.approved && t.status !== 'INVOICED' && getTxCustomer(t) === customerScope
+    );
+  }, [rawTransactions, customerScope]);
 
   const scopedUnapprovedTx = useMemo(() => {
     if (customerScope === 'ALL') {
       return rawTransactions.filter((t: any) => !t.approved && t.status !== 'INVOICED');
     }
-    const customerMappings = targetClient?.custom_config?.customer_mappings || {};
-    return rawTransactions.filter((t: any) => {
-      if (t.approved || t.status === 'INVOICED') return false;
-      const res = resolveTxCustomer(t, effectiveContacts, customerMappings);
-      return res.customerName === customerScope || res.propertyName === customerScope;
-    });
-  }, [rawTransactions, customerScope, effectiveContacts, targetClient?.custom_config?.customer_mappings]);
+    return rawTransactions.filter(
+      (t: any) => !t.approved && t.status !== 'INVOICED' && getTxCustomer(t) === customerScope
+    );
+  }, [rawTransactions, customerScope]);
 
   const scopedCustomerSummaries = useMemo(() => {
     if (customerScope === 'ALL') return availableCustomerSummaries;
@@ -1090,14 +963,11 @@ export const InvoiceModal: React.FC = () => {
                   All Customers ({availableCustomerSummaries.length} Customers : Total{' '}
                   {formatCurrency(availableCustomerSummaries.reduce((sum, c) => sum + c.totalAmount, 0))})
                 </option>
-                {availableCustomerSummaries.map((c) => {
-                  const propInfo = c.properties && c.properties.length > 0 ? ` [${c.properties.join(', ')}]` : '';
-                  return (
-                    <option key={c.customerName} value={c.customerName}>
-                      {c.customerName}{propInfo} ({c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'} : {formatCurrency(c.totalAmount)})
-                    </option>
-                  );
-                })}
+                {availableCustomerSummaries.map((c) => (
+                  <option key={c.customerName} value={c.customerName}>
+                    {c.customerName} ({c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'} : {formatCurrency(c.totalAmount)})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1172,11 +1042,6 @@ export const InvoiceModal: React.FC = () => {
                                 className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded"
                               >
                                 <span className="font-bold text-white">{c.customerName}:</span>
-                                {c.properties && c.properties.length > 0 && (
-                                  <span className="text-emerald-400/80 font-sans text-[10px]">
-                                    [{c.properties.join(', ')}]
-                                  </span>
-                                )}
                                 <span>
                                   {c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}
                                 </span>
@@ -1214,11 +1079,6 @@ export const InvoiceModal: React.FC = () => {
                                   <div className="flex items-center gap-1.5 font-mono">
                                     <span>{c.isReconciled ? '✓' : '⚠️'}</span>
                                     <span className="font-bold text-white font-sans">{c.customerName}</span>
-                                    {c.properties && c.properties.length > 0 && (
-                                      <span className="text-slate-400 font-sans text-[10px]">
-                                        [{c.properties.join(', ')}]
-                                      </span>
-                                    )}
                                     <span className="text-slate-400">
                                       ({c.itemsCount} {c.itemsCount === 1 ? 'item' : 'items'}, {formatCurrency(c.totalAmount)})
                                     </span>
