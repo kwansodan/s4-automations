@@ -1027,10 +1027,62 @@ def get_client_id_aliases(client_id: str) -> List[str]:
     """Resolves all synonymous slugs and aliases for a client organization."""
     if not client_id:
         return []
-    c_clean = str(client_id).lower().strip()
+    c_raw = str(client_id).strip()
+    c_clean = c_raw.lower()
     c_slug = c_clean.replace(" ", "_").replace("-", "_")
-    aliases = {client_id, c_clean, c_slug, c_slug.replace("_", "-")}
-    if c_slug in ["anr_group", "commercial_laundry", "anr", "anr_laundry"]:
+    # Alphanumeric slug (strips parentheses, brackets, special chars)
+    c_alphanumeric_slug = "".join(c if (c.isalnum() or c == "_") else "_" for c in c_slug)
+    while "__" in c_alphanumeric_slug:
+        c_alphanumeric_slug = c_alphanumeric_slug.replace("__", "_")
+    c_alphanumeric_slug = c_alphanumeric_slug.strip("_")
+
+    aliases = {
+        client_id,
+        c_raw,
+        c_clean,
+        c_slug,
+        c_slug.replace("_", "-"),
+        c_alphanumeric_slug,
+        c_alphanumeric_slug.replace("_", "-"),
+        c_alphanumeric_slug.replace("_", " "),
+    }
+
+    # Resolve against ClientOrganization in DB if available
+    try:
+        from app.db.session import get_engine
+        from sqlmodel import Session, select
+        from app.models.db_models import ClientOrganization
+
+        with Session(get_engine()) as session:
+            clients = session.exec(select(ClientOrganization)).all()
+            for org in clients:
+                org_slug = (org.id or "").lower().strip()
+                org_name = (org.name or "").lower().strip()
+                if (
+                    c_clean == org_slug
+                    or c_clean == org_name
+                    or c_alphanumeric_slug == org_slug.replace("-", "_")
+                    or org_slug in c_alphanumeric_slug
+                    or (org_name and org_name in c_clean)
+                ):
+                    aliases.add(org.id)
+                    aliases.add(org.id.lower())
+                    aliases.add(org.id.replace("_", "-"))
+                    aliases.add(org.id.replace("-", "_"))
+                    if org.name:
+                        aliases.add(org.name)
+                        aliases.add(org.name.lower())
+    except Exception:
+        pass
+
+    # Built-in fallback alias cluster for ANR Group / Commercial Laundry tenant
+    if (
+        c_slug in ["anr_group", "commercial_laundry", "anr", "anr_laundry"]
+        or "anr" in c_alphanumeric_slug
+        or "laundry" in c_alphanumeric_slug
+        or c_alphanumeric_slug.startswith("anr")
+        or "commercial_laundry" in c_alphanumeric_slug
+    ):
         aliases.update([
             "anr_group",
             "commercial_laundry",
@@ -1039,8 +1091,12 @@ def get_client_id_aliases(client_id: str) -> List[str]:
             "commercial-laundry",
             "anr",
             "anr_laundry",
+            "anr group",
+            "anr group (commercial laundry)",
+            "ANR Group (Commercial Laundry)",
         ])
-    return list(aliases)
+
+    return [a for a in aliases if a]
 
 
 def matches_month_and_year(

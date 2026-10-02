@@ -18,5 +18,7 @@ class InvoiceGenerateEvent(BaseModel):
     year: Optional[int] = Field(default=None, description="Target year, e.g. 2026")
     spreadsheet_id: Optional[str] = Field(default=None, description="Explicit Google Spreadsheet ID")
     client_name: Optional[str] = Field(default=None, description="Optional client name to invoice only this client")
+    client_id: Optional[str] = Field(default=None, description="Optional tenant or client organization ID")
     send_email: bool = Field(default=False, description="Whether to automatically send invoice to client after creation")
     include_line_item_description: Optional[bool] = Field(default=None, description="Whether to include detailed operational descriptions on invoice line items. If None, falls back to client settings.")
+

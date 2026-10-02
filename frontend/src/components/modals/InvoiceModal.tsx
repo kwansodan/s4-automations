@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
 import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
@@ -31,6 +31,7 @@ export const InvoiceModal: React.FC = () => {
     runInvoicing,
     invoicePreflight,
     setInvoicePreflight,
+    catalog,
   } = useAutomation();
   const { currentClient, clients } = useClient();
   const { openDebugDrawer } = useErrors();
@@ -47,12 +48,16 @@ export const InvoiceModal: React.FC = () => {
     troubleshootingHint?: string;
   } | null>(null);
 
+  const targetClient = useMemo(
+    () => clients.find((c) => c.name === clientFilter || c.id === clientFilter) || currentClient,
+    [clients, clientFilter, currentClient]
+  );
+
   // Fallback audit computation if opened directly or if clientFilter changes
   useEffect(() => {
     if (!isInvoiceModalOpen) return;
     if (invoicePreflight && (!clientFilter || invoicePreflight.clientName === clientFilter)) return;
 
-    const targetClient = clients.find((c) => c.name === clientFilter) || currentClient;
     if (!targetClient) return;
 
     let isMounted = true;
@@ -89,7 +94,12 @@ export const InvoiceModal: React.FC = () => {
         );
 
         // Group by customer (recipient on delivery slip)
-        const customerMap: Record<string, { itemsCount: number; totalAmount: number; isReconciled: boolean }> = {};
+        const contacts = catalog?.contacts || [];
+        const customerMap: Record<
+          string,
+          { itemsCount: number; totalAmount: number; isReconciled: boolean; zohoContactId?: string }
+        > = {};
+
         approvedTx.forEach((tx: any) => {
           let cust = 'General Customer';
           if (tx.metadata_json?.customer_name) cust = String(tx.metadata_json.customer_name).trim();
@@ -105,7 +115,31 @@ export const InvoiceModal: React.FC = () => {
                 .trim() || 'General Customer';
           }
           if (!customerMap[cust]) {
-            customerMap[cust] = { itemsCount: 0, totalAmount: 0, isReconciled: false };
+            const cLower = cust.toLowerCase();
+            const found = contacts.find((c: any) => {
+              const cName = (c.contact_name || '').trim().toLowerCase();
+              const compName = (c.company_name || '').trim().toLowerCase();
+              return (
+                cName === cLower ||
+                compName === cLower ||
+                (cLower.length > 2 &&
+                  (cName.includes(cLower) ||
+                    compName.includes(cLower) ||
+                    cLower.includes(cName) ||
+                    cLower.includes(compName)))
+              );
+            });
+            const directContactId = tx.metadata_json?.zoho_contact_id || (found ? found.contact_id : undefined);
+
+            customerMap[cust] = {
+              itemsCount: 0,
+              totalAmount: 0,
+              isReconciled: Boolean(directContactId || found),
+              zohoContactId: directContactId,
+            };
+          } else if (tx.metadata_json?.zoho_contact_id && !customerMap[cust].isReconciled) {
+            customerMap[cust].isReconciled = true;
+            customerMap[cust].zohoContactId = tx.metadata_json.zoho_contact_id;
           }
           customerMap[cust].itemsCount++;
           customerMap[cust].totalAmount += tx.total_amount || 0;
@@ -116,6 +150,7 @@ export const InvoiceModal: React.FC = () => {
           itemsCount: data.itemsCount,
           totalAmount: data.totalAmount,
           isReconciled: data.isReconciled,
+          zohoContactId: data.zohoContactId,
         }));
 
         const unmatchedCustomers = customerSummaries.filter((c) => !c.isReconciled).map((c) => c.customerName);
@@ -209,7 +244,8 @@ export const InvoiceModal: React.FC = () => {
       await runInvoicing({
         month: selectedMonth,
         year: selectedYear,
-        client_name: clientFilter || currentClient?.name || null,
+        client_id: targetClient?.id || currentClient?.id || clientFilter || null,
+        client_name: targetClient?.name || currentClient?.name || clientFilter || null,
         include_line_item_description: includeDescriptions,
       });
       // runInvoicing closes modal on success

@@ -132,11 +132,11 @@ async def run_zoho_invoices_core(
                                 "standard_item_name": st.item_or_description,
                                 "raw_names_seen": st.item_or_description,
                                 "confidence_score": "HIGH",
-                                "unit_rate": st.rate_or_price or st.total_amount,
+                                "unit_rate": float(st.rate_or_price or st.total_amount or 0.0),
                                 "total_picked_up": int(st.credit_amount or st.quantity_or_debit or 1),
                                 "total_delivered": int(st.quantity_or_debit or 1),
-                                "linen_discrepancy": int(st.discrepancy_amount),
-                                "total_billed": st.total_amount,
+                                "linen_discrepancy": int(st.discrepancy_amount or 0),
+                                "total_billed": float(st.total_amount or 0.0),
                                 "audit_notes": f"PostgreSQL Staged ID: {st.id}",
                                 "reviewed": True,
                                 "approved": True,
@@ -191,9 +191,11 @@ async def run_zoho_invoices_core(
                 zoho_org_id = None
                 tenant_obj = None
                 with Session(get_engine()) as session:
+                    from app.api.v1.clients import get_client_id_aliases
+                    slug_aliases = get_client_id_aliases(tenant_slug)
                     tenant_obj = session.exec(
                         select(ClientOrganization).where(
-                            (ClientOrganization.id == tenant_slug) | (ClientOrganization.name == tenant_slug)
+                            (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
                         )
                     ).first()
                     if tenant_obj:
@@ -292,26 +294,43 @@ async def run_zoho_invoices_core(
         return invoice_result
 
     except Exception as e:
+        if e.__class__.__name__ in ("StepInterrupt", "InngestStepInterrupt"):
+            raise
         logger.error(f"Invoice generation failed: {e}")
         pipeline_tracker.fail_pipeline(str(e))
         raise
 
 
-async def execute_generate_zoho_invoices(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+async def execute_generate_zoho_invoices(
+    ctx: inngest.Context,
+    step: Optional[inngest.Step] = None,
+) -> Dict[str, Any]:
     """Inngest entrypoint for draft invoice generator."""
     event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
     now = datetime.now()
     target_month = event_data.get("month") or now.strftime("%B")
     target_year = int(event_data.get("year") or now.year)
     explicit_sheet_id = event_data.get("spreadsheet_id")
-    filter_client_name = event_data.get("client_name")
+    filter_client_name = event_data.get("client_id") or event_data.get("client_name")
+    include_line_item_description = event_data.get("include_line_item_description")
+
+    step_runner = None
+    if hasattr(ctx, "step") and ctx.step:
+        async def _ctx_step_runner(name: str, fn):
+            return await ctx.step.run(name, fn)
+        step_runner = _ctx_step_runner
+    elif step and hasattr(step, "run"):
+        async def _direct_step_runner(name: str, fn):
+            return await step.run(name, fn)
+        step_runner = _direct_step_runner
 
     return await run_zoho_invoices_core(
         target_month=target_month,
         target_year=target_year,
         explicit_sheet_id=explicit_sheet_id,
         filter_client_name=filter_client_name,
-        step_runner=step.run,
+        include_line_item_description=include_line_item_description,
+        step_runner=step_runner,
     )
 
 

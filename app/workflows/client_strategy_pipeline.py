@@ -22,11 +22,12 @@ logger = get_logger("client_strategy_pipeline")
     ],
     retries=3,
 )
-async def client_strategy_pipeline(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+async def client_strategy_pipeline(ctx: inngest.Context, step: Optional[inngest.Step] = None) -> Dict[str, Any]:
     """
     Durable multi-tenant workflow executing any client's accounting strategy across 4 lifecycle stages.
     Supports both manual single-client trigger (s4/client.strategy.execute) and autonomous daily scheduled cron.
     """
+    step = getattr(ctx, "step", None) or step
     event_data = ctx.event.data or {}
     now = datetime.now()
     target_month = event_data.get("month") or now.strftime("%B")

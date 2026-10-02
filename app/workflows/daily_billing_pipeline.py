@@ -275,12 +275,17 @@ async def run_daily_pipeline_core(
         return final_output.model_dump()
 
     except Exception as e:
+        if e.__class__.__name__ in ("StepInterrupt", "InngestStepInterrupt"):
+            raise
         logger.error(f"Pipeline execution failed: {e}")
         pipeline_tracker.fail_pipeline(str(e))
         raise
 
 
-async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Step) -> Dict[str, Any]:
+async def execute_daily_billing_pipeline(
+    ctx: inngest.Context,
+    step: Optional[inngest.Step] = None,
+) -> Dict[str, Any]:
     """Inngest entrypoint for the durable daily billing pipeline."""
     event_data = ctx.event.data if hasattr(ctx.event, "data") and ctx.event.data else {}
     now = datetime.now()
@@ -288,11 +293,21 @@ async def execute_daily_billing_pipeline(ctx: inngest.Context, step: inngest.Ste
     target_year = int(event_data.get("year") or now.year)
     filter_clients = event_data.get("client_slugs")
 
+    step_runner = None
+    if hasattr(ctx, "step") and ctx.step:
+        async def _ctx_step_runner(name: str, fn):
+            return await ctx.step.run(name, fn)
+        step_runner = _ctx_step_runner
+    elif step and hasattr(step, "run"):
+        async def _direct_step_runner(name: str, fn):
+            return await step.run(name, fn)
+        step_runner = _direct_step_runner
+
     return await run_daily_pipeline_core(
         target_month=target_month,
         target_year=target_year,
         filter_clients=filter_clients,
-        step_runner=step.run,
+        step_runner=step_runner,
     )
 
 
