@@ -201,7 +201,12 @@ async def run_zoho_invoices_core(
                     if tenant_obj:
                         zoho_org_id = tenant_obj.zoho_org_id
 
-                zoho = ZohoBooksService(org_id=zoho_org_id)
+                try:
+                    zoho = ZohoBooksService.from_client_id(tenant_slug)
+                    if zoho_org_id:
+                        zoho.org_id = zoho_org_id
+                except Exception:
+                    zoho = ZohoBooksService(org_id=zoho_org_id)
                 contact_id = items[0].get("zoho_contact_id")
                 if not contact_id:
                     contact = zoho.find_contact_by_name(customer_name)

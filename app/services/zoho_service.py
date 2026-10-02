@@ -80,9 +80,11 @@ class ZohoBooksService:
         from sqlmodel import Session, select
 
         with Session(get_engine()) as session:
+            from app.api.v1.clients import get_client_id_aliases
+            slug_aliases = get_client_id_aliases(client_id)
             client_obj = session.exec(
                 select(ClientOrganization).where(
-                    (ClientOrganization.id == client_id) | (ClientOrganization.name == client_id)
+                    (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
                 )
             ).first()
 
@@ -106,7 +108,13 @@ class ZohoBooksService:
     async def get_access_token(self, force_refresh: bool = False) -> str:
         """Retrieves a valid OAuth2 access token, refreshing if expired."""
         if not self.refresh_token or not self.client_id or not self.client_secret:
-            raise ValueError(f"Zoho Books credentials (refresh token, client ID, secret) are not configured for org '{self.org_id}'.")
+            if settings.MOCK_MODE:
+                return "mock_access_token_dev"
+            raise ValueError(
+                f"Zoho Books credentials (refresh token, client ID, secret) are not configured for org '{self.org_id}'. "
+                f"Please connect Zoho Books via OAuth in Client Settings > Accounting Integrations, or configure ZOHO_REFRESH_TOKEN, "
+                f"ZOHO_CLIENT_ID, and ZOHO_CLIENT_SECRET in the server environment."
+            )
 
         current_time = time.time()
         tenant_cache = ZohoBooksService._tenant_tokens.get(self._tenant_key, {})
@@ -537,7 +545,7 @@ class ZohoBooksService:
         Finds an existing draft invoice for this customer and billing month in Zoho Books.
         Returns the full invoice dict with line items if found, else None.
         """
-        if not self.org_id:
+        if not self.org_id or settings.MOCK_MODE:
             return None
 
         access_token = await self.get_access_token()
@@ -602,6 +610,23 @@ class ZohoBooksService:
         self, request: ZohoDraftInvoiceRequest
     ) -> ZohoDraftInvoiceResponse:
         """Creates a Draft Invoice in Zoho Books for approved monthly billing rows."""
+        if settings.MOCK_MODE or not self.refresh_token or not self.client_id or not self.client_secret:
+            if settings.MOCK_MODE:
+                total_amt = sum(li.rate * li.quantity for li in request.line_items)
+                inv_id = f"inv_mock_{int(time.time())}_{request.customer_id[-6:] if len(request.customer_id) >= 6 else '000000'}"
+                inv_num = f"INV-MOCK-{datetime.now().strftime('%Y%m')}-{request.customer_id[:4]}"
+                logger.info(f"[MOCK_MODE] Simulated Zoho draft invoice creation: {inv_num} (Total: GHS {total_amt:.2f})")
+                return ZohoDraftInvoiceResponse(
+                    invoice_id=inv_id,
+                    invoice_number=inv_num,
+                    customer_name=request.notes or "Simulated Customer",
+                    total=total_amt,
+                    status="draft",
+                    date=request.date,
+                    due_date=request.due_date or request.date,
+                    line_items_count=len(request.line_items),
+                )
+
         if not self.org_id:
             raise ValueError("Cannot create draft invoice: Zoho Organization ID is not configured.")
 
