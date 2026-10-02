@@ -20,7 +20,7 @@ import {
   runClientStrategy,
   ClientTransactionSummaryRow,
 } from '../../../lib/api';
-import { formatCurrency, downloadTxt } from '../../../lib/utils';
+import { formatCurrency, downloadTxt, downloadCsv } from '../../../lib/utils';
 import {
   Receipt,
   AlertTriangle,
@@ -1265,6 +1265,130 @@ export const ClientArTab: React.FC = () => {
     addLog('success', `Exported missing dates to ${filename}`);
   };
 
+  const handleExportUncatalogedItemsCsv = () => {
+    const isFiltered = dailyPropertyFilter !== 'ALL';
+    const clientName = currentClient?.name || 'Client';
+    const targetTx = isFiltered
+      ? arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter)
+      : arStagedTx;
+
+    // Filter to uncataloged line items only
+    const uncatalogedTx = targetTx.filter((t) => isTxUnmappedCatalog(t));
+
+    if (uncatalogedTx.length === 0) {
+      alert('No uncataloged items found for the current selection.');
+      return;
+    }
+
+    interface DistinctUncatalogedItem {
+      itemName: string;
+      occurrences: number;
+      slips: Set<string>;
+      customers: Set<string>;
+      dates: Set<string>;
+      totalDelivQty: number;
+      totalPickQty: number;
+      totalAmount: number;
+      rates: number[];
+    }
+
+    const itemsMap = new Map<string, DistinctUncatalogedItem>();
+
+    uncatalogedTx.forEach((tx) => {
+      const rawName = (tx.item_or_description || '').trim();
+      const key = rawName.toLowerCase();
+      if (!key) return;
+
+      const cust = extractPropertyName(tx.source_file_name, tx.metadata_json) || clientName;
+      const slipDoc = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+      const date = tx.transaction_date || '';
+      const qty = Number(tx.quantity_or_debit) || 0;
+      const pick = Number(tx.credit_amount ?? tx.quantity_or_debit) || 0;
+      const rate = Number(tx.rate_or_price) || 0;
+      const amt = Number(tx.total_amount) || (qty * rate);
+
+      let entry = itemsMap.get(key);
+      if (!entry) {
+        entry = {
+          itemName: rawName,
+          occurrences: 0,
+          slips: new Set<string>(),
+          customers: new Set<string>(),
+          dates: new Set<string>(),
+          totalDelivQty: 0,
+          totalPickQty: 0,
+          totalAmount: 0,
+          rates: [],
+        };
+        itemsMap.set(key, entry);
+      }
+
+      entry.occurrences += 1;
+      entry.slips.add(slipDoc);
+      if (cust) entry.customers.add(cust);
+      if (date) entry.dates.add(date);
+      entry.totalDelivQty += qty;
+      entry.totalPickQty += pick;
+      entry.totalAmount += amt;
+      if (rate > 0) entry.rates.push(rate);
+    });
+
+    const escapeCsv = (val: any): string => {
+      if (val == null) return '""';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = [
+      'Item Name',
+      'Occurrences',
+      'Slips Count',
+      'Total Delivered Qty',
+      'Total Picked Qty',
+      'Average Rate (GHS)',
+      'Total Amount (GHS)',
+      'Customers',
+      'Dates Seen',
+      'Status',
+    ];
+
+    const rows: string[] = [headers.join(',')];
+    const sortedItems = Array.from(itemsMap.values()).sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+    sortedItems.forEach((it) => {
+      const avgRate = it.rates.length > 0 ? (it.rates.reduce((s, r) => s + r, 0) / it.rates.length).toFixed(2) : '0.00';
+      const sortedDates = Array.from(it.dates).sort();
+      const dateSummary = sortedDates.length > 2
+        ? `${sortedDates[0]} to ${sortedDates[sortedDates.length - 1]} (${sortedDates.length} dates)`
+        : sortedDates.join(', ');
+
+      const row = [
+        escapeCsv(it.itemName),
+        it.occurrences,
+        it.slips.size,
+        it.totalDelivQty,
+        it.totalPickQty,
+        avgRate,
+        it.totalAmount.toFixed(2),
+        escapeCsv(Array.from(it.customers).join('; ')),
+        escapeCsv(dateSummary),
+        'Uncataloged',
+      ];
+      rows.push(row.join(','));
+    });
+
+    const csvContent = rows.join('\r\n');
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeScope = isFiltered ? dailyPropertyFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Customers';
+    const filename = `Uncataloged_Items_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.csv`;
+
+    downloadCsv(filename, csvContent);
+    addLog('success', `Exported ${sortedItems.length} distinct uncataloged items to ${filename}`);
+  };
+
   // Slip-level KPI counts for the active Customer filter
   const slipKpis = useMemo(() => {
     const targetTx = dailyPropertyFilter === 'ALL'
@@ -2051,8 +2175,7 @@ export const ClientArTab: React.FC = () => {
           </button>
 
           {/* Card 5: Uncataloged Items */}
-          <button
-            type="button"
+          <div
             onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
             className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
               dailyStatusFilter === 'UNMAPPED'
@@ -2067,10 +2190,25 @@ export const ClientArTab: React.FC = () => {
                 {slipKpis.unmappedSlips} {slipKpis.unmappedSlips === 1 ? 'slip' : 'slips'} ({slipKpis.distinctUnmappedNames} distinct)
               </div>
             </div>
-            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
-              <Package className="w-5 h-5" />
+            <div className="flex items-center gap-1.5">
+              {slipKpis.distinctUnmappedNames > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleExportUncatalogedItemsCsv();
+                  }}
+                  className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition cursor-pointer"
+                  title="Export Distinct Uncataloged Items (.csv)"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              )}
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                <Package className="w-5 h-5" />
+              </div>
             </div>
-          </button>
+          </div>
 
           {/* Card 6: Missing Activity Gaps */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
@@ -2278,26 +2416,36 @@ export const ClientArTab: React.FC = () => {
               )}
 
               {dailyCounts.unmappedItems > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                    dailyStatusFilter === 'UNMAPPED'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-                  }`}
-                  title={`${dailyCounts.unmappedItems} unmapped line items across ${dailyCounts.unmappedSlips} slips (${dailyCounts.distinctUnmappedNames} distinct item names)`}
-                >
-                  <Package className="w-3 h-3 text-rose-500" />
-                  <span>Uncataloged</span>
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                      dailyStatusFilter === 'UNMAPPED' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-800'
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                      dailyStatusFilter === 'UNMAPPED'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
                     }`}
+                    title={`${dailyCounts.unmappedItems} unmapped line items across ${dailyCounts.unmappedSlips} slips (${dailyCounts.distinctUnmappedNames} distinct item names)`}
                   >
-                    {dailyCounts.unmappedItems}
-                  </span>
-                </button>
+                    <Package className="w-3 h-3 text-rose-500" />
+                    <span>Uncataloged</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        dailyStatusFilter === 'UNMAPPED' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {dailyCounts.unmappedItems}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportUncatalogedItemsCsv}
+                    className="p-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition cursor-pointer"
+                    title="Export distinct uncataloged items to CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
 
               <button
