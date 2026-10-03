@@ -18,6 +18,7 @@ from app.services.email_source_service import EmailSourceService
 from app.services.audit_service import AuditService
 from app.config import settings
 from app.utils.logging import get_logger
+from app.workflows.zoho_invoice_generator import extract_slip_customer_name
 
 logger = get_logger("api.clients")
 router = APIRouter(prefix="/clients", tags=["Clients & Workspaces"])
@@ -1278,6 +1279,7 @@ async def get_client_transactions_summary(
     month: Optional[str] = None,
     year: Optional[int] = None,
     pipeline_type: Optional[str] = "AR",
+    customer_name: Optional[str] = Query(None, description="Filter summary by customer/property name"),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Returns aggregated line-item reconciliation summary directly from PostgreSQL staged transactions."""
@@ -1359,9 +1361,18 @@ async def get_client_transactions_summary(
         logger.info(f"Summary: No transactions matched date filter {month} {year} for {client_id}. Falling back to all {len(all_tx)} available transactions.")
         matched_tx = all_tx
 
+    # Filter by customer_name if specified
+    if customer_name and customer_name.strip().upper() != "ALL":
+        target_cust = customer_name.strip().lower()
+        matched_tx = [
+            t for t in matched_tx
+            if extract_slip_customer_name(t.source_file_name, t.metadata_json).strip().lower() == target_cust
+        ]
+
     # Resolve friendly client name
     client_org = db.exec(select(ClientOrganization).where(ClientOrganization.id.in_(aliases))).first()
     display_client_name = client_org.name if client_org else client_id
+    effective_display_name = customer_name.strip() if (customer_name and customer_name.strip().upper() != "ALL") else display_client_name
 
     # Group by standard item name / description
     groups: Dict[str, Dict[str, Any]] = {}
@@ -1369,7 +1380,7 @@ async def get_client_transactions_summary(
         item_key = (t.item_or_description or "General Item").strip()
         if item_key not in groups:
             groups[item_key] = {
-                "client_name": display_client_name,
+                "client_name": effective_display_name,
                 "item_name": item_key,
                 "standard_item_name": item_key,
                 "zoho_item_id": t.accounting_ref_id or "",
@@ -1455,6 +1466,7 @@ async def get_client_transactions_summary(
         "client_id": client_id,
         "month": month,
         "year": year,
+        "customer_name": customer_name,
         "pipeline_type": p_type,
         "total_transactions": len(matched_tx),
         "summary": summary_rows,

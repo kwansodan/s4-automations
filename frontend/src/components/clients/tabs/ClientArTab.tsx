@@ -242,7 +242,13 @@ export const ClientArTab: React.FC = () => {
     if (!currentClient?.id) return;
     setIsLoadingSummary(true);
     try {
-      const res = await fetchClientTransactionsSummary(currentClient.id, selectedMonth, selectedYear, 'AR');
+      const res = await fetchClientTransactionsSummary(
+        currentClient.id,
+        selectedMonth,
+        selectedYear,
+        'AR',
+        dailyPropertyFilter
+      );
       setSummaryRows(res?.summary || []);
       setSummaryStats(res || null);
     } catch (err: any) {
@@ -525,6 +531,19 @@ export const ClientArTab: React.FC = () => {
       })
     );
 
+    // Optimistic UI update for underlying transactions
+    setTransactions((prev) =>
+      prev.map((t) =>
+        row.transaction_ids.includes(t.id)
+          ? {
+              ...t,
+              [field]: newVal,
+              ...(field === 'approved' && newVal ? { reviewed: true, status: 'APPROVED' } : {}),
+            }
+          : t
+      )
+    );
+
     try {
       await batchToggleTransactions(currentClient.id, row.transaction_ids, field, newVal);
       if (field === 'approved' && newVal) {
@@ -652,8 +671,147 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
+  const arStagedTx = useMemo(() => transactions.filter((t) => t.pipeline_type !== 'AP'), [transactions]);
+
+  const availableProperties = useMemo(() => {
+    const props = new Set<string>();
+    arStagedTx.forEach((tx) => {
+      const p = extractPropertyName(tx.source_file_name, tx.metadata_json);
+      if (p && p.length > 1 && !p.toLowerCase().startsWith('manual_slip_')) props.add(p);
+    });
+    if (sourceMetricsData?.properties) {
+      Object.keys(sourceMetricsData.properties).forEach((p) => {
+        const cleaned = extractPropertyName(p);
+        if (cleaned && cleaned !== 'ALL' && cleaned.length > 1 && !cleaned.toLowerCase().startsWith('manual_slip_')) {
+          props.add(cleaned);
+        }
+      });
+    }
+    return Array.from(props).sort();
+  }, [arStagedTx, sourceMetricsData]);
+
+  const propertyStatsMap = useMemo(() => {
+    const map: Record<string, { slips: Set<string>; items: number; approvedItems: number; pendingItems: number; discrepancyItems: number; totalAmount: number; totalDeliv: number; totalPick: number }> = {};
+    arStagedTx.forEach((tx) => {
+      const p = extractPropertyName(tx.source_file_name, tx.metadata_json) || 'General';
+      if (!map[p]) {
+        map[p] = { slips: new Set(), items: 0, approvedItems: 0, pendingItems: 0, discrepancyItems: 0, totalAmount: 0, totalDeliv: 0, totalPick: 0 };
+      }
+      map[p].items++;
+      const deliv = Number(tx.quantity_or_debit) || 0;
+      const pick = Number(tx.credit_amount ?? tx.quantity_or_debit) || 0;
+      const rate = Number(tx.rate_or_price) || 0;
+      const amt = Number(tx.total_amount) || (deliv * rate);
+      map[p].totalAmount += amt;
+      map[p].totalDeliv += deliv;
+      map[p].totalPick += pick;
+      const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+      map[p].slips.add(slipKey);
+      if (tx.approved || tx.status === 'INVOICED') {
+        map[p].approvedItems++;
+      } else {
+        map[p].pendingItems++;
+      }
+      if ((tx.discrepancy_amount || 0) > 0) {
+        map[p].discrepancyItems++;
+      }
+    });
+    return map;
+  }, [arStagedTx]);
+
   const filteredSummaryRows = useMemo(() => {
-    let rows = summaryRows;
+    let rows: ClientTransactionSummaryRow[] = [];
+
+    if (dailyPropertyFilter !== 'ALL') {
+      const custTx = arStagedTx.filter(
+        (t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter
+      );
+      const groups = new Map<
+        string,
+        {
+          itemName: string;
+          totalDeliv: number;
+          totalPick: number;
+          totalLoss: number;
+          rates: number[];
+          totalBilled: number;
+          slips: Set<string>;
+          txIds: number[];
+          reviewedCount: number;
+          approvedCount: number;
+          totalCount: number;
+          dates: Set<string>;
+        }
+      >();
+
+      custTx.forEach((tx) => {
+        const rawName = (tx.item_or_description || '').trim();
+        const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim() || 'General Item';
+        const key = cleanName.toLowerCase();
+
+        let g = groups.get(key);
+        if (!g) {
+          g = {
+            itemName: cleanName,
+            totalDeliv: 0,
+            totalPick: 0,
+            totalLoss: 0,
+            rates: [],
+            totalBilled: 0,
+            slips: new Set<string>(),
+            txIds: [],
+            reviewedCount: 0,
+            approvedCount: 0,
+            totalCount: 0,
+            dates: new Set<string>(),
+          };
+          groups.set(key, g);
+        }
+
+        const deliv = Number(tx.quantity_or_debit) || 0;
+        const pick = Number(tx.credit_amount ?? tx.quantity_or_debit) || 0;
+        const loss = Number(tx.discrepancy_amount) || 0;
+        const rate = Number(tx.rate_or_price) || 0;
+        const amt = Number(tx.total_amount) || (deliv * rate);
+
+        g.totalDeliv += deliv;
+        g.totalPick += pick;
+        g.totalLoss += loss;
+        if (rate > 0) g.rates.push(rate);
+        g.totalBilled += amt;
+        const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
+        g.slips.add(slipKey);
+        g.txIds.push(tx.id);
+        if (tx.reviewed) g.reviewedCount++;
+        if (tx.approved || tx.status === 'INVOICED') g.approvedCount++;
+        g.totalCount++;
+        if (tx.transaction_date) g.dates.add(tx.transaction_date);
+      });
+
+      rows = Array.from(groups.values()).map((g, idx) => {
+        const avgRate = g.rates.length > 0 ? g.rates.reduce((a, b) => a + b, 0) / g.rates.length : 0;
+        return {
+          row_index: idx + 1,
+          item_name: g.itemName,
+          total_picked_up: g.totalPick,
+          total_delivered: g.totalDeliv,
+          linen_discrepancy: g.totalLoss,
+          unit_rate: avgRate,
+          unit_price: avgRate,
+          total_billed: Math.round(g.totalBilled * 100) / 100,
+          slips_count: g.slips.size,
+          reviewed_count: g.reviewedCount,
+          approved_count: g.approvedCount,
+          is_fully_reviewed: g.reviewedCount === g.totalCount && g.totalCount > 0,
+          is_fully_approved: g.approvedCount === g.totalCount && g.totalCount > 0,
+          transaction_ids: g.txIds,
+          dates_seen: Array.from(g.dates).sort(),
+        };
+      });
+    } else {
+      rows = summaryRows;
+    }
+
     if (query) {
       rows = rows.filter((r) => {
         const item = (r?.item_name || '').toLowerCase();
@@ -681,48 +839,7 @@ export const ClientArTab: React.FC = () => {
         ? String(aVal).localeCompare(String(bVal))
         : String(bVal).localeCompare(String(aVal));
     });
-  }, [summaryRows, query, summarySortField, summarySortDirection]);
-
-  const arStagedTx = useMemo(() => transactions.filter((t) => t.pipeline_type !== 'AP'), [transactions]);
-
-  const availableProperties = useMemo(() => {
-    const props = new Set<string>();
-    arStagedTx.forEach((tx) => {
-      const p = extractPropertyName(tx.source_file_name, tx.metadata_json);
-      if (p && p.length > 1 && !p.toLowerCase().startsWith('manual_slip_')) props.add(p);
-    });
-    if (sourceMetricsData?.properties) {
-      Object.keys(sourceMetricsData.properties).forEach((p) => {
-        const cleaned = extractPropertyName(p);
-        if (cleaned && cleaned !== 'ALL' && cleaned.length > 1 && !cleaned.toLowerCase().startsWith('manual_slip_')) {
-          props.add(cleaned);
-        }
-      });
-    }
-    return Array.from(props).sort();
-  }, [arStagedTx, sourceMetricsData]);
-
-  const propertyStatsMap = useMemo(() => {
-    const map: Record<string, { slips: Set<string>; items: number; approvedItems: number; pendingItems: number; discrepancyItems: number }> = {};
-    arStagedTx.forEach((tx) => {
-      const p = extractPropertyName(tx.source_file_name, tx.metadata_json) || 'General';
-      if (!map[p]) {
-        map[p] = { slips: new Set(), items: 0, approvedItems: 0, pendingItems: 0, discrepancyItems: 0 };
-      }
-      map[p].items++;
-      const slipKey = tx.source_file_name || `slip-${tx.transaction_date || tx.id}`;
-      map[p].slips.add(slipKey);
-      if (tx.approved || tx.status === 'INVOICED') {
-        map[p].approvedItems++;
-      } else {
-        map[p].pendingItems++;
-      }
-      if ((tx.discrepancy_amount || 0) > 0) {
-        map[p].discrepancyItems++;
-      }
-    });
-    return map;
-  }, [arStagedTx]);
+  }, [summaryRows, arStagedTx, dailyPropertyFilter, query, summarySortField, summarySortDirection]);
 
   const isItemLowConf = (it: any): boolean => {
     if (it.confidence_score !== undefined && it.confidence_score !== null) {
@@ -1682,7 +1799,11 @@ export const ClientArTab: React.FC = () => {
       return;
     }
 
+    const isFiltered = dailyPropertyFilter !== 'ALL';
     const clientName = currentClient?.name || 'Client';
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeScope = isFiltered ? dailyPropertyFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Customers';
+
     const escapeCsv = (val: any): string => {
       if (val == null) return '""';
       const str = String(val);
@@ -1693,6 +1814,7 @@ export const ClientArTab: React.FC = () => {
     };
 
     const headers = [
+      ...(isFiltered ? ['Customer'] : []),
       'Standard Item Name',
       ...(isCustodyTracking ? ['Total Picked Up', 'Total Delivered', 'Linen Loss Discrepancy'] : ['Total Quantity']),
       'Unit Rate (GHS)',
@@ -1707,6 +1829,7 @@ export const ClientArTab: React.FC = () => {
 
     sortedSummaryRows.forEach((row) => {
       const r = [
+        ...(isFiltered ? [escapeCsv(dailyPropertyFilter)] : []),
         escapeCsv(toTitleCase(row.item_name)),
         ...(isCustodyTracking
           ? [row.total_picked_up || 0, row.total_delivered || 0, row.linen_discrepancy || 0]
@@ -1722,11 +1845,10 @@ export const ClientArTab: React.FC = () => {
     });
 
     const csvContent = rows.join('\r\n');
-    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filename = `Monthly_Summary_${safeClient}_${selectedMonth}_${selectedYear}.csv`;
+    const filename = `Monthly_Summary_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.csv`;
 
     downloadCsv(filename, csvContent);
-    addLog('success', `Exported monthly summary to ${filename}`);
+    addLog('success', `Exported monthly summary (${isFiltered ? dailyPropertyFilter : 'All Customers'}) to ${filename}`);
   };
 
   // Slip-level KPI counts for the active Customer filter
@@ -2261,6 +2383,24 @@ export const ClientArTab: React.FC = () => {
   };
 
   const sortedSummaryRows = filteredSummaryRows;
+
+  const summaryTotals = useMemo(() => {
+    let pick = 0;
+    let deliv = 0;
+    let loss = 0;
+    let billed = 0;
+    let slips = 0;
+
+    sortedSummaryRows.forEach((r) => {
+      pick += Number(r.total_picked_up) || 0;
+      deliv += Number(r.total_delivered) || 0;
+      loss += Number(r.linen_discrepancy) || 0;
+      billed += Number(r.total_billed) || 0;
+      slips += Number(r.slips_count) || 0;
+    });
+
+    return { pick, deliv, loss, billed, slips };
+  }, [sortedSummaryRows]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -3162,39 +3302,174 @@ export const ClientArTab: React.FC = () => {
 
       {/* Summary View Notice & Quick-Switch */}
       {activeLedgerView === 'summary' && (
-        <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
-          <div className="flex items-center gap-2 text-xs text-[#0369A1]">
-            <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
-            <span>
-              Viewing aggregated monthly totals. To inspect, edit, or delete individual ingested slips and files, switch to <strong className="text-[#0C4A6E] font-bold">Daily Slips</strong> or use <strong className="text-[#E11D48] font-bold">Delete Ingested File</strong>.
-            </span>
+        <div className="space-y-3">
+          {/* Customer Selector Toolbar & Pills */}
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs space-y-2.5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Left: Customer Dropdown */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs shrink-0">
+                  <Building2 className="w-3.5 h-3.5 text-[#0284C7]" />
+                  <span className="text-[#64748B] text-[11px] font-semibold">Customer:</span>
+                  <select
+                    value={dailyPropertyFilter}
+                    onChange={(e) => setDailyPropertyFilter(e.target.value)}
+                    className="bg-transparent text-[#0F172A] font-bold focus:outline-none cursor-pointer text-xs"
+                  >
+                    <option value="ALL" className="bg-white text-slate-800">
+                      All Customers ({arStagedTx.length} items total)
+                    </option>
+                    {availableProperties.map((p) => {
+                      const stat = propertyStatsMap[p];
+                      const itemsCnt = stat?.items || 0;
+                      const amt = stat?.totalAmount || 0;
+                      return (
+                        <option key={p} value={p} className="bg-white text-slate-800">
+                          {p} ({itemsCnt} {itemsCnt === 1 ? 'item' : 'items'} • GHS {amt.toFixed(2)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {dailyPropertyFilter !== 'ALL' && (
+                  <button
+                    onClick={() => setDailyPropertyFilter('ALL')}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition cursor-pointer"
+                    title="Reset to All Customers view"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Show All Customers</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleExportMonthlySummaryCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 rounded-lg transition cursor-pointer shadow-xs"
+                  title={`Export monthly SKU summary to CSV (${dailyPropertyFilter === 'ALL' ? 'All Customers' : dailyPropertyFilter})`}
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>
+                    {dailyPropertyFilter === 'ALL' ? 'Export Summary (.csv)' : `Export ${dailyPropertyFilter} (.csv)`}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveLedgerView('daily')}
+                  className="px-2.5 py-1.5 text-xs font-bold bg-white text-[#0284C7] border border-[#BAE6FD] hover:bg-sky-50 rounded-lg transition cursor-pointer shadow-xs"
+                >
+                  Open Daily Slips ({dailyPropertyFilter === 'ALL' ? arStagedTx.length : filteredArStagedTx.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setPurgeTargetFileName('');
+                    setIsPurgeModalOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold bg-white text-[#E11D48] border border-[#FECDD3] hover:bg-rose-50 rounded-lg transition cursor-pointer shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
+                  <span>Delete Ingested File</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Customer Switcher Pills */}
+            {availableProperties.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar text-xs pt-1 border-t border-slate-100">
+                <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0 mr-1">Filter by Customer:</span>
+                <button
+                  type="button"
+                  onClick={() => setDailyPropertyFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 transition cursor-pointer flex items-center gap-1.5 ${
+                    dailyPropertyFilter === 'ALL'
+                      ? 'bg-[#0F172A] text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <span>All Customers</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dailyPropertyFilter === 'ALL' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200/70 text-slate-700'}`}>
+                    {arStagedTx.length}
+                  </span>
+                </button>
+                {availableProperties.map((p) => {
+                  const stat = propertyStatsMap[p];
+                  const isSelected = dailyPropertyFilter === p;
+                  const amt = stat?.totalAmount || 0;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setDailyPropertyFilter(p)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 transition cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-[#0284C7] text-white shadow-xs font-bold'
+                          : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      <Building2 className={`w-3 h-3 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
+                      <span>{p}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${isSelected ? 'bg-sky-800 text-sky-100' : 'bg-slate-200/70 text-slate-700'}`}>
+                        {formatCurrency(amt)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleExportMonthlySummaryCsv}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 rounded-lg transition cursor-pointer shadow-xs"
-              title="Export monthly SKU summary to CSV"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Export Summary (.csv)</span>
-            </button>
-            <button
-              onClick={() => setActiveLedgerView('daily')}
-              className="px-2.5 py-1 text-xs font-bold bg-white text-[#0284C7] border border-[#BAE6FD] hover:bg-sky-50 rounded-lg transition cursor-pointer shadow-xs"
-            >
-              Open Daily Slips ({arStagedTx.length})
-            </button>
-            <button
-              onClick={() => {
-                setPurgeTargetFileName('');
-                setIsPurgeModalOpen(true);
-              }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-white text-[#E11D48] border border-[#FECDD3] hover:bg-rose-50 rounded-lg transition cursor-pointer shadow-xs"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-[#E11D48]" />
-              <span>Delete Ingested File</span>
-            </button>
-          </div>
+
+          {/* Active Customer Focus Summary Banner */}
+          {dailyPropertyFilter !== 'ALL' && (
+            <div className="bg-gradient-to-r from-sky-50 via-white to-sky-50/60 border border-sky-200 rounded-xl p-3.5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-sky-100 text-[#0284C7] rounded-xl shrink-0">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-900 text-sm">{dailyPropertyFilter}</h3>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                      Customer Monthly Summary
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Aggregated SKU breakdown for manual invoice creation in Zoho Books ({selectedMonth} {selectedYear}).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Total Billed</div>
+                  <div className="font-mono font-bold text-emerald-700 text-sm">
+                    {formatCurrency(summaryTotals.billed)}
+                  </div>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Delivered Units</div>
+                  <div className="font-mono font-bold text-slate-800 text-sm">
+                    {summaryTotals.deliv}
+                  </div>
+                </div>
+                {isCustodyTracking && (
+                  <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Linen Loss</div>
+                    <div className={`font-mono font-bold text-sm ${summaryTotals.loss > 0 ? 'text-[#E11D48]' : 'text-slate-800'}`}>
+                      {summaryTotals.loss > 0 ? `-${summaryTotals.loss}` : '0'}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Distinct Items</div>
+                  <div className="font-mono font-bold text-slate-800 text-sm">
+                    {sortedSummaryRows.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -3300,6 +3575,41 @@ export const ClientArTab: React.FC = () => {
                   </tr>
                 )}
               </tbody>
+              {sortedSummaryRows.length > 0 && (
+                <tfoot className="bg-slate-50/90 border-t-2 border-[#E2E8F0] font-bold text-xs text-[#0F172A]">
+                  <tr>
+                    <td className="py-3 px-4 font-bold text-[#0F172A] whitespace-nowrap">
+                      Total ({sortedSummaryRows.length} {sortedSummaryRows.length === 1 ? 'item' : 'items'})
+                    </td>
+                    {isCustodyTracking ? (
+                      <>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap text-[#0F172A]">{summaryTotals.pick}</td>
+                        <td className="py-3 px-4 text-center font-mono whitespace-nowrap text-[#0F172A]">{summaryTotals.deliv}</td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          {summaryTotals.loss > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[#E11D48] font-mono font-bold bg-[#FFF1F2] border border-[#FECDD3] px-2 py-0.5 rounded-full text-[11px] shadow-xs">
+                              <AlertTriangle className="w-3 h-3 text-[#E11D48] shrink-0" />
+                              <span>-{summaryTotals.loss} missing</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-xs">-</span>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="py-3 px-4 text-center font-mono font-bold text-[#0F172A] whitespace-nowrap">{summaryTotals.deliv}</td>
+                    )}
+                    <td className="py-3 px-4 text-right font-mono text-slate-400 text-xs">-</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-[#059669] whitespace-nowrap text-sm">
+                      {formatCurrency(summaryTotals.billed)}
+                    </td>
+                    <td className="py-3 px-4 text-center font-mono text-[#64748B] whitespace-nowrap">{summaryTotals.slips}</td>
+                    <td className="py-3 px-4 text-center text-slate-400 text-xs">-</td>
+                    <td className="py-3 px-4 text-center text-slate-400 text-xs">-</td>
+                    <td className="py-3 px-4 text-center text-slate-400 text-xs">-</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           )}
 

@@ -1146,6 +1146,10 @@
     border-top-style: var(--tw-border-style);
     border-top-width: 1px;
   }
+  .border-t-2 {
+    border-top-style: var(--tw-border-style);
+    border-top-width: 2px;
+  }
   .border-r {
     border-right-style: var(--tw-border-style);
     border-right-width: 1px;
@@ -2655,6 +2659,10 @@
     }
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .from-sky-50 {
+    --tw-gradient-from: var(--color-sky-50);
+    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+  }
   .from-sky-50\/90 {
     --tw-gradient-from: color-mix(in srgb, #F0F9FF 90%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3268,9 +3276,6 @@
   .whitespace-pre-wrap {
     white-space: pre-wrap;
   }
-  .text-\[\#0C4A6E\] {
-    color: #0C4A6E;
-  }
   .text-\[\#0F172A\] {
     color: #0F172A;
   }
@@ -3513,6 +3518,9 @@
   }
   .text-rose-900 {
     color: var(--color-rose-900);
+  }
+  .text-sky-100 {
+    color: var(--color-sky-100);
   }
   .text-sky-200 {
     color: var(--color-sky-200);
@@ -4522,6 +4530,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-slate-200\/60:hover {
         background-color: color-mix(in oklab, var(--color-slate-200) 60%, transparent);
+      }
+    }
+    .hover\:bg-slate-200\/80:hover {
+      background-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 80%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-slate-200\/80:hover {
+        background-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);
       }
     }
     .hover\:bg-slate-700:hover {

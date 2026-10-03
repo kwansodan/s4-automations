@@ -698,6 +698,7 @@ export interface ClientTransactionSummaryResponse {
   client_id: string;
   month?: string;
   year?: number;
+  customer_name?: string;
   pipeline_type: string;
   total_items: number;
   total_picked_up: number;
@@ -732,12 +733,14 @@ export async function fetchClientTransactionsSummary(
   clientId: string,
   month?: string,
   year?: number,
-  pipelineType: string = 'AR'
+  pipelineType: string = 'AR',
+  customerName?: string
 ): Promise<ClientTransactionSummaryResponse> {
   const params = new URLSearchParams();
   if (month) params.append('month', month);
   if (year) params.append('year', year.toString());
   if (pipelineType) params.append('pipeline_type', pipelineType);
+  if (customerName && customerName !== 'ALL') params.append('customer_name', customerName);
   const qStr = params.toString() ? `?${params.toString()}` : '';
   const res = await resilientFetch(`/api/clients/${clientId}/transactions/summary${qStr}`, {
     headers: getAuthHeaders(),
