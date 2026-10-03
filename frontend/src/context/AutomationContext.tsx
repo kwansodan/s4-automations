@@ -194,6 +194,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     let isMounted = true;
     let timeoutId: any = null;
     let isRequestInFlight = false;
+    let idleGraceCounter = 0;
 
     const poll = async () => {
       if (!isMounted || isRequestInFlight) return;
@@ -202,10 +203,21 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       try {
         const progress = await fetchPipelineStatus();
         if (!isMounted) return;
+
+        // If the backend briefly returns not running right after dispatch, allow a grace period of 3 cycles
+        if (!progress.is_running && progress.status !== 'COMPLETED' && progress.status !== 'ERROR') {
+          idleGraceCounter += 1;
+          if (idleGraceCounter < 4) {
+            return;
+          }
+        }
+
         setPipelineProgress(progress);
 
         if (!progress.is_running) {
-          addLog('success', `Pipeline completed: ${progress.current_step || 'Workflow finished.'}`);
+          if (progress.status === 'COMPLETED') {
+            addLog('success', `Pipeline completed: ${progress.current_step || 'Workflow finished.'}`);
+          }
           refreshAll();
           return; // Terminate polling
         }
@@ -251,6 +263,34 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const runInvoicing = async (payload: Record<string, any>) => {
     addLog('info', `Dispatching Zoho Books Draft Invoice generation task for ${selectedMonth} ${selectedYear}...`);
     try {
+      // Optimistically initialize pipeline progress so live progress view and polling activate immediately
+      setPipelineProgress({
+        is_running: true,
+        status: 'PROCESSING',
+        percent: 10,
+        current_step: `Connecting to Zoho Books and scanning approved items for ${selectedMonth} ${selectedYear}...`,
+        stage_index: 1,
+        total_stages: 3,
+        task_name: '1-Click Zoho Invoicing',
+        month: selectedMonth,
+        year: Number(selectedYear),
+        recent_logs: [
+          `Dispatched invoice generation for ${selectedMonth} ${selectedYear}`,
+        ],
+        logs: [
+          {
+            level: 'info',
+            message: `Dispatched invoice generation for ${selectedMonth} ${selectedYear}`,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        stats: {
+          items_extracted: 0,
+          customers_total: 0,
+          customers_done: 0,
+        },
+      });
+
       const res = await triggerInvoicing({
         month: selectedMonth,
         year: selectedYear,
@@ -259,7 +299,9 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Do not dismiss InvoiceModal here so it stays open and switches to live execution view
       addLog('success', `Zoho Invoicing Task Dispatched: ${res.message}`);
       const initialProgress = await fetchPipelineStatus();
-      setPipelineProgress(initialProgress);
+      if (initialProgress && (initialProgress.is_running || initialProgress.status === 'RUNNING' || initialProgress.status === 'PROCESSING')) {
+        setPipelineProgress(initialProgress);
+      }
       return res;
     } catch (e: any) {
       addLog('error', `Invoicing dispatch error: ${e.message}`);

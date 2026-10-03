@@ -210,6 +210,14 @@ async def trigger_invoice_generation(
             detail="Regeneration mode requires explicit confirmation (confirm_delete=True)",
         )
 
+    from app.utils.progress_tracker import pipeline_tracker
+    pipeline_tracker.start_pipeline("1-Click Zoho Invoicing", target_month, target_year, total_stages=3)
+    pipeline_tracker.update_progress(
+        percent=10,
+        stage_index=1,
+        current_step=f"Initializing draft invoice generation ({mode} mode) for {target_month} {target_year}...",
+    )
+
     # 1. Execute immediately in a dedicated background daemon thread with its own event loop
     # This prevents heavy synchronous Google Sheets/Zoho API calls from blocking the main FastAPI loop
     import threading

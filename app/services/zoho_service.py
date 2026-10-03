@@ -73,6 +73,7 @@ class ZohoBooksService:
     _tenant_contacts_cache_time: Dict[str, float] = {}
     _tenant_items: Dict[str, List[ZohoItem]] = {}
     _tenant_items_cache_time: Dict[str, float] = {}
+    _tenant_sales_accounts: Dict[str, str] = {}
     _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
@@ -368,6 +369,36 @@ class ZohoBooksService:
 
             logger.info(f"Fetched {len(accounts)} chart of accounts from Zoho Books for org {self.org_id}.")
             return accounts
+
+    async def get_default_sales_account_id(self) -> str:
+        """Finds or caches the default Sales / Income account ID in Zoho Books."""
+        cached_acc = ZohoBooksService._tenant_sales_accounts.get(self._tenant_key)
+        if cached_acc:
+            return cached_acc
+        if settings.MOCK_MODE or not self.org_id:
+            return "acc_sales_default"
+
+        try:
+            accounts = await self.fetch_chart_of_accounts()
+            # 1. Exact match for standard sales income account names
+            for acc in accounts:
+                name = (acc.get("account_name") or "").lower().strip()
+                acc_type = (acc.get("account_type") or "").lower().strip()
+                if name in ("sales", "sales income", "operating income", "general income", "service income") or acc_type == "income":
+                    acc_id = str(acc["account_id"]).strip()
+                    ZohoBooksService._tenant_sales_accounts[self._tenant_key] = acc_id
+                    return acc_id
+            # 2. Match any account of type income
+            for acc in accounts:
+                acc_type = (acc.get("account_type") or "").lower().strip()
+                if "income" in acc_type:
+                    acc_id = str(acc["account_id"]).strip()
+                    ZohoBooksService._tenant_sales_accounts[self._tenant_key] = acc_id
+                    return acc_id
+        except Exception as e:
+            logger.warning(f"Could not retrieve default sales account ID from Zoho Books: {e}")
+
+        return ""
 
     @retry(
         reraise=True,
@@ -847,6 +878,8 @@ class ZohoBooksService:
         url = f"{self.books_api_url}/invoices"
         params = {"organization_id": self.org_id}
 
+        sales_acc_id = await self.get_default_sales_account_id()
+
         line_items_payload = []
         for li in request.line_items:
             item_entry: Dict[str, Any] = {
@@ -857,6 +890,8 @@ class ZohoBooksService:
             }
             if li.item_id and str(li.item_id).strip().isdigit():
                 item_entry["item_id"] = str(li.item_id).strip()
+            elif sales_acc_id:
+                item_entry["account_id"] = sales_acc_id
             line_items_payload.append(item_entry)
 
         payload: Dict[str, Any] = {
@@ -942,6 +977,8 @@ class ZohoBooksService:
         invoice_num = existing.get("invoice_number", "")
         existing_items = existing.get("line_items", [])
 
+        sales_acc_id = await self.get_default_sales_account_id()
+
         # Build merged line items
         combined_items = []
         for old in existing_items:
@@ -954,6 +991,10 @@ class ZohoBooksService:
             old_item_id = old.get("item_id", "")
             if old_item_id and str(old_item_id).strip().isdigit():
                 entry["item_id"] = str(old_item_id).strip()
+            elif old.get("account_id"):
+                entry["account_id"] = str(old.get("account_id")).strip()
+            elif sales_acc_id:
+                entry["account_id"] = sales_acc_id
             combined_items.append(entry)
 
         for new_li in request.line_items:
@@ -965,6 +1006,8 @@ class ZohoBooksService:
             }
             if new_li.item_id and str(new_li.item_id).strip().isdigit():
                 entry["item_id"] = str(new_li.item_id).strip()
+            elif sales_acc_id:
+                entry["account_id"] = sales_acc_id
             combined_items.append(entry)
 
         if settings.MOCK_MODE or not self.org_id:

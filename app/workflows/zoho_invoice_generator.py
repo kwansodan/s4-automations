@@ -226,6 +226,42 @@ async def run_zoho_invoices_core(
 
             created_invoices: List[Dict[str, Any]] = []
 
+            primary_tenant_slug = filter_client_name or (approved_rows[0].get("tenant_id") if approved_rows else "anr_group")
+            zoho_org_id = None
+            tenant_custom_config = {}
+            tenant_db_id = None
+            with Session(get_engine()) as session:
+                from app.api.v1.clients import get_client_id_aliases
+                slug_aliases = get_client_id_aliases(primary_tenant_slug)
+                tenant_obj = session.exec(
+                    select(ClientOrganization).where(
+                        (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
+                    )
+                ).first()
+                if tenant_obj:
+                    zoho_org_id = tenant_obj.zoho_org_id
+                    tenant_custom_config = dict(tenant_obj.custom_config or {})
+                    tenant_db_id = tenant_obj.id
+
+            try:
+                zoho = ZohoBooksService.from_client_id(primary_tenant_slug)
+                if zoho_org_id:
+                    zoho.org_id = zoho_org_id
+            except Exception:
+                zoho = ZohoBooksService(org_id=zoho_org_id)
+
+            # Pre-load active contacts, item catalog, and default sales account once before customer loop
+            try:
+                pipeline_tracker.add_log(
+                    "info",
+                    f"Connecting to Zoho Books organization {zoho.org_id or 'default'} and pre-fetching catalog...",
+                )
+                await zoho.fetch_active_contacts()
+                await zoho.fetch_item_catalog()
+                await zoho.get_default_sales_account_id()
+            except Exception as fetch_err:
+                logger.debug(f"Could not pre-fetch Zoho contacts/items/accounts: {fetch_err}")
+
             for idx, (customer_name, items) in enumerate(customer_groups.items(), 1):
                 step_percent = 50 + int(((idx - 1) / max(total_customers, 1)) * 45)  # Progresses smoothly 50% to 95%
                 pipeline_tracker.update_step(
@@ -235,300 +271,303 @@ async def run_zoho_invoices_core(
                     stats_update={"customers_done": idx - 1},
                 )
 
-                tenant_slug = items[0].get("tenant_id") or filter_client_name or "anr_group"
-                zoho_org_id = None
-                tenant_custom_config = {}
-                tenant_db_id = None
-                with Session(get_engine()) as session:
-                    from app.api.v1.clients import get_client_id_aliases
-                    slug_aliases = get_client_id_aliases(tenant_slug)
-                    tenant_obj = session.exec(
-                        select(ClientOrganization).where(
-                            (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
-                        )
-                    ).first()
-                    if tenant_obj:
-                        zoho_org_id = tenant_obj.zoho_org_id
-                        tenant_custom_config = dict(tenant_obj.custom_config or {})
-                        tenant_db_id = tenant_obj.id
-
                 try:
-                    zoho = ZohoBooksService.from_client_id(tenant_slug)
-                    if zoho_org_id:
-                        zoho.org_id = zoho_org_id
-                except Exception:
-                    zoho = ZohoBooksService(org_id=zoho_org_id)
+                    tenant_slug = items[0].get("tenant_id") or filter_client_name or primary_tenant_slug
+                    if tenant_slug != primary_tenant_slug:
+                        with Session(get_engine()) as session:
+                            from app.api.v1.clients import get_client_id_aliases
+                            slug_aliases = get_client_id_aliases(tenant_slug)
+                            t_obj = session.exec(
+                                select(ClientOrganization).where(
+                                    (ClientOrganization.id.in_(slug_aliases)) | (ClientOrganization.name.in_(slug_aliases))
+                                )
+                            ).first()
+                            if t_obj:
+                                tenant_obj = t_obj
+                                tenant_custom_config = dict(t_obj.custom_config or {})
+                                tenant_db_id = t_obj.id
 
-                # Ensure active Zoho contacts and items are loaded into memory cache
-                try:
-                    await zoho.fetch_active_contacts()
-                    await zoho.fetch_item_catalog()
-                except Exception as fetch_err:
-                    logger.debug(f"Could not fetch Zoho contacts/items into cache: {fetch_err}")
+                    from app.config import settings
+                    is_mock = getattr(settings, "MOCK_MODE", False) or not zoho.org_id
 
-                from app.config import settings
-                is_mock = getattr(settings, "MOCK_MODE", False) or not zoho.org_id
+                    contact_id = items[0].get("zoho_contact_id")
+                    if not contact_id or (not is_mock and not str(contact_id).strip().isdigit()):
+                        contact_id = ""
 
-                contact_id = items[0].get("zoho_contact_id")
-                if not contact_id or (not is_mock and not str(contact_id).strip().isdigit()):
-                    contact_id = ""
-
-                # Check customer_mappings registry in tenant configuration (case-insensitive)
-                if not contact_id:
-                    mappings = tenant_custom_config.get("customer_mappings", {})
-                    if customer_name in mappings:
-                        cand = mappings[customer_name].get("zoho_contact_id")
-                        if cand and (is_mock or str(cand).strip().isdigit()):
-                            contact_id = str(cand).strip()
+                    # Check customer_mappings registry in tenant configuration (case-insensitive)
                     if not contact_id:
-                        c_lower = customer_name.strip().lower()
-                        for m_key, m_val in mappings.items():
-                            if m_key.strip().lower() == c_lower:
-                                cand = m_val.get("zoho_contact_id")
-                                if cand and (is_mock or str(cand).strip().isdigit()):
-                                    contact_id = str(cand).strip()
-                                    break
+                        mappings = tenant_custom_config.get("customer_mappings", {})
+                        if customer_name in mappings:
+                            cand = mappings[customer_name].get("zoho_contact_id")
+                            if cand and (is_mock or str(cand).strip().isdigit()):
+                                contact_id = str(cand).strip()
+                        if not contact_id:
+                            c_lower = customer_name.strip().lower()
+                            for m_key, m_val in mappings.items():
+                                if m_key.strip().lower() == c_lower:
+                                    cand = m_val.get("zoho_contact_id")
+                                    if cand and (is_mock or str(cand).strip().isdigit()):
+                                        contact_id = str(cand).strip()
+                                        break
 
-                if not contact_id:
-                    contact = zoho.find_contact_by_name(customer_name)
-                    if contact and (is_mock or str(contact.contact_id).strip().isdigit()):
-                        contact_id = str(contact.contact_id).strip()
+                    if not contact_id:
+                        contact = zoho.find_contact_by_name(customer_name)
+                        if contact and (is_mock or str(contact.contact_id).strip().isdigit()):
+                            contact_id = str(contact.contact_id).strip()
 
-                if not contact_id:
-                    from datetime import timezone
-                    from sqlalchemy.orm.attributes import flag_modified
-                    auto_create_policy = bool(
-                        tenant_custom_config.get("auto_create_missing_contacts", False)
-                    )
-
-                    if not auto_create_policy:
-                        logger.warning(
-                            f"Skipping customer '{customer_name}' in tenant '{tenant_slug}': Not mapped to a Zoho contact and auto_create_missing_contacts is disabled by policy."
+                    if not contact_id:
+                        from datetime import timezone
+                        from sqlalchemy.orm.attributes import flag_modified
+                        auto_create_policy = bool(
+                            tenant_custom_config.get("auto_create_missing_contacts", False)
                         )
-                        pipeline_tracker.add_log(
-                            "warning",
-                            f"Skipping Customer '{customer_name}': Not mapped in Customer Registry and auto-provisioning is disabled by policy. Please map this customer in Client Settings or Daily Slip Review.",
-                        )
-                        continue
 
-                    if settings.MOCK_MODE or not zoho.org_id or not zoho.refresh_token:
-                        contact_id = f"cnt_auto_{customer_name.lower().replace(' ', '_')[:16]}"
-                        logger.info(f"Using default contact ID '{contact_id}' for customer '{customer_name}' in tenant '{tenant_slug}'.")
-                    else:
-                        try:
-                            logger.info(f"Auto-provisioning customer '{customer_name}' in Zoho Books for tenant '{tenant_slug}' (opt-in policy enabled)...")
-                            new_cust = await zoho.create_customer_contact(customer_name)
-                            contact_id = new_cust.contact_id
-                            pipeline_tracker.add_log("info", f"Auto-created new Customer '{customer_name}' in Zoho Books (ID: {contact_id}).")
-
-                            # Register into customer_mappings so subsequent runs resolve immediately
-                            if tenant_db_id:
-                                with Session(get_engine()) as reg_session:
-                                    t_ref = reg_session.exec(select(ClientOrganization).where(ClientOrganization.id == tenant_db_id)).first()
-                                    if t_ref:
-                                        t_cfg = dict(t_ref.custom_config or {})
-                                        t_maps = dict(t_cfg.get("customer_mappings", {}))
-                                        t_maps[customer_name] = {
-                                            "zoho_contact_id": contact_id,
-                                            "name": customer_name,
-                                            "currency_code": "GHS",
-                                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                                        }
-                                        t_cfg["customer_mappings"] = t_maps
-                                        t_ref.custom_config = t_cfg
-                                        flag_modified(t_ref, "custom_config")
-                                        reg_session.add(t_ref)
-                                        reg_session.commit()
-                        except Exception as create_err:
-                            logger.error(f"Failed to auto-create customer '{customer_name}' in Zoho Books: {create_err}")
-                            pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Could not find or auto-create contact in Zoho Books.")
-                            continue
-
-                # Determine whether to include descriptions for this client's line items
-                should_include_desc = include_line_item_description
-                if should_include_desc is None:
-                    should_include_desc = tenant_custom_config.get("include_line_item_description", False)
-                if should_include_desc is None:
-                    should_include_desc = False
-
-                zoho_line_items: List[ZohoInvoiceLineItem] = []
-                row_indices: List[int] = []
-
-                # Aggregate line items by linen SKU / item name to prevent duplicate lines and respect Zoho Books 200 line item limit
-                sku_groups: Dict[str, Dict[str, Any]] = {}
-                for item in items:
-                    row_indices.append(item["row_index"])
-                    total_qty = item.get("total_picked_up", 0) or item.get("total_delivered", 0)
-                    loss_qty = item.get("linen_discrepancy", 0)
-                    item_name = item.get("standard_item_name") or "Laundry Item"
-                    raw_sku_id = item.get("zoho_item_id")
-                    sku_key = str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else item_name.strip().lower()
-
-                    if sku_key not in sku_groups:
-                        sku_groups[sku_key] = {
-                            "zoho_item_id": str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else "",
-                            "name": item_name,
-                            "unit_rate": float(item.get("unit_rate", 0.0)),
-                            "total_qty": 0,
-                            "total_pickup": 0,
-                            "total_delivery": 0,
-                            "total_loss": 0,
-                            "slips_count": 0,
-                        }
-                    sku_groups[sku_key]["total_qty"] += total_qty
-                    sku_groups[sku_key]["total_pickup"] += item.get("total_picked_up", 0)
-                    sku_groups[sku_key]["total_delivery"] += item.get("total_delivered", 0)
-                    sku_groups[sku_key]["total_loss"] += loss_qty
-                    sku_groups[sku_key]["slips_count"] += 1
-                    if float(item.get("unit_rate", 0.0)) > 0:
-                        sku_groups[sku_key]["unit_rate"] = float(item.get("unit_rate", 0.0))
-
-                for sku_key, sku_data in sku_groups.items():
-                    desc = ""
-                    if should_include_desc:
-                        desc = f"Linen service: {sku_data['name']} ({sku_data['slips_count']} slips). "
-                        desc += f"Pickups: {sku_data['total_pickup']}, Deliveries: {sku_data['total_delivery']}."
-                        if sku_data["total_loss"] > 0:
-                            desc += f" (Unreturned loss discrepancy: {sku_data['total_loss']} pcs)"
-
-                    resolved_item_id = sku_data.get("zoho_item_id", "")
-                    if not resolved_item_id or not str(resolved_item_id).isdigit():
-                        custom_item_mappings = (tenant_obj.custom_config or {}).get("item_mappings", {}) if tenant_obj else {}
-                        mapped_sku_id = custom_item_mappings.get(sku_data["name"]) or custom_item_mappings.get(sku_key)
-                        if mapped_sku_id and (str(mapped_sku_id).isdigit() or str(mapped_sku_id).startswith("item_")):
-                            resolved_item_id = str(mapped_sku_id)
-                        else:
-                            matched_item = zoho.find_item_by_name(sku_data["name"])
-                            if matched_item and str(matched_item.item_id).isdigit():
-                                resolved_item_id = str(matched_item.item_id)
-                            else:
-                                resolved_item_id = ""
-
-                    zoho_line_items.append(
-                        ZohoInvoiceLineItem(
-                            item_id=resolved_item_id,
-                            name=sku_data["name"],
-                            description=desc,
-                            rate=sku_data["unit_rate"],
-                            quantity=sku_data["total_qty"],
-                        )
-                    )
-
-                tenant_display_name = tenant_obj.name if tenant_obj else "Commercial Laundry"
-
-                # Calculate custom due_date and terms overrides
-                if due_date and str(due_date).strip():
-                    resolved_due_date = str(due_date).strip()
-                else:
-                    try:
-                        parsed_inv_dt = datetime.strptime(inv_date, "%Y-%m-%d")
-                        from datetime import timedelta
-                        resolved_due_date = (parsed_inv_dt + timedelta(days=14)).strftime("%Y-%m-%d")
-                    except Exception:
-                        resolved_due_date = inv_date
-
-                if terms and str(terms).strip():
-                    resolved_terms = str(terms).strip()
-                else:
-                    resolved_terms = "Payment due within 14 days of invoice date."
-
-                inv_request = ZohoDraftInvoiceRequest(
-                    customer_id=contact_id,
-                    date=inv_date,
-                    due_date=resolved_due_date,
-                    line_items=zoho_line_items,
-                    notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
-                    terms=resolved_terms,
-                )
-
-                if mode == "regenerate":
-                    pipeline_tracker.add_log(
-                        "info",
-                        f"Regenerating draft invoice for Customer '{customer_name}'...",
-                    )
-                    if confirm_delete:
-                        existing = await zoho.find_existing_draft_invoice(contact_id, target_month, target_year)
-                        if existing:
-                            existing_inv_id = str(existing.get("invoice_id", "")).strip()
-                            inv_num = existing.get("invoice_number", existing_inv_id)
+                        if not auto_create_policy:
+                            logger.warning(
+                                f"Skipping customer '{customer_name}' in tenant '{tenant_slug}': Not mapped to a Zoho contact and auto_create_missing_contacts is disabled by policy."
+                            )
                             pipeline_tracker.add_log(
                                 "warning",
-                                f"Deleting existing draft invoice {inv_num} for Customer '{customer_name}'...",
+                                f"Skipping Customer '{customer_name}': Not mapped in Customer Registry and auto-provisioning is disabled by policy. Please map this customer in Client Settings or Daily Slip Review.",
                             )
-                            await zoho.delete_draft_invoice(existing_inv_id)
-                            pipeline_tracker.add_log(
-                                "info",
-                                f"Deleted draft invoice {inv_num} from Zoho Books.",
+                            continue
+
+                        if settings.MOCK_MODE or not zoho.org_id or not zoho.refresh_token:
+                            contact_id = f"cnt_auto_{customer_name.lower().replace(' ', '_')[:16]}"
+                            logger.info(f"Using default contact ID '{contact_id}' for customer '{customer_name}' in tenant '{tenant_slug}'.")
+                        else:
+                            try:
+                                logger.info(f"Auto-provisioning customer '{customer_name}' in Zoho Books for tenant '{tenant_slug}' (opt-in policy enabled)...")
+                                new_cust = await zoho.create_customer_contact(customer_name)
+                                contact_id = new_cust.contact_id
+                                pipeline_tracker.add_log("info", f"Auto-created new Customer '{customer_name}' in Zoho Books (ID: {contact_id}).")
+
+                                # Register into customer_mappings so subsequent runs resolve immediately
+                                if tenant_db_id:
+                                    with Session(get_engine()) as reg_session:
+                                        t_ref = reg_session.exec(select(ClientOrganization).where(ClientOrganization.id == tenant_db_id)).first()
+                                        if t_ref:
+                                            t_cfg = dict(t_ref.custom_config or {})
+                                            t_maps = dict(t_cfg.get("customer_mappings", {}))
+                                            t_maps[customer_name] = {
+                                                "zoho_contact_id": contact_id,
+                                                "name": customer_name,
+                                                "currency_code": "GHS",
+                                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                                            }
+                                            t_cfg["customer_mappings"] = t_maps
+                                            t_ref.custom_config = t_cfg
+                                            flag_modified(t_ref, "custom_config")
+                                            reg_session.add(t_ref)
+                                            reg_session.commit()
+                            except Exception as create_err:
+                                logger.error(f"Failed to auto-create customer '{customer_name}' in Zoho Books: {create_err}")
+                                pipeline_tracker.add_log("warning", f"Skipping {customer_name}: Could not find or auto-create contact in Zoho Books.")
+                                continue
+
+                    # Determine whether to include descriptions for this client's line items
+                    should_include_desc = include_line_item_description
+                    if should_include_desc is None:
+                        should_include_desc = tenant_custom_config.get("include_line_item_description", False)
+                    if should_include_desc is None:
+                        should_include_desc = False
+
+                    zoho_line_items: List[ZohoInvoiceLineItem] = []
+                    row_indices: List[int] = []
+
+                    # Aggregate line items by linen SKU / item name to prevent duplicate lines and respect Zoho Books 200 line item limit
+                    sku_groups: Dict[str, Dict[str, Any]] = {}
+                    for item in items:
+                        row_indices.append(item["row_index"])
+                        total_qty = item.get("total_picked_up", 0) or item.get("total_delivered", 0)
+                        loss_qty = item.get("linen_discrepancy", 0)
+                        item_name = item.get("standard_item_name") or "Laundry Item"
+                        raw_sku_id = item.get("zoho_item_id")
+                        sku_key = str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else item_name.strip().lower()
+
+                        if sku_key not in sku_groups:
+                            sku_groups[sku_key] = {
+                                "zoho_item_id": str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else "",
+                                "name": item_name,
+                                "unit_rate": float(item.get("unit_rate", 0.0)),
+                                "total_qty": 0,
+                                "total_pickup": 0,
+                                "total_delivery": 0,
+                                "total_loss": 0,
+                                "slips_count": 0,
+                            }
+                        sku_groups[sku_key]["total_qty"] += total_qty
+                        sku_groups[sku_key]["total_pickup"] += item.get("total_picked_up", 0)
+                        sku_groups[sku_key]["total_delivery"] += item.get("total_delivered", 0)
+                        sku_groups[sku_key]["total_loss"] += loss_qty
+                        sku_groups[sku_key]["slips_count"] += 1
+                        if float(item.get("unit_rate", 0.0)) > 0:
+                            sku_groups[sku_key]["unit_rate"] = float(item.get("unit_rate", 0.0))
+
+                    for sku_key, sku_data in sku_groups.items():
+                        desc = ""
+                        if should_include_desc:
+                            desc = f"Linen service: {sku_data['name']} ({sku_data['slips_count']} slips). "
+                            desc += f"Pickups: {sku_data['total_pickup']}, Deliveries: {sku_data['total_delivery']}."
+                            if sku_data["total_loss"] > 0:
+                                desc += f" (Unreturned loss discrepancy: {sku_data['total_loss']} pcs)"
+
+                        resolved_item_id = sku_data.get("zoho_item_id", "")
+                        if not resolved_item_id or not str(resolved_item_id).isdigit():
+                            custom_item_mappings = (tenant_obj.custom_config or {}).get("item_mappings", {}) if tenant_obj else {}
+                            mapped_sku_id = custom_item_mappings.get(sku_data["name"]) or custom_item_mappings.get(sku_key)
+                            if mapped_sku_id and (str(mapped_sku_id).isdigit() or str(mapped_sku_id).startswith("item_")):
+                                resolved_item_id = str(mapped_sku_id)
+                            else:
+                                matched_item = zoho.find_item_by_name(sku_data["name"])
+                                if matched_item and str(matched_item.item_id).isdigit():
+                                    resolved_item_id = str(matched_item.item_id)
+                                else:
+                                    resolved_item_id = ""
+
+                        zoho_line_items.append(
+                            ZohoInvoiceLineItem(
+                                item_id=resolved_item_id,
+                                name=sku_data["name"],
+                                description=desc,
+                                rate=sku_data["unit_rate"],
+                                quantity=sku_data["total_qty"],
                             )
-                    pipeline_tracker.add_log(
-                        "info",
-                        f"Creating fresh Zoho Books draft invoice for Customer '{customer_name}' ({len(zoho_line_items)} items)...",
-                    )
-                    response = await zoho.create_draft_invoice(inv_request)
-                    if is_mock or not zoho.org_id:
-                        key = f"{contact_id}_{target_month}_{target_year}".lower()
-                        ZohoBooksService._global_mock_draft_invoices[key] = {
-                            "invoice_id": response.invoice_id,
-                            "invoice_number": response.invoice_number,
-                            "customer_id": contact_id,
-                            "customer_name": customer_name,
-                            "total": response.total,
-                            "status": "draft",
-                            "notes": inv_request.notes or "",
-                            "date": inv_request.date,
-                            "due_date": inv_request.due_date,
-                            "terms": inv_request.terms,
-                            "line_items": [li.model_dump() for li in inv_request.line_items],
-                        }
-                else:
-                    pipeline_tracker.add_log(
-                        "info",
-                        f"Drafting/Appending to Zoho Books Invoice for {customer_name} in {tenant_display_name}'s organization (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...",
-                    )
-                    response = await zoho.create_or_append_draft_invoice(
-                        inv_request,
-                        target_month,
-                        target_year,
+                        )
+
+                    tenant_display_name = tenant_obj.name if tenant_obj else "Commercial Laundry"
+
+                    # Calculate custom due_date and terms overrides
+                    if due_date and str(due_date).strip():
+                        resolved_due_date = str(due_date).strip()
+                    else:
+                        try:
+                            parsed_inv_dt = datetime.strptime(inv_date, "%Y-%m-%d")
+                            from datetime import timedelta
+                            resolved_due_date = (parsed_inv_dt + timedelta(days=14)).strftime("%Y-%m-%d")
+                        except Exception:
+                            resolved_due_date = inv_date
+
+                    if terms and str(terms).strip():
+                        resolved_terms = str(terms).strip()
+                    else:
+                        resolved_terms = "Payment due within 14 days of invoice date."
+
+                    inv_request = ZohoDraftInvoiceRequest(
+                        customer_id=contact_id,
+                        date=inv_date,
                         due_date=resolved_due_date,
+                        line_items=zoho_line_items,
+                        notes=f"{tenant_display_name} Commercial Laundry Service Billing for {customer_name} ({target_month} {target_year}). (Source: In-App PostgreSQL Ledger)",
                         terms=resolved_terms,
                     )
 
-                # Also update corresponding staged_transactions in PostgreSQL
-                staged_ids = [it.get("_staged_transaction_id") for it in items if it.get("_staged_transaction_id")]
-                if staged_ids:
-                    try:
-                        with Session(get_engine()) as session:
-                            from app.models.db_models import StagedTransaction
-                            st_query = select(StagedTransaction).where(StagedTransaction.id.in_(staged_ids))
-                            for st in session.exec(st_query).all():
-                                st.status = "INVOICED"
-                                st.accounting_ref_id = response.invoice_number or response.invoice_id
-                                session.add(st)
-                            session.commit()
-                    except Exception as db_err:
-                        logger.warning(f"Could not update staged transactions in DB: {db_err}")
+                    if mode == "regenerate":
+                        pipeline_tracker.add_log(
+                            "info",
+                            f"Regenerating draft invoice for Customer '{customer_name}'...",
+                        )
+                        if confirm_delete:
+                            existing = await zoho.find_existing_draft_invoice(contact_id, target_month, target_year)
+                            if existing:
+                                existing_inv_id = str(existing.get("invoice_id", "")).strip()
+                                inv_num = existing.get("invoice_number", existing_inv_id)
+                                pipeline_tracker.add_log(
+                                    "warning",
+                                    f"Deleting existing draft invoice {inv_num} for Customer '{customer_name}'...",
+                                )
+                                await zoho.delete_draft_invoice(existing_inv_id)
+                                pipeline_tracker.add_log(
+                                    "info",
+                                    f"Deleted draft invoice {inv_num} from Zoho Books.",
+                                )
+                        pipeline_tracker.add_log(
+                            "info",
+                            f"Creating fresh Zoho Books draft invoice for Customer '{customer_name}' ({len(zoho_line_items)} items)...",
+                        )
+                        response = await zoho.create_draft_invoice(inv_request)
+                        if is_mock or not zoho.org_id:
+                            key = f"{contact_id}_{target_month}_{target_year}".lower()
+                            ZohoBooksService._global_mock_draft_invoices[key] = {
+                                "invoice_id": response.invoice_id,
+                                "invoice_number": response.invoice_number,
+                                "customer_id": contact_id,
+                                "customer_name": customer_name,
+                                "total": response.total,
+                                "status": "draft",
+                                "notes": inv_request.notes or "",
+                                "date": inv_request.date,
+                                "due_date": inv_request.due_date,
+                                "terms": inv_request.terms,
+                                "line_items": [li.model_dump() for li in inv_request.line_items],
+                            }
+                    else:
+                        pipeline_tracker.add_log(
+                            "info",
+                            f"Drafting/Appending to Zoho Books Invoice for {customer_name} in {tenant_display_name}'s organization (Invoice Date: {inv_date}, {len(zoho_line_items)} items)...",
+                        )
+                        response = await zoho.create_or_append_draft_invoice(
+                            inv_request,
+                            target_month,
+                            target_year,
+                            due_date=resolved_due_date,
+                            terms=resolved_terms,
+                        )
 
-                step_done_percent = 50 + int((idx / max(total_customers, 1)) * 45)
-                pipeline_tracker.update_step(
-                    current_step=f"Completed draft invoice for Customer ({idx}/{total_customers}): {customer_name}",
-                    percent=step_done_percent,
-                    stats_update={"customers_done": idx},
-                )
-                pipeline_tracker.add_log(
-                    "success",
-                    f"🎉 Processed Draft Invoice {response.invoice_number} for customer {customer_name} in {tenant_display_name}'s Zoho Books (Total: GHS {response.total:.2f}). Marked INVOICED.",
-                )
-                inv_dump = response.model_dump()
-                inv_dump["customer_name"] = customer_name
-                inv_dump["total_ghs"] = response.total
-                inv_dump["zoho_link"] = response.invoice_url or f"https://books.zoho.com/app#/invoices/{response.invoice_id}"
-                inv_dump["date"] = inv_request.date
-                inv_dump["due_date"] = inv_request.due_date
-                inv_dump["terms"] = inv_request.terms
-                created_invoices.append(inv_dump)
+                    # Also update corresponding staged_transactions in PostgreSQL
+                    staged_ids = [it.get("_staged_transaction_id") for it in items if it.get("_staged_transaction_id")]
+                    if staged_ids:
+                        try:
+                            with Session(get_engine()) as session:
+                                from app.models.db_models import StagedTransaction
+                                st_query = select(StagedTransaction).where(StagedTransaction.id.in_(staged_ids))
+                                for st in session.exec(st_query).all():
+                                    st.status = "INVOICED"
+                                    st.accounting_ref_id = response.invoice_number or response.invoice_id
+                                    session.add(st)
+                                session.commit()
+                        except Exception as db_err:
+                            logger.warning(f"Could not update staged transactions in DB: {db_err}")
+
+                    step_done_percent = 50 + int((idx / max(total_customers, 1)) * 45)
+                    pipeline_tracker.update_step(
+                        current_step=f"Completed draft invoice for Customer ({idx}/{total_customers}): {customer_name}",
+                        percent=step_done_percent,
+                        stats_update={"customers_done": idx},
+                    )
+                    pipeline_tracker.add_log(
+                        "success",
+                        f"🎉 Processed Draft Invoice {response.invoice_number} for customer {customer_name} in {tenant_display_name}'s Zoho Books (Total: GHS {response.total:.2f}). Marked INVOICED.",
+                    )
+                    inv_dump = response.model_dump()
+                    inv_dump["customer_name"] = customer_name
+                    inv_dump["total_ghs"] = response.total
+                    inv_dump["zoho_link"] = response.invoice_url or f"https://books.zoho.com/app#/invoices/{response.invoice_id}"
+                    inv_dump["date"] = inv_request.date
+                    inv_dump["due_date"] = inv_request.due_date
+                    inv_dump["terms"] = inv_request.terms
+                    created_invoices.append(inv_dump)
+
+                except Exception as cust_err:
+                    err_text = str(cust_err)
+                    if hasattr(cust_err, "response") and hasattr(cust_err.response, "text"):
+                        try:
+                            resp_json = cust_err.response.json()
+                            if resp_json.get("message"):
+                                err_text = f"Zoho Books error [{resp_json.get('code', '')}]: {resp_json.get('message')}"
+                        except Exception:
+                            pass
+                    logger.error(f"Failed to create draft invoice for customer '{customer_name}': {err_text}", exc_info=True)
+                    pipeline_tracker.add_log(
+                        "error",
+                        f"Failed to generate draft invoice for Customer '{customer_name}': {err_text}",
+                    )
+
+                # Gentle pacing between customers to avoid rate limit spikes
+                await asyncio.sleep(0.3)
 
             return {
-                "status": "COMPLETED",
+                "status": "COMPLETED" if created_invoices else ("FAILED" if total_customers > 0 else "COMPLETED"),
                 "mode": mode,
                 "month": target_month,
                 "year": target_year,

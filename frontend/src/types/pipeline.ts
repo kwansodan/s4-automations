@@ -49,6 +49,7 @@ export interface PipelineProgress {
     }>;
     [key: string]: any;
   };
+  [key: string]: any;
 }
 
 export interface DashboardStats {
