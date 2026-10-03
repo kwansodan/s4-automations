@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAutomation } from '../../context/AutomationContext';
 import { useClient } from '../../context/ClientContext';
 import { useErrors } from '../../context/ErrorContext';
@@ -191,6 +191,10 @@ export const InvoiceModal: React.FC = () => {
 
   // Raw PostgreSQL Transactions Cache
   const [rawTransactions, setRawTransactions] = useState<any[]>([]);
+  const rawTransactionsRef = useRef<any[]>([]);
+  useEffect(() => {
+    rawTransactionsRef.current = rawTransactions;
+  }, [rawTransactions]);
 
   // Modal Error State
   const [modalError, setModalError] = useState<{
@@ -553,15 +557,10 @@ export const InvoiceModal: React.FC = () => {
     };
   }, [
     isInvoiceModalOpen,
-    clientFilter,
-    targetClient,
-    catalog,
+    targetClient?.id,
+    targetClient?.zoho_org_id,
     selectedMonth,
     selectedYear,
-    setInvoicePreflight,
-    isTxUncataloged,
-    clientCatalogItems,
-    clientContacts,
   ]);
 
   // Query existing draft invoices from Zoho Books or PostgreSQL ledger
@@ -578,7 +577,8 @@ export const InvoiceModal: React.FC = () => {
           setExistingInvoices(res.existing_invoices);
         } else {
           // Fallback: check PostgreSQL transactions for already invoiced records
-          const invoicedTxs = rawTransactions.filter((tx) => {
+          const currentTxs = rawTransactionsRef.current || [];
+          const invoicedTxs = currentTxs.filter((tx: any) => {
             if (custFilter && getTxCustomer(tx) !== custFilter) return false;
             return tx.status === 'INVOICED' || Boolean(tx.accounting_ref_id);
           });
@@ -586,7 +586,7 @@ export const InvoiceModal: React.FC = () => {
           if (invoicedTxs.length > 0) {
             setHasExistingDrafts(true);
             const grouped: Record<string, ExistingDraftInvoice> = {};
-            invoicedTxs.forEach((tx) => {
+            invoicedTxs.forEach((tx: any) => {
               const cName = getTxCustomer(tx);
               const refId = tx.accounting_ref_id || 'DRAFT-INVOICE';
               if (!grouped[cName]) {
@@ -616,7 +616,7 @@ export const InvoiceModal: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isInvoiceModalOpen, targetClient?.id, selectedMonth, selectedYear, customerScope, rawTransactions]);
+  }, [isInvoiceModalOpen, targetClient?.id, selectedMonth, selectedYear, customerScope]);
 
   // Multi-Phase View Transition Listeners
   useEffect(() => {

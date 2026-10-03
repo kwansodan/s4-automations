@@ -1,5 +1,6 @@
 """Zoho Books catalog and contacts query endpoints."""
 
+import time
 from typing import Dict, Any, Optional
 from fastapi import APIRouter
 
@@ -9,6 +10,9 @@ from app.utils.logging import get_logger
 logger = get_logger("api.catalog")
 router = APIRouter(prefix="/catalog", tags=["Zoho Books Catalog"])
 
+_catalog_cache: Dict[str, Dict[str, Any]] = {}
+_catalog_cache_time: Dict[str, float] = {}
+
 
 @router.get("", summary="Get Zoho Contacts and Item Catalog")
 async def get_zoho_catalog(
@@ -16,6 +20,11 @@ async def get_zoho_catalog(
     organization_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Returns active Zoho contacts and item catalog scoped strictly to the client workspace."""
+    cache_key = f"{client_id or 'all'}:{organization_id or 'default'}"
+    now = time.time()
+    if cache_key in _catalog_cache and (now - _catalog_cache_time.get(cache_key, 0.0) < 600):
+        return _catalog_cache[cache_key]
+
     client_obj = None
     client_name = None
     client_industry = ""
@@ -191,7 +200,7 @@ async def get_zoho_catalog(
     else:
         contacts_list = [c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in contacts]
 
-    return {
+    res = {
         "organization_id": effective_org or (client_obj.zoho_org_id if client_obj else None) or zoho.org_id,
         "client_id": client_id,
         "contacts_count": len(contacts_list),
@@ -199,3 +208,6 @@ async def get_zoho_catalog(
         "contacts": contacts_list,
         "items": items_list,
     }
+    _catalog_cache[cache_key] = res
+    _catalog_cache_time[cache_key] = now
+    return res

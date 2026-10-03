@@ -14,6 +14,10 @@ logger = get_logger("api.invoices")
 router = APIRouter(prefix="/invoices", tags=["Invoicing"])
 
 
+_existing_invoices_cache: Dict[str, ExistingInvoicesQueryResponse] = {}
+_existing_invoices_cache_time: Dict[str, float] = {}
+
+
 @router.get("/existing", summary="Check Existing Draft Invoices for Month/Customer", response_model=ExistingInvoicesQueryResponse)
 async def check_existing_draft_invoices(
     client_id: str = Query(..., description="Client organization ID or slug"),
@@ -25,6 +29,12 @@ async def check_existing_draft_invoices(
     Checks whether draft invoices have already been raised in Zoho Books or
     staged in the application ledger for the given billing month, client, and customer.
     """
+    import time
+    cache_key = f"{client_id}:{month}:{year}:{customer_name or 'all'}"
+    now_ts = time.time()
+    if cache_key in _existing_invoices_cache and (now_ts - _existing_invoices_cache_time.get(cache_key, 0.0) < 60):
+        return _existing_invoices_cache[cache_key]
+
     from app.services.zoho_service import ZohoBooksService
     from app.api.v1.clients import get_client_id_aliases
     from app.models.db_models import StagedTransaction
@@ -166,7 +176,7 @@ async def check_existing_draft_invoices(
     except Exception as db_err:
         logger.debug(f"PostgreSQL staged existing invoices query note: {db_err}")
 
-    return ExistingInvoicesQueryResponse(
+    response_obj = ExistingInvoicesQueryResponse(
         has_existing=len(existing_invoices) > 0,
         existing_invoices=existing_invoices,
         count=len(existing_invoices),
@@ -174,6 +184,9 @@ async def check_existing_draft_invoices(
         month=month,
         year=year,
     )
+    _existing_invoices_cache[cache_key] = response_obj
+    _existing_invoices_cache_time[cache_key] = now_ts
+    return response_obj
 
 
 @router.post("", summary="Generate Zoho Books Draft Invoices (Root)")

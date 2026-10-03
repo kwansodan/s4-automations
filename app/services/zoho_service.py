@@ -74,6 +74,8 @@ class ZohoBooksService:
     _tenant_items: Dict[str, List[ZohoItem]] = {}
     _tenant_items_cache_time: Dict[str, float] = {}
     _tenant_sales_accounts: Dict[str, str] = {}
+    _tenant_chart_of_accounts: Dict[str, List[Dict[str, Any]]] = {}
+    _tenant_chart_of_accounts_time: Dict[str, float] = {}
     _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
@@ -280,6 +282,7 @@ class ZohoBooksService:
                         err_text = response.text
                         if "rate limit" in err_text.lower() or "exceeded the maximum call" in err_text.lower():
                             logger.warning(f"Zoho Books API rate limit reached fetching contacts ({err_text[:120]}). Preserving existing contacts.")
+                            ZohoBooksService._tenant_contacts_cache_time[self._tenant_key] = now
                             if cached:
                                 return cached
                             return default_contacts
@@ -324,51 +327,69 @@ class ZohoBooksService:
             ZohoBooksService._tenant_contacts_cache_time[self._tenant_key] = now
             return default_contacts
 
-    @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
-    )
     async def fetch_chart_of_accounts(self) -> List[Dict[str, Any]]:
         """Fetches active Chart of Accounts from Zoho Books REST API."""
+        now = time.time()
+        cached = ZohoBooksService._tenant_chart_of_accounts.get(self._tenant_key)
+        cache_time = ZohoBooksService._tenant_chart_of_accounts_time.get(self._tenant_key, 0.0)
+        if cached and (now - cache_time < 3600):
+            return cached
+
         if not self.org_id or not self.refresh_token:
             logger.warning(f"No refresh token or org_id configured for Zoho Books (org: {self.org_id}). Returning empty chart of accounts.")
             return []
 
-        access_token = await self.get_access_token()
-        headers = self._get_headers(access_token)
-        url = f"{self.books_api_url}/chartofaccounts"
-        params = {"organization_id": self.org_id}
+        try:
+            access_token = await self.get_access_token()
+            headers = self._get_headers(access_token)
+            url = f"{self.books_api_url}/chartofaccounts"
+            params = {"organization_id": self.org_id}
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers, params=params)
-
-            if response.status_code == 401:
-                access_token = await self.get_access_token(force_refresh=True)
-                headers = self._get_headers(access_token)
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, headers=headers, params=params)
 
-            response.raise_for_status()
-            data = response.json()
-            raw_accounts = data.get("chartofaccounts", [])
+                if response.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    response = await client.get(url, headers=headers, params=params)
 
-            accounts = []
-            for acc in raw_accounts:
-                acc_name = acc.get("account_name", "")
-                acc_type = acc.get("account_type", "")
-                accounts.append(
-                    {
-                        "account_id": str(acc.get("account_id", "")),
-                        "account_code": acc.get("account_code", "") or str(acc.get("account_id", "")),
-                        "account_name": acc_name,
-                        "account_type": acc_type,
-                        "is_suspense": acc_type.lower() in ["suspense", "other_current_liability"] or "uncategorized" in acc_name.lower(),
-                    }
-                )
+                if response.status_code in (400, 429):
+                    err_text = response.text
+                    if "rate limit" in err_text.lower() or "exceeded the maximum call" in err_text.lower():
+                        logger.warning(f"Zoho Books API rate limit reached fetching chart of accounts. Preserving cache.")
+                        ZohoBooksService._tenant_chart_of_accounts_time[self._tenant_key] = now
+                        if cached:
+                            return cached
+                        return []
 
-            logger.info(f"Fetched {len(accounts)} chart of accounts from Zoho Books for org {self.org_id}.")
-            return accounts
+                response.raise_for_status()
+                data = response.json()
+                raw_accounts = data.get("chartofaccounts", [])
+
+                accounts = []
+                for acc in raw_accounts:
+                    acc_name = acc.get("account_name", "")
+                    acc_type = acc.get("account_type", "")
+                    accounts.append(
+                        {
+                            "account_id": str(acc.get("account_id", "")),
+                            "account_code": acc.get("account_code", "") or str(acc.get("account_id", "")),
+                            "account_name": acc_name,
+                            "account_type": acc_type,
+                            "is_suspense": acc_type.lower() in ["suspense", "other_current_liability"] or "uncategorized" in acc_name.lower(),
+                        }
+                    )
+
+                if accounts:
+                    ZohoBooksService._tenant_chart_of_accounts[self._tenant_key] = accounts
+                    ZohoBooksService._tenant_chart_of_accounts_time[self._tenant_key] = now
+                logger.info(f"Fetched {len(accounts)} chart of accounts from Zoho Books for org {self.org_id}.")
+                return accounts
+        except Exception as e:
+            logger.warning(f"Could not fetch chart of accounts ({e}). Returning cached or empty.")
+            if cached:
+                return cached
+            return []
 
     async def get_default_sales_account_id(self) -> str:
         """Finds or caches the default Sales / Income account ID in Zoho Books."""
@@ -559,6 +580,7 @@ class ZohoBooksService:
                         err_text = response.text
                         if "rate limit" in err_text.lower() or "exceeded the maximum call" in err_text.lower():
                             logger.warning(f"Zoho Books API rate limit reached ({err_text[:120]}). Preserving existing catalog.")
+                            ZohoBooksService._tenant_items_cache_time[self._tenant_key] = now
                             if cached:
                                 return cached
                             return STANDARD_LAUNDRY_ITEMS.copy()
