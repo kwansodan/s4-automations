@@ -1851,6 +1851,182 @@ export const ClientArTab: React.FC = () => {
     addLog('success', `Exported monthly summary (${isFiltered ? dailyPropertyFilter : 'All Customers'}) to ${filename}`);
   };
 
+  const handleExportZohoInvoiceImportCsv = () => {
+    const isFiltered = dailyPropertyFilter !== 'ALL';
+    const clientName = currentClient?.name || 'Client';
+    const targetTx = isFiltered
+      ? arStagedTx.filter((t) => extractPropertyName(t.source_file_name, t.metadata_json) === dailyPropertyFilter)
+      : arStagedTx;
+
+    if (targetTx.length === 0) {
+      alert('No transactions found to export for Zoho Books import.');
+      return;
+    }
+
+    const approvedTx = targetTx.filter((t) => t.approved || t.status === 'INVOICED');
+    const txToExport = approvedTx.length > 0 ? approvedTx : targetTx;
+
+    // Aggregate by Customer -> Item Name -> Unit Rate
+    type AggItem = {
+      customer: string;
+      itemName: string;
+      unitRate: number;
+      quantity: number;
+      totalAmount: number;
+    };
+
+    const aggMap = new Map<string, AggItem>();
+
+    txToExport.forEach((tx) => {
+      const cust = extractPropertyName(tx.source_file_name, tx.metadata_json) || clientName;
+      const rawName = (tx.item_or_description || '').trim();
+      const cleanName = rawName.replace(/^[:;\s\-•.]+/, '').trim();
+      const itemName = toTitleCase(cleanName || rawName);
+      const delivQty = Number(tx.quantity_or_debit) || 0;
+      const rate = Number(tx.rate_or_price) || 0;
+      const amount = Number(tx.total_amount) || (delivQty * rate);
+
+      const key = `${cust}:::${itemName}:::${rate.toFixed(2)}`;
+      const existing = aggMap.get(key);
+      if (existing) {
+        existing.quantity += delivQty;
+        existing.totalAmount += amount;
+      } else {
+        aggMap.set(key, {
+          customer: cust,
+          itemName,
+          unitRate: rate,
+          quantity: delivQty,
+          totalAmount: amount,
+        });
+      }
+    });
+
+    const escapeCsv = (val: any): string => {
+      if (val == null) return '""';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return `"${str}"`;
+    };
+
+    // Group items by customer
+    const custMap = new Map<string, AggItem[]>();
+    for (const item of aggMap.values()) {
+      if (!custMap.has(item.customer)) {
+        custMap.set(item.customer, []);
+      }
+      custMap.get(item.customer)!.push(item);
+    }
+
+    const sortedCustomers = Array.from(custMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    const y = Number(selectedYear);
+    const m = Number(selectedMonth);
+    const lastDayOfMonth = new Date(y, m, 0).getDate();
+    const invoiceDateStr = `${y}-${String(m).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+    const dueDateObj = new Date(y, m - 1, lastDayOfMonth + 14);
+    const dueDateStr = `${dueDateObj.getFullYear()}-${String(dueDateObj.getMonth() + 1).padStart(2, '0')}-${String(dueDateObj.getDate()).padStart(2, '0')}`;
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthName = monthNames[m - 1] || `Month ${m}`;
+
+    const headers = [
+      'Invoice Date', 'Invoice Number', 'Estimate Number', 'Invoice Status', 'Customer Name',
+      'Is Tracked For MOSS', 'Due Date', 'Expected Payment Date', 'PurchaseOrder', 'Template Name',
+      'Currency Code', 'Exchange Rate', 'Item Name', 'SKU', 'Item Desc',
+      'Quantity', 'Item Price', 'Usage unit', 'Discount', 'Expense Reference ID',
+      'Is Inclusive Tax', 'Discount Amount', 'Item Tax1', 'Item Tax1 Type', 'Item Tax1 %',
+      'Project Name', 'Notes', 'Terms & Conditions', 'PayPal', 'Authorize.Net',
+      'Payflow Pro', 'Stripe', '2Checkout', 'Braintree', 'Forte',
+      'WorldPay', 'Payments Pro', 'Square', 'WePay', 'GoCardless',
+      'Partial Payments', 'Sales person', 'Shipping Charge', 'Adjustment', 'Adjustment Description',
+      'Discount Type', 'Is Discount Before Tax', 'Entity Discount Percent', 'Entity Discount Amount', 'Payment Terms',
+      'Payment Terms Label', 'Is Digital Service', 'Branch Name', 'Warehouse Name', 'CF.Transporter_Name'
+    ];
+
+    const rows: string[] = [headers.map((h) => `"${h}"`).join(',')];
+
+    sortedCustomers.forEach((cust, custIdx) => {
+      const invNum = `INV-${y}${String(m).padStart(2, '0')}-${String(custIdx + 1).padStart(3, '0')}`;
+      const items = custMap.get(cust) || [];
+      items.sort((a, b) => a.itemName.localeCompare(b.itemName) || a.unitRate - b.unitRate);
+
+      items.forEach((item) => {
+        const qtyStr = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toFixed(2);
+        const rateStr = item.unitRate.toFixed(2);
+        const noteStr = `Commercial Laundry Service Billing for ${cust} (${monthName} ${y})`;
+
+        const row = [
+          escapeCsv(invoiceDateStr),
+          escapeCsv(invNum),
+          '""', // Estimate Number
+          escapeCsv('Draft'),
+          escapeCsv(cust),
+          '""', // Is Tracked For MOSS
+          escapeCsv(dueDateStr),
+          '""', // Expected Payment Date
+          '""', // PurchaseOrder
+          '""', // Template Name
+          escapeCsv('GHS'),
+          escapeCsv('1'),
+          escapeCsv(item.itemName),
+          '""', // SKU
+          '""', // Item Desc strictly empty
+          escapeCsv(qtyStr),
+          escapeCsv(rateStr),
+          '""', // Usage unit
+          escapeCsv('0'), // Discount
+          '""', // Expense Reference ID
+          '""', // Is Inclusive Tax
+          '""', // Discount Amount
+          '""', // Item Tax1
+          '""', // Item Tax1 Type
+          '""', // Item Tax1 %
+          '""', // Project Name
+          escapeCsv(noteStr),
+          '""', // Terms & Conditions
+          '""', // PayPal
+          '""', // Authorize.Net
+          '""', // Payflow Pro
+          '""', // Stripe
+          '""', // 2Checkout
+          '""', // Braintree
+          '""', // Forte
+          '""', // WorldPay
+          '""', // Payments Pro
+          '""', // Square
+          '""', // WePay
+          '""', // GoCardless
+          '""', // Partial Payments
+          '""', // Sales person
+          '""', // Shipping Charge
+          '""', // Adjustment
+          '""', // Adjustment Description
+          '""', // Discount Type
+          '""', // Is Discount Before Tax
+          '""', // Entity Discount Percent
+          '""', // Entity Discount Amount
+          '""', // Payment Terms
+          '""', // Payment Terms Label
+          '""', // Is Digital Service
+          '""', // Branch Name
+          '""', // Warehouse Name
+          '""'  // CF.Transporter_Name
+        ];
+        rows.push(row.join(','));
+      });
+    });
+
+    const csvContent = rows.join('\r\n');
+    const safeClient = clientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeScope = isFiltered ? dailyPropertyFilter.replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Customers';
+    const filename = `Zoho_Invoice_Import_${safeClient}_${safeScope}_${selectedMonth}_${selectedYear}.csv`;
+
+    downloadCsv(filename, csvContent);
+    addLog('success', `Exported Zoho Books import file (${rows.length - 1} line items across ${sortedCustomers.length} invoices) to ${filename}`);
+  };
+
   // Slip-level KPI counts for the active Customer filter
   const slipKpis = useMemo(() => {
     const targetTx = dailyPropertyFilter === 'ALL'
@@ -3355,6 +3531,14 @@ export const ClientArTab: React.FC = () => {
                   <span>
                     {dailyPropertyFilter === 'ALL' ? 'Export Summary (.csv)' : `Export ${dailyPropertyFilter} (.csv)`}
                   </span>
+                </button>
+                <button
+                  onClick={handleExportZohoInvoiceImportCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-50 rounded-lg transition cursor-pointer shadow-xs"
+                  title={`Export ready-to-upload Zoho Books invoice import CSV (${dailyPropertyFilter === 'ALL' ? 'All Customers' : dailyPropertyFilter})`}
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Export Zoho Import (.csv)</span>
                 </button>
                 <button
                   onClick={() => setActiveLedgerView('daily')}
