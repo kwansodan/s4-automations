@@ -176,7 +176,7 @@ export const InvoiceModal: React.FC = () => {
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
-  const [isAuditExpanded, setIsAuditExpanded] = useState(true);
+  const [isAuditExpanded, setIsAuditExpanded] = useState(false);
 
   // Existing Invoices and Mode Selection State
   const [existingInvoices, setExistingInvoices] = useState<ExistingDraftInvoice[]>([]);
@@ -647,16 +647,58 @@ export const InvoiceModal: React.FC = () => {
   }, [phase, pipelineProgress?.is_running]);
 
   // Scoped Customer Preflight Computations
-  const availableCustomerSummaries = invoicePreflight?.customerSummaries || [];
+  const availableCustomerSummaries = useMemo(() => {
+    if (rawTransactions.length > 0) {
+      const isRegen = invoiceMode === 'regenerate';
+      const billable = rawTransactions.filter((t: any) =>
+        isRegen ? (t.approved || t.status === 'INVOICED') : (t.approved && t.status !== 'INVOICED')
+      );
+      const customerMap: Record<
+        string,
+        { itemsCount: number; totalAmount: number; isReconciled: boolean; zohoContactId?: string }
+      > = {};
+
+      billable.forEach((tx: any) => {
+        const cust = getTxCustomer(tx);
+        if (!customerMap[cust]) {
+          customerMap[cust] = {
+            itemsCount: 0,
+            totalAmount: 0,
+            isReconciled: true,
+            zohoContactId: tx.metadata_json?.zoho_contact_id,
+          };
+        }
+        customerMap[cust].itemsCount++;
+        customerMap[cust].totalAmount += tx.total_amount || 0;
+      });
+
+      const preflightMap = new Map((invoicePreflight?.customerSummaries || []).map((c) => [c.customerName, c]));
+      return Object.entries(customerMap).map(([custName, data]) => {
+        const pf = preflightMap.get(custName);
+        return {
+          customerName: custName,
+          itemsCount: data.itemsCount,
+          totalAmount: data.totalAmount,
+          isReconciled: pf ? pf.isReconciled : data.isReconciled,
+          zohoContactId: data.zohoContactId || pf?.zohoContactId,
+        };
+      });
+    }
+    return invoicePreflight?.customerSummaries || [];
+  }, [rawTransactions, invoiceMode, invoicePreflight]);
 
   const scopedApprovedTx = useMemo(() => {
+    const isRegen = invoiceMode === 'regenerate';
+    const isBillable = (t: any) =>
+      isRegen ? (t.approved || t.status === 'INVOICED') : (t.approved && t.status !== 'INVOICED');
+
     if (customerScope === 'ALL') {
-      return rawTransactions.filter((t: any) => t.approved && t.status !== 'INVOICED');
+      return rawTransactions.filter(isBillable);
     }
     return rawTransactions.filter(
-      (t: any) => t.approved && t.status !== 'INVOICED' && getTxCustomer(t) === customerScope
+      (t: any) => isBillable(t) && getTxCustomer(t) === customerScope
     );
-  }, [rawTransactions, customerScope]);
+  }, [rawTransactions, customerScope, invoiceMode]);
 
   const scopedUnapprovedTx = useMemo(() => {
     if (customerScope === 'ALL') {
@@ -1050,6 +1092,145 @@ export const InvoiceModal: React.FC = () => {
               </div>
             </div>
 
+            {/* Invoicing Mode Strategy (Always Visible & Scoped) */}
+            <div className="space-y-2.5">
+              {/* Detected Existing Draft Notice Banner (if any) */}
+              {hasExistingDrafts && existingInvoices.length > 0 && (
+                <div className="bg-sky-950/50 border border-sky-500/40 rounded-xl p-3 space-y-1.5">
+                  <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
+                    <Info className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>Existing Draft Invoices Detected in Zoho Books</span>
+                  </div>
+                  <p className="text-[11px] text-sky-200/80 leading-relaxed">
+                    Found existing draft invoice(s) for this billing period:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {existingInvoices.map((inv) => (
+                      <span
+                        key={inv.invoice_id || inv.invoice_number}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-sky-900/60 border border-sky-600/40 text-sky-200 px-2.5 py-0.5 rounded-lg"
+                      >
+                        <span className="font-bold text-white">{inv.invoice_number}</span>
+                        {inv.customer_name && <span className="text-slate-300">({inv.customer_name})</span>}
+                        {inv.total > 0 && (
+                          <span className="text-emerald-400 font-semibold">GHS {inv.total.toFixed(2)}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Mode Selection Cards */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-200">Invoicing Strategy</label>
+                  <span className="text-[11px] text-slate-400">Select Append vs Full Regeneration</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Option 1: Append Mode */}
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceMode('append')}
+                    disabled={isSubmitting}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      invoiceMode === 'append'
+                        ? 'bg-emerald-950/40 border-emerald-500/80 text-white ring-1 ring-emerald-500/50 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold flex items-center gap-1.5 text-white">
+                          <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                          Append Mode
+                        </span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          Incremental
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Add only newly approved slips to draft invoices. Preserves previously drafted line items.
+                      </p>
+                    </div>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono text-emerald-400">
+                      Safe incremental update
+                    </div>
+                  </button>
+
+                  {/* Option 2: Regenerate Mode */}
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceMode('regenerate')}
+                    disabled={isSubmitting}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      invoiceMode === 'regenerate'
+                        ? 'bg-amber-950/40 border-amber-500/80 text-white ring-1 ring-amber-500/50 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold flex items-center gap-1.5 text-white">
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                          Regenerate Mode
+                        </span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Full Re-bill
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Delete existing draft invoice in Zoho Books and re-bill all approved slips from scratch.
+                      </p>
+                    </div>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono text-amber-400">
+                      Full deletion &amp; re-bill
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amber Warning Callout when Regenerate Mode is active */}
+              {invoiceMode === 'regenerate' && (
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl p-3.5 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-amber-200 block">
+                        Warning: Existing Draft Invoices in Zoho Books Will Be Deleted
+                      </span>
+                      <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                        Regenerating will delete existing draft invoices in Zoho Books for{' '}
+                        <strong className="text-white">
+                          {customerScope === 'ALL' ? 'all customers' : customerScope}
+                        </strong>{' '}
+                        ({selectedMonth} {selectedYear}) and re-bill all approved slips from scratch.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Required Safety Confirmation Checkbox */}
+                  <div className="pt-2 border-t border-amber-500/20 flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="confirm-deletion-checkbox"
+                      checked={confirmedDeletion}
+                      onChange={(e) => setConfirmedDeletion(e.target.checked)}
+                      disabled={isSubmitting}
+                      className="mt-0.5 w-4 h-4 rounded border-amber-600 bg-slate-900 text-amber-500 focus:ring-amber-400 cursor-pointer disabled:opacity-50"
+                    />
+                    <label
+                      htmlFor="confirm-deletion-checkbox"
+                      className="text-xs text-amber-100 font-semibold cursor-pointer select-none"
+                    >
+                      I understand that regenerating will delete existing draft invoices in Zoho Books for the selected customer(s) and re-bill all approved slips.
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Pre-Flight Readiness Audit Checklist (Dynamically Scoped) */}
             <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
               <div
@@ -1330,145 +1511,6 @@ export const InvoiceModal: React.FC = () => {
                 ))}
               </select>
             </div>
-
-            {/* Existing Draft Invoices Alert and Mode Selection */}
-            {hasExistingDrafts && (
-              <div className="space-y-3">
-                {/* Detected Draft Notice Banner */}
-                <div className="bg-sky-950/50 border border-sky-500/40 rounded-xl p-3.5 space-y-2">
-                  <div className="flex items-center gap-2 text-sky-300 font-semibold text-xs">
-                    <Info className="w-4 h-4 text-sky-400 shrink-0" />
-                    <span>Existing Draft Invoices Detected</span>
-                  </div>
-                  <p className="text-[11px] text-sky-200/80 leading-relaxed">
-                    Found existing draft invoice(s) for this billing period in Zoho Books:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {existingInvoices.map((inv) => (
-                      <span
-                        key={inv.invoice_id || inv.invoice_number}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-sky-900/60 border border-sky-600/40 text-sky-200 px-2.5 py-1 rounded-lg"
-                      >
-                        <span className="font-bold text-white">{inv.invoice_number}</span>
-                        {inv.customer_name && <span className="text-slate-300">({inv.customer_name})</span>}
-                        {inv.total > 0 && (
-                          <span className="text-emerald-400 font-semibold">GHS {inv.total.toFixed(2)}</span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Mode Selection Cards */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-slate-200">Invoicing Mode</label>
-                    <span className="text-[11px] text-slate-400">Choose update strategy</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Option 1: Append Mode */}
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceMode('append')}
-                      disabled={isSubmitting}
-                      className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                        invoiceMode === 'append'
-                          ? 'bg-emerald-950/40 border-emerald-500/80 text-white ring-1 ring-emerald-500/50 shadow-sm'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-white">
-                            <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                            Append Mode
-                          </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            Recommended
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                          Add only newly approved slips to existing draft invoices in Zoho Books. Preserves previously drafted line items.
-                        </p>
-                      </div>
-                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono text-emerald-400">
-                        Safe incremental update
-                      </div>
-                    </button>
-
-                    {/* Option 2: Regenerate Mode */}
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceMode('regenerate')}
-                      disabled={isSubmitting}
-                      className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                        invoiceMode === 'regenerate'
-                          ? 'bg-amber-950/40 border-amber-500/80 text-white ring-1 ring-amber-500/50 shadow-sm'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-white">
-                            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                            Regenerate Mode
-                          </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            Destructive
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                          Delete existing draft invoice in Zoho Books and re-bill all approved slips from scratch.
-                        </p>
-                      </div>
-                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono text-amber-400">
-                        Full deletion &amp; re-bill
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Amber Warning Callout when Regenerate Mode is active */}
-                {invoiceMode === 'regenerate' && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl p-3.5 space-y-2.5 animate-in fade-in">
-                    <div className="flex items-start gap-2.5">
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-amber-200 block">
-                          Warning: Existing Draft Invoices in Zoho Books Will Be Deleted
-                        </span>
-                        <p className="text-[11px] text-amber-300/90 leading-relaxed">
-                          Regenerating will delete existing draft invoices in Zoho Books for{' '}
-                          <strong className="text-white">
-                            {customerScope === 'ALL' ? 'all customers' : customerScope}
-                          </strong>{' '}
-                          ({selectedMonth} {selectedYear}) and re-bill all approved slips from scratch. This action cannot be undone.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Required Safety Confirmation Checkbox */}
-                    <div className="pt-2 border-t border-amber-500/20 flex items-start gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="confirm-deletion-checkbox"
-                        checked={confirmedDeletion}
-                        onChange={(e) => setConfirmedDeletion(e.target.checked)}
-                        disabled={isSubmitting}
-                        className="mt-0.5 w-4 h-4 rounded border-amber-600 bg-slate-900 text-amber-500 focus:ring-amber-400 cursor-pointer disabled:opacity-50"
-                      />
-                      <label
-                        htmlFor="confirm-deletion-checkbox"
-                        className="text-xs text-amber-100 font-semibold cursor-pointer select-none"
-                      >
-                        I understand that regenerating will delete existing draft invoices in Zoho Books for the selected customer(s) and re-bill all approved slips.
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Line Item Description Choice */}
             <div className="space-y-2">
