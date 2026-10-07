@@ -237,31 +237,17 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     or tx.get("reference_number")
                     or "Uncategorized Bank Feed Transaction"
                 )
-                # Accurately resolve Transfer Out (DEBIT) vs Transfer In (CREDIT)
+                # Exclusively inspect debit_or_credit, imported_transaction_type, and debit_amount / credit_amount
                 doc = str(tx.get("debit_or_credit") or tx.get("imported_transaction_type") or "").strip().lower()
-                raw_type = str(tx.get("transaction_type") or "").strip().lower()
-                raw_amt = float(tx.get("amount", 0.0) or 0.0)
                 debit_amt = float(tx.get("debit_amount", 0.0) or 0.0)
                 credit_amt = float(tx.get("credit_amount", 0.0) or 0.0)
 
-                if doc == "debit" or debit_amt > 0:
+                if "debit" in doc or debit_amt > 0:
                     tx_t = "DEBIT"
-                elif doc == "credit" or credit_amt > 0:
+                elif "credit" in doc or credit_amt > 0:
                     tx_t = "CREDIT"
-                elif raw_amt < 0:
-                    tx_t = "DEBIT"
-                elif any(k in raw_type for k in ["expense", "vendor_payment", "withdrawal", "fee", "charge", "outflow", "debit"]):
-                    tx_t = "DEBIT"
-                elif any(k in raw_type for k in ["deposit", "customer_payment", "inflow", "credit", "sales"]):
-                    tx_t = "CREDIT"
-                elif raw_type in ["transfer_fund", "transfer"]:
-                    tx_t = "DEBIT"
                 else:
-                    desc_lower = desc.lower()
-                    if any(w in desc_lower for w in [" fee", "charge", "c.o.t", "cot ", "maintenance fee", "withholding tax", "commission", "vat/nhil"]):
-                        tx_t = "DEBIT"
-                    else:
-                        tx_t = "DEBIT" if raw_amt < 0 else "CREDIT"
+                    tx_t = "DEBIT"
 
                 u_key = f"zoho_uncat:{tx_id}:{amt}:{desc}"
                 if u_key not in seen_keys:
