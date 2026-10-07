@@ -166,7 +166,7 @@ class QuickBooksAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Discovers unmapped transactions residing in watched accounts on QuickBooks Online."""
+        """Pulls unmapped bank transactions from connected bank feeds on QuickBooks Online."""
         now = datetime.now()
         target_year = year or now.year
 
@@ -216,12 +216,11 @@ class QuickBooksAdapter(BaseAccountingAdapter):
                     "amount": amt,
                     "transaction_type": tx.get("transaction_type", "DEBIT"),
                     "bank_account_name": tx.get("bank_account_name") or "QuickBooks Bank Feed",
-                    "account_name": tx.get("account_name") or "Uncategorized Expense",
-                    "source_file_name": "QuickBooks_Live_Sync",
+                    "account_name": tx.get("account_name") or "Uncategorized Feed",
+                    "source_file_name": "QuickBooks_Live_Bank_Feed",
                     "mapped_account_id": None,
                     "ai_suggested_account": None,
                     "category_confidence": 0.90,
-                    "watched_account": tx.get("watched_account") or "6990",
                     "external_transaction_id": tx_id,
                     "qbo_transaction_id": tx_id,
                     "raw_transaction": tx.get("raw_transaction"),

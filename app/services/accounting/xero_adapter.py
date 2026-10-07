@@ -157,7 +157,7 @@ class XeroAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Discovers unmapped transactions residing in watched suspense accounts on Xero."""
+        """Pulls unmapped bank transactions from connected bank feeds on Xero."""
         now = datetime.now()
         target_year = year or now.year
 
@@ -207,12 +207,11 @@ class XeroAdapter(BaseAccountingAdapter):
                     "amount": amt,
                     "transaction_type": tx.get("transaction_type", "DEBIT"),
                     "bank_account_name": tx.get("bank_account_name") or "Xero Bank Feed",
-                    "account_name": tx.get("account_name") or "Suspense Account",
-                    "source_file_name": "Xero_Live_Sync",
+                    "account_name": tx.get("account_name") or "Uncategorized Feed",
+                    "source_file_name": "Xero_Live_Bank_Feed",
                     "mapped_account_id": None,
                     "ai_suggested_account": None,
                     "category_confidence": 0.90,
-                    "watched_account": tx.get("watched_account") or "850",
                     "external_transaction_id": tx_id,
                     "xero_transaction_id": tx_id,
                     "raw_transaction": tx.get("raw_transaction"),

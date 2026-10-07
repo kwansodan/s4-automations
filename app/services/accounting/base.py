@@ -101,7 +101,9 @@ class BaseAccountingAdapter(ABC):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Fetches transactions in watched suspense/uncategorized accounts from accounting software."""
+        """Fetches uncategorized bank feed transactions from connected bank accounts in the accounting platform.
+        Does not query or watch General Ledger (GL) account codes.
+        """
         pass
 
     @abstractmethod

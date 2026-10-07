@@ -402,9 +402,9 @@ async def client_portal_explain_transaction(
 # Accountant & Internal Banking Management Endpoints (Requires Admin)
 # -------------------------------------------------------------------------
 
-@bank_accountant_router.get("/clients/{client_id}/accounts", summary="Accountant: Get Live Chart of Accounts & Watched Status")
+@bank_accountant_router.get("/clients/{client_id}/accounts", summary="Accountant: Get Live Chart of Accounts")
 async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
-    """Returns the Chart of Accounts with watched status flags for this client."""
+    """Returns the Chart of Accounts for categorizing transactions for this client."""
     with Session(get_engine()) as session:
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
         if not client:
@@ -465,17 +465,14 @@ async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
                 "message": f"OAuth connection pending or unauthorized for {software.replace('_', ' ').title()}. Please authorize in Client Settings to allow live Chart of Accounts to flow through.",
             }
 
-        # Mark watched flags
         for acc in accounts:
-            code = acc.get("account_code") or acc.get("account_id")
-            name = acc.get("account_name", "").lower()
-            acc["is_watched"] = code in watched or any(w.lower() in name for w in watched)
+            acc["is_watched"] = False
 
         return {
             "client_id": client_id,
             "accounting_software": software,
             "oauth_pending": False,
-            "watched_accounts": watched,
+            "watched_accounts": [],
             "accounts": accounts,
             "accounts_count": len(accounts),
         }
@@ -651,7 +648,7 @@ async def accountant_purge_test_transactions(client_id: str) -> Dict[str, Any]:
         }
 
 
-@bank_accountant_router.get("/clients/{client_id}/transactions", summary="Accountant: List & Filter Bank Transactions in Watched Accounts")
+@bank_accountant_router.get("/clients/{client_id}/transactions", summary="Accountant: List & Filter Uncategorized Bank Transactions")
 async def accountant_list_bank_transactions(
     client_id: str,
     status: Optional[str] = Query("ALL", description="ALL, UNMAPPED, CLARIFICATION_REQUESTED, CLIENT_ANSWERED, MAPPED"),
@@ -659,7 +656,7 @@ async def accountant_list_bank_transactions(
     month: Optional[str] = Query("ALL", description="ALL, month name ('September'), month number ('09'), or 'YYYY-MM'"),
     year: Optional[str] = Query(None, description="Filter by year e.g. 2026 or ALL"),
 ) -> Dict[str, Any]:
-    """Lists bank transactions residing in watched accounts requiring classification or client attention."""
+    """Lists uncategorized bank transactions requiring classification or client attention."""
     with Session(get_engine()) as session:
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
         if not client:
@@ -869,7 +866,7 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
                         ❓ Information Request
                     </div>
                     <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">
-                        Clarification Needed on Transaction in Watched Account
+                        Clarification Needed on Bank Transaction
                     </h2>
                     <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 18px 0;">
                         Hello from your accounting team for <strong>{client_name}</strong>,
@@ -974,7 +971,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         magic_url = f"{settings.APP_BASE_URL.rstrip('/')}/?portal_magic={magic_token}"
 
         target_email = payload.recipient_email or settings.NOTIFICATION_EMAIL or "cdanso@service4gh.com"
-        subject = f"❓ [Action Required] Clarification requested on {len(txs)} transactions in watched accounts ({client_name})"
+        subject = f"❓ [Action Required] Clarification requested on {len(txs)} uncategorized bank transactions ({client_name})"
         
         items_html = "".join(
             f"<li style='margin-bottom: 8px; color: #334155; font-size: 13px;'><strong style='color: #0f172a; font-family: monospace;'>GHS {t.amount:,.2f}</strong> <span style='color: #64748b;'>({t.transaction_date})</span> &bull; <code style='background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: #0f172a;'>{t.description}</code></li>"
@@ -988,7 +985,7 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
                     ❓ Bulk Information Request
                 </div>
                 <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">
-                    Clarification Needed on {len(txs)} Transactions in Watched Accounts
+                    Clarification Needed on {len(txs)} Uncategorized Bank Transactions
                 </h2>
                 <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">
                     Your accounting team has requested information on the following items for <strong>{client_name}</strong>:
@@ -1034,13 +1031,13 @@ async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dic
         }
 
 
-@bank_accountant_router.post("/clients/{client_id}/sync-accounting", summary="Accountant: Pull Transactions in Watched Accounts from Accounting Platform")
+@bank_accountant_router.post("/clients/{client_id}/sync-accounting", summary="Accountant: Pull Uncategorized Bank Transactions from Accounting Platform")
 async def accountant_sync_bank_feeds(
     client_id: str,
     month: Optional[str] = Query(None, description="Filter sync by target month (e.g. September, 09, YYYY-MM)"),
     year: Optional[str] = Query(None, description="Filter sync by target year (e.g. 2026 or ALL)"),
 ) -> Dict[str, Any]:
-    """Pulls unmapped transactions residing in watched accounts from connected accounting platform into the Information Requests queue."""
+    """Pulls unmapped bank transactions from connected accounting platform bank feeds into the Information Requests queue."""
     with Session(get_engine()) as session:
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
         if not client:
@@ -1049,11 +1046,26 @@ async def accountant_sync_bank_feeds(
         # Ensure any legacy mock transactions are wiped out
         purge_legacy_mock_bank_transactions(session, client_id=client_id)
 
+        # Clean up historical records previously ingested from watched GL accounts
+        legacy_gl_txs = session.exec(
+            select(BankTransaction).where(
+                BankTransaction.client_id == client_id,
+                or_(
+                    BankTransaction.source_file_name == "Live_Watched_Accounts_Sync",
+                    BankTransaction.bank_account_name == "Watched Account",
+                    BankTransaction.description.like("%[Watched:%"),
+                ),
+            )
+        ).all()
+        if legacy_gl_txs:
+            for l_tx in legacy_gl_txs:
+                session.delete(l_tx)
+            session.commit()
+            logger.info(f"Purged {len(legacy_gl_txs)} historical GL register records for client {client_id}.")
+
         target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
-        watched = client.watched_accounts if (client.watched_accounts and len(client.watched_accounts) > 0) else ["6990", "850", "suspense", "uncategorized"]
         adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
         feeds = await adapter.fetch_uncategorized_bank_transactions(
-            watched_accounts=watched,
             month=month,
             year=target_year_int,
         )
@@ -1065,7 +1077,7 @@ async def accountant_sync_bank_feeds(
                 "success": True,
                 "client_id": client_id,
                 "synced_new_count": 0,
-                "message": f"No transactions found in watched accounts on {adapter.platform_name}{period_label}.",
+                "message": f"No uncategorized bank transactions found on {adapter.platform_name}{period_label}.",
             }
 
         synced_count = 0
@@ -1088,8 +1100,6 @@ async def accountant_sync_bank_feeds(
             ).first()
             if not existing:
                 meta = {}
-                if f.get("watched_account"):
-                    meta["watched_account"] = f.get("watched_account")
                 if f.get("external_transaction_id"):
                     meta["external_transaction_id"] = f.get("external_transaction_id")
                 if f.get("zoho_transaction_id"):
@@ -1106,11 +1116,11 @@ async def accountant_sync_bank_feeds(
                 new_tx = BankTransaction(
                     client_id=client_id,
                     transaction_date=f.get("transaction_date", datetime.now().strftime("%Y-%m-%d")),
-                    description=f.get("description", "Direct Watched Account Line"),
+                    description=f.get("description", "Uncategorized Bank Transaction"),
                     amount=float(f.get("amount", 0.0)),
                     transaction_type=f.get("transaction_type", "DEBIT"),
-                    bank_account_name=f.get("bank_account_name") or f.get("account_name") or "Watched Account",
-                    source_file_name=f.get("source_file_name", "Live_Watched_Accounts_Sync"),
+                    bank_account_name=f.get("bank_account_name") or f.get("account_name") or "Bank Account",
+                    source_file_name=f.get("source_file_name", "Live_Bank_Feed_Sync"),
                     checksum=c_hash,
                     status="UNMAPPED",
                     ai_suggested_account=f.get("ai_suggested_account"),
@@ -1126,7 +1136,7 @@ async def accountant_sync_bank_feeds(
             "success": True,
             "client_id": client_id,
             "synced_new_count": synced_count,
-            "message": f"Synced {synced_count} new transactions across watched accounts ({', '.join(watched[:3])}...){period_label}.",
+            "message": f"Synced {synced_count} uncategorized bank transactions from {adapter.platform_name}{period_label}.",
         }
 
 

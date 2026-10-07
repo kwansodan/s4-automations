@@ -258,7 +258,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                   Client Clarification Portal
                 </span>
               </div>
-              <p className="text-[11px] text-[#64748B] font-medium">Information Requests &amp; Watched Account Clarifications</p>
+              <p className="text-[11px] text-[#64748B] font-medium">Information Requests &amp; Bank Transaction Clarifications</p>
             </div>
           </div>
 
@@ -305,7 +305,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                 </div>
                 <h2 className="text-2xl font-bold text-[#0F172A] tracking-tight">Client Secure Access</h2>
                 <p className="text-xs text-[#64748B] mt-1 max-w-xs mx-auto font-normal">
-                  Login via email OTP to review and clarify monthly transactions in watched accounts for your accounting team.
+                  Login via email OTP to review and clarify monthly uncategorized bank transactions for your accounting team.
                 </p>
               </div>
 
@@ -466,7 +466,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
             {isLoadingTx ? (
               <div className="p-16 text-center text-slate-500 bg-white border border-[#E2E8F0] rounded-2xl flex flex-col items-center justify-center gap-2 shadow-xs">
                 <Clock className="w-6 h-6 animate-spin text-[#0284C7]" />
-                <p className="text-xs font-medium">Loading transactions in watched accounts requiring attention...</p>
+                <p className="text-xs font-medium">Loading uncategorized bank transactions requiring attention...</p>
               </div>
             ) : filteredTxs.length === 0 ? (
               <div className="p-16 text-center text-slate-500 bg-white border border-[#E2E8F0] rounded-2xl flex flex-col items-center justify-center gap-3 shadow-xs">
@@ -475,7 +475,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">All Caught Up!</h3>
                 <p className="text-xs text-slate-500 max-w-sm">
-                  There are currently no unexplained transactions in watched accounts requiring your input. Thank you for keeping your
+                  There are currently no unexplained uncategorized bank transactions requiring your input. Thank you for keeping your
                   books up to date!
                 </p>
               </div>

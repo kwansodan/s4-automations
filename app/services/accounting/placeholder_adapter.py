@@ -113,7 +113,7 @@ class InProgressAccountingAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Discovers unmapped transactions residing in watched accounts.
+        """Fetches uncategorized bank feed transactions.
         Returns empty list when live sync is not yet configured or no live records exist.
         """
         return []

@@ -176,8 +176,9 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         month: Optional[str] = None,
         year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Pulls real unmapped transactions residing in watched accounts from Zoho Books.
+        """Pulls real uncategorized bank transactions from Zoho Books bank feeds (/banktransactions?transaction_status=uncategorized).
         
+        Only queries active bank accounts; does NOT watch or poll any general ledger (GL) account codes.
         If no transactions exist or the adapter is not connected, returns an empty list.
         Never falls back to mock or simulated records.
         """
@@ -185,7 +186,6 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
             logger.info("Zoho Books live integration not active or in mock mode; returning empty transaction list.")
             return []
 
-        effective_watched = [str(w).strip() for w in (watched_accounts or ["6990", "850", "suspense", "uncategorized"]) if str(w).strip()]
         now = datetime.now()
         target_year = year or now.year
 
@@ -222,221 +222,46 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         seen_keys = set()
 
         try:
-            # 0. Fetch native uncategorized bank feed transactions from Zoho Books (/banktransactions?transaction_status=uncategorized)
-            try:
-                raw_uncat_feed = await self.zoho.fetch_uncategorized_bank_transactions(
-                    date_start=date_start,
-                    date_end=date_end,
+            # Fetch native uncategorized bank feed transactions from Zoho Books (/banktransactions?transaction_status=uncategorized)
+            raw_uncat_feed = await self.zoho.fetch_uncategorized_bank_transactions(
+                date_start=date_start,
+                date_end=date_end,
+            )
+            for tx in (raw_uncat_feed or []):
+                tx_id = str(tx.get("transaction_id", ""))
+                tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
+                amt = abs(float(tx.get("amount", 0.0)))
+                desc = (
+                    tx.get("description")
+                    or tx.get("payee")
+                    or tx.get("reference_number")
+                    or "Uncategorized Bank Feed Transaction"
                 )
-                for tx in (raw_uncat_feed or []):
-                    tx_id = str(tx.get("transaction_id", ""))
-                    tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
-                    amt = abs(float(tx.get("amount", 0.0)))
-                    desc = (
-                        tx.get("description")
-                        or tx.get("payee")
-                        or tx.get("reference_number")
-                        or "Uncategorized Bank Feed Transaction"
-                    )
-                    tx_t = str(tx.get("transaction_type") or "DEBIT").upper()
-                    if tx_t not in ["DEBIT", "CREDIT"]:
-                        tx_t = "DEBIT" if float(tx.get("amount", 0.0)) < 0 else "CREDIT"
+                tx_t = str(tx.get("transaction_type") or "DEBIT").upper()
+                if tx_t not in ["DEBIT", "CREDIT"]:
+                    tx_t = "DEBIT" if float(tx.get("amount", 0.0)) < 0 else "CREDIT"
 
-                    u_key = f"zoho_uncat:{tx_id}:{amt}:{desc}"
-                    if u_key not in seen_keys:
-                        seen_keys.add(u_key)
-                        results.append({
-                            "transaction_date": tx_date,
-                            "description": desc,
-                            "amount": amt,
-                            "transaction_type": tx_t,
-                            "bank_account_name": tx.get("from_account_name") or "Zoho Bank Feed",
-                            "account_name": tx.get("account_name") or "Uncategorized Feed",
-                            "source_file_name": "Zoho_Live_Bank_Feed",
-                            "mapped_account_id": None,
-                            "ai_suggested_account": tx.get("account_name"),
-                            "category_confidence": 0.95,
-                            "watched_account": "uncategorized",
-                            "external_transaction_id": tx_id,
-                            "zoho_transaction_id": tx_id,
-                            "zoho_account_id": str(tx.get("from_account_id") or ""),
-                            "raw_transaction": tx,
-                        })
-            except Exception as uncat_err:
-                logger.warning(f"Could not fetch native uncategorized bank feeds from Zoho: {uncat_err}")
-
-            # 1. Fetch Chart of Accounts and Bank Accounts from Zoho
-            chart_accounts = await self.zoho.fetch_chart_of_accounts()
-            try:
-                bank_accounts = await self.zoho.fetch_bank_accounts()
-            except Exception as b_err:
-                logger.warning(f"Could not fetch bank accounts from Zoho: {b_err}")
-                bank_accounts = []
-
-            # Index accounts by id, code, and normalized name
-            all_known_accounts = []
-            for acc in (chart_accounts or []):
-                all_known_accounts.append({
-                    "account_id": str(acc.get("account_id", "")),
-                    "account_code": str(acc.get("account_code", "")),
-                    "account_name": str(acc.get("account_name", "")),
-                    "account_type": str(acc.get("account_type", "")).lower(),
-                    "source": "chart",
-                })
-            for bacc in (bank_accounts or []):
-                b_id = str(bacc.get("account_id", ""))
-                if not any(a["account_id"] == b_id for a in all_known_accounts):
-                    all_known_accounts.append({
-                        "account_id": b_id,
-                        "account_code": str(bacc.get("account_code", "")),
-                        "account_name": str(bacc.get("account_name", "")),
-                        "account_type": "bank",
-                        "source": "bank",
+                u_key = f"zoho_uncat:{tx_id}:{amt}:{desc}"
+                if u_key not in seen_keys:
+                    seen_keys.add(u_key)
+                    results.append({
+                        "transaction_date": tx_date,
+                        "description": desc,
+                        "amount": amt,
+                        "transaction_type": tx_t,
+                        "bank_account_name": tx.get("from_account_name") or "Zoho Bank Account",
+                        "account_name": tx.get("account_name") or "Uncategorized Feed",
+                        "source_file_name": "Zoho_Live_Bank_Feed",
+                        "mapped_account_id": None,
+                        "ai_suggested_account": tx.get("account_name"),
+                        "category_confidence": 0.95,
+                        "external_transaction_id": tx_id,
+                        "zoho_transaction_id": tx_id,
+                        "zoho_account_id": str(tx.get("from_account_id") or ""),
+                        "raw_transaction": tx,
                     })
-
-            # 2. Match watched accounts
-            matched_targets = []
-            for w in effective_watched:
-                w_norm = str(w).strip().lower()
-                matched_any = False
-                for acc in all_known_accounts:
-                    if (
-                        acc["account_id"].lower() == w_norm
-                        or (acc["account_code"] and acc["account_code"].lower() == w_norm)
-                        or (w_norm in acc["account_name"].lower())
-                        or (acc["account_name"].lower() in w_norm)
-                    ):
-                        matched_targets.append((w, acc))
-                        matched_any = True
-
-                # If w is a specific account ID (numeric) not yet in chart accounts, query it directly
-                if not matched_any and w_norm.isdigit() and len(w_norm) > 5:
-                    matched_targets.append((w, {
-                        "account_id": str(w).strip(),
-                        "account_code": str(w).strip(),
-                        "account_name": f"Watched Account {w}",
-                        "account_type": "expense",
-                        "source": "watched_id",
-                    }))
-
-            # If no direct match on watched names/codes, check bank accounts
-            if not matched_targets:
-                for acc in all_known_accounts:
-                    if acc["account_type"] in ["bank", "credit_card"] or acc["source"] == "bank":
-                        matched_targets.append((effective_watched[0] if effective_watched else "Bank", acc))
-
-            # 3. Query transactions from Zoho for each matched account
-            for w_label, acc in matched_targets:
-                acc_id = acc["account_id"]
-                acc_type = acc["account_type"]
-                acc_name = acc["account_name"]
-
-                # 1. Fetch from Bank Transactions if account is bank/credit_card
-                if acc_type in ["bank", "credit_card"] or acc["source"] == "bank":
-                    try:
-                        raw_txs = await self.zoho.fetch_bank_transactions(
-                            account_id=acc_id,
-                            status=None,
-                            date_start=date_start,
-                            date_end=date_end,
-                        )
-                        for tx in (raw_txs or []):
-                            tx_id = str(tx.get("transaction_id", ""))
-                            tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
-                            amt = abs(float(tx.get("amount", 0.0)))
-                            desc = tx.get("description") or tx.get("payee") or tx.get("reference_number") or f"Transaction in {acc_name}"
-                            tx_t = str(tx.get("transaction_type") or "DEBIT").upper()
-                            if tx_t not in ["DEBIT", "CREDIT"]:
-                                tx_t = "DEBIT" if float(tx.get("amount", 0.0)) < 0 else "CREDIT"
-
-                            u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
-                            if u_key not in seen_keys:
-                                seen_keys.add(u_key)
-                                results.append({
-                                    "transaction_date": tx_date,
-                                    "description": desc,
-                                    "amount": amt,
-                                    "transaction_type": tx_t,
-                                    "bank_account_name": tx.get("from_account_name") or acc_name or "Watched Account",
-                                    "account_name": acc_name or "Watched Account",
-                                    "source_file_name": "Zoho_Live_Sync",
-                                    "mapped_account_id": None,
-                                    "ai_suggested_account": tx.get("account_name"),
-                                    "category_confidence": 0.90,
-                                    "watched_account": w_label,
-                                    "external_transaction_id": tx_id,
-                                    "zoho_transaction_id": tx_id,
-                                    "zoho_account_id": acc_id,
-                                    "raw_transaction": tx,
-                                })
-                    except Exception as tx_err:
-                        logger.debug(f"Notice fetching bank transactions for account {acc_id} ({acc_name}): {tx_err}")
-
-                # 2. Comprehensive Multi-Source Ledger Fetch (Expenses, Bills, Payments, Journals, Registers, COA)
-                try:
-                    raw_acc_txs = await self.zoho.fetch_account_transactions(
-                        account_id=acc_id,
-                        account_name=acc_name,
-                        date_start=date_start,
-                        date_end=date_end,
-                    )
-                    for tx in (raw_acc_txs or []):
-                        tx_id = str(tx.get("transaction_id") or tx.get("expense_id") or tx.get("journal_id") or "")
-                        tx_date = str(tx.get("transaction_date") or tx.get("date") or f"{target_year}-01-01")
-                        debit = float(tx.get("debit_amount", 0.0) or 0.0)
-                        credit = float(tx.get("credit_amount", 0.0) or 0.0)
-                        raw_amt = float(tx.get("amount", 0.0) or tx.get("total", 0.0) or tx.get("bcy_total", 0.0) or 0.0)
-                        amt = debit if debit > 0 else (credit if credit > 0 else abs(raw_amt))
-
-                        tx_t_raw = str(tx.get("transaction_type") or tx.get("debit_or_credit") or "").upper()
-                        if debit > 0:
-                            tx_t = "DEBIT"
-                        elif credit > 0:
-                            tx_t = "CREDIT"
-                        elif "DEBIT" in tx_t_raw or "OUT" in tx_t_raw or "EXPENSE" in tx_t_raw or "PAYMENT" in tx_t_raw:
-                            tx_t = "DEBIT"
-                        elif "CREDIT" in tx_t_raw or "IN" in tx_t_raw or "INCOME" in tx_t_raw or "RECEIPT" in tx_t_raw:
-                            tx_t = "CREDIT"
-                        else:
-                            tx_t = "DEBIT" if raw_amt < 0 else "CREDIT"
-
-                        desc = (
-                            tx.get("description")
-                            or tx.get("notes")
-                            or tx.get("payee")
-                            or tx.get("customer_name")
-                            or tx.get("vendor_name")
-                            or tx.get("reference_number")
-                            or tx.get("entry_number")
-                            or f"Entry in {acc_name}"
-                        )
-
-                        u_key = f"{acc_id}:{tx_id or tx_date}:{amt}:{desc}"
-                        if u_key not in seen_keys:
-                            seen_keys.add(u_key)
-                            results.append({
-                                "transaction_date": tx_date,
-                                "description": desc,
-                                "amount": amt,
-                                "transaction_type": tx_t,
-                                "bank_account_name": acc_name or "Watched Account",
-                                "account_name": acc_name or "Watched Account",
-                                "source_file_name": "Zoho_Live_Sync",
-                                "mapped_account_id": None,
-                                "ai_suggested_account": None,
-                                "category_confidence": 0.85,
-                                "watched_account": w_label,
-                                "external_transaction_id": tx_id,
-                                "zoho_transaction_id": tx_id,
-                                "zoho_account_id": acc_id,
-                                "raw_transaction": tx,
-                            })
-                except Exception as acc_err:
-                    logger.warning(f"Error fetching account transactions for account {acc_id} ({acc_name}): {acc_err}")
-
-        except Exception as e:
-            logger.error(f"Failed to fetch live transactions from Zoho Books: {e}", exc_info=True)
-            return []
+        except Exception as uncat_err:
+            logger.warning(f"Could not fetch native uncategorized bank feeds from Zoho: {uncat_err}")
 
         return results
 

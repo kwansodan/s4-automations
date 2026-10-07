@@ -4,7 +4,6 @@ import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchBankTransactions,
   fetchChartOfAccounts,
-  updateWatchedAccounts,
   queryBankTransaction,
   mapBankTransaction,
   uploadBankStatement,
@@ -17,25 +16,12 @@ import {
   RefreshCw,
   Search,
   CheckCircle2,
-  AlertTriangle,
-  Send,
-  HelpCircle,
-  ShieldCheck,
-  Check,
-  Tag,
-  Sliders,
-  X,
-  Plus,
-  Trash2,
-  Calendar,
-  Layers,
-  ChevronDown,
   Paperclip,
 } from 'lucide-react';
 
 export const ClientBankTab: React.FC = () => {
   const { currentClient } = useClient();
-  const { selectedMonth, selectedYear, addLog, setActiveTab } = useAutomation();
+  const { selectedMonth, selectedYear, addLog } = useAutomation();
 
   const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,13 +31,9 @@ export const ClientBankTab: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Chart of Accounts & Watched Accounts
+  // Chart of Accounts for mapping
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
-  const [isOauthPending, setIsOauthPending] = useState<boolean>(false);
-  const [watchedAccounts, setWatchedAccounts] = useState<string[]>(['6990', '850', 'suspense', 'uncategorized']);
-  const [isWatchedDrawerOpen, setIsWatchedDrawerOpen] = useState(false);
-  const [isSavingWatched, setIsSavingWatched] = useState(false);
-  const [customWatchedCode, setCustomWatchedCode] = useState('');
+  const [, setIsOauthPending] = useState<boolean>(false);
 
   // Inline action state
   const [queryInputs, setQueryInputs] = useState<{ [id: number]: string }>({});
@@ -71,9 +53,6 @@ export const ClientBankTab: React.FC = () => {
       } else {
         setIsOauthPending(false);
         setAccounts(coaRes.accounts);
-      }
-      if (coaRes.watched_accounts && coaRes.watched_accounts.length > 0) {
-        setWatchedAccounts(coaRes.watched_accounts);
       }
     } catch (err: any) {
       console.warn('Error loading bank transactions:', err);
@@ -147,31 +126,6 @@ export const ClientBankTab: React.FC = () => {
     }
   };
 
-  const handleSaveWatchedAccounts = async () => {
-    setIsSavingWatched(true);
-    try {
-      await updateWatchedAccounts(currentClient.id, watchedAccounts);
-      addLog('success', `Updated watched suspense accounts for ${currentClient.name}.`);
-      setIsWatchedDrawerOpen(false);
-    } catch (err: any) {
-      addLog('error', `Failed saving watched accounts: ${err.message}`);
-    } finally {
-      setIsSavingWatched(false);
-    }
-  };
-
-  const handleAddWatchedCode = () => {
-    const code = customWatchedCode.trim();
-    if (code && !watchedAccounts.includes(code)) {
-      setWatchedAccounts([...watchedAccounts, code]);
-      setCustomWatchedCode('');
-    }
-  };
-
-  const handleRemoveWatchedCode = (code: string) => {
-    setWatchedAccounts(watchedAccounts.filter((c) => c !== code));
-  };
-
   const filteredTx = transactions.filter((t) => {
     const matchesSearch =
       t.description?.toLowerCase().includes(search.toLowerCase()) ||
@@ -196,25 +150,12 @@ export const ClientBankTab: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Ingest monthly bank statements, monitor watched suspense accounts, and dispatch clarification requests.
+            Ingest monthly bank statements, review uncategorized bank feeds, and dispatch clarification requests.
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Watched Accounts Drawer Toggle */}
-          <button
-            onClick={() => setIsWatchedDrawerOpen(!isWatchedDrawerOpen)}
-            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer border ${
-              isWatchedDrawerOpen
-                ? 'bg-emerald-600 border-emerald-500 text-white'
-                : 'bg-slate-950 hover:bg-slate-900 border-slate-800 text-emerald-300'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Watched Suspense Accounts ({watchedAccounts.length})</span>
-          </button>
-
           {/* Sync Accounting Feed */}
           <button
             onClick={handleSyncAccountingFeed}
@@ -245,71 +186,6 @@ export const ClientBankTab: React.FC = () => {
         <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2 shadow-lg">
           <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
           <span>{uploadMessage}</span>
-        </div>
-      )}
-
-      {/* Watched Suspense Accounts Config Panel */}
-      {isWatchedDrawerOpen && (
-        <div className="glass-panel-elevated rounded-2xl p-5 border border-emerald-500/30 animate-in fade-in space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-sm font-bold text-white">
-                Watched Suspense Accounts Configuration
-              </h3>
-            </div>
-            <button
-              onClick={() => setIsWatchedDrawerOpen(false)}
-              className="p-1 rounded-lg text-slate-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-400">
-            Transactions posted to any of these Chart of Accounts codes or matching keywords will automatically be flagged for accountant review and client queries.
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            {watchedAccounts.map((code) => (
-              <span
-                key={code}
-                className="inline-flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-bold px-3 py-1 rounded-lg"
-              >
-                <span>{code}</span>
-                <button
-                  onClick={() => handleRemoveWatchedCode(code)}
-                  className="hover:text-red-400 transition cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 pt-2">
-            <input
-              type="text"
-              placeholder="Add account code or keyword (e.g. 6990, suspense, ask_client)..."
-              value={customWatchedCode}
-              onChange={(e) => setCustomWatchedCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddWatchedCode())}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-            />
-            <button
-              onClick={handleAddWatchedCode}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
-            >
-              + Add Code
-            </button>
-            <button
-              onClick={handleSaveWatchedAccounts}
-              disabled={isSavingWatched}
-              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition"
-            >
-              {isSavingWatched ? 'Saving...' : 'Save Watched Rules'}
-            </button>
-          </div>
         </div>
       )}
 

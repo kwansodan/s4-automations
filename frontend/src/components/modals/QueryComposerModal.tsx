@@ -144,7 +144,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             {transaction.description}
           </p>
           <span className="text-[11px] text-[#0284C7] block font-mono">
-            Account: {transaction.metadata_json?.watched_account ? `Watched (${transaction.metadata_json.watched_account})` : (transaction.bank_account_name || 'Watched Account')}
+            Bank Account: {transaction.bank_account_name || 'Uncategorized Bank Feed'}
           </span>
         </div>
 
