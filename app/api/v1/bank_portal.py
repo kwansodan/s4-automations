@@ -762,6 +762,7 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
                 account_id=payload.mapped_account_id,
                 payee_name=payload.payee_name,
                 tax_rate=payload.tax_rate,
+                attachments=tx.client_attachments,
             )
 
         AuditService.log(

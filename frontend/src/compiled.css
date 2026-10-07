@@ -1198,6 +1198,9 @@
   .border-\[\#A7F3D0\] {
     border-color: #A7F3D0;
   }
+  .border-\[\#A7F3D0\]\/60 {
+    border-color: color-mix(in oklab, #A7F3D0 60%, transparent);
+  }
   .border-\[\#BAE6FD\] {
     border-color: #BAE6FD;
   }

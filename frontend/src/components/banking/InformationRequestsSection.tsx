@@ -38,6 +38,8 @@ import {
   ArrowRight,
   ArrowDownLeft,
   ArrowUpRight,
+  Eye,
+  ExternalLink,
   ShieldCheck,
   Layers,
   ChevronDown,
@@ -211,6 +213,9 @@ export const InformationRequestsSection: React.FC = () => {
   const [selectedTxForQuery, setSelectedTxForQuery] = useState<BankTransactionRecord | null>(null);
   const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
 
+  // Attachment Viewer Modal State
+  const [previewAttachment, setPreviewAttachment] = useState<{ name: string; url?: string; size?: number; type?: string } | null>(null);
+
   // Load Transactions & Accounts
   const loadData = useCallback(async () => {
     if (!currentClient) return;
@@ -323,6 +328,31 @@ export const InformationRequestsSection: React.FC = () => {
       addLog('info', `Updated transaction #${tx.id} to ${newType === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}.`);
     } catch (err: any) {
       addLog('error', `Failed to toggle direction: ${err.message}`);
+    }
+  };
+
+  // View Attachment
+  const handleViewAttachment = (att: { name: string; url?: string; size?: number; type?: string }) => {
+    if (att.url) {
+      if (att.url.startsWith('data:image/') || att.url.startsWith('data:application/pdf')) {
+        const newWin = window.open();
+        if (newWin) {
+          if (att.url.startsWith('data:image/')) {
+            newWin.document.write(`<html><head><title>${att.name}</title></head><body style="margin:0; background:#0f172a; display:flex; align-items:center; justify-content:center; min-height:100vh;"><img src="${att.url}" style="max-width:95%; max-height:95vh; object-fit:contain; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.5);" /></body></html>`);
+          } else {
+            newWin.document.write(`<html><head><title>${att.name}</title></head><body style="margin:0;"><iframe src="${att.url}" style="border:none; width:100%; height:100vh;"></iframe></body></html>`);
+          }
+          return;
+        }
+      }
+      const a = document.createElement('a');
+      a.href = att.url;
+      a.download = att.name || 'document';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      setPreviewAttachment(att);
     }
   };
 
@@ -1031,9 +1061,34 @@ export const InformationRequestsSection: React.FC = () => {
                               "{tx.client_explanation}"
                             </p>
                             {tx.client_attachments && tx.client_attachments.length > 0 && (
-                              <div className="flex items-center gap-1 text-[#0284C7] text-[10px]">
-                                <Paperclip className="w-3 h-3" />
-                                <span>{tx.client_attachments.length} attachment(s) uploaded</span>
+                              <div className="space-y-1.5 pt-1.5 border-t border-[#A7F3D0]/60">
+                                <div className="text-[10px] text-slate-600 font-semibold flex items-center gap-1">
+                                  <Paperclip className="w-3 h-3 text-[#0284C7]" />
+                                  <span>Attachments ({tx.client_attachments.length}):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {tx.client_attachments.map((att: any, aIdx: number) => {
+                                    const fileName = att.name || `Attachment ${aIdx + 1}`;
+                                    const sizeStr = att.size ? ` (${Math.round(att.size / 1024)} KB)` : '';
+                                    return (
+                                      <button
+                                        key={aIdx}
+                                        type="button"
+                                        onClick={() => handleViewAttachment(att)}
+                                        title={`Click to view or download ${fileName}${sizeStr}`}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#F0F9FF] hover:bg-[#E0F2FE] border border-[#BAE6FD] text-[#0284C7] text-[10px] font-medium transition cursor-pointer max-w-[200px] shadow-xs"
+                                      >
+                                        <Paperclip className="w-2.5 h-2.5 shrink-0" />
+                                        <span className="truncate">{fileName}</span>
+                                        {att.url ? (
+                                          <Eye className="w-2.5 h-2.5 shrink-0 text-[#0284C7]" />
+                                        ) : (
+                                          <ExternalLink className="w-2.5 h-2.5 shrink-0 text-slate-400" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1115,6 +1170,63 @@ export const InformationRequestsSection: React.FC = () => {
           }));
         }}
       />
+
+      {/* Attachment Details Modal */}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-slate-800">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#F0F9FF] text-[#0284C7] flex items-center justify-center">
+                  <Paperclip className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-[260px]">{previewAttachment.name}</h3>
+                  <p className="text-[10px] text-slate-500 font-mono">Supporting Receipt Document</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewAttachment(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-slate-600">
+                <span className="font-semibold">File Name:</span>
+                <span className="font-mono text-slate-900 font-bold truncate max-w-[200px]">{previewAttachment.name}</span>
+              </div>
+              {previewAttachment.size && (
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="font-semibold">File Size:</span>
+                  <span className="font-mono text-slate-900">{Math.round(previewAttachment.size / 1024)} KB</span>
+                </div>
+              )}
+              {previewAttachment.type && (
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="font-semibold">MIME Type:</span>
+                  <span className="font-mono text-slate-900">{previewAttachment.type}</span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-500 italic">
+              Note: This file reference was submitted by the client via the clarification portal. Newly submitted attachments will open directly in the browser.
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setPreviewAttachment(null)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

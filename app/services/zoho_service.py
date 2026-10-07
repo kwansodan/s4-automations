@@ -1687,7 +1687,44 @@ class ZohoBooksService:
 
             response.raise_for_status()
             data = response.json()
-            logger.info(f"✅ Successfully categorized Zoho bank transaction {transaction_id} to account {account_id}.")
+            logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} to account {account_id}.")
+            return data
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    )
+    async def attach_expense_receipt(
+        self,
+        expense_id: str,
+        file_bytes: bytes,
+        filename: str,
+    ) -> Dict[str, Any]:
+        """Uploads receipt or supporting document attachment to an expense in Zoho Books."""
+        if not self.org_id or not expense_id:
+            raise ValueError("Zoho org_id and expense_id are required.")
+
+        access_token = await self.get_access_token()
+        headers = self._get_headers(access_token)
+        headers.pop("Content-Type", None)
+
+        url = f"{self.books_api_url}/expenses/{expense_id}/receipt"
+        params = {"organization_id": self.org_id}
+        files = {"receipt": (filename, file_bytes)}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, params=params, files=files)
+            if response.status_code == 401:
+                access_token = await self.get_access_token(force_refresh=True)
+                headers = self._get_headers(access_token)
+                headers.pop("Content-Type", None)
+                response = await client.post(url, headers=headers, params=params, files=files)
+
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Successfully attached receipt {filename} to Zoho expense {expense_id}.")
             return data
 
     @retry(

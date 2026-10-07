@@ -29,7 +29,7 @@ interface BankTransaction {
   status: string;
   client_explanation?: string;
   accountant_query?: string;
-  client_attachments?: Array<{ name: string; size?: number; type?: string }>;
+  client_attachments?: Array<{ name: string; size?: number; type?: string; url?: string }>;
 }
 
 export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackToAdmin }) => {
@@ -574,12 +574,23 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                   const newAtt = { name: file.name, size: file.size, type: file.type };
-                                  setAttachmentsMap((prev) => ({
-                                    ...prev,
-                                    [tx.id]: [...(prev[tx.id] || []), newAtt],
-                                  }));
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    const dataUrl = event.target?.result as string;
+                                    const newAtt = {
+                                      name: file.name,
+                                      size: file.size,
+                                      type: file.type,
+                                      url: dataUrl,
+                                    };
+                                    setAttachmentsMap((prev) => ({
+                                      ...prev,
+                                      [tx.id]: [...(prev[tx.id] || []), newAtt],
+                                    }));
+                                  };
+                                  reader.readAsDataURL(file);
                                 }
+                                e.target.value = '';
                               }}
                             />
                           </label>

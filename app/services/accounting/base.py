@@ -113,6 +113,7 @@ class BaseAccountingAdapter(ABC):
         account_id: str,
         payee_name: Optional[str] = None,
         tax_rate: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> AccountingPostResult:
         """Categorizes an unmapped bank transaction in the accounting platform."""
         pass

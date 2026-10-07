@@ -227,6 +227,7 @@ class XeroAdapter(BaseAccountingAdapter):
         account_id: str,
         payee_name: Optional[str] = None,
         tax_rate: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> AccountingPostResult:
         """Pushes categorized line into Xero."""
         try:

@@ -1,3 +1,4 @@
+import base64
 import calendar
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -279,6 +280,7 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         account_id: str,
         payee_name: Optional[str] = None,
         tax_rate: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> AccountingPostResult:
         """Pushes categorized line into Zoho Books."""
         if self.is_live and not settings.MOCK_MODE and self.zoho.org_id:
@@ -288,6 +290,30 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     account_id=account_id,
                     payee_name=payee_name,
                 )
+
+                # Attach client uploaded receipts or supporting files to Zoho Books expense if available
+                if attachments and isinstance(attachments, list):
+                    expense_id = (
+                        res.get("expense_id")
+                        or (res.get("bank_transaction") or {}).get("expense_id")
+                        or (res.get("expense") or {}).get("expense_id")
+                    )
+                    if expense_id:
+                        for att in attachments:
+                            url = att.get("url") or ""
+                            name = att.get("name") or "attachment"
+                            if url.startswith("data:"):
+                                try:
+                                    encoded = url.split(",", 1)[1] if "," in url else url
+                                    file_bytes = base64.b64decode(encoded)
+                                    await self.zoho.attach_expense_receipt(
+                                        expense_id=str(expense_id),
+                                        file_bytes=file_bytes,
+                                        filename=name,
+                                    )
+                                except Exception as att_err:
+                                    logger.warning(f"Could not attach {name} to Zoho expense {expense_id}: {att_err}")
+
                 return AccountingPostResult(
                     success=True,
                     platform=self.platform_name,
