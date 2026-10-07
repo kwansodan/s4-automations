@@ -270,7 +270,7 @@ export const ClientBankTab: React.FC = () => {
                             : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
                         }`}
                       >
-                        {tx.transaction_type === 'CREDIT' ? 'Inflow (+)' : 'Outflow (-)'}
+                        {tx.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
                       </span>
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold ${

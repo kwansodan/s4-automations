@@ -4,12 +4,12 @@ import { useAutomation } from '../../context/AutomationContext';
 import {
   fetchBankTransactions,
   fetchChartOfAccounts,
-  updateWatchedAccounts,
   categorizeBankTransaction,
   bulkCategorizeBankTransactions,
   bulkQueryBankTransactions,
   syncBankFeedsFromAccounting,
   uploadBankStatement,
+  toggleBankTransactionDirection,
 } from '../../lib/api';
 import {
   ACCOUNTING_PLATFORMS,
@@ -35,6 +35,8 @@ import {
   FileText,
   DollarSign,
   ArrowRight,
+  ArrowDownLeft,
+  ArrowUpRight,
   ShieldCheck,
   Layers,
   ChevronDown,
@@ -309,6 +311,19 @@ export const InformationRequestsSection: React.FC = () => {
     }
   };
 
+  // Toggle Direction (Transfer In / Transfer Out)
+  const handleToggleDirection = async (tx: BankTransactionRecord) => {
+    try {
+      const res = await toggleBankTransactionDirection(tx.id);
+      const newType: 'DEBIT' | 'CREDIT' = res.transaction_type === 'CREDIT' ? 'CREDIT' : 'DEBIT';
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === tx.id ? { ...t, transaction_type: newType } : t))
+      );
+      addLog('info', `Updated transaction #${tx.id} to ${newType === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}.`);
+    } catch (err: any) {
+      addLog('error', `Failed to toggle direction: ${err.message}`);
+    }
+  };
 
   // Inline Categorization
   const handleCategorizeRow = async (tx: BankTransactionRecord) => {
@@ -953,14 +968,35 @@ export const InformationRequestsSection: React.FC = () => {
 
                       {/* Amount */}
                       <td className="py-3.5 px-3 whitespace-nowrap font-mono">
-                        <span className="font-bold font-mono text-slate-900 text-sm block">
-                          GHS {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        <span
+                          className={`font-bold font-mono text-sm block ${
+                            tx.transaction_type === 'CREDIT' ? 'text-[#059669]' : 'text-slate-900'
+                          }`}
+                        >
+                          {tx.transaction_type === 'CREDIT' ? '+' : '-'}GHS {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded inline-block mt-0.5 font-mono ${
-                          tx.transaction_type === 'DEBIT' ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]' : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
-                        }`}>
-                          {tx.transaction_type}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDirection(tx)}
+                          title="Click to toggle Transfer In / Out"
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 mt-1 font-sans transition cursor-pointer shadow-xs ${
+                            tx.transaction_type === 'CREDIT'
+                              ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] hover:bg-[#D1FAE5]'
+                              : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] hover:bg-[#FFE4E6]'
+                          }`}
+                        >
+                          {tx.transaction_type === 'CREDIT' ? (
+                            <>
+                              <ArrowDownLeft className="w-3 h-3 text-[#059669]" />
+                              <span>Transfer In</span>
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpRight className="w-3 h-3 text-[#E11D48]" />
+                              <span>Transfer Out</span>
+                            </>
+                          )}
+                        </button>
                       </td>
 
                       {/* Category Selector */}

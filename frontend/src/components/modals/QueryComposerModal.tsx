@@ -132,11 +132,11 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             </span>
             <span className="font-bold text-[#0F172A] text-sm font-mono flex items-center gap-1">
               <DollarSign className="w-3.5 h-3.5 text-[#059669]" />
-              GHS {transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ml-1 ${
-                transaction.transaction_type === 'DEBIT' ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]' : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+              {transaction.transaction_type === 'CREDIT' ? '+' : '-'}GHS {transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-1 ${
+                transaction.transaction_type === 'CREDIT' ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]' : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
               }`}>
-                {transaction.transaction_type}
+                {transaction.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
               </span>
             </span>
           </div>

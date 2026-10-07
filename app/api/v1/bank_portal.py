@@ -824,6 +824,25 @@ async def accountant_get_bank_transaction_matches(tx_id: int) -> Dict[str, Any]:
         }
 
 
+@bank_accountant_router.post("/transactions/{tx_id}/toggle-direction", summary="Accountant: Toggle Transfer In / Transfer Out")
+async def accountant_toggle_transaction_direction(tx_id: int) -> Dict[str, Any]:
+    """Allows an operator to quickly flip between Transfer In (CREDIT) and Transfer Out (DEBIT)."""
+    with Session(get_engine()) as session:
+        tx = session.get(BankTransaction, tx_id)
+        if not tx:
+            raise HTTPException(status_code=404, detail="Bank transaction not found.")
+        tx.transaction_type = "DEBIT" if tx.transaction_type == "CREDIT" else "CREDIT"
+        session.add(tx)
+        session.commit()
+        session.refresh(tx)
+        return {
+            "success": True,
+            "transaction_id": tx.id,
+            "transaction_type": tx.transaction_type,
+            "message": f"Updated transaction to {'Transfer In (+)' if tx.transaction_type == 'CREDIT' else 'Transfer Out (-)'}.",
+        }
+
+
 @bank_accountant_router.post("/transactions/{tx_id}/query", summary="Accountant: Draw Client Attention (Send Query)")
 async def accountant_query_transaction(tx_id: int, payload: BankTransactionQueryRequest) -> Dict[str, Any]:
     """Draws client attention, sets status to CLARIFICATION_REQUESTED, and dispatches Magic Link notification."""
@@ -1098,7 +1117,15 @@ async def accountant_sync_bank_feeds(
                     )
                 )
             ).first()
-            if not existing:
+            if existing:
+                # Refresh transaction_type if newly resolved or corrected from feed
+                new_type = f.get("transaction_type")
+                if new_type and existing.transaction_type != new_type:
+                    existing.transaction_type = new_type
+                    session.add(existing)
+                    synced_count += 1
+                continue
+            else:
                 meta = {}
                 if f.get("external_transaction_id"):
                     meta["external_transaction_id"] = f.get("external_transaction_id")

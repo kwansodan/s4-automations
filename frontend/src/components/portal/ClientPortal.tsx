@@ -508,7 +508,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                                   : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
                               }`}
                             >
-                              {tx.transaction_type === 'CREDIT' ? 'Deposit / Inflow' : 'Withdrawal / Outflow'}
+                              {tx.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
                             </span>
                             {isAnswered ? (
                               <span className="bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">

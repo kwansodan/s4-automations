@@ -1289,6 +1289,16 @@ export async function queryBankTransaction(
   return handleResponse(res, 'Query bank transaction');
 }
 
+export async function toggleBankTransactionDirection(
+  txId: number
+): Promise<{ success: boolean; transaction_id: number; transaction_type: string; message: string }> {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/toggle-direction`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+  });
+  return handleResponse(res, 'Toggle transaction direction');
+}
+
 export async function bulkCategorizeBankTransactions(payload: {
   transaction_ids: number[];
   mapped_account_id: string;
