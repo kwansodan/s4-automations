@@ -684,11 +684,14 @@ async def accountant_list_bank_transactions(
         total_client_answered = sum(1 for t in all_for_client if t.status == "CLIENT_ANSWERED")
         total_mapped = sum(1 for t in all_for_client if t.status == "MAPPED")
 
-        # Discover distinct periods
-        available_months = sorted(
-            list(set(_extract_year_month(t.transaction_date) for t in all_for_client if _extract_year_month(t.transaction_date))),
-            reverse=True,
-        )
+        # Discover distinct periods and transaction counts per period
+        period_counts = {}
+        for t in all_for_client:
+            ym = _extract_year_month(t.transaction_date)
+            if ym:
+                period_counts[ym] = period_counts.get(ym, 0) + 1
+
+        available_months = sorted(list(period_counts.keys()), reverse=True)
 
         # Apply in-memory month/year filter
         filtered = [t for t in transactions if _matches_month_and_year(t.transaction_date, month, year)]
@@ -710,8 +713,10 @@ async def accountant_list_bank_transactions(
             "month": month,
             "year": year,
             "available_months": available_months,
+            "period_counts": period_counts,
             "metrics": {
                 "total_count": total_count,
+                "filtered_count": len(filtered),
                 "total_uncategorized": total_uncategorized,
                 "total_pending_client": total_pending_client,
                 "total_client_answered": total_client_answered,

@@ -1592,23 +1592,6 @@ class ZohoBooksService:
         except Exception as err:
             logger.warning(f"Could not iterate bank accounts for uncategorized sync: {err}")
 
-        # Also attempt org-wide query if no account-specific loop succeeded
-        if not all_uncat:
-            try:
-                txs = await self.fetch_bank_transactions(
-                    account_id=None,
-                    status="uncategorized",
-                    date_start=date_start,
-                    date_end=date_end,
-                )
-                for t in (txs or []):
-                    tid = str(t.get("transaction_id", ""))
-                    if tid and tid not in seen_tx_ids:
-                        seen_tx_ids.add(tid)
-                        all_uncat.append(t)
-            except Exception as org_err:
-                logger.debug(f"Org-wide uncategorized query note: {org_err}")
-
         return all_uncat
 
     @retry(
@@ -1850,6 +1833,13 @@ class ZohoBooksService:
                         or r_data.get("transactions")
                         or []
                     )
+                    if isinstance(raw_candidate, dict):
+                        raw_candidate = (
+                            raw_candidate.get("account_transactions")
+                            or raw_candidate.get("transactions")
+                            or raw_candidate.get("register_transactions")
+                            or []
+                        )
                     if isinstance(raw_candidate, list):
                         r_txs = [item for item in raw_candidate if isinstance(item, dict)]
                 elif date_start or date_end:
@@ -1863,6 +1853,13 @@ class ZohoBooksService:
                             or all_r_data.get("transactions")
                             or []
                         )
+                        if isinstance(raw_candidate, dict):
+                            raw_candidate = (
+                                raw_candidate.get("account_transactions")
+                                or raw_candidate.get("transactions")
+                                or raw_candidate.get("register_transactions")
+                                or []
+                            )
                         if isinstance(raw_candidate, list):
                             r_txs = [item for item in raw_candidate if isinstance(item, dict)]
 
@@ -1897,22 +1894,30 @@ class ZohoBooksService:
                     c_list = []
                     if c_res.status_code == 200:
                         c_data = c_res.json()
-                        c_list = (
+                        raw_c = (
                             c_data.get("account_transactions")
                             or c_data.get("transactions")
                             or c_data.get("chartofaccounts", [])
                         )
+                        if isinstance(raw_c, dict):
+                            raw_c = raw_c.get("account_transactions") or raw_c.get("transactions") or []
+                        if isinstance(raw_c, list):
+                            c_list = [item for item in raw_c if isinstance(item, dict)]
 
                     # Fallback to fetch all transactions without date restriction
                     if not c_list and (date_start or date_end):
                         all_c_res = await client.get(c_url, headers=headers, params={"organization_id": self.org_id, "account_id": account_id})
                         if all_c_res.status_code == 200:
                             all_c_data = all_c_res.json()
-                            c_list = (
+                            raw_c = (
                                 all_c_data.get("account_transactions")
                                 or all_c_data.get("transactions")
                                 or all_c_data.get("chartofaccounts", [])
                             )
+                            if isinstance(raw_c, dict):
+                                raw_c = raw_c.get("account_transactions") or raw_c.get("transactions") or []
+                            if isinstance(raw_c, list):
+                                c_list = [item for item in raw_c if isinstance(item, dict)]
 
                     for c_item in (c_list or []):
                         _add_tx(c_item)
@@ -1994,6 +1999,10 @@ class ZohoBooksService:
                 b_res = await client.get(b_url, headers=headers, params=b_params)
                 if b_res.status_code == 200:
                     b_txs = b_res.json().get("banktransactions", [])
+                    if not b_txs and (date_start or date_end):
+                        all_b_res = await client.get(b_url, headers=headers, params={"organization_id": self.org_id, "account_id": account_id})
+                        if all_b_res.status_code == 200:
+                            b_txs = all_b_res.json().get("banktransactions", [])
                     for b_item in b_txs:
                         _add_tx(b_item)
             except Exception as b_err:

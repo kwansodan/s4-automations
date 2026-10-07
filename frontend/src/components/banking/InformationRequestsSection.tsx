@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
 import {
@@ -31,6 +31,7 @@ import {
   Check,
   X,
   AlertCircle,
+  AlertTriangle,
   FileText,
   DollarSign,
   ArrowRight,
@@ -64,13 +65,28 @@ const MONTH_OPTIONS = [
   { id: 'December', label: 'December' },
 ];
 
-const YEAR_OPTIONS = [
-  { id: 'ALL', label: 'All Years' },
-  { id: '2027', label: '2027' },
-  { id: '2026', label: '2026' },
-  { id: '2025', label: '2025' },
-  { id: '2024', label: '2024' },
-];
+const MONTH_NAMES_MAP: Record<string, string> = {
+  '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+  '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+  '09': 'September', '10': 'October', '11': 'November', '12': 'December',
+};
+
+const MONTH_SHORT_MAP: Record<string, string> = {
+  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+};
+
+const formatPeriodLabel = (ym: string): string => {
+  if (!ym) return '';
+  const parts = ym.split('-');
+  if (parts.length >= 2) {
+    const y = parts[0];
+    const m = parts[1].padStart(2, '0');
+    return `${MONTH_SHORT_MAP[m] || m} ${y}`;
+  }
+  return ym;
+};
 
 export const InformationRequestsSection: React.FC = () => {
   const { currentClient, clients, setClient } = useClient();
@@ -105,11 +121,55 @@ export const InformationRequestsSection: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>(globalMonth || 'ALL');
   const [selectedYear, setSelectedYear] = useState<string>(globalYear ? String(globalYear) : 'ALL');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const [periodCounts, setPeriodCounts] = useState<Record<string, number>>({});
+  const hasInitialAutoSwitchedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (globalMonth) setSelectedMonth(globalMonth);
     if (globalYear) setSelectedYear(String(globalYear));
   }, [globalMonth, globalYear]);
+
+  // Compute dynamic year options including any historical periods returned by accounting platform
+  const dynamicYearOptions = useMemo(() => {
+    const years = new Set(['2027', '2026', '2025', '2024']);
+    availableMonths.forEach((ym) => {
+      const y = ym.split('-')[0];
+      if (y && y.length === 4) years.add(y);
+    });
+    return [
+      { id: 'ALL', label: 'All Years' },
+      ...Array.from(years).sort((a, b) => b.localeCompare(a)).map((y) => ({ id: y, label: y })),
+    ];
+  }, [availableMonths]);
+
+  const selectPeriod = (ym: string) => {
+    if (ym === 'ALL') {
+      setSelectedMonth('ALL');
+      setSelectedYear('ALL');
+    } else {
+      const parts = ym.split('-');
+      if (parts.length >= 2) {
+        const y = parts[0];
+        const m = parts[1].padStart(2, '0');
+        setSelectedMonth(MONTH_NAMES_MAP[m] || 'ALL');
+        setSelectedYear(y);
+      }
+    }
+  };
+
+  const isPeriodActive = (ym: string) => {
+    if (ym === 'ALL') {
+      return selectedMonth === 'ALL' && selectedYear === 'ALL';
+    }
+    const parts = ym.split('-');
+    if (parts.length >= 2) {
+      const y = parts[0];
+      const m = parts[1].padStart(2, '0');
+      const fullMonth = MONTH_NAMES_MAP[m];
+      return selectedYear === y && selectedMonth === fullMonth;
+    }
+    return false;
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -163,9 +223,11 @@ export const InformationRequestsSection: React.FC = () => {
         fetchChartOfAccounts(currentClient.id),
       ]);
 
-      setTransactions(txRes.transactions || []);
       if (txRes.available_months) {
         setAvailableMonths(txRes.available_months);
+      }
+      if (txRes.period_counts) {
+        setPeriodCounts(txRes.period_counts);
       }
       setMetrics(txRes.metrics || {
         total_count: 0,
@@ -174,6 +236,21 @@ export const InformationRequestsSection: React.FC = () => {
         total_client_answered: 0,
         total_mapped: 0,
       });
+
+      // Auto-fallback on initial load: if active month filter has 0 records but client has records in other periods
+      if (
+        !hasInitialAutoSwitchedRef.current &&
+        (!txRes.transactions || txRes.transactions.length === 0) &&
+        (txRes.metrics?.total_count || 0) > 0 &&
+        (selectedMonth !== 'ALL' || selectedYear !== 'ALL')
+      ) {
+        hasInitialAutoSwitchedRef.current = true;
+        setSelectedMonth('ALL');
+        setSelectedYear('ALL');
+        return;
+      }
+
+      setTransactions(txRes.transactions || []);
 
       if (coaRes.oauth_pending || !coaRes.accounts || coaRes.accounts.length === 0) {
         setIsOauthPending(true);
@@ -216,13 +293,24 @@ export const InformationRequestsSection: React.FC = () => {
   }, [loadData]);
 
   // Sync Watched Accounts from Accounting Platform
-  const handleSyncFeeds = async () => {
+  const handleSyncFeeds = async (syncAll: boolean = false) => {
     if (!currentClient) return;
     setIsSyncing(true);
     try {
-      const res = await syncBankFeedsFromAccounting(currentClient.id, selectedMonth, selectedYear);
+      const monthToSync = syncAll ? undefined : (selectedMonth !== 'ALL' ? selectedMonth : undefined);
+      const yearToSync = syncAll ? undefined : (selectedYear !== 'ALL' ? selectedYear : undefined);
+      const res = await syncBankFeedsFromAccounting(currentClient.id, monthToSync, yearToSync);
       addLog('success', `🏦 ${res.message}`);
-      await loadData();
+
+      // Verify if current view has records or if we should switch to All Periods
+      const txRes = await fetchBankTransactions(currentClient.id, statusFilter, searchQuery, selectedMonth, selectedYear);
+      if ((!txRes.transactions || txRes.transactions.length === 0) && (txRes.metrics?.total_count || 0) > 0) {
+        setSelectedMonth('ALL');
+        setSelectedYear('ALL');
+        addLog('info', `Switched filter to All Periods to display ${txRes.metrics.total_count} transactions across watched accounts.`);
+      } else {
+        await loadData();
+      }
     } catch (err: any) {
       addLog('error', `Sync failed: ${err.message}`);
     } finally {
@@ -402,7 +490,7 @@ export const InformationRequestsSection: React.FC = () => {
             </button>
 
             <button
-              onClick={handleSyncFeeds}
+              onClick={() => handleSyncFeeds(false)}
               disabled={isSyncing}
               className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2.5 px-3.5 rounded-xl border border-[#E2E8F0] shadow-xs transition cursor-pointer"
               title={`Pull live uncategorized & suspense transactions from ${platformName}`}
@@ -777,7 +865,7 @@ export const InformationRequestsSection: React.FC = () => {
                 className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
                 title="Filter transactions by year"
               >
-                {YEAR_OPTIONS.map((y) => (
+                {dynamicYearOptions.map((y) => (
                   <option key={y.id} value={y.id} className="bg-white text-slate-800">
                     {y.label}
                   </option>
@@ -813,6 +901,46 @@ export const InformationRequestsSection: React.FC = () => {
           </div>
         </div>
 
+        {/* Quick Period Selector Pills */}
+        {availableMonths && availableMonths.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1 text-xs">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">
+              Active Periods:
+            </span>
+            <button
+              type="button"
+              onClick={() => selectPeriod('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer border ${
+                isPeriodActive('ALL')
+                  ? 'bg-[#0284C7] text-white border-[#0284C7] shadow-xs'
+                  : 'bg-white text-slate-700 border-[#E2E8F0] hover:bg-slate-50'
+              }`}
+            >
+              All Periods ({metrics.total_count})
+            </button>
+            {availableMonths.map((ym) => {
+              const count = periodCounts[ym];
+              const label = formatPeriodLabel(ym);
+              const isActive = isPeriodActive(ym);
+              return (
+                <button
+                  key={ym}
+                  type="button"
+                  onClick={() => selectPeriod(ym)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer border ${
+                    isActive
+                      ? 'bg-[#0284C7] text-white border-[#0284C7] shadow-xs'
+                      : 'bg-white text-slate-700 border-[#E2E8F0] hover:bg-slate-50'
+                  }`}
+                >
+                  {label}
+                  {count !== undefined && <span className={`ml-1 text-[11px] ${isActive ? 'text-white/80' : 'text-slate-400'}`}>({count})</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Active Month & Year Indicator Banner */}
         {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
           <div className="flex items-center justify-between text-xs bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl px-3 py-1.5 animate-in fade-in">
@@ -824,7 +952,7 @@ export const InformationRequestsSection: React.FC = () => {
                   {selectedMonth !== 'ALL' ? selectedMonth : 'All Months'}
                   {selectedYear !== 'ALL' ? ` ${selectedYear}` : ' (All Years)'}
                 </strong>{' '}
-                ({metrics.total_count} records in watched accounts)
+                ({transactions.length} shown of {metrics.total_count} total in watched accounts)
               </span>
             </div>
             <button
@@ -834,7 +962,28 @@ export const InformationRequestsSection: React.FC = () => {
               }}
               className="text-[11px] text-[#0284C7] hover:underline cursor-pointer font-medium"
             >
-              Reset Date Filters
+              Show All Periods
+            </button>
+          </div>
+        )}
+
+        {/* Warning banner if current filter yields 0 records but client has records in other periods */}
+        {transactions.length === 0 && metrics.total_count > 0 && !isLoading && (
+          <div className="flex items-center justify-between text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-800 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                No transactions found for <strong>{selectedMonth !== 'ALL' ? selectedMonth : 'All Months'} {selectedYear !== 'ALL' ? selectedYear : ''}</strong>, but there are <strong>{metrics.total_count}</strong> unmapped records in your watched accounts across other periods.
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedMonth('ALL');
+                setSelectedYear('ALL');
+              }}
+              className="text-xs font-bold text-amber-900 bg-amber-200/60 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition shrink-0 cursor-pointer"
+            >
+              View All Periods ({metrics.total_count})
             </button>
           </div>
         )}
@@ -899,12 +1048,42 @@ export const InformationRequestsSection: React.FC = () => {
         ) : transactions.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs space-y-3">
             <ShieldCheck className="w-8 h-8 text-[#059669] mx-auto" />
-            <p className="font-bold text-slate-900 text-sm">No Transactions Found in Watched Accounts</p>
+            <p className="font-bold text-slate-900 text-sm">
+              {metrics.total_count > 0
+                ? 'No Transactions in Current Period Filter'
+                : 'No Transactions Found in Watched Accounts'}
+            </p>
             <p className="text-slate-500 max-w-md mx-auto">
-              {selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL'
+              {metrics.total_count > 0
+                ? `You have ${metrics.total_count} transactions synchronized in your watched accounts, but none fall under ${selectedMonth !== 'ALL' ? selectedMonth : ''} ${selectedYear !== 'ALL' ? selectedYear : ''}. Switch periods or view all below.`
+                : selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL'
                 ? `No transactions match the current filter (${[selectedMonth !== 'ALL' && selectedMonth, selectedYear !== 'ALL' && selectedYear, statusFilter !== 'ALL' && statusFilter].filter(Boolean).join(', ')}). Your monitored accounts may contain records in other months or years.`
                 : 'All transactions in monitored watched accounts are currently classified, or none have been imported yet from your accounting software.'}
             </p>
+
+            {metrics.total_count > 0 && availableMonths.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => selectPeriod('ALL')}
+                  className="px-3 py-1.5 rounded-lg bg-[#0284C7] text-white hover:bg-[#0EA5E9] font-medium transition text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Show All Periods ({metrics.total_count})
+                </button>
+                {availableMonths.map((ym) => (
+                  <button
+                    key={ym}
+                    type="button"
+                    onClick={() => selectPeriod(ym)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-[#E2E8F0] font-medium transition text-xs cursor-pointer"
+                  >
+                    Go to {formatPeriodLabel(ym)} ({periodCounts[ym] || 0})
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-3 pt-2">
               {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL') && (
                 <button
@@ -914,16 +1093,16 @@ export const InformationRequestsSection: React.FC = () => {
                     setSearchQuery('');
                     setStatusFilter('ALL');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] hover:bg-[#E0F2FE] font-medium transition text-xs flex items-center gap-1.5 shadow-xs"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] hover:bg-[#E0F2FE] font-medium transition text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Show All Periods &amp; Clear Filters
                 </button>
               )}
               <button
-                onClick={handleSyncFeeds}
+                onClick={() => handleSyncFeeds(false)}
                 disabled={isSyncing}
-                className="px-3.5 py-1.5 rounded-lg bg-white text-slate-700 border border-[#E2E8F0] hover:bg-slate-50 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+                className="px-3.5 py-1.5 rounded-lg bg-white text-slate-700 border border-[#E2E8F0] hover:bg-slate-50 font-medium transition text-xs flex items-center gap-1.5 disabled:opacity-50 shadow-xs cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#0284C7]' : ''}`} />
                 {isSyncing ? 'Syncing...' : `Sync Feeds from ${platformName}`}

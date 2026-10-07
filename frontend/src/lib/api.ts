@@ -1208,8 +1208,10 @@ export async function fetchBankTransactions(
   month?: string;
   year?: number | string;
   available_months?: string[];
+  period_counts?: Record<string, number>;
   metrics: {
     total_count: number;
+    filtered_count?: number;
     total_uncategorized: number;
     total_pending_client: number;
     total_client_answered: number;
