@@ -10,6 +10,7 @@ import {
   syncBankFeedsFromAccounting,
 } from '../../../lib/api';
 import type { BankTransactionRecord, ChartOfAccountItem } from '../../../types/client';
+import { SearchableAccountSelect } from '../../banking/SearchableAccountSelect';
 import {
   Landmark,
   UploadCloud,
@@ -361,18 +362,14 @@ export const ClientBankTab: React.FC = () => {
 
                     {/* Map to Chart of Accounts */}
                     <div className="flex items-center gap-2">
-                      <select
-                        value={mappingInputs[tx.id] || ''}
-                        onChange={(e) => setMappingInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))}
-                        className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                      >
-                        <option value="">Select Chart of Accounts...</option>
-                        {accounts.map((acc) => (
-                          <option key={acc.account_id} value={acc.account_code || acc.account_name}>
-                            {acc.account_code} - {acc.account_name} ({acc.account_type})
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex-1">
+                        <SearchableAccountSelect
+                          accounts={accounts}
+                          value={mappingInputs[tx.id] || ''}
+                          onChange={(val) => setMappingInputs((prev) => ({ ...prev, [tx.id]: val }))}
+                          placeholder="Select Chart of Accounts..."
+                        />
+                      </div>
                       <button
                         onClick={() => handleMapAccount(tx.id)}
                         disabled={!mappingInputs[tx.id]?.trim()}

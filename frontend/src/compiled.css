@@ -921,6 +921,9 @@
   .cursor-pointer {
     cursor: pointer;
   }
+  .resize {
+    resize: both;
+  }
   .resize-none {
     resize: none;
   }
@@ -1079,6 +1082,9 @@
   }
   :where(.divide-\[\#E2E8F0\] > :not(:last-child)) {
     border-color: #E2E8F0;
+  }
+  :where(.divide-slate-50 > :not(:last-child)) {
+    border-color: var(--color-slate-50);
   }
   :where(.divide-slate-800 > :not(:last-child)) {
     border-color: var(--color-slate-800);
@@ -2400,6 +2406,12 @@
   }
   .bg-slate-100 {
     background-color: var(--color-slate-100);
+  }
+  .bg-slate-100\/60 {
+    background-color: color-mix(in srgb, oklch(96.8% 0.007 247.896) 60%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-slate-100) 60%, transparent);
+    }
   }
   .bg-slate-100\/80 {
     background-color: color-mix(in srgb, oklch(96.8% 0.007 247.896) 80%, transparent);
@@ -4056,6 +4068,10 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
+  .duration-100 {
+    --tw-duration: 100ms;
+    transition-duration: 100ms;
+  }
   .duration-150 {
     --tw-duration: 150ms;
     transition-duration: 150ms;
@@ -4794,6 +4810,9 @@
   }
   .focus\:ring-\[\#0284C7\]:focus {
     --tw-ring-color: #0284C7;
+  }
+  .focus\:ring-\[\#0284C7\]\/30:focus {
+    --tw-ring-color: color-mix(in oklab, #0284C7 30%, transparent);
   }
   .focus\:ring-\[\#059669\]:focus {
     --tw-ring-color: #059669;

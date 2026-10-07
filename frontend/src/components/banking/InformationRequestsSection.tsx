@@ -17,6 +17,7 @@ import {
   type ChartOfAccountItem,
 } from '../../types/client';
 import { QueryComposerModal } from '../modals/QueryComposerModal';
+import { SearchableAccountSelect } from './SearchableAccountSelect';
 import {
   Landmark,
   UploadCloud,
@@ -773,18 +774,14 @@ export const InformationRequestsSection: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <select
-                value={bulkAccountId}
-                onChange={(e) => setBulkAccountId(e.target.value)}
-                className="bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7] cursor-pointer shadow-xs"
-              >
-                <option value="">Assign Category to All...</option>
-                {accounts.map((acc) => (
-                  <option key={acc.account_id} value={acc.account_id}>
-                    {acc.account_code ? `[${acc.account_code}] ` : ''}{acc.account_name}
-                  </option>
-                ))}
-              </select>
+              <div className="w-64">
+                <SearchableAccountSelect
+                  accounts={accounts}
+                  value={bulkAccountId}
+                  onChange={setBulkAccountId}
+                  placeholder="Assign Category to All..."
+                />
+              </div>
 
               <button
                 onClick={handleBulkCategorize}
@@ -1002,22 +999,12 @@ export const InformationRequestsSection: React.FC = () => {
                       {/* Category Selector */}
                       <td className="py-3.5 px-4 min-w-[200px]">
                         <div className="space-y-1.5">
-                          <select
+                          <SearchableAccountSelect
+                            accounts={accounts}
                             value={rowAccountMap[tx.id] || tx.mapped_account_id || ''}
-                            onChange={(e) => setRowAccountMap({ ...rowAccountMap, [tx.id]: e.target.value })}
-                            className={`w-full text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#0284C7] transition cursor-pointer shadow-xs ${
-                              isMapped
-                                ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] font-bold'
-                                : 'bg-white border border-[#E2E8F0] text-slate-800'
-                            }`}
-                          >
-                            <option value="">Select Category...</option>
-                            {accounts.map((acc) => (
-                              <option key={acc.account_id} value={acc.account_id}>
-                                {acc.account_code ? `[${acc.account_code}] ` : ''}{acc.account_name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(val) => setRowAccountMap({ ...rowAccountMap, [tx.id]: val })}
+                            placeholder="Select Category..."
+                          />
 
                           {/* Payee / Vendor Input */}
                           <input
