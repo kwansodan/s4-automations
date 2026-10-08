@@ -675,6 +675,34 @@ async def accountant_list_bank_transactions(
 
         # Compute metric aggregates
         all_for_client = session.exec(select(BankTransaction).where(BankTransaction.client_id == client_id)).all()
+
+        # Auto-align polarity of existing bank transactions based on raw accounting feed metadata
+        needs_commit = False
+        for t in all_for_client:
+            raw = (t.metadata_json or {}).get("raw_transaction")
+            if raw and isinstance(raw, dict):
+                doc = str(raw.get("debit_or_credit") or "").strip().lower()
+                imported_type = str(raw.get("imported_transaction_type") or "").strip().lower()
+                debit_amt = float(raw.get("debit_amount", 0.0) or 0.0)
+                credit_amt = float(raw.get("credit_amount", 0.0) or 0.0)
+
+                correct_type = None
+                if doc == "debit" or debit_amt > 0 or imported_type in ("deposit", "inflow"):
+                    correct_type = "CREDIT"
+                elif doc == "credit" or credit_amt > 0 or imported_type in ("withdrawal", "expense", "outflow"):
+                    correct_type = "DEBIT"
+                elif "debit" in imported_type:
+                    correct_type = "DEBIT"
+                elif "credit" in imported_type:
+                    correct_type = "CREDIT"
+
+                if correct_type and t.transaction_type != correct_type:
+                    t.transaction_type = correct_type
+                    session.add(t)
+                    needs_commit = True
+        if needs_commit:
+            session.commit()
+
         total_count = len(all_for_client)
         total_uncategorized = sum(1 for t in all_for_client if t.status == "UNMAPPED")
         total_pending_client = sum(1 for t in all_for_client if t.status == "CLARIFICATION_REQUESTED")

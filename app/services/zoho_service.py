@@ -1682,10 +1682,17 @@ class ZohoBooksService:
                 amount = amount if amount is not None else tx_info.get("amount")
                 date = date or tx_info.get("date")
                 description = description or tx_info.get("description")
-                doc = str(tx_info.get("debit_or_credit") or "").lower()
-                if "debit" in doc:
+                doc = str(tx_info.get("debit_or_credit") or "").strip().lower()
+                imported_type = str(tx_info.get("imported_transaction_type") or "").strip().lower()
+                debit_amt = float(tx_info.get("debit_amount", 0.0) or 0.0)
+                credit_amt = float(tx_info.get("credit_amount", 0.0) or 0.0)
+                if doc == "debit" or debit_amt > 0 or imported_type in ("deposit", "inflow"):
+                    transaction_type = "CREDIT"
+                elif doc == "credit" or credit_amt > 0 or imported_type in ("withdrawal", "expense", "outflow"):
                     transaction_type = "DEBIT"
-                elif "credit" in doc:
+                elif "debit" in imported_type:
+                    transaction_type = "DEBIT"
+                elif "credit" in imported_type:
                     transaction_type = "CREDIT"
 
         access_token = await self.get_access_token()

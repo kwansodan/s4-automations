@@ -239,13 +239,21 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     or "Uncategorized Bank Feed Transaction"
                 )
                 # Exclusively inspect debit_or_credit, imported_transaction_type, and debit_amount / credit_amount
-                doc = str(tx.get("debit_or_credit") or tx.get("imported_transaction_type") or "").strip().lower()
+                doc = str(tx.get("debit_or_credit") or "").strip().lower()
+                imported_type = str(tx.get("imported_transaction_type") or "").strip().lower()
                 debit_amt = float(tx.get("debit_amount", 0.0) or 0.0)
                 credit_amt = float(tx.get("credit_amount", 0.0) or 0.0)
 
-                if "debit" in doc or debit_amt > 0:
+                # In Zoho Books:
+                # - debit or debit_amount > 0 or deposit represents an increase in bank balance (Payment In / Transfer In) -> S4 'CREDIT'
+                # - credit or credit_amount > 0 or withdrawal represents a decrease in bank balance (Payment Out / Transfer Out) -> S4 'DEBIT'
+                if doc == "debit" or debit_amt > 0 or imported_type in ("deposit", "inflow"):
+                    tx_t = "CREDIT"
+                elif doc == "credit" or credit_amt > 0 or imported_type in ("withdrawal", "expense", "outflow"):
                     tx_t = "DEBIT"
-                elif "credit" in doc or credit_amt > 0:
+                elif "debit" in imported_type:
+                    tx_t = "DEBIT"
+                elif "credit" in imported_type:
                     tx_t = "CREDIT"
                 else:
                     tx_t = "DEBIT"
