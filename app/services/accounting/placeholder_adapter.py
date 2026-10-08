@@ -125,6 +125,7 @@ class InProgressAccountingAdapter(BaseAccountingAdapter):
         payee_name: Optional[str] = None,
         tax_rate: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        **kwargs: Any,
     ) -> AccountingPostResult:
         """Pushes categorized line into platform."""
         return AccountingPostResult(

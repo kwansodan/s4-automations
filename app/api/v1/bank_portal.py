@@ -740,12 +740,6 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
         if payload.tax_rate:
             tx.tax_rate = payload.tax_rate
 
-        tx.status = "MAPPED"
-        tx.updated_at = datetime.now(timezone.utc)
-        session.add(tx)
-        session.commit()
-        session.refresh(tx)
-
         # Sync to accounting software
         if payload.post_to_accounting and client:
             adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
@@ -757,13 +751,34 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
                 or meta.get("xero_transaction_id")
                 or str(tx.id)
             )
-            await adapter.categorize_bank_transaction(
+            raw_tx = meta.get("raw_transaction") or {}
+            from_account_id = (
+                meta.get("zoho_account_id")
+                or meta.get("from_account_id")
+                or raw_tx.get("from_account_id")
+                or raw_tx.get("account_id")
+            )
+            post_res = await adapter.categorize_bank_transaction(
                 transaction_id=str(ext_tx_id),
                 account_id=payload.mapped_account_id,
                 payee_name=payload.payee_name,
                 tax_rate=payload.tax_rate,
                 attachments=tx.client_attachments,
+                transaction_type=tx.transaction_type,
+                amount=tx.amount,
+                date=tx.transaction_date,
+                description=tx.description,
+                from_account_id=from_account_id,
             )
+            if not post_res.success:
+                logger.error(f"Failed to sync categorization to {client.accounting_software}: {post_res.message}")
+                raise HTTPException(status_code=400, detail=post_res.message)
+
+        tx.status = "MAPPED"
+        tx.updated_at = datetime.now(timezone.utc)
+        session.add(tx)
+        session.commit()
+        session.refresh(tx)
 
         AuditService.log(
             client_id=tx.client_id,

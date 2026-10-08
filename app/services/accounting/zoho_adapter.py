@@ -281,6 +281,12 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         payee_name: Optional[str] = None,
         tax_rate: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        transaction_type: Optional[str] = None,
+        amount: Optional[float] = None,
+        date: Optional[str] = None,
+        description: Optional[str] = None,
+        from_account_id: Optional[str] = None,
+        **kwargs: Any,
     ) -> AccountingPostResult:
         """Pushes categorized line into Zoho Books."""
         if self.is_live and not settings.MOCK_MODE and self.zoho.org_id:
@@ -289,6 +295,11 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                     transaction_id=transaction_id,
                     account_id=account_id,
                     payee_name=payee_name,
+                    description=description,
+                    transaction_type=transaction_type or "DEBIT",
+                    amount=amount,
+                    date=date,
+                    from_account_id=from_account_id,
                 )
 
                 # Attach client uploaded receipts or supporting files to Zoho Books expense if available

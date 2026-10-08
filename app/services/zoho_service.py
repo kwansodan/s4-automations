@@ -1627,6 +1627,28 @@ class ZohoBooksService:
             data = response.json()
             return data.get("matching_transactions", []) or data.get("matching_invoices", []) or []
 
+    async def get_bank_transaction(self, transaction_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches bank transaction details by ID from Zoho Books."""
+        if not self.org_id or not transaction_id:
+            return None
+        try:
+            access_token = await self.get_access_token()
+            headers = self._get_headers(access_token)
+            url = f"{self.books_api_url}/banktransactions/{transaction_id}"
+            params = {"organization_id": self.org_id}
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(url, headers=headers, params=params)
+                if res.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    res = await client.get(url, headers=headers, params=params)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("bank_transaction") or {}
+        except Exception as e:
+            logger.warning(f"Could not fetch Zoho bank transaction {transaction_id}: {e}")
+        return None
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
@@ -1641,54 +1663,146 @@ class ZohoBooksService:
         description: Optional[str] = None,
         transaction_type: str = "DEBIT",
         tax_id: Optional[str] = None,
+        amount: Optional[float] = None,
+        date: Optional[str] = None,
+        from_account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Categorizes an uncategorized bank transaction into Zoho Books.
-        If withdrawal/debit: categorizes as expense.
-        If deposit/credit: categorizes as customer payment or deposit.
+        If withdrawal/debit: categorizes as expense (or generic expense via /categorize).
+        If deposit/credit: categorizes as deposit or customer payment.
         """
         if not self.org_id or not transaction_id:
             raise ValueError("Zoho org_id and transaction_id are required for categorization.")
 
+        # If from_account_id, amount, or date are missing, retrieve transaction details from Zoho
+        if not from_account_id or not amount or not date:
+            tx_info = await self.get_bank_transaction(transaction_id)
+            if tx_info:
+                from_account_id = from_account_id or tx_info.get("from_account_id") or tx_info.get("account_id")
+                amount = amount if amount is not None else tx_info.get("amount")
+                date = date or tx_info.get("date")
+                description = description or tx_info.get("description")
+                doc = str(tx_info.get("debit_or_credit") or "").lower()
+                if "debit" in doc:
+                    transaction_type = "DEBIT"
+                elif "credit" in doc:
+                    transaction_type = "CREDIT"
+
         access_token = await self.get_access_token()
         headers = self._get_headers(access_token)
         headers["Content-Type"] = "application/json"
-
-        # Determine endpoint based on DEBIT (withdrawal/expense) vs CREDIT (deposit)
-        is_withdrawal = str(transaction_type).upper() == "DEBIT"
-        sub_path = "expenses" if is_withdrawal else "customerpayments"
-        url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize/{sub_path}"
         params: Dict[str, Any] = {"organization_id": self.org_id}
 
-        body: Dict[str, Any] = {
-            "account_id": account_id,
-        }
-        if description:
-            body["description"] = description
-        if payee_name:
-            if is_withdrawal:
-                body["vendor_name"] = payee_name
-            else:
-                body["customer_name"] = payee_name
-        if tax_id:
-            body["tax_id"] = tax_id
+        is_withdrawal = str(transaction_type).upper() == "DEBIT"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, headers=headers, params=params, json=body)
-            if response.status_code == 401:
-                access_token = await self.get_access_token(force_refresh=True)
-                headers = self._get_headers(access_token)
-                headers["Content-Type"] = "application/json"
+            if is_withdrawal:
+                # 1. Primary: Try /categorize/expenses with complete expense schema
+                url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize/expenses"
+                body: Dict[str, Any] = {
+                    "account_id": account_id,
+                }
+                if from_account_id:
+                    body["paid_through_account_id"] = from_account_id
+                if date:
+                    body["date"] = date
+                if amount is not None:
+                    body["amount"] = amount
+                if description:
+                    body["description"] = description
+                if payee_name:
+                    body["vendor_name"] = payee_name
+                if tax_id:
+                    body["tax_id"] = tax_id
+
                 response = await client.post(url, headers=headers, params=params, json=body)
+                if response.status_code == 401:
+                    access_token = await self.get_access_token(force_refresh=True)
+                    headers = self._get_headers(access_token)
+                    headers["Content-Type"] = "application/json"
+                    response = await client.post(url, headers=headers, params=params, json=body)
 
-            if response.status_code not in (200, 201):
-                logger.warning(f"Categorize via /{sub_path} returned {response.status_code}. Attempting generic /categorize...")
+                if response.status_code in (200, 201):
+                    data = response.json()
+                    logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} as expense to account {account_id}.")
+                    return data
+
+                resp_text = response.text
+                logger.warning(f"Categorize via /expenses returned {response.status_code} ({resp_text}). Attempting universal /categorize...")
+
+                # 2. Fallback: Universal /categorize with valid schema
                 gen_url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize"
-                response = await client.post(gen_url, headers=headers, params=params, json=body)
+                cat_body: Dict[str, Any] = {
+                    "from_account_id": from_account_id,
+                    "to_account_id": account_id,
+                    "transaction_type": "expense",
+                    "amount": amount,
+                    "date": date,
+                }
+                if description:
+                    cat_body["description"] = description
+                cat_body = {k: v for k, v in cat_body.items() if v is not None}
 
-            response.raise_for_status()
-            data = response.json()
-            logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} to account {account_id}.")
-            return data
+                gen_resp = await client.post(gen_url, headers=headers, params=params, json=cat_body)
+                if gen_resp.status_code in (200, 201):
+                    data = gen_resp.json()
+                    logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} via universal /categorize to account {account_id}.")
+                    return data
+
+                err_detail = ""
+                try:
+                    err_detail = gen_resp.json().get("message") or resp_text
+                except Exception:
+                    err_detail = gen_resp.text or resp_text
+                logger.error(f"Zoho categorization failed for {transaction_id}: {err_detail}")
+                raise ValueError(f"Zoho Books error: {err_detail}")
+
+            else:
+                # Deposit / Credit transaction
+                # 1. Primary: Universal /categorize as deposit
+                gen_url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize"
+                cat_body: Dict[str, Any] = {
+                    "from_account_id": account_id,
+                    "to_account_id": from_account_id,
+                    "transaction_type": "deposit",
+                    "amount": amount,
+                    "date": date,
+                }
+                if description:
+                    cat_body["description"] = description
+                cat_body = {k: v for k, v in cat_body.items() if v is not None}
+
+                gen_resp = await client.post(gen_url, headers=headers, params=params, json=cat_body)
+                if gen_resp.status_code in (200, 201):
+                    data = gen_resp.json()
+                    logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} as deposit to account {account_id}.")
+                    return data
+
+                # 2. Fallback: /customerpayments if payee is specified
+                cust_url = f"{self.books_api_url}/banktransactions/uncategorized/{transaction_id}/categorize/customerpayments"
+                cust_body: Dict[str, Any] = {
+                    "account_id": account_id,
+                }
+                if payee_name:
+                    cust_body["customer_name"] = payee_name
+                if date:
+                    cust_body["date"] = date
+                if amount is not None:
+                    cust_body["amount"] = amount
+
+                cust_resp = await client.post(cust_url, headers=headers, params=params, json=cust_body)
+                if cust_resp.status_code in (200, 201):
+                    data = cust_resp.json()
+                    logger.info(f"Successfully categorized Zoho bank transaction {transaction_id} as customer payment to account {account_id}.")
+                    return data
+
+                err_detail = ""
+                try:
+                    err_detail = gen_resp.json().get("message") or cust_resp.json().get("message")
+                except Exception:
+                    err_detail = gen_resp.text
+                logger.error(f"Zoho categorization failed for deposit {transaction_id}: {err_detail}")
+                raise ValueError(f"Zoho Books error: {err_detail}")
 
     @retry(
         reraise=True,
