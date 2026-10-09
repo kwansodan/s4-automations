@@ -1517,21 +1517,7 @@ class ZohoBooksService:
             params["account_id"] = account_id
         if status and str(status).upper() != "ALL":
             clean_status = str(status).strip().lower()
-            if clean_status == "uncategorized":
-                params["filter_by"] = "Status.Uncategorized"
-                params["transaction_status"] = "uncategorized"
-                params["status"] = "uncategorized"
-            elif clean_status == "categorized":
-                params["filter_by"] = "Status.Categorized"
-                params["transaction_status"] = "categorized"
-                params["status"] = "categorized"
-            elif clean_status == "matched":
-                params["filter_by"] = "Status.Matched"
-                params["transaction_status"] = "matched"
-                params["status"] = "matched"
-            else:
-                params["filter_by"] = f"Status.{clean_status.title()}"
-                params["transaction_status"] = clean_status
+            params["transaction_status"] = clean_status
         if date_start:
             params["date_start"] = date_start
         if date_end:
@@ -1543,6 +1529,11 @@ class ZohoBooksService:
                 access_token = await self.get_access_token(force_refresh=True)
                 headers = self._get_headers(access_token)
                 response = await client.get(url, headers=headers, params=params)
+
+            if response.status_code == 400 and "params.mismatch" in response.text:
+                logger.info(f"Retrying Zoho /banktransactions for account {account_id} without transaction_status...")
+                fallback_params = {k: v for k, v in params.items() if k != "transaction_status"}
+                response = await client.get(url, headers=headers, params=fallback_params)
 
             if response.status_code != 200:
                 logger.warning(

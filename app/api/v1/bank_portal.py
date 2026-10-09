@@ -1167,6 +1167,10 @@ async def accountant_sync_bank_feeds(
             if _matches_month_and_year(ex.transaction_date, month, year):
                 meta = ex.metadata_json or {}
                 ext_id = str(meta.get("external_transaction_id") or meta.get("zoho_transaction_id") or "")
+                has_zoho_id = bool(meta.get("zoho_transaction_id") or meta.get("external_transaction_id"))
+                is_feed_src = ex.source_file_name in ("Live_Bank_Feed_Sync", "Zoho_Live_Bank_Feed", "Bank Feed")
+                if not (has_zoho_id or is_feed_src):
+                    continue
                 if ex.checksum not in feed_checksums and (not ext_id or ext_id not in feed_ext_ids):
                     ex.status = "MAPPED"
                     if not ex.mapped_account_name:
