@@ -666,21 +666,13 @@ async def accountant_list_bank_transactions(
         if not settings.MOCK_MODE:
             purge_legacy_mock_bank_transactions(session, client_id=client_id)
 
-        query = select(BankTransaction).where(BankTransaction.client_id == client_id)
-
-        if status and status.upper() != "ALL":
-            query = query.where(BankTransaction.status == status.upper())
-
-        transactions = session.exec(query.order_by(BankTransaction.transaction_date.desc(), BankTransaction.id.desc())).all()
-
-        # Compute metric aggregates
+        # Auto-align polarity and status of existing bank transactions based on raw accounting feed metadata
         all_for_client = session.exec(select(BankTransaction).where(BankTransaction.client_id == client_id)).all()
-
-        # Auto-align polarity of existing bank transactions based on raw accounting feed metadata
         needs_commit = False
         for t in all_for_client:
             raw = (t.metadata_json or {}).get("raw_transaction")
             if raw and isinstance(raw, dict):
+                # 1. Align polarity
                 doc = str(raw.get("debit_or_credit") or "").strip().lower()
                 imported_type = str(raw.get("imported_transaction_type") or "").strip().lower()
                 debit_amt = float(raw.get("debit_amount", 0.0) or 0.0)
@@ -700,8 +692,26 @@ async def accountant_list_bank_transactions(
                     t.transaction_type = correct_type
                     session.add(t)
                     needs_commit = True
+
+                # 2. Align status if already categorized or matched in Zoho Books
+                raw_stat = str(raw.get("transaction_status") or raw.get("status") or "").strip().lower()
+                if raw_stat in ("categorized", "matched", "manually_added", "excluded") and t.status == "UNMAPPED":
+                    t.status = "MAPPED"
+                    if not t.mapped_account_name:
+                        t.mapped_account_name = "Categorized in Zoho"
+                    session.add(t)
+                    needs_commit = True
+
         if needs_commit:
             session.commit()
+            all_for_client = session.exec(select(BankTransaction).where(BankTransaction.client_id == client_id)).all()
+
+        query = select(BankTransaction).where(BankTransaction.client_id == client_id)
+
+        if status and status.upper() != "ALL":
+            query = query.where(BankTransaction.status == status.upper())
+
+        transactions = session.exec(query.order_by(BankTransaction.transaction_date.desc(), BankTransaction.id.desc())).all()
 
         total_count = len(all_for_client)
         total_uncategorized = sum(1 for t in all_for_client if t.status == "UNMAPPED")
@@ -1135,7 +1145,46 @@ async def accountant_sync_bank_feeds(
 
         period_label = f" for {month} {year}".strip() if (month or year) else ""
 
+        # Collect IDs and checksums of the truly uncategorized feeds from live accounting platform
+        feed_checksums = set()
+        feed_ext_ids = set()
+        for f in (feeds or []):
+            c_str = f"{client_id}:{f.get('transaction_date')}:{f.get('amount')}:{f.get('description')}"
+            feed_checksums.add(hashlib.sha256(c_str.encode()).hexdigest()[:16])
+            ext_id = f.get("external_transaction_id") or f.get("zoho_transaction_id")
+            if ext_id:
+                feed_ext_ids.add(str(ext_id))
+
+        # Reconcile existing UNMAPPED transactions: if an existing bank feed transaction is no longer in Zoho's uncategorized feed, it was categorized directly in Zoho
+        existing_unmapped = session.exec(
+            select(BankTransaction).where(
+                BankTransaction.client_id == client_id,
+                BankTransaction.status == "UNMAPPED",
+            )
+        ).all()
+        reconciled_in_zoho_count = 0
+        for ex in existing_unmapped:
+            if _matches_month_and_year(ex.transaction_date, month, year):
+                meta = ex.metadata_json or {}
+                ext_id = str(meta.get("external_transaction_id") or meta.get("zoho_transaction_id") or "")
+                if ex.checksum not in feed_checksums and (not ext_id or ext_id not in feed_ext_ids):
+                    ex.status = "MAPPED"
+                    if not ex.mapped_account_name:
+                        ex.mapped_account_name = f"Categorized directly in {adapter.platform_name}"
+                    ex.updated_at = datetime.now(timezone.utc)
+                    session.add(ex)
+                    reconciled_in_zoho_count += 1
+
         if not feeds:
+            if reconciled_in_zoho_count > 0:
+                session.commit()
+                return {
+                    "success": True,
+                    "client_id": client_id,
+                    "synced_new_count": 0,
+                    "reconciled_count": reconciled_in_zoho_count,
+                    "message": f"Updated {reconciled_in_zoho_count} transaction(s) categorized directly in {adapter.platform_name}{period_label}.",
+                }
             return {
                 "success": True,
                 "client_id": client_id,
@@ -1203,11 +1252,19 @@ async def accountant_sync_bank_feeds(
 
         session.commit()
 
+        msg_parts = []
+        if synced_count > 0:
+            msg_parts.append(f"synced {synced_count} uncategorized transactions")
+        if reconciled_in_zoho_count > 0:
+            msg_parts.append(f"cleared {reconciled_in_zoho_count} categorized directly in {adapter.platform_name}")
+        final_msg = f"Bank feed updated{period_label}: {', '.join(msg_parts)}." if msg_parts else f"Bank feed is up to date{period_label}."
+
         return {
             "success": True,
             "client_id": client_id,
             "synced_new_count": synced_count,
-            "message": f"Synced {synced_count} uncategorized bank transactions from {adapter.platform_name}{period_label}.",
+            "reconciled_count": reconciled_in_zoho_count,
+            "message": final_msg,
         }
 
 

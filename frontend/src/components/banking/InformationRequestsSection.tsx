@@ -119,7 +119,7 @@ export const InformationRequestsSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('UNMAPPED');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Month & Year Filter State (Synchronized with Global Canonical Header Scope)

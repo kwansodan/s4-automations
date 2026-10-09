@@ -30,7 +30,7 @@ export const ClientBankTab: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('UNMAPPED');
 
   // Chart of Accounts for mapping
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);

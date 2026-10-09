@@ -1517,7 +1517,21 @@ class ZohoBooksService:
             params["account_id"] = account_id
         if status and str(status).upper() != "ALL":
             clean_status = str(status).strip().lower()
-            params["transaction_status"] = clean_status
+            if clean_status == "uncategorized":
+                params["filter_by"] = "Status.Uncategorized"
+                params["transaction_status"] = "uncategorized"
+                params["status"] = "uncategorized"
+            elif clean_status == "categorized":
+                params["filter_by"] = "Status.Categorized"
+                params["transaction_status"] = "categorized"
+                params["status"] = "categorized"
+            elif clean_status == "matched":
+                params["filter_by"] = "Status.Matched"
+                params["transaction_status"] = "matched"
+                params["status"] = "matched"
+            else:
+                params["filter_by"] = f"Status.{clean_status.title()}"
+                params["transaction_status"] = clean_status
         if date_start:
             params["date_start"] = date_start
         if date_end:
@@ -1537,7 +1551,18 @@ class ZohoBooksService:
                 return []
 
             data = response.json()
-            return data.get("banktransactions", [])
+            raw_txs = data.get("banktransactions", [])
+            if status and str(status).strip().lower() == "uncategorized":
+                filtered_txs = []
+                for t in raw_txs:
+                    t_status = str(t.get("transaction_status") or t.get("status") or "").strip().lower()
+                    if t_status in ("categorized", "matched", "manually_added", "excluded"):
+                        continue
+                    if t_status and t_status != "uncategorized":
+                        continue
+                    filtered_txs.append(t)
+                return filtered_txs
+            return raw_txs
 
     @retry(
         reraise=True,

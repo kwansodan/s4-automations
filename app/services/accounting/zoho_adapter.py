@@ -229,6 +229,9 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
                 date_end=date_end,
             )
             for tx in (raw_uncat_feed or []):
+                t_stat = str(tx.get("transaction_status") or tx.get("status") or "").strip().lower()
+                if t_stat in ("categorized", "matched", "manually_added", "excluded") or (t_stat and t_stat != "uncategorized"):
+                    continue
                 tx_id = str(tx.get("transaction_id", ""))
                 tx_date = str(tx.get("date") or tx.get("transaction_date") or f"{target_year}-01-01")
                 amt = abs(float(tx.get("amount", 0.0)))
