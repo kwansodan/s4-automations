@@ -718,11 +718,11 @@ async def zoho_oauth_callback(
     org_name = None
     refresh_token = None
 
-    if settings.MOCK_MODE or code.startswith("mock_") or not settings.ZOHO_CLIENT_SECRET:
-        logger.info(f"Mock OAuth exchange for client '{client_slug}'...")
-        org_id = f"mock_org_{client_slug}"
-        org_name = f"{client_slug.replace('_', ' ').title()} Books"
-        refresh_token = f"mock_ref_{client_slug}_{int(datetime.now(timezone.utc).timestamp())}"
+    if not settings.ZOHO_CLIENT_SECRET or not settings.ZOHO_CLIENT_ID:
+        raise HTTPException(
+            status_code=500,
+            detail="Zoho OAuth credentials (ZOHO_CLIENT_ID or ZOHO_CLIENT_SECRET) are not configured in the server environment.",
+        )
     else:
         accounts_url = settings.ZOHO_ACCOUNTS_URL.rstrip("/")
         if location and location.lower() in ("eu", "in", "com.au", "au", "ca", "jp"):
@@ -980,13 +980,13 @@ async def get_zoho_connection_status(
             raise HTTPException(status_code=404, detail=f"Client organization '{client_id}' not found.")
 
         cfg = client_obj.custom_config or {}
-        has_refresh_token = bool(cfg.get("zoho_refresh_token"))
-        org_id = client_obj.zoho_org_id or cfg.get("accounting_org_id")
-        org_name = cfg.get("zoho_org_name")
+        has_refresh_token = bool(cfg.get("zoho_refresh_token") or settings.ZOHO_REFRESH_TOKEN)
+        org_id = client_obj.zoho_org_id or cfg.get("accounting_org_id") or settings.ZOHO_ORG_ID
+        org_name = cfg.get("zoho_org_name") or client_obj.name
         connected_at = cfg.get("zoho_connected_at")
         available_orgs = cfg.get("zoho_available_orgs", [])
 
-        is_connected = bool(org_id and (has_refresh_token or settings.MOCK_MODE))
+        is_connected = bool(org_id and has_refresh_token)
 
         return {
             "client_id": client_obj.id,

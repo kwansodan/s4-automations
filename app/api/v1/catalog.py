@@ -126,49 +126,13 @@ async def get_zoho_catalog(
         except Exception as db_err:
             logger.debug(f"Catalog fallback DB query notice: {db_err}")
 
-        # Baseline linen catalog items ONLY for laundry clients
-        if is_laundry:
-            mock_items = [
-                {"item_id": "item_kitchen_towel", "name": "Kitchen Towel", "rate": 6.00, "description": "Commercial laundered kitchen towel", "status": "active"},
-                {"item_id": "item_kitchen_towels", "name": "Kitchen towels", "rate": 6.00, "description": "Commercial laundered kitchen towels", "status": "active"},
-                {"item_id": "item_bed_sheet_dbl", "name": "Bed Sheet (Double / King)", "rate": 18.50, "description": "Commercial laundered double bed sheet", "status": "active"},
-                {"item_id": "item_bed_sheet_sgl", "name": "Bed Sheet (Single)", "rate": 14.00, "description": "Commercial laundered single bed sheet", "status": "active"},
-                {"item_id": "item_bedsheet_queen", "name": "Bedsheet (Queen)", "rate": 13.00, "description": "Laundered queen bed sheet", "status": "active"},
-                {"item_id": "item_bed_sheet_queen", "name": "Bed Sheet (Queen)", "rate": 13.00, "description": "Laundered queen bed sheet", "status": "active"},
-                {"item_id": "item_fitted_sheet_queen", "name": "Fitted Sheet (Queen)", "rate": 13.00, "description": "Laundered queen fitted sheet", "status": "active"},
-                {"item_id": "item_fitted_sheet_king", "name": "Fitted Sheet (King)", "rate": 15.00, "description": "Laundered king fitted sheet", "status": "active"},
-                {"item_id": "item_duvet_cover_king", "name": "Duvet Cover (King)", "rate": 25.00, "description": "Laundered king size duvet cover", "status": "active"},
-                {"item_id": "item_duvet_cover_queen", "name": "Duvet Cover (Queen)", "rate": 22.00, "description": "Laundered queen size duvet cover", "status": "active"},
-                {"item_id": "item_pillow_case", "name": "Pillow Case", "rate": 6.50, "description": "Laundered standard pillow case", "status": "active"},
-                {"item_id": "item_bath_towel", "name": "Bath Towel", "rate": 12.00, "description": "Heavyweight plush bath towel", "status": "active"},
-                {"item_id": "item_bath_sheet", "name": "Bath Sheet", "rate": 16.00, "description": "Heavyweight plush bath sheet", "status": "active"},
-                {"item_id": "item_hand_towel", "name": "Hand Towel", "rate": 7.00, "description": "Cotton hand towel", "status": "active"},
-                {"item_id": "item_face_towel", "name": "Face Towel", "rate": 4.50, "description": "Small face towel / washcloth", "status": "active"},
-                {"item_id": "item_bath_mat", "name": "Bath Mat", "rate": 9.00, "description": "Hotel floor bath mat", "status": "active"},
-                {"item_id": "item_pool_towel_stripe", "name": "Pool Towel (Stripe)", "rate": 15.00, "description": "Large striped pool towel", "status": "active"},
-                {"item_id": "item_pool_towel", "name": "Pool Towel", "rate": 15.00, "description": "Standard pool towel", "status": "active"},
-                {"item_id": "item_table_cloth", "name": "Table Cloth (Banquet)", "rate": 22.00, "description": "Pressed banquet table cloth", "status": "active"},
-                {"item_id": "item_napkin", "name": "Napkin / Serviet", "rate": 3.50, "description": "Pressed cloth napkin", "status": "active"},
-            ]
-            for mi in mock_items:
-                if mi["name"].lower() not in item_map:
-                    item_map[mi["name"].lower()] = mi
-
         items_list = list(item_map.values())
         items_list.sort(key=lambda x: x["name"])
     else:
         items_list = [i.model_dump() if hasattr(i, "model_dump") else dict(i) for i in items]
 
     if not contacts:
-        if is_laundry:
-            contacts_list = [
-                {"contact_id": "cnt_luxwood_001", "contact_name": "Luxwood", "company_name": "Luxwood Hotel & Suites"},
-                {"contact_id": "cnt_the_bantree_002", "contact_name": "The Bantree", "company_name": "The Bantree Residences"},
-                {"contact_id": "cnt_the_lennox_003", "contact_name": "The Lennox", "company_name": "The Lennox Luxury Apartments"},
-                {"contact_id": "cnt_active8_004", "contact_name": "Active 8 Spintex", "company_name": "Active 8 Spintex"},
-                {"contact_id": "cnt_maharaja_005", "contact_name": "Maharaja", "company_name": "Maharaja Restaurant & Suites"},
-            ]
-        elif client_id:
+        if client_id:
             contacts_list = []
             try:
                 from sqlmodel import Session, select

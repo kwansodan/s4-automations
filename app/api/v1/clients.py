@@ -2296,55 +2296,51 @@ async def get_customer_mappings(
 
     contacts_list = []
     error_hint = None
+    zoho_connected = False
+    zoho_org_id = client.zoho_org_id
+    zoho_org_name = custom_cfg.get("zoho_org_name") or client.name
+
     try:
         from app.services.zoho_service import ZohoBooksService
         zoho = ZohoBooksService.from_client_id(client.id)
         if client.zoho_org_id and client.zoho_org_id != "782910482":
             zoho.org_id = client.zoho_org_id
-        active_contacts = await zoho.fetch_active_contacts()
-        contacts_list = [
-            {
-                "contact_id": c.contact_id,
-                "contact_name": c.contact_name,
-                "company_name": c.company_name,
-                "currency_code": c.currency_code or "GHS",
-            }
-            for c in active_contacts
-        ]
+        
+        zoho_org_id = zoho.org_id or zoho_org_id
+        if not zoho.refresh_token:
+            error_hint = "Zoho Books OAuth is not connected. Connect via 1-Click OAuth in Settings to load live customers."
+        elif not zoho.org_id:
+            error_hint = "Zoho Organization ID is not configured. Please select your organization in Settings."
+        else:
+            zoho_connected = True
+            active_contacts = await zoho.fetch_active_contacts()
+            contacts_list = [
+                {
+                    "contact_id": c.contact_id,
+                    "contact_name": c.contact_name,
+                    "company_name": c.company_name,
+                    "currency_code": c.currency_code or "GHS",
+                }
+                for c in active_contacts
+                if c.contact_id and not str(c.contact_id).startswith("cnt_mock_")
+            ]
     except Exception as e:
         error_hint = str(e)
         logger.warning(f"Could not load live contacts for customer mappings: {e}")
 
-    # Fallback 1: check catalog service for cached contacts
-    if not contacts_list:
-        try:
-            from app.api.v1.catalog import get_zoho_catalog
-            cat = await get_zoho_catalog(client_id=client.id)
-            if cat.get("contacts"):
-                for c in cat["contacts"]:
-                    contacts_list.append({
-                        "contact_id": c.get("contact_id") or c.get("id", ""),
-                        "contact_name": c.get("contact_name") or c.get("name", ""),
-                        "company_name": c.get("company_name", ""),
-                        "currency_code": c.get("currency_code", "GHS"),
-                    })
-        except Exception as cat_err:
-            logger.debug(f"Catalog fallback notice: {cat_err}")
-
-    # Fallback 2: populate from known mapped contacts or staged transactions if contacts_list still empty
-    if not contacts_list:
-        seen_ids = set()
-        for map_k, map_v in mappings.items():
-            c_id = map_v.get("zoho_contact_id") if isinstance(map_v, dict) else str(map_v)
-            c_name = map_v.get("name", map_k) if isinstance(map_v, dict) else map_k
-            if c_id and c_id not in seen_ids:
-                seen_ids.add(c_id)
-                contacts_list.append({
-                    "contact_id": c_id,
-                    "contact_name": c_name,
-                    "company_name": c_name,
-                    "currency_code": "GHS",
-                })
+    # Fallback: include any confirmed mappings previously saved in this tenant's registry
+    seen_ids = {c["contact_id"] for c in contacts_list}
+    for map_k, map_v in mappings.items():
+        c_id = map_v.get("zoho_contact_id") if isinstance(map_v, dict) else str(map_v)
+        c_name = map_v.get("name", map_k) if isinstance(map_v, dict) else map_k
+        if c_id and c_id not in seen_ids and not str(c_id).startswith("cnt_mock_"):
+            seen_ids.add(c_id)
+            contacts_list.append({
+                "contact_id": c_id,
+                "contact_name": c_name,
+                "company_name": c_name,
+                "currency_code": "GHS",
+            })
 
     return {
         "client_id": client.id,
@@ -2352,6 +2348,9 @@ async def get_customer_mappings(
         "mappings": mappings,
         "active_contacts": contacts_list,
         "auto_create_missing_contacts": bool(custom_cfg.get("auto_create_missing_contacts", False)),
+        "zoho_connected": zoho_connected,
+        "zoho_org_id": zoho_org_id,
+        "zoho_org_name": zoho_org_name,
         "error_hint": error_hint,
     }
 

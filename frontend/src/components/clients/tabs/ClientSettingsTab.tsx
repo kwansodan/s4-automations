@@ -143,6 +143,12 @@ export const ClientSettingsTab: React.FC = () => {
   const [isManualInput, setIsManualInput] = useState<boolean>(false);
   const [manualContactName, setManualContactName] = useState<string>('');
   const [mappingFeedback, setMappingFeedback] = useState<string | null>(null);
+  const [zohoDiagInfo, setZohoDiagInfo] = useState<{
+    zoho_connected?: boolean;
+    zoho_org_id?: string;
+    zoho_org_name?: string;
+    error_hint?: string | null;
+  }>({});
 
   const loadMappings = async () => {
     if (!currentClient?.id) return;
@@ -150,34 +156,16 @@ export const ClientSettingsTab: React.FC = () => {
     try {
       const res = await fetchCustomerMappings(currentClient.id);
       setCustomerMappings(res.mappings || {});
-      let contacts = res.active_contacts || [];
-
-      // Fallback 1: if empty, try fetching client catalog
-      if (!contacts.length) {
-        try {
-          const cat = await fetchClientCatalog(currentClient.id, currentClient.zoho_org_id);
-          if (cat.contacts && cat.contacts.length) {
-            contacts = cat.contacts.map((c: any) => ({
-              contact_id: c.contact_id || c.id,
-              contact_name: c.contact_name || c.name,
-              company_name: c.company_name,
-            }));
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      // Fallback 2: if still empty, try global catalog contacts
-      if (!contacts.length && catalog?.contacts && catalog.contacts.length) {
-        contacts = catalog.contacts.map((c: any) => ({
-          contact_id: c.contact_id || c.id,
-          contact_name: c.contact_name || c.name,
-          company_name: c.company_name,
-        }));
-      }
-
+      const contacts = (res.active_contacts || []).filter(
+        (c: any) => c.contact_id && !String(c.contact_id).startsWith('cnt_mock_')
+      );
       setActiveContacts(contacts);
+      setZohoDiagInfo({
+        zoho_connected: res.zoho_connected,
+        zoho_org_id: res.zoho_org_id,
+        zoho_org_name: res.zoho_org_name,
+        error_hint: res.error_hint,
+      });
     } catch (err) {
       console.warn('Could not load customer mappings:', err);
     } finally {
@@ -1123,6 +1111,31 @@ export const ClientSettingsTab: React.FC = () => {
           </div>
         )}
 
+        {/* Live Zoho Connection Status Banner */}
+        <div className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl border bg-slate-900/60 border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${zohoDiagInfo.zoho_connected && activeContacts.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            {zohoDiagInfo.zoho_connected ? (
+              <span className="text-slate-300">
+                <strong className="text-white">Live Zoho Books:</strong> Connected to {zohoDiagInfo.zoho_org_name || currentClient.name} (Org ID: <span className="font-mono text-sky-400">{zohoDiagInfo.zoho_org_id || clientConfig.zoho_org_id || '928550250'}</span>) &bull; <strong className="text-emerald-400">{activeContacts.length}</strong> official customer{activeContacts.length === 1 ? '' : 's'} loaded
+              </span>
+            ) : (
+              <span className="text-amber-300">
+                <strong>Zoho Books Status:</strong> {zohoDiagInfo.error_hint || 'Not connected to live Zoho Books. Connect in Section 2 to sync official customers.'}
+              </span>
+            )}
+          </div>
+          {!zohoDiagInfo.zoho_connected && (
+            <button
+              type="button"
+              onClick={handleLaunchOAuth}
+              className="text-[11px] font-bold text-sky-400 hover:text-sky-300 underline cursor-pointer"
+            >
+              Connect Zoho Books Now
+            </button>
+          )}
+        </div>
+
         {/* Add New Alias Mapping Form */}
         <form onSubmit={handleAddCustomerMapping} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -1130,9 +1143,9 @@ export const ClientSettingsTab: React.FC = () => {
             <div className="flex items-center gap-2 text-[11px]">
               <span className="text-slate-400">
                 {activeContacts.length > 0 ? (
-                  <span className="text-emerald-400 font-medium">✓ {activeContacts.length} Zoho contacts available</span>
+                  <span className="text-emerald-400 font-medium">&bull; {activeContacts.length} Zoho Customer{activeContacts.length === 1 ? '' : 's'} Available</span>
                 ) : (
-                  <span className="text-amber-400 font-medium">No live contacts cached</span>
+                  <span className="text-amber-400 font-medium">No live contacts loaded</span>
                 )}
               </span>
               <button

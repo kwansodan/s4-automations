@@ -81,10 +81,15 @@ async def get_sheets_data(
         return data
     except Exception as e:
         logger.error(f"Error fetching Google Sheets data for {t_month} {t_year} (is_ap={is_ap}): {e}")
-        mock_id = f"mock_sheet_ap_{t_month.lower()}_{t_year}" if is_ap else f"mock_sheet_{t_month.lower()}_{t_year}"
-        if is_ap:
-            return sheets.fetch_ap_sheets_review_data(mock_id, t_month, t_year)
-        return sheets.fetch_sheets_review_data(mock_id, t_month, t_year)
+        return {
+            "month": t_month,
+            "year": t_year,
+            "spreadsheet_id": "",
+            "spreadsheet_url": "",
+            "daily_details": [],
+            "monthly_summary": [],
+            "error": str(e),
+        }
 
 
 @router.get("/review-data", summary="Get Sheets Review Data (Alias)")
@@ -135,7 +140,9 @@ async def toggle_sheet_approval(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Toggles Reviewed or Approved checkbox for a row in Tab 2."""
     sheets = GoogleSheetsService()
 
-    sheet_id = payload.get("spreadsheet_id", "mock_sheet_august_2026")
+    sheet_id = payload.get("spreadsheet_id", "").strip()
+    if not sheet_id or sheet_id.startswith("mock_"):
+        raise HTTPException(status_code=400, detail="Valid Google Spreadsheet ID is required.")
     row_idx = payload.get("row_index", 2)
     field = payload.get("field", "approved")
     val = payload.get("value", True)

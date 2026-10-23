@@ -287,11 +287,8 @@ async def run_zoho_invoices_core(
                                 tenant_custom_config = dict(t_obj.custom_config or {})
                                 tenant_db_id = t_obj.id
 
-                    from app.config import settings
-                    is_mock = getattr(settings, "MOCK_MODE", False) or not zoho.org_id
-
                     contact_id = items[0].get("zoho_contact_id")
-                    if not contact_id or (not is_mock and not str(contact_id).strip().isdigit()):
+                    if not contact_id or not str(contact_id).strip().isdigit():
                         contact_id = ""
 
                     # Check customer_mappings registry in tenant configuration (case-insensitive)
@@ -299,20 +296,20 @@ async def run_zoho_invoices_core(
                         mappings = tenant_custom_config.get("customer_mappings", {})
                         if customer_name in mappings:
                             cand = mappings[customer_name].get("zoho_contact_id")
-                            if cand and (is_mock or str(cand).strip().isdigit()):
+                            if cand and str(cand).strip().isdigit():
                                 contact_id = str(cand).strip()
                         if not contact_id:
                             c_lower = customer_name.strip().lower()
                             for m_key, m_val in mappings.items():
                                 if m_key.strip().lower() == c_lower:
                                     cand = m_val.get("zoho_contact_id")
-                                    if cand and (is_mock or str(cand).strip().isdigit()):
+                                    if cand and str(cand).strip().isdigit():
                                         contact_id = str(cand).strip()
                                         break
 
                     if not contact_id:
                         contact = zoho.find_contact_by_name(customer_name)
-                        if contact and (is_mock or str(contact.contact_id).strip().isdigit()):
+                        if contact and str(contact.contact_id).strip().isdigit():
                             contact_id = str(contact.contact_id).strip()
 
                     if not contact_id:
@@ -486,21 +483,6 @@ async def run_zoho_invoices_core(
                             f"Creating fresh Zoho Books draft invoice for Customer '{customer_name}' ({len(zoho_line_items)} items)...",
                         )
                         response = await zoho.create_draft_invoice(inv_request)
-                        if is_mock or not zoho.org_id:
-                            key = f"{contact_id}_{target_month}_{target_year}".lower()
-                            ZohoBooksService._global_mock_draft_invoices[key] = {
-                                "invoice_id": response.invoice_id,
-                                "invoice_number": response.invoice_number,
-                                "customer_id": contact_id,
-                                "customer_name": customer_name,
-                                "total": response.total,
-                                "status": "draft",
-                                "notes": inv_request.notes or "",
-                                "date": inv_request.date,
-                                "due_date": inv_request.due_date,
-                                "terms": inv_request.terms,
-                                "line_items": [li.model_dump() for li in inv_request.line_items],
-                            }
                     else:
                         pipeline_tracker.add_log(
                             "info",

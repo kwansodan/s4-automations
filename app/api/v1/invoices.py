@@ -47,47 +47,10 @@ async def check_existing_draft_invoices(
     existing_invoices: List[ExistingInvoiceItem] = []
     seen_ids = set()
 
-    # 1. Check in-memory mock storage (for test and mock environments)
-    for key, inv in ZohoBooksService._global_mock_draft_invoices.items():
-        inv_id = str(inv.get("invoice_id", ""))
-        inv_num = str(inv.get("invoice_number", inv_id))
-        inv_cust = str(inv.get("customer_name", ""))
-        inv_notes = str(inv.get("notes", "")).lower()
-        inv_date = str(inv.get("date", ""))
-
-        target_str = f"{month} {year}".lower()
-        try:
-            m_num = datetime.strptime(month, "%B").month
-        except Exception:
-            m_num = 0
-        m_prefix = f"{year:04d}-{m_num:02d}"
-
-        # Match billing period
-        period_match = target_str in inv_notes or (m_num > 0 and inv_date.startswith(m_prefix)) or f"_{month}_{year}".lower() in key
-        if period_match:
-            # If customer_name filter is provided, check match
-            if customer_name:
-                cust_filter = customer_name.strip().lower()
-                if cust_filter not in inv_cust.lower() and cust_filter not in str(inv.get("customer_id", "")).lower():
-                    continue
-            if inv_id and inv_id not in seen_ids:
-                seen_ids.add(inv_id)
-                existing_invoices.append(
-                    ExistingInvoiceItem(
-                        invoice_id=inv_id,
-                        invoice_number=inv_num,
-                        customer_name=inv_cust or (customer_name or "Customer"),
-                        total=float(inv.get("total", 0.0)),
-                        status=str(inv.get("status", "draft")),
-                        date=inv.get("date"),
-                        due_date=inv.get("due_date"),
-                    )
-                )
-
-    # 2. Check live Zoho Books if credentials configured
+    # Query live Zoho Books for existing draft invoices
     try:
         zoho = ZohoBooksService.from_client_id(client_id)
-        if zoho.org_id and not settings.MOCK_MODE and zoho.refresh_token:
+        if zoho.org_id and zoho.refresh_token:
             access_token = await zoho.get_access_token()
             headers = zoho._get_headers(access_token)
             url = f"{zoho.books_api_url}/invoices"

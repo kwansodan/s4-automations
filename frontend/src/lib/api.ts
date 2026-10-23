@@ -2669,6 +2669,10 @@ export interface CustomerMappingsResponse {
     currency_code?: string;
   }>;
   auto_create_missing_contacts: boolean;
+  zoho_connected?: boolean;
+  zoho_org_id?: string;
+  zoho_org_name?: string;
+  error_hint?: string;
 }
 
 export async function fetchCustomerMappings(clientId: string): Promise<CustomerMappingsResponse> {
