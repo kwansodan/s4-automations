@@ -48,19 +48,48 @@ class GeminiOCRService:
                     logger.error(f"Could not initialize Gemini client: {e}")
         return self._client
 
-    def _build_prompt(self, client_name: str, file_name: str, item_catalog: List[ZohoItem]) -> str:
+    def _build_prompt(
+        self,
+        client_name: str,
+        file_name: str,
+        item_catalog: List[ZohoItem],
+        customer_catalog: Optional[List[Any]] = None,
+        known_aliases: Optional[Dict[str, Any]] = None,
+    ) -> str:
         catalog_lines = "\n".join([f"- ID: {item.item_id} | Name: {item.name} | Rate: {item.rate}" for item in item_catalog])
+
+        customer_lines = ""
+        if customer_catalog:
+            cust_entries = [f"- {getattr(c, 'contact_name', str(c))}" for c in customer_catalog[:35]]
+            customer_lines = "\n### Official Registered Zoho Customers:\n" + "\n".join(cust_entries)
+
+        alias_lines = ""
+        if known_aliases:
+            alias_entries = [
+                f"- Shorthand '{k}' -> Official '{v.get('name', v) if isinstance(v, dict) else v}'"
+                for k, v in list(known_aliases.items())[:35]
+            ]
+            alias_lines = "\n### Known Driver Shorthand Aliases:\n" + "\n".join(alias_entries)
+
         return f"""
 You are an expert commercial laundry billing auditor and OCR specialist for ANR Laundry Services.
-Analyze this physical handwritten laundry control slip (pickup / delivery note) for hotel client: "{client_name}".
+Analyze this physical handwritten laundry control slip (pickup / delivery note).
+Tenant organization: "{client_name}".
 The file name is: "{file_name}".
+
+{customer_lines}
+{alias_lines}
 
 ### Standard Zoho Item Catalog:
 {catalog_lines}
 
 ### Instructions:
-1. Extract the Date on the slip in DD/MM/YYYY format.
-2. For each linen row / item written on the slip:
+1. Extract the Customer / Hotel Name written in the header of the slip:
+   - Identify the exact handwritten raw text ('raw_customer_name', e.g. "Gallery", "the gallery", "Embassy", "Kwarleyz").
+   - Match it to the most accurate registered customer in the Official Zoho Customers or Known Shorthand Aliases list above ('reconciled_customer_name').
+   - If unable to match confidently, set 'reconciled_customer_name' to the raw text or leave blank.
+2. Extract the Date on the slip in DD/MM/YYYY format.
+3. For each linen row / item written on the slip:
    - Identify the exact handwritten raw text ('raw_item_name', e.g. "B/Sheet Dbl", "F/Towel", "Bath Mat").
    - Match it semantically to the most accurate item in the Standard Zoho Catalog ('standard_item_name' and 'zoho_item_id').
    - Extract 'unit_rate' from the catalog matching this item.
@@ -69,7 +98,7 @@ The file name is: "{file_name}".
    - Calculate 'unreturned_loss_qty' as (pickup_qty - delivery_qty).
    - Assign 'confidence_score' ("HIGH", "MEDIUM", or "LOW") based on handwriting legibility.
    - Add any 'remarks' (e.g. torn, stained, guest laundry, replacement).
-3. Assign an overall document 'overall_confidence' ("HIGH", "MEDIUM", or "LOW").
+4. Assign an overall document 'overall_confidence' ("HIGH", "MEDIUM", or "LOW").
 
 Return strictly valid JSON conforming to the schema.
 """
@@ -82,6 +111,8 @@ Return strictly valid JSON conforming to the schema.
         file_name: str,
         client_name: str,
         item_catalog: List[ZohoItem],
+        customer_catalog: Optional[List[Any]] = None,
+        known_aliases: Optional[Dict[str, Any]] = None,
     ) -> OCRSlipExtraction:
         """
         Invokes Gemini Vision with structured schema to extract line items from a slip.
@@ -90,7 +121,13 @@ Return strictly valid JSON conforming to the schema.
             raise ValueError(f"Gemini API key is not configured for OCR extraction ({file_name}).")
 
         start_time = time.time()
-        prompt = self._build_prompt(client_name, file_name, item_catalog)
+        prompt = self._build_prompt(
+            client_name=client_name,
+            file_name=file_name,
+            item_catalog=item_catalog,
+            customer_catalog=customer_catalog,
+            known_aliases=known_aliases,
+        )
 
         try:
             # 1. Attempt using modern google-genai SDK
@@ -328,6 +365,11 @@ Return strictly valid JSON conforming to the schema.
             pass
         if not parsed:
             parsed = OCRSlipExtraction.model_validate_json(cleaned)
+
+        if parsed:
+            detected_cust = parsed.reconciled_customer_name or parsed.raw_customer_name
+            if detected_cust and detected_cust.strip():
+                parsed.client_name = detected_cust.strip()
 
         if parsed and parsed.items:
             for it in parsed.items:

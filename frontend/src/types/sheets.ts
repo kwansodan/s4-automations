@@ -21,6 +21,8 @@ export interface DailyDetailRow {
   drive_file_url?: string;
   confidence_score?: string;
   processed_at?: string;
+  raw_customer_name?: string;
+  customer_reconciled?: boolean;
 }
 
 export interface MonthlySummaryRow {
@@ -49,6 +51,8 @@ export interface MonthlySummaryRow {
   reviewed: boolean;
   approved: boolean;
   status: 'PENDING' | 'INVOICED' | 'DISCREPANCY_FLAGGED' | string;
+  raw_customer_name?: string;
+  customer_reconciled?: boolean;
 }
 
 export interface SheetsReviewData {

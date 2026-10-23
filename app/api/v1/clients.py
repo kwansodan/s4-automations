@@ -2473,3 +2473,177 @@ async def delete_customer_mapping(
     }
 
 
+@router.post("/{client_id}/customer-mappings/auto-discover", summary="Auto-Discover Driver Shorthand Aliases")
+async def auto_discover_customer_aliases(
+    client_id: str,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Inspects official Zoho Customers and historical slips to propose driver shorthand aliases."""
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(
+        select(ClientOrganization).where(
+            (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+        )
+    ).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    custom_cfg = client.custom_config or {}
+    existing_mappings = custom_cfg.get("customer_mappings", {})
+    existing_lower = {k.strip().lower() for k in existing_mappings.keys()}
+
+    from app.services.zoho_service import ZohoBooksService
+    from app.services.customer_matcher import (
+        generate_candidate_aliases_from_zoho_name,
+        CustomerMatcher,
+    )
+
+    zoho = ZohoBooksService.from_client_id(client.id)
+    if client.zoho_org_id and client.zoho_org_id != "782910482":
+        zoho.org_id = client.zoho_org_id
+
+    contacts = await zoho.fetch_active_contacts()
+    suggestions = []
+
+    # 1. Generate smart candidate aliases from official Zoho customer names
+    for c in contacts:
+        candidates = generate_candidate_aliases_from_zoho_name(c.contact_name)
+        for cand in candidates:
+            cand_clean = cand.strip()
+            if cand_clean.lower() not in existing_lower and cand_clean.lower() != c.contact_name.strip().lower():
+                suggestions.append({
+                    "alias": cand_clean,
+                    "zoho_contact_id": str(c.contact_id).strip(),
+                    "official_name": c.contact_name,
+                    "source_rationale": f"Derived shorthand from '{c.contact_name}'",
+                })
+
+    # 2. Inspect historical un-reconciled slips to find driver handwriting patterns
+    staged_txs = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.client_id.in_(aliases),
+            StagedTransaction.status != "INVOICED",
+        )
+    ).all()
+
+    seen_raw_names = set()
+    for tx in staged_txs:
+        meta = dict(tx.metadata_json or {})
+        raw_hw = str(meta.get("raw_customer_name") or meta.get("hotel_name") or meta.get("customer_name") or "").strip()
+        if raw_hw and raw_hw.lower() not in existing_lower and raw_hw.lower() not in seen_raw_names:
+            seen_raw_names.add(raw_hw.lower())
+            match_res = CustomerMatcher.match_customer(raw_hw, contacts)
+            if match_res.matched_contact_id and match_res.matched_contact_name:
+                suggestions.append({
+                    "alias": raw_hw,
+                    "zoho_contact_id": match_res.matched_contact_id,
+                    "official_name": match_res.matched_contact_name,
+                    "source_rationale": f"Observed driver handwriting (Confidence: {int(match_res.confidence_score * 100)}%)",
+                })
+
+    # Deduplicate suggestions by alias
+    unique_suggestions = []
+    seen_aliases = set()
+    for s in suggestions:
+        a_key = s["alias"].strip().lower()
+        if a_key not in seen_aliases and a_key not in existing_lower:
+            seen_aliases.add(a_key)
+            unique_suggestions.append(s)
+
+    return {
+        "total_discovered": len(unique_suggestions),
+        "suggestions": unique_suggestions,
+    }
+
+
+@router.post("/{client_id}/customer-mappings/bulk", summary="Batch Save Customer Aliases")
+async def bulk_save_customer_mappings(
+    client_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Saves multiple customer aliases in one batch and retroactively updates matching slips."""
+    aliases = get_client_id_aliases(client_id)
+    client = db.exec(
+        select(ClientOrganization).where(
+            (ClientOrganization.id.in_(aliases)) | (ClientOrganization.name.in_(aliases))
+        )
+    ).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Organisation '{client_id}' not found.")
+
+    raw_items = payload.get("mappings", [])
+    if not isinstance(raw_items, list):
+        raise HTTPException(status_code=400, detail="Payload 'mappings' must be a list of alias objects.")
+
+    custom_cfg = dict(client.custom_config or {})
+    mappings = dict(custom_cfg.get("customer_mappings", {}))
+
+    added_count = 0
+    updated_aliases = []
+
+    for item in raw_items:
+        clean_alias = str(item.get("alias", "")).strip()
+        zoho_contact_id = str(item.get("zoho_contact_id", "")).strip()
+        name = str(item.get("name") or item.get("official_name") or clean_alias).strip()
+        currency_code = str(item.get("currency_code", "GHS")).strip()
+
+        if not clean_alias or not zoho_contact_id:
+            continue
+
+        # Remove case-insensitive duplicate
+        for existing_key in list(mappings.keys()):
+            if existing_key.strip().lower() == clean_alias.lower():
+                del mappings[existing_key]
+
+        mappings[clean_alias] = {
+            "zoho_contact_id": zoho_contact_id,
+            "name": name,
+            "currency_code": currency_code,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        added_count += 1
+        updated_aliases.append(clean_alias.lower())
+
+    custom_cfg["customer_mappings"] = mappings
+    client.custom_config = custom_cfg
+    flag_modified(client, "custom_config")
+    db.add(client)
+
+    # Retroactively update matching staged transactions
+    staged_txs = db.exec(
+        select(StagedTransaction).where(
+            StagedTransaction.client_id.in_(aliases),
+            StagedTransaction.status != "INVOICED",
+        )
+    ).all()
+
+    retro_updated = 0
+    for tx in staged_txs:
+        meta = dict(tx.metadata_json or {})
+        c_name = str(meta.get("raw_customer_name") or meta.get("customer_name") or meta.get("hotel_name") or "").strip().lower()
+        for a_low in updated_aliases:
+            if c_name == a_low or a_low in c_name:
+                match_info = next((m for k, m in mappings.items() if k.strip().lower() == a_low), None)
+                if match_info:
+                    meta["zoho_contact_id"] = match_info["zoho_contact_id"]
+                    meta["customer_name"] = match_info["name"]
+                    meta["customer_reconciled"] = True
+                    tx.metadata_json = meta
+                    flag_modified(tx, "metadata_json")
+                    if tx.validation_status == "PENDING_VALIDATION_ERROR" or tx.validation_status == "PENDING_CUSTOMER_MAPPING":
+                        tx.validation_status = "VALID"
+                    db.add(tx)
+                    retro_updated += 1
+                    break
+
+    db.commit()
+
+    return {
+        "success": True,
+        "saved_count": added_count,
+        "retroactive_staged_updated": retro_updated,
+        "message": f"Successfully registered {added_count} customer aliases and updated {retro_updated} slips.",
+    }
+
+

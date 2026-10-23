@@ -39,6 +39,8 @@ class OCRSlipExtraction(BaseModel):
     """Full extraction response for a single physical slip scan."""
     file_name: str = Field(default="", description="Name of the physical scan file")
     client_name: str = Field(default="", description="Client name detected or matched")
+    raw_customer_name: str = Field(default="", description="Original handwritten customer or hotel name written on slip header")
+    reconciled_customer_name: str = Field(default="", description="Reconciled official Zoho customer name")
     slip_date: str = Field(default="", description="Date on slip in DD/MM/YYYY format")
     items: List[OCRSlipItem] = Field(default_factory=list, description="Extracted line items on this slip")
     overall_confidence: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH, description="Overall document confidence")
@@ -913,6 +915,34 @@ class ClientExplanationSubmit(BaseModel):
     """Client portal explanation response."""
     client_explanation: str
     client_attachments: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+
+
+class BulkCustomerMappingItem(BaseModel):
+    """Single alias item in bulk mapping payload."""
+    alias: str = Field(description="Handwritten driver shorthand or alias")
+    zoho_contact_id: str = Field(description="Target official Zoho customer contact ID")
+    name: Optional[str] = Field(default=None, description="Official customer name")
+    currency_code: Optional[str] = Field(default="GHS")
+
+
+class BulkCustomerMappingPayload(BaseModel):
+    """Payload to batch save multiple customer aliases."""
+    mappings: List[BulkCustomerMappingItem] = Field(default_factory=list)
+
+
+class DiscoveredAliasSuggestion(BaseModel):
+    """Proposed driver shorthand alias for an official Zoho customer."""
+    alias: str
+    zoho_contact_id: str
+    official_name: str
+    source_rationale: str
+
+
+class AutoDiscoverAliasesResponse(BaseModel):
+    """Response containing auto-discovered driver shorthands from official customer catalog."""
+    total_discovered: int
+    suggestions: List[DiscoveredAliasSuggestion] = Field(default_factory=list)
+
 
 
 

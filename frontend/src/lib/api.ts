@@ -2716,6 +2716,41 @@ export async function deleteCustomerMapping(
   return handleResponse(res, 'Delete Customer Mapping');
 }
 
+export interface DiscoveredAliasSuggestion {
+  alias: string;
+  zoho_contact_id: string;
+  official_name: string;
+  source_rationale: string;
+}
+
+export interface AutoDiscoverAliasesResponse {
+  total_discovered: number;
+  suggestions: DiscoveredAliasSuggestion[];
+}
+
+export async function autoDiscoverCustomerAliases(
+  clientId: string
+): Promise<AutoDiscoverAliasesResponse> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/customer-mappings/auto-discover`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<AutoDiscoverAliasesResponse>(res, 'Auto-Discover Customer Aliases');
+}
+
+export async function bulkSaveCustomerMappings(
+  clientId: string,
+  mappings: Array<{ alias: string; zoho_contact_id: string; name?: string; currency_code?: string }>
+): Promise<{ success: boolean; saved_count: number; retroactive_staged_updated: number; message: string }> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/customer-mappings/bulk`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ mappings }),
+  });
+  return handleResponse(res, 'Bulk Save Customer Mappings');
+}
+
+
 
 
 

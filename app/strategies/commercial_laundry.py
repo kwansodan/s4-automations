@@ -60,9 +60,28 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
         return sources
 
     async def extract_and_validate(self, sources: List[SourceDocument], **kwargs) -> List[ExtractedLineItem]:
-        """Runs Gemini Vision structured OCR extraction."""
+        """Runs Gemini Vision structured OCR extraction with customer and catalog context."""
         items: List[ExtractedLineItem] = []
         catalog = await self.zoho.fetch_item_catalog()
+
+        # Load contacts and customer mappings upfront for OCR prompt context
+        contacts = []
+        customer_mappings = {}
+        try:
+            contacts = await self.zoho.fetch_active_contacts()
+        except Exception as e:
+            logger.debug(f"Could not fetch active contacts for OCR prompt: {e}")
+
+        try:
+            from app.models.db_models import ClientOrganization
+            from app.db.session import get_engine
+            from sqlmodel import Session, select
+            with Session(get_engine()) as cfg_session:
+                c_org = cfg_session.exec(select(ClientOrganization).where(ClientOrganization.id == self.client_id)).first()
+                if c_org:
+                    customer_mappings = (c_org.custom_config or {}).get("customer_mappings", {})
+        except Exception as e:
+            logger.debug(f"Could not load customer_mappings for OCR prompt: {e}")
 
         for src in sources:
             file_bytes = src.file_bytes or self.drive.download_file_bytes(src.source_identifier)
@@ -75,6 +94,8 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                 file_name=src.file_name,
                 client_name=self.client_name,
                 item_catalog=catalog,
+                customer_catalog=contacts,
+                known_aliases=customer_mappings,
             )
 
             for line in extracted_slip.items:
@@ -84,6 +105,7 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
 
                 raw_desc = line.standard_item_name or line.raw_item_name or "Linen Item"
                 clean_desc = re.sub(r"^[:;\s\-•.]+", "", str(raw_desc)).strip()
+                detected_hotel = extracted_slip.reconciled_customer_name or extracted_slip.raw_customer_name or extracted_slip.client_name
                 items.append(
                     ExtractedLineItem(
                         item_or_description=clean_desc,
@@ -94,7 +116,9 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                         total_amount=float(total_billed),
                         discrepancy=float(discrepancy),
                         raw_extracted_data={
-                            "hotel_name": extracted_slip.client_name,
+                            "hotel_name": detected_hotel,
+                            "raw_customer_name": extracted_slip.raw_customer_name,
+                            "reconciled_customer_name": extracted_slip.reconciled_customer_name,
                             "date": resolve_transaction_date(
                                 extracted_date=extracted_slip.slip_date,
                                 file_name=src.file_name,
@@ -112,17 +136,24 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
     async def sync_review_workspace(
         self, month: str, year: int, items: List[ExtractedLineItem]
     ) -> Dict[str, Any]:
-        """Stages extracted line items into PostgreSQL staged_transactions."""
+        """Stages extracted line items into PostgreSQL staged_transactions with intelligent customer reconciliation."""
         from app.models.db_models import StagedTransaction, ClientOrganization
         from app.db.session import get_engine
         from sqlmodel import Session, select
+        from app.services.customer_matcher import CustomerMatcher
         import uuid
 
         batch_id = f"batch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}"
         staged_count = 0
 
-        # Load customer_mappings from client custom_config
+        # Load active contacts and customer_mappings from client custom_config
+        contacts = []
         customer_mappings = {}
+        try:
+            contacts = await self.zoho.fetch_active_contacts()
+        except Exception as e:
+            logger.debug(f"Could not load active contacts for staging: {e}")
+
         try:
             with Session(get_engine()) as cfg_session:
                 c_org = cfg_session.exec(select(ClientOrganization).where(ClientOrganization.id == self.client_id)).first()
@@ -146,32 +177,28 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                     drive_url = raw.get("drive_file_url") or (f"https://drive.google.com/file/d/{source_identifier}/view" if source_identifier else "")
                     raw["drive_file_url"] = drive_url
 
-                    # Shift-Left Customer Resolution (Second Line of Defence)
-                    hotel_or_cust = str(raw.get("hotel_name") or raw.get("customer_name") or "").strip()
+                    # Intelligent Customer Resolution using CustomerMatcher
+                    hotel_or_cust = str(raw.get("hotel_name") or raw.get("raw_customer_name") or raw.get("customer_name") or "").strip()
                     zoho_contact_id = raw.get("zoho_contact_id")
+
                     if not zoho_contact_id and hotel_or_cust:
-                        map_entry = customer_mappings.get(hotel_or_cust)
-                        if not map_entry:
-                            h_lower = hotel_or_cust.lower()
-                            for m_key, m_val in customer_mappings.items():
-                                if m_key.strip().lower() == h_lower:
-                                    map_entry = m_val
-                                    break
-                        if map_entry and map_entry.get("zoho_contact_id"):
-                            raw["zoho_contact_id"] = map_entry["zoho_contact_id"]
-                            raw["customer_name"] = map_entry.get("name") or hotel_or_cust
+                        match_res = CustomerMatcher.match_customer(
+                            raw_name=hotel_or_cust,
+                            contacts=contacts,
+                            customer_mappings=customer_mappings,
+                        )
+                        if match_res.is_auto_matched and match_res.matched_contact_id:
+                            raw["zoho_contact_id"] = match_res.matched_contact_id
+                            raw["customer_name"] = match_res.matched_contact_name or hotel_or_cust
                             raw["customer_reconciled"] = True
+                            raw["customer_match_tier"] = match_res.match_tier
+                            raw["customer_confidence"] = match_res.confidence_score
                         else:
-                            try:
-                                matched_c = self.zoho.find_contact_by_name(hotel_or_cust)
-                                if matched_c:
-                                    raw["zoho_contact_id"] = matched_c.contact_id
-                                    raw["customer_name"] = matched_c.contact_name or hotel_or_cust
-                                    raw["customer_reconciled"] = True
-                                else:
-                                    raw["customer_reconciled"] = False
-                            except Exception:
-                                raw["customer_reconciled"] = False
+                            raw["customer_reconciled"] = False
+                            raw["customer_name"] = match_res.matched_contact_name or hotel_or_cust
+                            raw["customer_match_tier"] = match_res.match_tier
+                            raw["customer_confidence"] = match_res.confidence_score
+                            raw["suggested_candidates"] = [c.model_dump() for c in match_res.candidate_suggestions]
                     elif zoho_contact_id:
                         raw["customer_reconciled"] = True
                     else:

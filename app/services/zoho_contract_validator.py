@@ -436,50 +436,23 @@ class ZohoContractValidator:
         contacts: List[ZohoContact],
         customer_mappings: Optional[Dict[str, Any]] = None,
     ) -> Optional[ZohoContact]:
-        """Matches a client or vendor name against the Zoho Contacts list or tenant customer mappings."""
-        cleaned = name_str.strip().lower()
-
-        # 1. Check explicit tenant customer_mappings
-        if customer_mappings:
-            for raw_k, map_val in customer_mappings.items():
-                if str(raw_k).strip().lower() == cleaned or cleaned in str(raw_k).strip().lower():
-                    target_id = map_val.get("zoho_contact_id") if isinstance(map_val, dict) else str(map_val)
-                    target_name = map_val.get("name") or map_val.get("zoho_contact_name") if isinstance(map_val, dict) else ""
-                    for c in contacts:
-                        if target_id and c.contact_id == target_id:
-                            return c
-                        if target_name and c.contact_name.strip().lower() == str(target_name).strip().lower():
-                            return c
-                    if target_id:
-                        return ZohoContact(
-                            contact_id=target_id,
-                            contact_name=str(target_name or raw_k),
-                            company_name=str(target_name or raw_k),
-                            status="active",
-                        )
-
-        # Exact match
-        for c in contacts:
-            if c.contact_name.strip().lower() == cleaned:
-                return c
-            if c.company_name and c.company_name.strip().lower() == cleaned:
-                return c
-
-        # Substring match
-        for c in contacts:
-            if cleaned in c.contact_name.strip().lower() or (c.company_name and cleaned in c.company_name.strip().lower()):
-                return c
-            if c.contact_name.strip().lower() in cleaned:
-                return c
-
-        # Token overlap match (e.g. "The Embassy" in "Clifton Homes - The Embassy")
-        import re
-        name_words = {w for w in re.split(r"[\s\-_,]+", cleaned) if len(w) > 3}
-        for c in contacts:
-            c_words = {w for w in re.split(r"[\s\-_,]+", c.contact_name.strip().lower()) if len(w) > 3}
-            if name_words and c_words and name_words.intersection(c_words):
-                return c
-
+        """Matches a customer or vendor name against the Zoho Contacts list or tenant customer mappings."""
+        from app.services.customer_matcher import CustomerMatcher
+        result = CustomerMatcher.match_customer(
+            raw_name=name_str,
+            contacts=contacts,
+            customer_mappings=customer_mappings,
+        )
+        if result.is_auto_matched and result.matched_contact_id:
+            for c in contacts:
+                if str(c.contact_id).strip() == str(result.matched_contact_id).strip():
+                    return c
+            return ZohoContact(
+                contact_id=result.matched_contact_id,
+                contact_name=result.matched_contact_name or name_str,
+                company_name=result.matched_contact_name or name_str,
+                status="active",
+            )
         return None
 
     @classmethod

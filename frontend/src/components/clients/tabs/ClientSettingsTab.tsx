@@ -14,6 +14,9 @@ import {
   fetchCustomerMappings,
   saveCustomerMapping,
   deleteCustomerMapping,
+  autoDiscoverCustomerAliases,
+  bulkSaveCustomerMappings,
+  type DiscoveredAliasSuggestion,
   fetchClientCatalog,
   type CustomerMappingEntry,
   type AccountingOAuthStatusResponse,
@@ -149,6 +152,55 @@ export const ClientSettingsTab: React.FC = () => {
     zoho_org_name?: string;
     error_hint?: string | null;
   }>({});
+  const [isDiscoveringAliases, setIsDiscoveringAliases] = useState<boolean>(false);
+  const [discoveredAliases, setDiscoveredAliases] = useState<DiscoveredAliasSuggestion[]>([]);
+  const [selectedDiscoveredAliases, setSelectedDiscoveredAliases] = useState<Record<string, boolean>>({});
+  const [isBulkSavingAliases, setIsBulkSavingAliases] = useState<boolean>(false);
+
+  const handleAutoDiscoverAliases = async () => {
+    if (!currentClient?.id) return;
+    setIsDiscoveringAliases(true);
+    setMappingFeedback(null);
+    try {
+      const res = await autoDiscoverCustomerAliases(currentClient.id);
+      setDiscoveredAliases(res.suggestions || []);
+      const selMap: Record<string, boolean> = {};
+      (res.suggestions || []).forEach((s) => {
+        selMap[s.alias] = true;
+      });
+      setSelectedDiscoveredAliases(selMap);
+      if ((res.suggestions || []).length === 0) {
+        setMappingFeedback('No new driver shorthands discovered. All common abbreviations are already registered.');
+      }
+    } catch (err: any) {
+      setMappingFeedback(`Error discovering driver shorthands: ${err.message || err}`);
+    } finally {
+      setIsDiscoveringAliases(false);
+    }
+  };
+
+  const handleAcceptSelectedDiscovered = async () => {
+    if (!currentClient?.id) return;
+    const toSave = discoveredAliases.filter((s) => selectedDiscoveredAliases[s.alias]);
+    if (!toSave.length) return;
+    setIsBulkSavingAliases(true);
+    try {
+      const payload = toSave.map((s) => ({
+        alias: s.alias,
+        zoho_contact_id: s.zoho_contact_id,
+        name: s.official_name,
+        currency_code: 'GHS',
+      }));
+      const res = await bulkSaveCustomerMappings(currentClient.id, payload);
+      setMappingFeedback(res.message);
+      setDiscoveredAliases([]);
+      await loadMappings();
+    } catch (err: any) {
+      setMappingFeedback(`Error saving discovered aliases: ${err.message || err}`);
+    } finally {
+      setIsBulkSavingAliases(false);
+    }
+  };
 
   const loadMappings = async () => {
     if (!currentClient?.id) return;
@@ -1133,6 +1185,95 @@ export const ClientSettingsTab: React.FC = () => {
             >
               Connect Zoho Books Now
             </button>
+          )}
+        </div>
+
+        {/* Smart Driver Shorthand Auto-Discovery Card */}
+        <div className="bg-gradient-to-r from-sky-950/40 via-indigo-950/30 to-slate-900/60 border border-sky-800/40 rounded-xl p-3.5 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-sky-400" />
+                <h4 className="text-xs font-bold text-white">Smart Driver Shorthand Auto-Discovery</h4>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Automatically pre-computes common driver abbreviations (e.g. "Gallery" to "Clifton homes - The Gallery", "Embassy" to "Clifton Homes - Embassy Gardens") from your active Zoho Customers.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAutoDiscoverAliases}
+              disabled={isDiscoveringAliases || !activeContacts.length}
+              className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow cursor-pointer shrink-0 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isDiscoveringAliases ? 'animate-spin' : ''}`} />
+              <span>{isDiscoveringAliases ? 'Analyzing Customers...' : 'Auto-Discover Shorthands'}</span>
+            </button>
+          </div>
+
+          {/* Discovered Shorthands Preview Drawer */}
+          {discoveredAliases.length > 0 && (
+            <div className="bg-slate-950/80 border border-sky-900/60 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-sky-300">
+                  Found {discoveredAliases.length} Proposed Driver Shorthand{discoveredAliases.length === 1 ? '' : 's'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = Object.values(selectedDiscoveredAliases).every(Boolean);
+                      const next: Record<string, boolean> = {};
+                      discoveredAliases.forEach((s) => {
+                        next[s.alias] = !allSelected;
+                      });
+                      setSelectedDiscoveredAliases(next);
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Toggle All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAcceptSelectedDiscovered}
+                    disabled={isBulkSavingAliases || !Object.values(selectedDiscoveredAliases).some(Boolean)}
+                    className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-bold px-2.5 py-1 rounded-md shadow cursor-pointer transition"
+                  >
+                    {isBulkSavingAliases ? 'Saving...' : `Accept & Link (${Object.values(selectedDiscoveredAliases).filter(Boolean).length}) Shorthands`}
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                {discoveredAliases.map((item) => (
+                  <label
+                    key={item.alias}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 hover:bg-slate-900 border border-slate-800 text-xs cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedDiscoveredAliases[item.alias]}
+                        onChange={(e) =>
+                          setSelectedDiscoveredAliases((prev) => ({
+                            ...prev,
+                            [item.alias]: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-slate-700 bg-slate-950 text-sky-500 focus:ring-0"
+                      />
+                      <div>
+                        <span className="font-bold text-white font-mono bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-800/40 text-[11px] mr-2">
+                          "{item.alias}"
+                        </span>
+                        <span className="text-slate-300">&rarr; {item.official_name}</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{item.source_rationale}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
