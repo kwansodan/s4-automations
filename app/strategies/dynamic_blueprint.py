@@ -637,16 +637,43 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         "total_amount": 0.0,
                     }
 
-                if not extraction:
+                tenant_customer_mappings = (
+                    self.custom_config.get("customer_mappings", {})
+                    if isinstance(self.custom_config, dict)
+                    else {}
+                )
+
+                if not extraction or not (extraction.get("items") or extraction.get("line_items")):
                     default_cust = doc.metadata.get("customer_name_hint") or ("Walk-in Customer" if not is_ap else self.client_name)
-                    extraction = {
-                        "items": [],
-                        "customer_name": default_cust,
-                        "customer_id": default_cust,
-                        "vendor": self.client_name,
-                        "vendor_name": self.client_name,
+                    # Check customer_mappings for default_cust
+                    if tenant_customer_mappings:
+                        for m_alias, m_info in tenant_customer_mappings.items():
+                            if m_alias.lower() == default_cust.lower() or default_cust.lower() in m_alias.lower():
+                                default_cust = m_info.get("name") or m_alias
+                                break
+
+                    placeholder_item = {
+                        "name": f"Unparsed Slip: {doc.file_name}",
+                        "item_name": f"Unparsed Slip: {doc.file_name}",
+                        "standard_item_name": "Linen Laundry Service",
+                        "description": f"Manual Review Required for {doc.file_name}",
+                        "quantity": 1.0,
+                        "pickup_qty": 0.0,
+                        "delivery_qty": 0.0,
+                        "unit_price": 0.0,
+                        "unit_rate": 0.0,
+                        "rate": 0.0,
                         "total_amount": 0.0,
+                        "amount": 0.0,
                     }
+                    extraction = extraction or {}
+                    extraction["items"] = [placeholder_item]
+                    extraction["line_items"] = [placeholder_item]
+                    extraction["customer_name"] = extraction.get("customer_name") or default_cust
+                    extraction["customer_id"] = extraction.get("customer_id") or default_cust
+                    extraction["vendor"] = self.client_name
+                    extraction["vendor_name"] = self.client_name
+                    extraction["total_amount"] = extraction.get("total_amount") or 0.0
 
                 # Normalize extracted date and document level fields
                 raw_items_list = extraction.get("items") or extraction.get("line_items") or []
@@ -692,6 +719,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 auto_create_contacts = p_cfg.get("auto_create_missing_contacts", False) or (pipe_obj.get("auto_create_missing_contacts", False) if pipe_obj else False)
                 auto_create_items = p_cfg.get("auto_create_missing_items", False) or (pipe_obj.get("auto_create_missing_items", False) if pipe_obj else False)
 
+                tenant_customer_mappings = (
+                    self.custom_config.get("customer_mappings", {})
+                    if isinstance(self.custom_config, dict)
+                    else {}
+                )
+
                 validation_result = ZohoContractValidator.validate_entity(
                     entity_type=entity_type,
                     extracted_data=extraction,
@@ -699,6 +732,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     zoho_items=items_catalog,
                     auto_create_contacts=auto_create_contacts,
                     auto_create_items=auto_create_items,
+                    customer_mappings=tenant_customer_mappings,
                 )
 
                 # Check if validation passed

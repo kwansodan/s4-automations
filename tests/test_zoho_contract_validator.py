@@ -133,3 +133,32 @@ async def test_pipeline_alert_service_dispatch():
         recipient_email="test@service4gh.com",
     )
     assert success is True
+
+
+def test_sales_invoice_validation_with_customer_mappings(mock_items):
+    # Customer 'Embassy Gardens' is NOT in raw zoho contacts, but is in customer_mappings
+    data = {
+        "date": "2026-10-12",
+        "customer_name": "Embassy Gardens",
+        "total_amount": 100.00,
+        "items": [
+            {"item_name": "Bed Sheet Double", "quantity": 5, "unit_price": 20.00, "amount": 100.00}
+        ]
+    }
+    mappings = {
+        "Embassy Gardens": {
+            "zoho_contact_id": "cnt_embassy_999",
+            "name": "Clifton Homes - Embassy Gardens",
+            "currency_code": "GHS",
+        }
+    }
+    res = ZohoContractValidator.validate_entity(
+        entity_type=AccountingEntityType.AR_SALES_INVOICE.value,
+        extracted_data=data,
+        zoho_contacts=[],  # Empty live contacts
+        zoho_items=mock_items,
+        customer_mappings=mappings,
+    )
+    assert res.is_valid is True
+    assert len(res.issues) == 0
+    assert res.normalized_payload["customer_id"] == "cnt_embassy_999"

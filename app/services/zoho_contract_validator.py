@@ -27,6 +27,7 @@ class ZohoContractValidator:
         variance_tolerance: float = 1.0,
         auto_create_contacts: bool = False,
         auto_create_items: bool = False,
+        customer_mappings: Optional[Dict[str, Any]] = None,
     ) -> ContractValidationResult:
         """
         Validates extracted_data against the specific requirements of entity_type.
@@ -94,8 +95,8 @@ class ZohoContractValidator:
                         severity="CRITICAL",
                     )
                 )
-            elif contacts:
-                matched = cls._match_contact(customer_name, contacts)
+            elif contacts or customer_mappings:
+                matched = cls._match_contact(customer_name, contacts, customer_mappings=customer_mappings)
                 if not matched:
                     if auto_create_contacts:
                         norm["customer_id"] = f"auto_create:{customer_name}"
@@ -153,8 +154,8 @@ class ZohoContractValidator:
                         severity="CRITICAL",
                     )
                 )
-            elif contacts:
-                matched = cls._match_contact(customer_name, contacts)
+            elif contacts or customer_mappings:
+                matched = cls._match_contact(customer_name, contacts, customer_mappings=customer_mappings)
                 if not matched:
                     if auto_create_contacts:
                         norm["customer_id"] = f"auto_create:{customer_name}"
@@ -228,8 +229,8 @@ class ZohoContractValidator:
                         severity="CRITICAL",
                     )
                 )
-            elif contacts:
-                matched = cls._match_contact(vendor_name, contacts)
+            elif contacts or customer_mappings:
+                matched = cls._match_contact(vendor_name, contacts, customer_mappings=customer_mappings)
                 if not matched:
                     if auto_create_contacts:
                         norm["vendor_id"] = f"auto_create:{vendor_name}"
@@ -429,9 +430,34 @@ class ZohoContractValidator:
                 pass
 
     @classmethod
-    def _match_contact(cls, name_str: str, contacts: List[ZohoContact]) -> Optional[ZohoContact]:
-        """Matches a client or vendor name against the Zoho Contacts list."""
+    def _match_contact(
+        cls,
+        name_str: str,
+        contacts: List[ZohoContact],
+        customer_mappings: Optional[Dict[str, Any]] = None,
+    ) -> Optional[ZohoContact]:
+        """Matches a client or vendor name against the Zoho Contacts list or tenant customer mappings."""
         cleaned = name_str.strip().lower()
+
+        # 1. Check explicit tenant customer_mappings
+        if customer_mappings:
+            for raw_k, map_val in customer_mappings.items():
+                if str(raw_k).strip().lower() == cleaned or cleaned in str(raw_k).strip().lower():
+                    target_id = map_val.get("zoho_contact_id") if isinstance(map_val, dict) else str(map_val)
+                    target_name = map_val.get("name") or map_val.get("zoho_contact_name") if isinstance(map_val, dict) else ""
+                    for c in contacts:
+                        if target_id and c.contact_id == target_id:
+                            return c
+                        if target_name and c.contact_name.strip().lower() == str(target_name).strip().lower():
+                            return c
+                    if target_id:
+                        return ZohoContact(
+                            contact_id=target_id,
+                            contact_name=str(target_name or raw_k),
+                            company_name=str(target_name or raw_k),
+                            status="active",
+                        )
+
         # Exact match
         for c in contacts:
             if c.contact_name.strip().lower() == cleaned:

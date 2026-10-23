@@ -14,6 +14,7 @@ import {
   fetchCustomerMappings,
   saveCustomerMapping,
   deleteCustomerMapping,
+  fetchClientCatalog,
   type CustomerMappingEntry,
   type AccountingOAuthStatusResponse,
   type ZohoOrganizationOption,
@@ -46,7 +47,7 @@ import {
 
 export const ClientSettingsTab: React.FC = () => {
   const { currentClient, deleteClient, refreshClients } = useClient();
-  const { addLog } = useAutomation();
+  const { addLog, catalog } = useAutomation();
 
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSaveSuccess, setConfigSaveSuccess] = useState(false);
@@ -139,6 +140,8 @@ export const ClientSettingsTab: React.FC = () => {
   const [isSavingMapping, setIsSavingMapping] = useState<boolean>(false);
   const [newAlias, setNewAlias] = useState<string>('');
   const [selectedContactId, setSelectedContactId] = useState<string>('');
+  const [isManualInput, setIsManualInput] = useState<boolean>(false);
+  const [manualContactName, setManualContactName] = useState<string>('');
   const [mappingFeedback, setMappingFeedback] = useState<string | null>(null);
 
   const loadMappings = async () => {
@@ -147,7 +150,34 @@ export const ClientSettingsTab: React.FC = () => {
     try {
       const res = await fetchCustomerMappings(currentClient.id);
       setCustomerMappings(res.mappings || {});
-      setActiveContacts(res.active_contacts || []);
+      let contacts = res.active_contacts || [];
+
+      // Fallback 1: if empty, try fetching client catalog
+      if (!contacts.length) {
+        try {
+          const cat = await fetchClientCatalog(currentClient.id, currentClient.zoho_org_id);
+          if (cat.contacts && cat.contacts.length) {
+            contacts = cat.contacts.map((c: any) => ({
+              contact_id: c.contact_id || c.id,
+              contact_name: c.contact_name || c.name,
+              company_name: c.company_name,
+            }));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Fallback 2: if still empty, try global catalog contacts
+      if (!contacts.length && catalog?.contacts && catalog.contacts.length) {
+        contacts = catalog.contacts.map((c: any) => ({
+          contact_id: c.contact_id || c.id,
+          contact_name: c.contact_name || c.name,
+          company_name: c.company_name,
+        }));
+      }
+
+      setActiveContacts(contacts);
     } catch (err) {
       console.warn('Could not load customer mappings:', err);
     } finally {
@@ -161,15 +191,22 @@ export const ClientSettingsTab: React.FC = () => {
 
   const handleAddCustomerMapping = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAlias.trim() || !selectedContactId) return;
+    const alias = newAlias.trim();
+    if (!alias) return;
+    const effectiveContactId = isManualInput || activeContacts.length === 0
+      ? (manualContactName.trim() || alias)
+      : selectedContactId;
+    if (!effectiveContactId) return;
+
     setIsSavingMapping(true);
     setMappingFeedback(null);
     try {
-      const targetContact = activeContacts.find((c) => c.contact_id === selectedContactId);
+      const targetContact = activeContacts.find((c) => c.contact_id === effectiveContactId);
+      const contactName = targetContact?.contact_name || manualContactName.trim() || alias;
       const res = await saveCustomerMapping(currentClient.id, {
-        alias: newAlias.trim(),
-        zoho_contact_id: selectedContactId,
-        name: targetContact?.contact_name || newAlias.trim(),
+        alias: alias,
+        zoho_contact_id: targetContact?.contact_id || effectiveContactId,
+        name: contactName,
       });
       setCustomerMappings((prev) => ({
         ...prev,
@@ -177,6 +214,7 @@ export const ClientSettingsTab: React.FC = () => {
       }));
       setNewAlias('');
       setSelectedContactId('');
+      setManualContactName('');
       setMappingFeedback(`Saved mapping: ${res.alias} -> ${res.mapping.name} (${res.retroactive_staged_updated} pending slips updated)`);
       await refreshClients();
       setTimeout(() => setMappingFeedback(null), 4000);
@@ -1087,7 +1125,26 @@ export const ClientSettingsTab: React.FC = () => {
 
         {/* Add New Alias Mapping Form */}
         <form onSubmit={handleAddCustomerMapping} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 space-y-3">
-          <span className="text-xs font-bold text-slate-300 block">Add Customer Alias Mapping</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-300 block">Add Customer Alias Mapping</span>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-slate-400">
+                {activeContacts.length > 0 ? (
+                  <span className="text-emerald-400 font-medium">✓ {activeContacts.length} Zoho contacts available</span>
+                ) : (
+                  <span className="text-amber-400 font-medium">No live contacts cached</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsManualInput(!isManualInput)}
+                className="text-emerald-400 hover:text-emerald-300 underline font-semibold cursor-pointer"
+              >
+                {isManualInput ? 'Select from dropdown' : 'Enter manually'}
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
             <div className="sm:col-span-5">
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
@@ -1103,25 +1160,39 @@ export const ClientSettingsTab: React.FC = () => {
             </div>
             <div className="sm:col-span-5">
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                Official Zoho Books Customer
+                Official Zoho Books Customer {isManualInput ? '(Name or ID)' : ''}
               </label>
-              <select
-                value={selectedContactId}
-                onChange={(e) => setSelectedContactId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-              >
-                <option value="">Select official Zoho contact...</option>
-                {activeContacts.map((c) => (
-                  <option key={c.contact_id} value={c.contact_id}>
-                    {c.contact_name} {c.company_name ? `(${c.company_name})` : ''} - ID: {c.contact_id}
-                  </option>
-                ))}
-              </select>
+              {!isManualInput && activeContacts.length > 0 ? (
+                <select
+                  value={selectedContactId}
+                  onChange={(e) => setSelectedContactId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Select official Zoho contact...</option>
+                  {activeContacts.map((c) => (
+                    <option key={c.contact_id} value={c.contact_id}>
+                      {c.contact_name} {c.company_name ? `(${c.company_name})` : ''} - ID: {c.contact_id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="e.g. Clifton Homes - Embassy Gardens or Contact ID"
+                  value={manualContactName}
+                  onChange={(e) => setManualContactName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              )}
             </div>
             <div className="sm:col-span-2">
               <button
                 type="submit"
-                disabled={isSavingMapping || !newAlias.trim() || !selectedContactId}
+                disabled={
+                  isSavingMapping ||
+                  !newAlias.trim() ||
+                  (!isManualInput && activeContacts.length > 0 ? !selectedContactId : !manualContactName.trim())
+                }
                 className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3 rounded-lg shadow transition cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />

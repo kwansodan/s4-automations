@@ -2295,10 +2295,11 @@ async def get_customer_mappings(
     mappings = custom_cfg.get("customer_mappings", {})
 
     contacts_list = []
+    error_hint = None
     try:
         from app.services.zoho_service import ZohoBooksService
         zoho = ZohoBooksService.from_client_id(client.id)
-        if client.zoho_org_id:
+        if client.zoho_org_id and client.zoho_org_id != "782910482":
             zoho.org_id = client.zoho_org_id
         active_contacts = await zoho.fetch_active_contacts()
         contacts_list = [
@@ -2311,7 +2312,39 @@ async def get_customer_mappings(
             for c in active_contacts
         ]
     except Exception as e:
-        logger.debug(f"Could not load live contacts for customer mappings: {e}")
+        error_hint = str(e)
+        logger.warning(f"Could not load live contacts for customer mappings: {e}")
+
+    # Fallback 1: check catalog service for cached contacts
+    if not contacts_list:
+        try:
+            from app.api.v1.catalog import get_zoho_catalog
+            cat = await get_zoho_catalog(client_id=client.id)
+            if cat.get("contacts"):
+                for c in cat["contacts"]:
+                    contacts_list.append({
+                        "contact_id": c.get("contact_id") or c.get("id", ""),
+                        "contact_name": c.get("contact_name") or c.get("name", ""),
+                        "company_name": c.get("company_name", ""),
+                        "currency_code": c.get("currency_code", "GHS"),
+                    })
+        except Exception as cat_err:
+            logger.debug(f"Catalog fallback notice: {cat_err}")
+
+    # Fallback 2: populate from known mapped contacts or staged transactions if contacts_list still empty
+    if not contacts_list:
+        seen_ids = set()
+        for map_k, map_v in mappings.items():
+            c_id = map_v.get("zoho_contact_id") if isinstance(map_v, dict) else str(map_v)
+            c_name = map_v.get("name", map_k) if isinstance(map_v, dict) else map_k
+            if c_id and c_id not in seen_ids:
+                seen_ids.add(c_id)
+                contacts_list.append({
+                    "contact_id": c_id,
+                    "contact_name": c_name,
+                    "company_name": c_name,
+                    "currency_code": "GHS",
+                })
 
     return {
         "client_id": client.id,
@@ -2319,6 +2352,7 @@ async def get_customer_mappings(
         "mappings": mappings,
         "active_contacts": contacts_list,
         "auto_create_missing_contacts": bool(custom_cfg.get("auto_create_missing_contacts", False)),
+        "error_hint": error_hint,
     }
 
 
@@ -2383,6 +2417,8 @@ async def save_customer_mapping(
             meta["customer_reconciled"] = True
             tx.metadata_json = meta
             flag_modified(tx, "metadata_json")
+            if tx.validation_status == "PENDING_VALIDATION_ERROR":
+                tx.validation_status = "VALID"
             db.add(tx)
             updated_tx_count += 1
 
