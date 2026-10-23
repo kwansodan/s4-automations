@@ -109,6 +109,32 @@ async def get_pipeline_stats(month: Optional[str] = None, year: Optional[int] = 
     return await get_dashboard_stats(month=month, year=year)
 
 
+@router.post("/stop", summary="Stop / Cancel Running Pipeline")
+@router.post("/cancel", summary="Stop / Cancel Running Pipeline (Alias)")
+async def stop_pipeline_endpoint(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Immediately stops and cancels any active pipeline in telemetry tracker."""
+    reason = (payload or {}).get("reason") or "Stopped by operator"
+    pipeline_tracker.stop_pipeline(reason=reason)
+    return {
+        "success": True,
+        "status": "CANCELLED",
+        "message": f"Pipeline was stopped: {reason}.",
+        "state": pipeline_tracker.get_state(),
+    }
+
+
+@router.post("/reset", summary="Reset Pipeline Telemetry State")
+async def reset_pipeline_endpoint() -> Dict[str, Any]:
+    """Resets pipeline state back to IDLE."""
+    pipeline_tracker.reset()
+    return {
+        "success": True,
+        "status": "IDLE",
+        "message": "Pipeline telemetry reset to idle.",
+        "state": pipeline_tracker.get_state(),
+    }
+
+
 
 @router.post("/simulate", summary="Interactive AI Pipeline Simulation Lab")
 async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:

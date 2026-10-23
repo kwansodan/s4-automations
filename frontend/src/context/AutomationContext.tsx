@@ -15,6 +15,7 @@ import {
   triggerInvoicing,
   toggleApproval,
   updateConfig,
+  stopPipeline,
 } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { parseCurrentRoute, syncUrlWithRoute, initRouteListener } from '../lib/router';
@@ -57,6 +58,7 @@ interface AutomationContextType {
   refreshAll: () => Promise<void>;
   runPipeline: (payload: Record<string, any>) => Promise<any>;
   runInvoicing: (payload: Record<string, any>) => Promise<any>;
+  stopActivePipeline: (reason?: string) => Promise<void>;
   handleToggleApproval: (rowIndex: number, field: 'reviewed' | 'approved', value: boolean) => Promise<void>;
   saveSystemConfig: (newConfig: Record<string, any>) => Promise<void>;
 }
@@ -346,6 +348,22 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const stopActivePipeline = async (reason?: string) => {
+    try {
+      addLog('warning', 'Sending cancellation request to active pipeline...');
+      const res = await stopPipeline(reason);
+      if (res.state) {
+        setPipelineProgress(res.state);
+      } else {
+        setPipelineProgress((prev) => prev ? { ...prev, is_running: false, status: 'CANCELLED' } : null);
+      }
+      addLog('info', res.message || 'Pipeline stopped by operator.');
+      await refreshAll();
+    } catch (e: any) {
+      addLog('error', `Failed stopping pipeline: ${e.message}`);
+    }
+  };
+
   return (
     <AutomationContext.Provider
       value={{
@@ -381,6 +399,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         refreshAll,
         runPipeline,
         runInvoicing,
+        stopActivePipeline,
         handleToggleApproval,
         saveSystemConfig,
       }}

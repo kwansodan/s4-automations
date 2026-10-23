@@ -1,9 +1,9 @@
 import React from 'react';
 import { useAutomation } from '../../context/AutomationContext';
-import { Loader2, Maximize2, Clock, CheckCircle2 } from 'lucide-react';
+import { Loader2, Maximize2, Clock, CheckCircle2, Square } from 'lucide-react';
 
 export const PipelineFloatingWidget: React.FC = () => {
-  const { pipelineProgress, setIsInvoiceModalOpen } = useAutomation();
+  const { pipelineProgress, setIsInvoiceModalOpen, stopActivePipeline } = useAutomation();
 
   if (!pipelineProgress?.is_running) {
     return null;
@@ -34,7 +34,7 @@ export const PipelineFloatingWidget: React.FC = () => {
           <span className="text-xs font-bold text-white truncate tracking-tight">{taskTitle}</span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {elapsed !== undefined && (
             <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 bg-slate-950/70 px-2 py-0.5 rounded-full border border-slate-800">
               <Clock className="w-2.5 h-2.5 text-slate-400" />
@@ -44,11 +44,24 @@ export const PipelineFloatingWidget: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsInvoiceModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-semibold border border-emerald-500/40 transition cursor-pointer active:scale-95"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-semibold border border-emerald-500/40 transition cursor-pointer active:scale-95"
             title="Expand into full live execution modal"
           >
             <Maximize2 className="w-3 h-3" />
             <span>Expand</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to stop the running pipeline?')) {
+                stopActivePipeline('Stopped by operator from floating widget');
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-[11px] font-semibold border border-rose-500/40 transition cursor-pointer active:scale-95"
+            title="Stop running pipeline immediately"
+          >
+            <Square className="w-2.5 h-2.5 fill-rose-400" />
+            <span>Stop</span>
           </button>
         </div>
       </div>

@@ -147,6 +147,31 @@ class PipelineProgressTracker:
 
         self.add_log("error", f"❌ Pipeline failed: {error_msg}")
 
+    def stop_pipeline(self, reason: str = "Stopped by operator"):
+        with self._lock:
+            self.is_running = False
+            self.status = "CANCELLED"
+            self.current_step = f"Pipeline stopped: {reason}"
+            self.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if self.start_timestamp > 0:
+                self.elapsed_seconds = round(time.time() - self.start_timestamp, 1)
+
+        self.add_log("warning", f"⏹ Pipeline stopped by operator: {reason}")
+
+    def reset(self):
+        with self._lock:
+            self.is_running = False
+            self.status = "IDLE"
+            self.task_name = "Idle"
+            self.current_step = "System ready."
+            self.stage_index = 0
+            self.percent = 0
+            self.error_message = None
+            self.last_result = None
+            self.start_timestamp = 0.0
+            self.elapsed_seconds = 0.0
+        self.add_log("info", "🔄 Pipeline telemetry reset to idle.")
+
     def get_state(self) -> Dict[str, Any]:
         with self._lock:
             if self.is_running and self.start_timestamp > 0:

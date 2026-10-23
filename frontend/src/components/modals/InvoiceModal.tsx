@@ -26,6 +26,7 @@ import {
   Layers,
   Users,
   Clock,
+  Square,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import {
@@ -155,6 +156,7 @@ export const InvoiceModal: React.FC = () => {
     selectedYear,
     stats,
     runInvoicing,
+    stopActivePipeline,
     pipelineProgress,
     invoicePreflight,
     setInvoicePreflight,
@@ -1834,17 +1836,32 @@ export const InvoiceModal: React.FC = () => {
             {/* Live Progress Footer Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-800">
               <span className="text-[11px] text-slate-400">
-                Invoicing running in background. You may minimize without interrupting execution.
+                Invoicing running in background. You may minimize or stop execution.
               </span>
-              <button
-                type="button"
-                onClick={() => setIsInvoiceModalOpen(false)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
-                title="Minimize to floating widget"
-              >
-                <Minimize2 className="w-3.5 h-3.5" />
-                <span>Run in Background</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to stop the running pipeline?')) {
+                      stopActivePipeline('Stopped by operator from invoice modal');
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-xs font-semibold border border-rose-500/40 transition cursor-pointer"
+                  title="Stop running pipeline immediately"
+                >
+                  <Square className="w-3.5 h-3.5 fill-rose-400" />
+                  <span>Stop Pipeline</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsInvoiceModalOpen(false)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                  title="Minimize to floating widget"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  <span>Run in Background</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

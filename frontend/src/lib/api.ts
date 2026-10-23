@@ -441,6 +441,23 @@ export async function triggerZohoInvoiceBatch(dryRun = false): Promise<{ message
   return handleResponse<{ message: string; event_id: string }>(res, 'Trigger invoice batch');
 }
 
+export async function stopPipeline(reason?: string): Promise<{ success: boolean; message: string; state: any }> {
+  const res = await resilientFetch('/api/pipeline/stop', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ reason: reason || 'Stopped by operator' }),
+  });
+  return handleResponse<{ success: boolean; message: string; state: any }>(res, 'Stop pipeline');
+}
+
+export async function resetPipeline(): Promise<{ success: boolean; message: string; state: any }> {
+  const res = await resilientFetch('/api/pipeline/reset', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+  });
+  return handleResponse<{ success: boolean; message: string; state: any }>(res, 'Reset pipeline');
+}
+
 // -------------------------------------------------------------------------
 // Sheets Review Data Endpoints
 // -------------------------------------------------------------------------

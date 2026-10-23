@@ -2928,6 +2928,9 @@
     --tw-gradient-to: var(--color-teal-600);
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .fill-rose-400 {
+    fill: var(--color-rose-400);
+  }
   .p-0\.5 {
     padding: calc(var(--spacing) * 0.5);
   }
@@ -4450,6 +4453,14 @@
     }
     .hover\:bg-rose-500:hover {
       background-color: var(--color-rose-500);
+    }
+    .hover\:bg-rose-500\/25:hover {
+      background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 25%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-rose-500\/25:hover {
+        background-color: color-mix(in oklab, var(--color-rose-500) 25%, transparent);
+      }
     }
     .hover\:bg-rose-700:hover {
       background-color: var(--color-rose-700);
