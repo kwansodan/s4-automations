@@ -400,4 +400,136 @@ async def test_daily_billing_pipeline_stages_and_recovers_processed(monkeypatch)
         session.commit()
 
 
+def test_matches_month_and_year_prevents_day_as_month_false_positives():
+    """Verify matches_month_and_year never confuses day numbers with month numbers."""
+    from app.api.v1.clients import matches_month_and_year
+
+    # Day 10 of September (2026-09-10) must NEVER match October (month 10)
+    assert matches_month_and_year(
+        t_date_raw="2026-09-10",
+        batch_id_raw="batch_anr_september_2026_xyz",
+        source_filename_raw="Embassy Gardens 10-09-2026.jpg",
+        month="October",
+        year=2026,
+    ) is False
+
+    # Day 10 of September (2026-09-10) MUST match September (month 09)
+    assert matches_month_and_year(
+        t_date_raw="2026-09-10",
+        batch_id_raw="batch_anr_september_2026_xyz",
+        source_filename_raw="Embassy Gardens 10-09-2026.jpg",
+        month="September",
+        year=2026,
+    ) is True
+
+    # Day 10 of October (2026-10-10) MUST match October
+    assert matches_month_and_year(
+        t_date_raw="2026-10-10",
+        batch_id_raw="batch_anr_october_2026_abc",
+        source_filename_raw="Embassy Gardens 10-10-2026.jpg",
+        month="October",
+        year=2026,
+    ) is True
+
+    # Day 15 of August (2026-08-15) must match August and reject October
+    assert matches_month_and_year(
+        t_date_raw="2026-08-15",
+        batch_id_raw="batch_august_2026",
+        source_filename_raw="slip_001.jpg",
+        month="August",
+        year=2026,
+    ) is True
+    assert matches_month_and_year(
+        t_date_raw="2026-08-15",
+        batch_id_raw="batch_august_2026",
+        source_filename_raw="slip_001.jpg",
+        month="October",
+        year=2026,
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_list_client_transactions_strict_month_isolation_no_leakage():
+    """Verify list_client_transactions returns an empty list for empty months without leaking previous months."""
+    from sqlmodel import Session, select, delete
+    from app.db.session import get_engine
+    from app.models.db_models import StagedTransaction, ClientOrganization
+    from app.api.v1.clients import list_client_transactions, get_client_transactions_summary
+
+    test_cid = "strict_isolation_client"
+
+    # Clean up any leftover test transactions
+    with Session(get_engine()) as session:
+        session.exec(delete(StagedTransaction).where(StagedTransaction.client_id == test_cid))
+        # Ensure client exists
+        existing_c = session.exec(select(ClientOrganization).where(ClientOrganization.id == test_cid)).first()
+        if not existing_c:
+            session.add(ClientOrganization(id=test_cid, name="Strict Isolation Hotel", industry="Hospitality"))
+        # Seed 2 September transactions
+        session.add(
+            StagedTransaction(
+                client_id=test_cid,
+                batch_id="batch_september_2026_01",
+                pipeline_id="pipe_ar",
+                pipeline_type="AR",
+                entity_type="ar_sales_invoice",
+                transaction_date="2026-09-10",
+                source_type="google_drive",
+                source_file_name="Embassy Gardens 10-09-2026.jpg",
+                item_or_description="Bath Towel",
+                quantity_or_debit=10.0,
+                rate_or_price=15.0,
+                total_amount=150.0,
+                status="INVOICED",
+                approved=True,
+                reviewed=True,
+            )
+        )
+        session.commit()
+
+    with Session(get_engine()) as session:
+        # Query for October 2026 (which has 0 transactions)
+        october_txs = await list_client_transactions(
+            client_id=test_cid,
+            status=None,
+            month="October",
+            year=2026,
+            pipeline_type="AR",
+            db=session,
+        )
+        # Must return empty list, NOT the September transaction!
+        assert len(october_txs) == 0
+
+        # Query for September 2026 (which has 1 transaction)
+        september_txs = await list_client_transactions(
+            client_id=test_cid,
+            status=None,
+            month="September",
+            year=2026,
+            pipeline_type="AR",
+            db=session,
+        )
+        assert len(september_txs) == 1
+        assert september_txs[0]["transaction_date"] == "2026-09-10"
+
+        # Query summary for October 2026
+        october_summary = await get_client_transactions_summary(
+            client_id=test_cid,
+            month="October",
+            year=2026,
+            pipeline_type="AR",
+            customer_name=None,
+            db=session,
+        )
+        assert len(october_summary.get("summary", [])) == 0
+        assert october_summary.get("total_billed", 0) == 0
+
+    # Clean up test transactions and client
+    with Session(get_engine()) as session:
+        session.exec(delete(StagedTransaction).where(StagedTransaction.client_id == test_cid))
+        session.exec(delete(ClientOrganization).where(ClientOrganization.id == test_cid))
+        session.commit()
+
+
+
 

@@ -1107,68 +1107,83 @@ def matches_month_and_year(
     month: Optional[str],
     year: Optional[int],
 ) -> bool:
-    """Robustly checks whether a transaction belongs to the requested month and/or year."""
+    """
+    Robustly checks whether a transaction belongs to the requested month and/or year.
+    Strictly prevents day numbers (such as day 10) from falsely matching month numbers (month 10).
+    """
     if not month and not year:
         return True
 
-    t_date = str(t_date_raw or "").lower().strip()
-    b_id = str(batch_id_raw or "").lower().strip()
-    fn = str(source_filename_raw or "").lower().strip()
+    from app.utils.date_parser import parse_date_from_string, MONTH_MAP as DATE_MONTH_MAP
 
-    # Check year if specified
-    if year:
-        yr_str = str(year)
-        short_yr = yr_str[-2:]
-        has_year = (
-            yr_str in t_date
-            or yr_str in b_id
-            or yr_str in fn
-            or f"-{short_yr}" in t_date
-            or f"_{short_yr}" in t_date
-            or f"/{short_yr}" in t_date
-        )
-        if not has_year:
-            # If t_date explicitly contains a different 4-digit year, it does not match
-            year_match = re.search(r"\b(20\d\d)\b", t_date)
-            if year_match and year_match.group(1) != yr_str:
-                return False
-
-    # Check month if specified
-    if month:
+    target_month_num: Optional[int] = None
+    if month and str(month).strip().upper() != "ALL":
         m_clean = str(month).lower().strip()
-        m_code = MONTH_MAP.get(m_clean)
+        target_month_num = DATE_MONTH_MAP.get(m_clean)
+
+    target_year_num: Optional[int] = None
+    if year and str(year).strip().upper() != "ALL":
         try:
-            m_num = int(m_code) if m_code else None
-        except Exception:
-            m_num = None
+            target_year_num = int(year)
+        except (ValueError, TypeError):
+            target_year_num = None
 
-        m_2digit = f"{m_num:02d}" if m_num else (m_code if m_code else None)
-        m_1digit = str(m_num) if m_num else None
+    # Step 1: Check transaction_date if present
+    t_date = str(t_date_raw or "").strip()
+    if t_date:
+        # Match standard ISO YYYY-MM-DD or YYYY-MM
+        iso_match = re.match(r"^(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?", t_date)
+        if iso_match:
+            tx_yr = int(iso_match.group(1))
+            tx_mo = int(iso_match.group(2))
+            if target_year_num and tx_yr != target_year_num:
+                return False
+            if target_month_num and tx_mo != target_month_num:
+                return False
+            return True
 
-        month_matched = False
-        if m_clean in t_date or m_clean in b_id or m_clean in fn:
-            month_matched = True
-        elif len(m_clean) >= 3 and (m_clean[:3] in b_id or m_clean[:3] in fn):
-            month_matched = True
-        elif m_2digit and (
-            f"-{m_2digit}-" in t_date
-            or f"/{m_2digit}/" in t_date
-            or f"_{m_2digit}_" in t_date
-            or f".{m_2digit}." in t_date
-            or t_date.endswith(f"-{m_2digit}")
-            or t_date.endswith(f"/{m_2digit}")
-            or f"-{m_2digit}-" in fn
-            or f"_{m_2digit}_" in fn
-            or f"_{m_2digit}_" in b_id
-        ):
-            month_matched = True
-        elif m_1digit and (
-            f"-{m_1digit}-" in t_date
-            or f"/{m_1digit}/" in t_date
-        ):
-            month_matched = True
+        # Try parsing arbitrary date string
+        parsed = parse_date_from_string(t_date, target_year=target_year_num)
+        if parsed:
+            p_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", parsed)
+            if p_iso:
+                tx_yr = int(p_iso.group(1))
+                tx_mo = int(p_iso.group(2))
+                if target_year_num and tx_yr != target_year_num:
+                    return False
+                if target_month_num and tx_mo != target_month_num:
+                    return False
+                return True
 
-        if not month_matched:
+    # Step 2: Extract date from source filename if available
+    fn = str(source_filename_raw or "").strip()
+    if fn:
+        parsed_fn = parse_date_from_string(fn, target_year=target_year_num)
+        if parsed_fn:
+            p_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", parsed_fn)
+            if p_iso:
+                tx_yr = int(p_iso.group(1))
+                tx_mo = int(p_iso.group(2))
+                if target_year_num and tx_yr != target_year_num:
+                    return False
+                if target_month_num and tx_mo != target_month_num:
+                    return False
+                return True
+
+    # Step 3: Check explicit month and year tokens in batch_id or source_filename
+    b_id = str(batch_id_raw or "").lower().strip()
+    fn_lower = fn.lower()
+
+    if target_month_num and month:
+        m_name = str(month).lower().strip()
+        has_month_token = m_name in b_id or m_name in fn_lower
+        if not has_month_token:
+            return False
+
+    if target_year_num:
+        y_str = str(target_year_num)
+        has_year_token = y_str in b_id or y_str in fn_lower
+        if not has_year_token:
             return False
 
     return True
@@ -1214,12 +1229,19 @@ async def list_client_transactions(
         has_healed = False
         for t in transactions:
             t_date = str(t.transaction_date or "").strip()
-            if not t_date or "september" in t_date.lower() or len(t_date) != 10:
+            # If t_date is already a valid ISO YYYY-MM-DD date, preserve it strictly
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", t_date):
+                # Derive month context from batch_id or filename, NEVER from request query parameter
+                doc_month = None
+                for m_name in MONTH_MAP.keys():
+                    if m_name in str(t.batch_id or "").lower() or m_name in str(t.source_file_name or "").lower():
+                        doc_month = m_name.capitalize()
+                        break
                 resolved = resolve_transaction_date(
-                    ocr_date=None,
-                    source_filename=t.source_file_name,
-                    fallback_month=month or "September",
-                    fallback_year=str(year or 2026),
+                    extracted_date=t_date if t_date and len(t_date) >= 6 else None,
+                    file_name=t.source_file_name,
+                    fallback_month=doc_month or "September",
+                    fallback_year=str(2026),
                 )
                 if resolved and resolved != t.transaction_date:
                     t.transaction_date = resolved
@@ -1248,9 +1270,9 @@ async def list_client_transactions(
         logger.warning(f"Notice auto-healing transactions on read: {heal_err}")
         db.rollback()
 
-    # Filter by month/year in memory if provided
+    # Filter by month/year strictly if provided (no cross-month leakage)
     if month or year:
-        filtered = [
+        transactions = [
             t for t in transactions
             if matches_month_and_year(
                 t_date_raw=t.transaction_date,
@@ -1260,12 +1282,6 @@ async def list_client_transactions(
                 year=year,
             )
         ]
-        # Resilient fallback: if date filter matched 0 items but the client has staged transactions,
-        # fallback to returning all transactions so the reviewer is never blocked by an empty screen.
-        if len(filtered) == 0 and len(transactions) > 0:
-            logger.info(f"No transactions matched strict date filter {month} {year} for {client_id}. Falling back to all {len(transactions)} transactions.")
-        else:
-            transactions = filtered
 
     if limit and len(transactions) > limit:
         transactions = transactions[:limit]
@@ -1309,12 +1325,19 @@ async def get_client_transactions_summary(
         has_healed = False
         for t in all_tx:
             t_date = str(t.transaction_date or "").strip()
-            if not t_date or "september" in t_date.lower() or len(t_date) != 10:
+            # If t_date is already a valid ISO YYYY-MM-DD date, preserve it strictly
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", t_date):
+                # Derive month context from batch_id or filename, NEVER from request query parameter
+                doc_month = None
+                for m_name in MONTH_MAP.keys():
+                    if m_name in str(t.batch_id or "").lower() or m_name in str(t.source_file_name or "").lower():
+                        doc_month = m_name.capitalize()
+                        break
                 resolved = resolve_transaction_date(
-                    ocr_date=None,
-                    source_filename=t.source_file_name,
-                    fallback_month=month or "September",
-                    fallback_year=str(year or 2026),
+                    extracted_date=t_date if t_date and len(t_date) >= 6 else None,
+                    file_name=t.source_file_name,
+                    fallback_month=doc_month or "September",
+                    fallback_year=str(2026),
                 )
                 if resolved and resolved != t.transaction_date:
                     t.transaction_date = resolved
@@ -1343,7 +1366,7 @@ async def get_client_transactions_summary(
         logger.warning(f"Notice auto-healing in summary: {heal_err}")
         db.rollback()
 
-    # Filter by month/year if provided
+    # Filter by month/year strictly if provided (no cross-month leakage)
     matched_tx = []
     for t in all_tx:
         if matches_month_and_year(
@@ -1354,12 +1377,6 @@ async def get_client_transactions_summary(
             year=year,
         ):
             matched_tx.append(t)
-
-    # Resilient fallback: if no items matched the specific month/year filter, but transactions exist in DB for this client,
-    # fallback to all_tx so the reconciliation summary table is populated!
-    if len(matched_tx) == 0 and len(all_tx) > 0:
-        logger.info(f"Summary: No transactions matched date filter {month} {year} for {client_id}. Falling back to all {len(all_tx)} available transactions.")
-        matched_tx = all_tx
 
     # Filter by customer_name if specified
     if customer_name and customer_name.strip().upper() != "ALL":
@@ -1517,9 +1534,6 @@ async def get_client_source_metrics(
             year=year,
         ):
             matched_tx.append(t)
-
-    if not matched_tx and all_tx:
-        matched_tx = all_tx
 
     import re
     def _clean_prop(filename: Optional[str], meta: Optional[dict]) -> str:
