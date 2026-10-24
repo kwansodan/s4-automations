@@ -26,13 +26,14 @@ from app.models.schemas import (
 from app.services.google_drive_service import GoogleDriveService
 from app.services.onedrive_service import OneDriveService
 from app.services.email_source_service import EmailSourceService
-from app.services.ocr_service import GeminiOCRService
+from app.services.ocr_service import GeminiOCRService, AIModelUnavailableException, is_model_unavailable_error
 from app.services.zoho_service import ZohoBooksService
 from app.services.zoho_contract_validator import ZohoContractValidator
 from app.services.pipeline_alert_service import PipelineAlertService
 from app.config import settings
 from app.utils.date_parser import resolve_transaction_date
 from app.utils.logging import get_logger
+from app.utils.progress_tracker import pipeline_tracker
 
 logger = get_logger("dynamic_blueprint_strategy")
 
@@ -637,7 +638,13 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             "total_amount": float(payload.get("total_amount") or 0.0),
                             "confidence_score": c_score,
                         }
+                except AIModelUnavailableException as e:
+                    logger.error(f"Halting extraction: AI model unavailable for {doc.file_name}: {e}")
+                    raise
                 except Exception as e:
+                    if is_model_unavailable_error(e):
+                        logger.error(f"Halting extraction: AI model unavailable for {doc.file_name}: {e}")
+                        raise AIModelUnavailableException(str(e)) from e
                     logger.warning(f"Vision OCR extraction exception for {doc.file_name}: {e}")
                     default_cust = doc.metadata.get("customer_name_hint") or ("Walk-in Customer" if not is_ap else self.client_name)
                     extraction = {
@@ -921,7 +928,18 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for res in results:
-            if isinstance(res, Exception):
+            if isinstance(res, AIModelUnavailableException):
+                err_msg = f"AI Model Unavailable: {res}"
+                logger.error(err_msg)
+                self.log_step(
+                    "EXTRACTION",
+                    f"AI OCR model unavailable. Pipeline terminated to protect data accuracy: {res}",
+                    "error",
+                    {"error": str(res)},
+                )
+                pipeline_tracker.fail_pipeline(err_msg)
+                raise res
+            elif isinstance(res, Exception):
                 logger.error(f"Error during document extraction: {res}")
                 self.execution_errors.append(str(res))
             elif isinstance(res, list):

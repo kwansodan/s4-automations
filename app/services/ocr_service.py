@@ -4,7 +4,7 @@ import json
 import re
 from difflib import SequenceMatcher
 from typing import List, Dict, Optional, Any, Tuple
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.config import settings
 from app.models.schemas import (
@@ -22,6 +22,38 @@ from app.utils.logging import get_logger
 from app.services.telemetry_service import record_api_call_sync
 
 logger = get_logger("ocr_service")
+
+
+class AIModelUnavailableException(RuntimeError):
+    """Raised when the primary configured AI OCR model is unavailable or overloaded."""
+    pass
+
+
+def is_model_unavailable_error(exc: Exception) -> bool:
+    """Checks whether an exception indicates AI model unavailability, capacity limits, or quota exhaustion."""
+    if isinstance(exc, AIModelUnavailableException):
+        return True
+    err_str = str(exc).lower()
+    return any(
+        k in err_str
+        for k in [
+            "503",
+            "unavailable",
+            "high demand",
+            "capacity",
+            "overloaded",
+            "resource_exhausted",
+            "resourceexhausted",
+            "quota",
+            "rate limit",
+            "429",
+            "temporarily unavailable",
+            "server error",
+            "500",
+            "502",
+            "504",
+        ]
+    )
 
 
 class GeminiOCRService:
@@ -103,7 +135,12 @@ The file name is: "{file_name}".
 Return strictly valid JSON conforming to the schema.
 """
 
-    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(AIModelUnavailableException),
+    )
     async def extract_slip_data(
         self,
         file_bytes: bytes,
@@ -129,94 +166,100 @@ Return strictly valid JSON conforming to the schema.
             known_aliases=known_aliases,
         )
 
-        candidate_models = [self.model_name]
-        for m in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
-            if m not in candidate_models:
-                candidate_models.append(m)
-
+        m_name = self.model_name
         last_error = None
-        for m_name in candidate_models:
+
+        try:
+            # 1. Attempt using modern google-genai SDK
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=self.api_key)
+            response = client.models.generate_content(
+                model=m_name,
+                contents=[
+                    types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                    prompt,
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=OCRSlipExtraction,
+                    temperature=0.1,
+                ),
+            )
+            raw_text = response.text
+            parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
+            self._reconcile_with_catalog(parsed, item_catalog)
+
+            duration_ms = (time.time() - start_time) * 1000
+            usage = getattr(response, "usage_metadata", None)
+            p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+            c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+            t_tokens = getattr(usage, "total_token_count", 0) if usage else (p_tokens + c_tokens)
+            record_api_call_sync(
+                service_name="gemini_vision",
+                operation="ocr_slip_extraction",
+                client_id=client_name,
+                units_consumed=1,
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=t_tokens,
+                latency_ms=duration_ms,
+                is_success=True,
+            )
+            return parsed
+
+        except Exception as genai_err:
+            last_error = genai_err
+            if is_model_unavailable_error(genai_err):
+                logger.error(f"Primary AI OCR model '{m_name}' is unavailable (503 / capacity limit): {genai_err}")
+                record_api_call_sync(
+                    service_name="gemini_vision",
+                    operation="ocr_slip_extraction_failed_unavailable",
+                    client_id=client_name,
+                    units_consumed=1,
+                    is_success=False,
+                    error_message=str(genai_err),
+                )
+                raise AIModelUnavailableException(
+                    f"AI OCR model '{m_name}' is currently unavailable (model experiencing high demand or service outage). Processing terminated to protect data accuracy."
+                ) from genai_err
+
+            logger.warning(f"google-genai attempt on '{m_name}' failed ({genai_err}). Trying google-generativeai fallback on '{m_name}'...")
             try:
-                # 1. Attempt using modern google-genai SDK
-                from google import genai
-                from google.genai import types
-                
-                client = genai.Client(api_key=self.api_key)
-                response = client.models.generate_content(
-                    model=m_name,
-                    contents=[
-                        types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-                        prompt,
+                import google.generativeai as genai_legacy
+                genai_legacy.configure(api_key=self.api_key)
+                model = genai_legacy.GenerativeModel(m_name)
+
+                response = model.generate_content(
+                    [
+                        {"mime_type": mime_type, "data": file_bytes},
+                        prompt + "\nReturn JSON output only without markdown formatting.",
                     ],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=OCRSlipExtraction,
-                        temperature=0.1,
-                    ),
+                    generation_config={"temperature": 0.1},
                 )
                 raw_text = response.text
                 parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
                 self._reconcile_with_catalog(parsed, item_catalog)
-
                 duration_ms = (time.time() - start_time) * 1000
-                usage = getattr(response, "usage_metadata", None)
-                p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
-                c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
-                t_tokens = getattr(usage, "total_token_count", 0) if usage else (p_tokens + c_tokens)
                 record_api_call_sync(
                     service_name="gemini_vision",
-                    operation="ocr_slip_extraction",
+                    operation="ocr_slip_extraction_legacy_fallback",
                     client_id=client_name,
                     units_consumed=1,
-                    prompt_tokens=p_tokens,
-                    completion_tokens=c_tokens,
-                    total_tokens=t_tokens,
                     latency_ms=duration_ms,
                     is_success=True,
                 )
                 return parsed
+            except Exception as legacy_err:
+                last_error = legacy_err
+                if is_model_unavailable_error(legacy_err):
+                    logger.error(f"Primary AI OCR model '{m_name}' legacy attempt is unavailable: {legacy_err}")
+                    raise AIModelUnavailableException(
+                        f"AI OCR model '{m_name}' is currently unavailable (model experiencing high demand or service outage). Processing terminated to protect data accuracy."
+                    ) from legacy_err
 
-            except Exception as genai_err:
-                last_error = genai_err
-                is_503 = any(k in str(genai_err).lower() for k in ["503", "unavailable", "high demand", "capacity"])
-                if is_503 and m_name != candidate_models[-1]:
-                    logger.warning(f"Model '{m_name}' experienced 503 high demand. Trying fallback candidate model...")
-                    continue
-
-                logger.warning(f"google-genai attempt on '{m_name}' failed ({genai_err}). Trying google-generativeai fallback...")
-                try:
-                    import google.generativeai as genai_legacy
-                    genai_legacy.configure(api_key=self.api_key)
-                    model = genai_legacy.GenerativeModel(m_name)
-                    
-                    response = model.generate_content(
-                        [
-                            {"mime_type": mime_type, "data": file_bytes},
-                            prompt + "\nReturn JSON output only without markdown formatting.",
-                        ],
-                        generation_config={"temperature": 0.1},
-                    )
-                    raw_text = response.text
-                    parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
-                    self._reconcile_with_catalog(parsed, item_catalog)
-                    duration_ms = (time.time() - start_time) * 1000
-                    record_api_call_sync(
-                        service_name="gemini_vision",
-                        operation="ocr_slip_extraction_legacy_fallback",
-                        client_id=client_name,
-                        units_consumed=1,
-                        latency_ms=duration_ms,
-                        is_success=True,
-                    )
-                    return parsed
-                except Exception as legacy_err:
-                    last_error = legacy_err
-                    logger.warning(f"google-generativeai fallback on '{m_name}' failed: {legacy_err}")
-                    if is_503 and m_name != candidate_models[-1]:
-                        continue
-                    break
-
-        logger.error(f"Gemini extraction failed across candidate models: {last_error}")
+        logger.error(f"Gemini extraction failed on model '{m_name}': {last_error}")
         record_api_call_sync(
             service_name="gemini_vision",
             operation="ocr_slip_extraction_failed",
@@ -225,9 +268,18 @@ Return strictly valid JSON conforming to the schema.
             is_success=False,
             error_message=str(last_error),
         )
+        if is_model_unavailable_error(last_error):
+            raise AIModelUnavailableException(
+                f"AI OCR model '{m_name}' is currently unavailable. Processing terminated to protect data accuracy."
+            ) from last_error
         raise RuntimeError(f"OCR extraction failed for {file_name}: {last_error}")
 
-    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(AIModelUnavailableException),
+    )
     async def extract_vendor_bill(
         self,
         file_bytes: bytes,
@@ -291,9 +343,18 @@ Return strictly valid JSON conforming to the schema.
                 is_success=False,
                 error_message=str(e),
             )
+            if is_model_unavailable_error(e):
+                raise AIModelUnavailableException(
+                    f"AI OCR model '{self.model_name}' is currently unavailable (model experiencing high demand or service outage). Processing terminated to protect data accuracy."
+                ) from e
             raise RuntimeError(f"Vendor bill extraction failed for {file_name}: {e}")
 
-    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(AIModelUnavailableException),
+    )
     async def extract_bank_statement(
         self,
         file_bytes: bytes,
@@ -362,6 +423,10 @@ Return strictly valid JSON conforming to the schema.
                 is_success=False,
                 error_message=str(e),
             )
+            if is_model_unavailable_error(e):
+                raise AIModelUnavailableException(
+                    f"AI OCR model '{self.model_name}' is currently unavailable (model experiencing high demand or service outage). Processing terminated to protect data accuracy."
+                ) from e
             raise RuntimeError(f"Failed to extract bank statement {file_name}: {e}")
 
 
@@ -718,4 +783,8 @@ Analyze thoroughly and return JSON output only.
 
         except Exception as e:
             logger.error(f"Live document extraction failed: {e}")
+            if is_model_unavailable_error(e):
+                raise AIModelUnavailableException(
+                    f"AI OCR model '{self.model_name}' is currently unavailable (model experiencing high demand or service outage). Processing terminated to protect data accuracy."
+                ) from e
             raise RuntimeError(f"Live document extraction failed: {e}")

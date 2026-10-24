@@ -9,6 +9,7 @@ from app.strategies.factory import StrategyFactory
 from app.services.audit_service import AuditService
 from app.utils.progress_tracker import pipeline_tracker
 from app.utils.logging import get_logger
+from app.services.ocr_service import AIModelUnavailableException
 
 logger = get_logger("client_strategy_pipeline")
 
@@ -67,106 +68,112 @@ async def client_strategy_pipeline(ctx: inngest.Context, step: Optional[inngest.
         logger.info(f"⚡ [Inngest Workflow] Running pipeline for client '{c_id}' ({target_month} {target_year})")
         pipeline_tracker.start_pipeline(f"Pipeline: {c_id}", target_month, target_year, total_stages=4)
 
-        AuditService.log(
-            client_id=c_id,
-            action="AUTONOMOUS_RUN_DISPATCHED" if not requested_client_id else "WORKFLOW_DISPATCHED",
-            actor_email=actor_email,
-            details={"month": target_month, "year": target_year, "auto_post": auto_post, "is_autonomous": not bool(requested_client_id)},
-        )
+        try:
+            AuditService.log(
+                client_id=c_id,
+                action="AUTONOMOUS_RUN_DISPATCHED" if not requested_client_id else "WORKFLOW_DISPATCHED",
+                actor_email=actor_email,
+                details={"month": target_month, "year": target_year, "auto_post": auto_post, "is_autonomous": not bool(requested_client_id)},
+            )
 
-        # Step 1: Discover Sources
-        async def _step_discover(cid=c_id):
-            strategy = StrategyFactory.get(cid)
-            pipeline_tracker.update_progress(percent=25, stage_index=1, current_step=f"Discovering sources for {cid}...")
-            sources = await strategy.discover_sources(target_month, target_year)
-            return {
-                "sources_count": len(sources),
-                "sources": [s.model_dump(exclude={"file_bytes"}) for s in sources],
-            }
+            # Step 1: Discover Sources
+            async def _step_discover(cid=c_id):
+                strategy = StrategyFactory.get(cid)
+                pipeline_tracker.update_progress(percent=25, stage_index=1, current_step=f"Discovering sources for {cid}...")
+                sources = await strategy.discover_sources(target_month, target_year)
+                return {
+                    "sources_count": len(sources),
+                    "sources": [s.model_dump(exclude={"file_bytes"}) for s in sources],
+                }
 
-        discover_res = await step.run(f"1-discover-sources-{c_id}", _step_discover)
-        sources_count = discover_res.get("sources_count", 0)
+            discover_res = await step.run(f"1-discover-sources-{c_id}", _step_discover)
+            sources_count = discover_res.get("sources_count", 0)
 
-        # If zero new files found for this month, finish gracefully
-        if sources_count == 0:
-            logger.info(f"Zero new source files for client '{c_id}' in {target_month} {target_year}. Skipping OCR.")
-            pipeline_tracker.update_progress(percent=100, stage_index=4, current_step=f"No new files found for {c_id}.")
+            # If zero new files found for this month, finish gracefully
+            if sources_count == 0:
+                logger.info(f"Zero new source files for client '{c_id}' in {target_month} {target_year}. Skipping OCR.")
+                pipeline_tracker.update_progress(percent=100, stage_index=4, current_step=f"No new files found for {c_id}.")
+                client_summary = {
+                    "client_id": c_id,
+                    "month": target_month,
+                    "year": target_year,
+                    "status": "COMPLETED_NO_FILES",
+                    "sources_discovered": 0,
+                    "items_extracted": 0,
+                    "total_amount": 0.0,
+                    "message": f"No new unparsed files found in Google Drive for {target_month} {target_year}.",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                results[c_id] = client_summary
+                AuditService.log(
+                    client_id=c_id,
+                    action="AUTONOMOUS_RUN_NO_FILES",
+                    actor_email=actor_email,
+                    details=client_summary,
+                )
+                continue
+
+            # Step 2: Extract & Validate
+            async def _step_extract(cid=c_id):
+                strategy = StrategyFactory.get(cid)
+                pipeline_tracker.update_progress(percent=50, stage_index=2, current_step=f"Extracting & validating line items for {cid}...")
+                sources = await strategy.discover_sources(target_month, target_year)
+                items = await strategy.extract_and_validate(sources, force_reprocess=force_reprocess)
+                return {
+                    "items_count": len(items),
+                    "total_value": sum(i.total_amount for i in items),
+                    "items": [i.model_dump() for i in items],
+                }
+
+            extract_res = await step.run(f"2-extract-and-validate-{c_id}", _step_extract)
+
+            # Step 3: Sync Review Workspace (PostgreSQL Staged Transactions)
+            async def _step_sync(cid=c_id):
+                strategy = StrategyFactory.get(cid)
+                pipeline_tracker.update_progress(percent=75, stage_index=3, current_step=f"Syncing review ledger for {cid}...")
+                sources = await strategy.discover_sources(target_month, target_year)
+                items = await strategy.extract_and_validate(sources, force_reprocess=force_reprocess)
+                return await strategy.sync_review_workspace(target_month, target_year, items)
+
+            sync_res = await step.run(f"3-sync-review-workspace-{c_id}", _step_sync)
+
+            # Step 4: Post to Accounting (optional)
+            post_res = {"status": "SKIPPED", "invoices_created": 0}
+            if auto_post:
+                async def _step_post(cid=c_id):
+                    strategy = StrategyFactory.get(cid)
+                    pipeline_tracker.update_progress(percent=95, stage_index=4, current_step=f"Posting to Zoho Books for {cid}...")
+                    return await strategy.post_to_accounting(target_month, target_year)
+
+                post_res = await step.run(f"4-post-to-accounting-{c_id}", _step_post)
+
+            pipeline_tracker.update_progress(percent=100, stage_index=4, current_step=f"Completed {c_id} pipeline.")
+
             client_summary = {
                 "client_id": c_id,
                 "month": target_month,
                 "year": target_year,
-                "status": "COMPLETED_NO_FILES",
-                "sources_discovered": 0,
-                "items_extracted": 0,
-                "total_amount": 0.0,
-                "message": f"No new unparsed files found in Google Drive for {target_month} {target_year}.",
+                "status": "SUCCESS",
+                "sources_discovered": discover_res.get("sources_count", 0),
+                "items_extracted": extract_res.get("items_count", 0),
+                "total_amount": extract_res.get("total_value", 0.0),
+                "sync_details": sync_res,
+                "accounting_post": post_res,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
-            results[c_id] = client_summary
+
             AuditService.log(
                 client_id=c_id,
-                action="AUTONOMOUS_RUN_NO_FILES",
+                action="WORKFLOW_COMPLETED",
                 actor_email=actor_email,
                 details=client_summary,
             )
-            continue
-
-        # Step 2: Extract & Validate
-        async def _step_extract(cid=c_id):
-            strategy = StrategyFactory.get(cid)
-            pipeline_tracker.update_progress(percent=50, stage_index=2, current_step=f"Extracting & validating line items for {cid}...")
-            sources = await strategy.discover_sources(target_month, target_year)
-            items = await strategy.extract_and_validate(sources, force_reprocess=force_reprocess)
-            return {
-                "items_count": len(items),
-                "total_value": sum(i.total_amount for i in items),
-                "items": [i.model_dump() for i in items],
-            }
-
-        extract_res = await step.run(f"2-extract-and-validate-{c_id}", _step_extract)
-
-        # Step 3: Sync Review Workspace (PostgreSQL Staged Transactions)
-        async def _step_sync(cid=c_id):
-            strategy = StrategyFactory.get(cid)
-            pipeline_tracker.update_progress(percent=75, stage_index=3, current_step=f"Syncing review ledger for {cid}...")
-            sources = await strategy.discover_sources(target_month, target_year)
-            items = await strategy.extract_and_validate(sources, force_reprocess=force_reprocess)
-            return await strategy.sync_review_workspace(target_month, target_year, items)
-
-        sync_res = await step.run(f"3-sync-review-workspace-{c_id}", _step_sync)
-
-        # Step 4: Post to Accounting (optional)
-        post_res = {"status": "SKIPPED", "invoices_created": 0}
-        if auto_post:
-            async def _step_post(cid=c_id):
-                strategy = StrategyFactory.get(cid)
-                pipeline_tracker.update_progress(percent=95, stage_index=4, current_step=f"Posting to Zoho Books for {cid}...")
-                return await strategy.post_to_accounting(target_month, target_year)
-
-            post_res = await step.run(f"4-post-to-accounting-{c_id}", _step_post)
-
-        pipeline_tracker.update_progress(percent=100, stage_index=4, current_step=f"Completed {c_id} pipeline.")
-
-        client_summary = {
-            "client_id": c_id,
-            "month": target_month,
-            "year": target_year,
-            "status": "SUCCESS",
-            "sources_discovered": discover_res.get("sources_count", 0),
-            "items_extracted": extract_res.get("items_count", 0),
-            "total_amount": extract_res.get("total_value", 0.0),
-            "sync_details": sync_res,
-            "accounting_post": post_res,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        AuditService.log(
-            client_id=c_id,
-            action="WORKFLOW_COMPLETED",
-            actor_email=actor_email,
-            details=client_summary,
-        )
-        results[c_id] = client_summary
+            results[c_id] = client_summary
+        except AIModelUnavailableException as ai_err:
+            err_msg = f"AI Model Unavailable: {ai_err}"
+            logger.error(err_msg)
+            pipeline_tracker.fail_pipeline(err_msg)
+            raise
 
     return results.get(requested_client_id, results) if requested_client_id else results
 

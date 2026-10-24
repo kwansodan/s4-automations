@@ -21,7 +21,7 @@ from app.db.session import get_engine
 from sqlmodel import select, Session
 from app.services.zoho_service import ZohoBooksService
 from app.services.google_drive_service import GoogleDriveService
-from app.services.ocr_service import GeminiOCRService
+from app.services.ocr_service import GeminiOCRService, AIModelUnavailableException, is_model_unavailable_error
 from app.utils.logging import get_logger
 from app.utils.progress_tracker import pipeline_tracker
 
@@ -233,7 +233,19 @@ async def run_daily_pipeline_core(
                         drive.archive_file(file_id, client_folder_id, processed_folder_id)
                         pipeline_tracker.add_log("info", f"📦 Archived {file_name} into {client_name}/Processed/.")
 
+                    except AIModelUnavailableException as ai_err:
+                        err_msg = f"AI model not available: {ai_err}"
+                        logger.error(err_msg)
+                        pipeline_tracker.add_log("error", f"🚨 {err_msg}")
+                        pipeline_tracker.fail_pipeline(err_msg)
+                        raise
                     except Exception as file_err:
+                        if is_model_unavailable_error(file_err):
+                            err_msg = f"AI model not available: {file_err}"
+                            logger.error(err_msg)
+                            pipeline_tracker.add_log("error", f"🚨 {err_msg}")
+                            pipeline_tracker.fail_pipeline(err_msg)
+                            raise AIModelUnavailableException(err_msg) from file_err
                         logger.error(f"Error processing slip file {file_name}: {file_err}")
                         pipeline_tracker.add_log("error", f"⚠️ Error processing {file_name}: {file_err}")
 
