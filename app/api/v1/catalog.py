@@ -157,7 +157,7 @@ async def get_zoho_catalog(
                     "contact_id": f"cnt_{client_obj.id}",
                     "contact_name": client_obj.name,
                     "company_name": client_obj.name,
-                    "email": client_obj.contact_email or "",
+                    "email": getattr(client_obj, "contact_email", None) or getattr(client_obj, "source_email", "") or "",
                 }]
         else:
             contacts_list = []

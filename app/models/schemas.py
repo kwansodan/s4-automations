@@ -2,7 +2,7 @@
 
 from enum import Enum
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class ConfidenceLevel(str, Enum):
@@ -27,12 +27,32 @@ class OCRSlipItem(BaseModel):
     raw_item_name: str = Field(description="Original handwritten item name as written on slip, e.g., 'B/Sheet Dbl', 'F/Towel'")
     standard_item_name: str = Field(default="", description="Reconciled standard item name from Zoho catalog")
     zoho_item_id: str = Field(default="", description="Matched Zoho Item ID")
-    unit_rate: float = Field(default=0.0, description="Unit rate in GHS or account currency")
-    pickup_qty: int = Field(default=0, ge=0, description="Quantity picked up from client")
-    delivery_qty: int = Field(default=0, ge=0, description="Quantity delivered back to client")
-    unreturned_loss_qty: int = Field(default=0, description="Loss discrepancy (pickup_qty - delivery_qty)")
+    unit_rate: Optional[float] = Field(default=0.0, description="Unit rate in GHS or account currency")
+    pickup_qty: Optional[int] = Field(default=0, ge=0, description="Quantity picked up from client")
+    delivery_qty: Optional[int] = Field(default=0, ge=0, description="Quantity delivered back to client")
+    unreturned_loss_qty: Optional[int] = Field(default=0, description="Loss discrepancy (pickup_qty - delivery_qty)")
     confidence_score: ConfidenceLevel = Field(default=ConfidenceLevel.HIGH, description="OCR extraction confidence")
     remarks: str = Field(default="", description="Slip line item remarks or notes")
+
+    @field_validator("unit_rate", mode="before")
+    @classmethod
+    def _coerce_unit_rate(cls, v):
+        if v is None or v == "":
+            return 0.0
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+
+    @field_validator("pickup_qty", "delivery_qty", "unreturned_loss_qty", mode="before")
+    @classmethod
+    def _coerce_qty(cls, v):
+        if v is None or v == "":
+            return 0
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return 0
 
 
 class OCRSlipExtraction(BaseModel):
@@ -265,6 +285,7 @@ class ZohoContact(BaseModel):
     company_name: Optional[str] = ""
     email: Optional[str] = ""
     status: Optional[str] = "active"
+    currency_code: Optional[str] = "GHS"
 
 
 class ZohoItem(BaseModel):

@@ -288,6 +288,7 @@ class ZohoBooksService:
                                 company_name=c.get("company_name", ""),
                                 email=c.get("email", ""),
                                 status=c.get("status", "active"),
+                                currency_code=c.get("currency_code", "GHS") or "GHS",
                             )
                         )
 

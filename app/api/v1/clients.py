@@ -2319,7 +2319,7 @@ async def get_customer_mappings(
                     "contact_id": c.contact_id,
                     "contact_name": c.contact_name,
                     "company_name": c.company_name,
-                    "currency_code": c.currency_code or "GHS",
+                    "currency_code": getattr(c, "currency_code", "GHS") or "GHS",
                 }
                 for c in active_contacts
                 if c.contact_id and not str(c.contact_id).startswith("cnt_mock_")

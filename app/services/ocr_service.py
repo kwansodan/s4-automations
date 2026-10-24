@@ -352,7 +352,6 @@ Return strictly valid JSON conforming to the schema.
         import json
         cleaned = re.sub(r"^```json\s*", "", text.strip(), flags=re.MULTILINE)
         cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
-        parsed: Optional[OCRSlipExtraction] = None
         try:
             data = json.loads(cleaned)
             if isinstance(data, dict):
@@ -360,6 +359,17 @@ Return strictly valid JSON conforming to the schema.
                     data["file_name"] = file_name
                 if not data.get("client_name") and client_name:
                     data["client_name"] = client_name
+                if isinstance(data.get("items"), list):
+                    for item_dict in data["items"]:
+                        if isinstance(item_dict, dict):
+                            if item_dict.get("unit_rate") is None or item_dict.get("unit_rate") == "":
+                                item_dict["unit_rate"] = 0.0
+                            if item_dict.get("pickup_qty") is None or item_dict.get("pickup_qty") == "":
+                                item_dict["pickup_qty"] = 0
+                            if item_dict.get("delivery_qty") is None or item_dict.get("delivery_qty") == "":
+                                item_dict["delivery_qty"] = 0
+                            if item_dict.get("unreturned_loss_qty") is None or item_dict.get("unreturned_loss_qty") == "":
+                                item_dict["unreturned_loss_qty"] = 0
                 parsed = OCRSlipExtraction.model_validate(data)
         except Exception:
             pass

@@ -21,11 +21,43 @@ class EmailSourceService:
         port: int = 993,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        imap_server: Optional[str] = None,
+        imap_user: Optional[str] = None,
+        imap_password: Optional[str] = None,
+        folder: Optional[str] = None,
+        **kwargs,
     ):
-        self.host = host or settings.SMTP_HOST
+        self.host = host or imap_server or settings.SMTP_HOST
         self.port = port
-        self.username = username or settings.SMTP_USER
-        self.password = password or settings.SMTP_PASSWORD
+        self.username = username or imap_user or settings.SMTP_USER
+        self.password = password or imap_password or settings.SMTP_PASSWORD
+        self.default_folder = folder or "INBOX"
+
+    async def fetch_unread_attachments(
+        self,
+        month: Optional[str] = None,
+        year: Optional[int] = None,
+        folder: Optional[str] = None,
+        **kwargs,
+    ) -> List[Any]:
+        """Async compatibility method returning SourceDocument objects for strategy pipelines."""
+        import asyncio
+        target_folder = folder or self.default_folder
+        raw_list = await asyncio.to_thread(self.fetch_unprocessed_attachments, folder=target_folder)
+        from app.strategies.base import SourceDocument, SourceType
+        docs = []
+        for att in raw_list:
+            docs.append(
+                SourceDocument(
+                    file_name=att.get("file_name", "invoice.pdf"),
+                    source_type=SourceType.EMAIL,
+                    source_identifier=att.get("metadata", {}).get("message_id") or att.get("file_name"),
+                    mime_type=att.get("mime_type", "application/pdf"),
+                    file_bytes=att.get("file_bytes"),
+                    metadata=att,
+                )
+            )
+        return docs
 
     def fetch_unprocessed_attachments(
         self,

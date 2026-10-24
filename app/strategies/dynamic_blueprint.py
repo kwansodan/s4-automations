@@ -1,5 +1,6 @@
 """Universal Dynamic Blueprint Strategy Engine with Multi-Pipeline & Strict Zoho Contract Validation."""
 
+import re
 import json
 import asyncio
 from datetime import datetime, timezone
@@ -292,7 +293,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         logger.info(f"[{self.client_name}] Stage 2: Extracting data from {len(sources)} source documents (force_reprocess={force_reprocess})...")
         extracted_items: List[ExtractedLineItem] = []
         ocr = GeminiOCRService()
-        zoho = ZohoBooksService()
+        effective_org_id = getattr(self.client, "zoho_org_id", None) or getattr(self.client, "organization_id", None)
+        zoho = ZohoBooksService(org_id=effective_org_id)
 
         # Pre-fetch Zoho Contacts & Catalog for validation
         contacts = await zoho.fetch_active_contacts()
@@ -478,6 +480,8 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             file_name=doc.file_name,
                             client_name=doc.metadata.get("customer_name_hint") or self.client_name,
                             item_catalog=items_catalog,
+                            customer_catalog=contacts,
+                            known_aliases=self.custom_config.get("customer_mappings", {}),
                         )
                         ext_items = []
                         total_amt = 0.0
@@ -512,12 +516,20 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                                 "confidence_score": it.confidence_score.value if hasattr(it.confidence_score, "value") else str(it.confidence_score),
                                 "remarks": it.remarks,
                             })
+                        detected_cust = (
+                            extraction_obj.reconciled_customer_name
+                            or extraction_obj.client_name
+                            or doc.metadata.get("customer_name_hint")
+                            or self.client_name
+                        )
                         extraction = {
                             "items": ext_items,
                             "line_items": ext_items,
                             "date": extraction_obj.slip_date,
                             "slip_date": extraction_obj.slip_date,
-                            "customer_name": extraction_obj.client_name or doc.metadata.get("customer_name_hint") or self.client_name,
+                            "customer_name": detected_cust,
+                            "raw_customer_name": extraction_obj.raw_customer_name,
+                            "reconciled_customer_name": extraction_obj.reconciled_customer_name,
                             "total_amount": total_amt,
                             "confidence_score": 0.95,
                         }
