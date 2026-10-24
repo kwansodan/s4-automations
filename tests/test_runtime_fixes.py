@@ -211,3 +211,193 @@ async def test_dynamic_blueprint_terminates_on_model_unavailable(monkeypatch):
     assert "AI Model Unavailable" in tracker_state["current_step"]
 
 
+@pytest.mark.asyncio
+async def test_daily_billing_pipeline_stages_and_recovers_processed(monkeypatch):
+    """Verify daily_billing_pipeline commits transactions to DB and recovers unindexed slips from Processed folder."""
+    from unittest.mock import AsyncMock, MagicMock
+    from sqlmodel import Session, select, delete
+    from app.db.session import get_engine
+    from app.models.db_models import StagedTransaction, ClientOrganization
+    from app.models.schemas import (
+        ClientFolderInfo,
+        OCRSlipExtraction,
+        OCRSlipItem,
+        ConfidenceLevel,
+        ZohoContact,
+    )
+    from app.workflows.daily_billing_pipeline import run_daily_pipeline_core
+
+    # Use a unique test client slug
+    test_slug = "recovery_test_client"
+    test_client_name = "Recovery Test Hotel"
+
+    # Clean up any leftover test transactions
+    with Session(get_engine()) as session:
+        session.exec(
+            delete(StagedTransaction).where(
+                (StagedTransaction.client_id == test_slug)
+                | (StagedTransaction.client_id == test_client_name)
+            )
+        )
+        session.commit()
+
+    # Mock GoogleDriveService
+    mock_drive = MagicMock()
+    mock_drive.get_month_folder.return_value = "month_folder_oct2026"
+    mock_drive.list_client_folders.return_value = [
+        ClientFolderInfo(
+            folder_id="client_f_1",
+            client_name=test_client_name,
+            client_slug=test_slug,
+        )
+    ]
+    mock_drive.find_or_create_folder.return_value = "processed_f_1"
+
+    # 1 loose file and 1 unindexed recovery file in Processed folder
+    loose_slip = {
+        "id": "file_loose_101",
+        "name": "Kempinski 05-10-2026.jpg",
+        "webViewLink": "https://drive.google.com/loose101",
+        "mimeType": "image/jpeg",
+    }
+    processed_unindexed_slip = {
+        "id": "file_proc_202",
+        "name": "Kempinski 06-10-2026.jpg",
+        "webViewLink": "https://drive.google.com/proc202",
+        "mimeType": "image/jpeg",
+    }
+
+    def mock_list_unprocessed_slips(folder_id):
+        if folder_id == "client_f_1":
+            return [loose_slip]
+        elif folder_id == "processed_f_1":
+            return [processed_unindexed_slip]
+        return []
+
+    mock_drive.list_unprocessed_slips.side_effect = mock_list_unprocessed_slips
+    mock_drive.download_file_bytes.return_value = (b"fake_slip_bytes", "image/jpeg")
+
+    archived_files = []
+
+    def mock_archive(file_id, src_id, dst_id):
+        archived_files.append((file_id, src_id, dst_id))
+        return True
+
+    mock_drive.archive_file.side_effect = mock_archive
+    monkeypatch.setattr("app.workflows.daily_billing_pipeline.GoogleDriveService", lambda: mock_drive)
+
+    # Mock ZohoBooksService
+    mock_zoho = MagicMock()
+    mock_zoho.fetch_active_contacts = AsyncMock(
+        return_value=[
+            ZohoContact(
+                contact_id="zoho_kempinski_100",
+                contact_name="Kempinski Hotel Gold Coast City Accra",
+                company_name="Kempinski Hotel",
+            )
+        ]
+    )
+    mock_zoho.fetch_item_catalog = AsyncMock(
+        return_value=[{"item_id": "i1", "name": "Bath Towel", "rate": 15.0}]
+    )
+    mock_zoho.find_contact_by_name.return_value = None
+    monkeypatch.setattr("app.workflows.daily_billing_pipeline.ZohoBooksService", lambda org_id=None: mock_zoho)
+
+    # Mock GeminiOCRService
+    mock_ocr = MagicMock()
+
+    async def mock_extract(file_bytes, mime_type, file_name, client_name, **kwargs):
+        slip_dt = "05/10/2026" if "05" in file_name else "06/10/2026"
+        return OCRSlipExtraction(
+            file_name=file_name,
+            client_name=client_name,
+            raw_customer_name="Kempinski Hotel",
+            reconciled_customer_name="Kempinski Hotel",
+            slip_date=slip_dt,
+            items=[
+                OCRSlipItem(
+                    raw_item_name="B Towel",
+                    standard_item_name="Bath Towel",
+                    pickup_qty=10,
+                    delivery_qty=10,
+                    unreturned_loss_qty=0,
+                    unit_rate=15.0,
+                    confidence_score=ConfidenceLevel.HIGH,
+                )
+            ],
+        )
+
+    mock_ocr.extract_slip_data = AsyncMock(side_effect=mock_extract)
+    mock_ocr.aggregate_monthly_skus.return_value = []
+    monkeypatch.setattr("app.workflows.daily_billing_pipeline.GeminiOCRService", lambda: mock_ocr)
+
+    # Execute core pipeline for October 2026
+    result = await run_daily_pipeline_core(
+        target_month="October",
+        target_year=2026,
+        filter_clients=[test_slug],
+    )
+
+    assert result["status"] == "COMPLETED"
+    assert result["total_slips_processed"] == 2
+
+    # Verify archiving: loose file was moved, but processed file was NOT re-archived
+    assert len(archived_files) == 1
+    assert archived_files[0][0] == "file_loose_101"
+
+    # Verify database persistence into staged_transactions
+    with Session(get_engine()) as session:
+        staged = session.exec(
+            select(StagedTransaction).where(
+                (StagedTransaction.client_id == test_slug)
+                | (StagedTransaction.client_id == test_client_name)
+            )
+        ).all()
+
+        assert len(staged) == 2
+        staged_files = {s.source_file_name for s in staged}
+        assert "Kempinski 05-10-2026.jpg" in staged_files
+        assert "Kempinski 06-10-2026.jpg" in staged_files
+
+        for s in staged:
+            # CustomerMatcher matched Kempinski to Zoho Contact
+            assert s.accounting_ref_id == "zoho_kempinski_100"
+            assert s.validation_status == "VALID"
+            assert s.metadata_json.get("customer_reconciled") is True
+            assert s.total_amount == 150.0  # 10 * 15.0
+            assert s.transaction_date in ("2026-10-05", "2026-10-06")
+
+    # Run pipeline a second time to verify idempotency (zero duplicates)
+    mock_drive.list_unprocessed_slips.side_effect = lambda f_id: (
+        [] if f_id == "client_f_1" else [loose_slip, processed_unindexed_slip]
+    )
+
+    result_2 = await run_daily_pipeline_core(
+        target_month="October",
+        target_year=2026,
+        filter_clients=[test_slug],
+    )
+
+    assert result_2["total_slips_processed"] == 0
+
+    with Session(get_engine()) as session:
+        staged_after = session.exec(
+            select(StagedTransaction).where(
+                (StagedTransaction.client_id == test_slug)
+                | (StagedTransaction.client_id == test_client_name)
+            )
+        ).all()
+        assert len(staged_after) == 2
+
+    # Clean up test transactions
+    with Session(get_engine()) as session:
+        session.exec(
+            delete(StagedTransaction).where(
+                (StagedTransaction.client_id == test_slug)
+                | (StagedTransaction.client_id == test_client_name)
+            )
+        )
+        session.commit()
+
+
+
