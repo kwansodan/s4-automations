@@ -30,12 +30,20 @@ def get_engine() -> Engine:
     raw_urls.append(f"postgresql://{u}:{p}@localhost:5432/{d}")
     raw_urls.append(f"postgresql://{u}@localhost:5432/{d}")
 
+    # Build prioritized candidate list: try explicit +psycopg2 first, then standard postgresql://
+    candidate_urls = []
+    for raw in raw_urls:
+        cleaned = raw.strip()
+        if cleaned.startswith("postgres://"):
+            cleaned = cleaned.replace("postgres://", "postgresql://", 1)
+        if cleaned.startswith("postgresql://") and "+psycopg" not in cleaned:
+            candidate_urls.append(cleaned.replace("postgresql://", "postgresql+psycopg2://", 1))
+        candidate_urls.append(cleaned)
+
     import time
     for attempt in range(1, 4):
-        for db_url in raw_urls:
-            if db_url.startswith("postgres"):
-                if db_url.startswith("postgres://"):
-                    db_url = db_url.replace("postgres://", "postgresql://", 1)
+        for db_url in candidate_urls:
+            if "postgres" in db_url:
                 try:
                     temp_engine = create_engine(
                         db_url,

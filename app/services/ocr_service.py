@@ -129,84 +129,103 @@ Return strictly valid JSON conforming to the schema.
             known_aliases=known_aliases,
         )
 
-        try:
-            # 1. Attempt using modern google-genai SDK
-            from google import genai
-            from google.genai import types
-            
-            client = genai.Client(api_key=self.api_key)
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=[
-                    types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-                    prompt,
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=OCRSlipExtraction,
-                    temperature=0.1,
-                ),
-            )
-            raw_text = response.text
-            parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
-            self._reconcile_with_catalog(parsed, item_catalog)
+        candidate_models = [self.model_name]
+        for m in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+            if m not in candidate_models:
+                candidate_models.append(m)
 
-            duration_ms = (time.time() - start_time) * 1000
-            usage = getattr(response, "usage_metadata", None)
-            p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
-            c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
-            t_tokens = getattr(usage, "total_token_count", 0) if usage else (p_tokens + c_tokens)
-            record_api_call_sync(
-                service_name="gemini_vision",
-                operation="ocr_slip_extraction",
-                client_id=client_name,
-                units_consumed=1,
-                prompt_tokens=p_tokens,
-                completion_tokens=c_tokens,
-                total_tokens=t_tokens,
-                latency_ms=duration_ms,
-                is_success=True,
-            )
-            return parsed
-
-        except Exception as genai_err:
-            logger.warning(f"google-genai attempt failed ({genai_err}). Trying google-generativeai fallback...")
+        last_error = None
+        for m_name in candidate_models:
             try:
-                import google.generativeai as genai_legacy
-                genai_legacy.configure(api_key=self.api_key)
-                model = genai_legacy.GenerativeModel(self.model_name)
+                # 1. Attempt using modern google-genai SDK
+                from google import genai
+                from google.genai import types
                 
-                response = model.generate_content(
-                    [
-                        {"mime_type": mime_type, "data": file_bytes},
-                        prompt + "\nReturn JSON output only without markdown formatting.",
+                client = genai.Client(api_key=self.api_key)
+                response = client.models.generate_content(
+                    model=m_name,
+                    contents=[
+                        types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                        prompt,
                     ],
-                    generation_config={"temperature": 0.1},
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=OCRSlipExtraction,
+                        temperature=0.1,
+                    ),
                 )
                 raw_text = response.text
                 parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
                 self._reconcile_with_catalog(parsed, item_catalog)
+
                 duration_ms = (time.time() - start_time) * 1000
+                usage = getattr(response, "usage_metadata", None)
+                p_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+                c_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+                t_tokens = getattr(usage, "total_token_count", 0) if usage else (p_tokens + c_tokens)
                 record_api_call_sync(
                     service_name="gemini_vision",
-                    operation="ocr_slip_extraction_legacy_fallback",
+                    operation="ocr_slip_extraction",
                     client_id=client_name,
                     units_consumed=1,
+                    prompt_tokens=p_tokens,
+                    completion_tokens=c_tokens,
+                    total_tokens=t_tokens,
                     latency_ms=duration_ms,
                     is_success=True,
                 )
                 return parsed
-            except Exception as legacy_err:
-                logger.error(f"Gemini extraction failed: {legacy_err}")
-                record_api_call_sync(
-                    service_name="gemini_vision",
-                    operation="ocr_slip_extraction_failed",
-                    client_id=client_name,
-                    units_consumed=1,
-                    is_success=False,
-                    error_message=str(legacy_err),
-                )
-                raise RuntimeError(f"OCR extraction failed for {file_name}: {legacy_err}")
+
+            except Exception as genai_err:
+                last_error = genai_err
+                is_503 = any(k in str(genai_err).lower() for k in ["503", "unavailable", "high demand", "capacity"])
+                if is_503 and m_name != candidate_models[-1]:
+                    logger.warning(f"Model '{m_name}' experienced 503 high demand. Trying fallback candidate model...")
+                    continue
+
+                logger.warning(f"google-genai attempt on '{m_name}' failed ({genai_err}). Trying google-generativeai fallback...")
+                try:
+                    import google.generativeai as genai_legacy
+                    genai_legacy.configure(api_key=self.api_key)
+                    model = genai_legacy.GenerativeModel(m_name)
+                    
+                    response = model.generate_content(
+                        [
+                            {"mime_type": mime_type, "data": file_bytes},
+                            prompt + "\nReturn JSON output only without markdown formatting.",
+                        ],
+                        generation_config={"temperature": 0.1},
+                    )
+                    raw_text = response.text
+                    parsed = self._safe_parse_extraction(raw_text, file_name, client_name)
+                    self._reconcile_with_catalog(parsed, item_catalog)
+                    duration_ms = (time.time() - start_time) * 1000
+                    record_api_call_sync(
+                        service_name="gemini_vision",
+                        operation="ocr_slip_extraction_legacy_fallback",
+                        client_id=client_name,
+                        units_consumed=1,
+                        latency_ms=duration_ms,
+                        is_success=True,
+                    )
+                    return parsed
+                except Exception as legacy_err:
+                    last_error = legacy_err
+                    logger.warning(f"google-generativeai fallback on '{m_name}' failed: {legacy_err}")
+                    if is_503 and m_name != candidate_models[-1]:
+                        continue
+                    break
+
+        logger.error(f"Gemini extraction failed across candidate models: {last_error}")
+        record_api_call_sync(
+            service_name="gemini_vision",
+            operation="ocr_slip_extraction_failed",
+            client_id=client_name,
+            units_consumed=1,
+            is_success=False,
+            error_message=str(last_error),
+        )
+        raise RuntimeError(f"OCR extraction failed for {file_name}: {last_error}")
 
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def extract_vendor_bill(
@@ -352,8 +371,14 @@ Return strictly valid JSON conforming to the schema.
         import json
         cleaned = re.sub(r"^```json\s*", "", text.strip(), flags=re.MULTILINE)
         cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
+
+        # Extract innermost JSON dictionary if response includes conversational wrappers
+        json_match = re.search(r"(\{[\s\S]*\})", cleaned)
+        candidate_json = json_match.group(1) if json_match else cleaned
+
+        parsed: Optional[OCRSlipExtraction] = None
         try:
-            data = json.loads(cleaned)
+            data = json.loads(candidate_json)
             if isinstance(data, dict):
                 if not data.get("file_name"):
                     data["file_name"] = file_name
@@ -373,8 +398,18 @@ Return strictly valid JSON conforming to the schema.
                 parsed = OCRSlipExtraction.model_validate(data)
         except Exception:
             pass
+
         if not parsed:
-            parsed = OCRSlipExtraction.model_validate_json(cleaned)
+            try:
+                parsed = OCRSlipExtraction.model_validate_json(candidate_json)
+            except Exception as val_err:
+                logger.warning(f"Could not parse valid OCRSlipExtraction from text ({val_err}). Creating fallback record.")
+                parsed = OCRSlipExtraction(
+                    file_name=file_name,
+                    client_name=client_name,
+                    raw_customer_name=client_name,
+                    notes=f"Extraction formatting incomplete: {val_err}",
+                )
 
         if parsed:
             detected_cust = parsed.reconciled_customer_name or parsed.raw_customer_name
