@@ -44,6 +44,7 @@ interface AutomationContextType {
   sheetsData: SheetsReviewData | null;
   catalog: ZohoCatalogData | null;
   pipelineProgress: PipelineProgress | null;
+  setPipelineProgress: (progress: PipelineProgress | null) => void;
   logs: LogEntry[];
 
   isLoading: boolean;
@@ -385,6 +386,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         sheetsData,
         catalog,
         pipelineProgress,
+        setPipelineProgress,
         logs,
 
         isLoading,

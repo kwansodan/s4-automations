@@ -165,6 +165,7 @@ class BaseAutomationStrategy(ABC):
     ) -> StrategyExecutionResult:
         """Executes the complete pipeline lifecycle for this client."""
         from app.services.audit_service import AuditService
+        from app.utils.progress_tracker import pipeline_tracker
 
         AuditService.log(
             client_id=self.client_id,
@@ -172,60 +173,106 @@ class BaseAutomationStrategy(ABC):
             details={"month": month, "year": year, "auto_post": auto_post, "force_reprocess": force_reprocess},
         )
 
-        # Stage 1: Discover
-        sources = await self.discover_sources(month, year)
-
-        # Stage 2: Extract & Validate
-        items = await self.extract_and_validate(
-            sources,
-            force_reprocess=force_reprocess,
+        pipeline_tracker.start_pipeline(
+            task_name=f"AR Extraction - {self.client_name}",
             month=month,
             year=year,
+            total_stages=4,
         )
 
-        # Run standard anomaly checks on each item
-        for item in items:
-            item_anomalies = self.validate_anomalies(item)
-            item.anomalies.extend(item_anomalies)
+        try:
+            # Stage 1: Discover
+            pipeline_tracker.update_progress(
+                percent=10,
+                stage_index=1,
+                current_step=f"Discovering slip files for {self.client_name} ({month} {year})...",
+            )
+            sources = await self.discover_sources(month, year)
+            pipeline_tracker.update_progress(
+                percent=25,
+                stage_index=1,
+                current_step=f"Discovered {len(sources)} source files.",
+                stats_update={"slips_processed": 0, "items_extracted": 0},
+            )
 
-        # Stage 3: Sync Review Workspace
-        review_sync = await self.sync_review_workspace(month, year, items)
+            # Stage 2: Extract & Validate
+            pipeline_tracker.update_progress(
+                percent=30,
+                stage_index=2,
+                current_step=f"Extracting line items from {len(sources)} files...",
+            )
+            items = await self.extract_and_validate(
+                sources,
+                force_reprocess=force_reprocess,
+                month=month,
+                year=year,
+            )
 
-        # Stage 4: Post to Accounting (optional auto-post)
-        posted_count = 0
-        if auto_post:
-            post_result = await self.post_to_accounting(month, year)
-            posted_count = post_result.get("invoices_created", 0) or post_result.get("journals_created", 0)
+            # Run standard anomaly checks on each item
+            for item in items:
+                item_anomalies = self.validate_anomalies(item)
+                item.anomalies.extend(item_anomalies)
 
-        total_val = sum(i.total_amount for i in items)
-        total_loss = sum(i.discrepancy for i in items)
+            # Stage 3: Sync Review Workspace
+            pipeline_tracker.update_progress(
+                percent=85,
+                stage_index=3,
+                current_step="Syncing review ledger...",
+            )
+            review_sync = await self.sync_review_workspace(month, year, items)
 
-        if len(sources) == 0:
-            msg = f"0 slip files found for {self.client_name} ({month} {year}). Please verify that slip images or PDFs are placed directly in the Google Drive folder."
-            self.execution_warnings.append(msg)
-        else:
-            msg = f"Pipeline completed for {self.client_name} ({month} {year}): {len(items)} line items extracted from {len(sources)} source files."
+            # Stage 4: Post to Accounting (optional auto-post)
+            posted_count = 0
+            if auto_post:
+                pipeline_tracker.update_progress(
+                    percent=92,
+                    stage_index=4,
+                    current_step="Posting draft invoices to Zoho Books...",
+                )
+                post_result = await self.post_to_accounting(month, year)
+                posted_count = post_result.get("invoices_created", 0) or post_result.get("journals_created", 0)
 
-        result = StrategyExecutionResult(
-            client_id=self.client_id,
-            month=month,
-            year=year,
-            status="COMPLETED",
-            sources_discovered=len(sources),
-            sources_processed=len(sources),
-            sources_skipped_duplicate=0,
-            items_extracted=len(items),
-            total_amount=round(total_val, 2),
-            discrepancies_count=int(total_loss),
-            accounting_records_posted=posted_count,
-            message=msg,
-            details=review_sync,
-        )
+            total_val = sum(i.total_amount for i in items)
+            total_loss = sum(i.discrepancy for i in items)
 
-        AuditService.log(
-            client_id=self.client_id,
-            action="PIPELINE_COMPLETED",
-            details=result.model_dump(),
-        )
+            if len(sources) == 0:
+                msg = f"0 slip files found for {self.client_name} ({month} {year}). Please verify that slip images or PDFs are placed directly in the Google Drive folder."
+                self.execution_warnings.append(msg)
+            else:
+                msg = f"Pipeline completed for {self.client_name} ({month} {year}): {len(items)} line items extracted from {len(sources)} source files."
 
-        return result
+            result = StrategyExecutionResult(
+                client_id=self.client_id,
+                month=month,
+                year=year,
+                status="COMPLETED",
+                sources_discovered=len(sources),
+                sources_processed=len(sources),
+                sources_skipped_duplicate=0,
+                items_extracted=len(items),
+                total_amount=round(total_val, 2),
+                discrepancies_count=int(total_loss),
+                accounting_records_posted=posted_count,
+                message=msg,
+                details=review_sync,
+            )
+
+            AuditService.log(
+                client_id=self.client_id,
+                action="PIPELINE_COMPLETED",
+                details=result.model_dump(),
+            )
+
+            pipeline_tracker.complete_pipeline(
+                summary={
+                    "sources_discovered": len(sources),
+                    "items_extracted": len(items),
+                    "total_amount": round(total_val, 2),
+                    "message": msg,
+                }
+            )
+
+            return result
+        except Exception as e:
+            pipeline_tracker.fail_pipeline(str(e))
+            raise

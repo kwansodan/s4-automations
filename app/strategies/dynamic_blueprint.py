@@ -1042,7 +1042,34 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
         # Bounded concurrency: process up to 2 documents in parallel to prevent Google GenAI 503 capacity limits
         sem = asyncio.Semaphore(2)
-        tasks = [_process_single_document(doc, sem) for doc in sources]
+        total_sources_count = len(sources)
+        docs_completed = 0
+        items_staged_total = 0
+        progress_lock = asyncio.Lock()
+
+        async def _tracked_process(doc: SourceDocument, sem: asyncio.Semaphore) -> List[ExtractedLineItem]:
+            nonlocal docs_completed, items_staged_total
+            items = await _process_single_document(doc, sem)
+            async with progress_lock:
+                docs_completed += 1
+                items_staged_total += len(items)
+                pct = int(30 + (docs_completed / max(total_sources_count, 1)) * 50)
+                pipeline_tracker.update_progress(
+                    percent=pct,
+                    stage_index=2,
+                    current_step=f"Extracted {docs_completed}/{total_sources_count} slips: '{doc.file_name}' ({len(items)} items staged)",
+                    stats_update={
+                        "slips_processed": docs_completed,
+                        "items_extracted": items_staged_total,
+                    },
+                )
+                pipeline_tracker.add_log(
+                    "info",
+                    f"Processed slip {docs_completed}/{total_sources_count}: '{doc.file_name}' ({len(items)} items)",
+                )
+            return items
+
+        tasks = [_tracked_process(doc, sem) for doc in sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         any_model_unavailable = False

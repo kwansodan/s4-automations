@@ -18,6 +18,7 @@ import {
   fetchClientCatalog,
   CatalogItem,
   runClientStrategy,
+  fetchPipelineStatus,
   ClientTransactionSummaryRow,
   saveCustomerMapping,
 } from '../../../lib/api';
@@ -108,6 +109,8 @@ export const ClientArTab: React.FC = () => {
     isLoading,
     addLog,
     catalog,
+    pipelineProgress,
+    setPipelineProgress,
   } = useAutomation();
 
   const [search, setSearch] = useState('');
@@ -577,6 +580,53 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
+  const pollPipelineUntilDone = async (initialSources = 0) => {
+    let finished = false;
+    let pollCount = 0;
+    while (!finished) {
+      await new Promise((r) => setTimeout(r, 1200));
+      pollCount++;
+      try {
+        const progress = await fetchPipelineStatus();
+        if (progress) {
+          setPipelineProgress(progress);
+          // Periodically reload transactions every 3-4 seconds so rows appear live
+          if (pollCount % 3 === 0) {
+            await Promise.all([loadTransactions(), loadSummaryData()]).catch(() => {});
+          }
+          if (!progress.is_running) {
+            finished = true;
+            if (progress.status === 'COMPLETED') {
+              const slips = progress.stats?.slips_processed ?? initialSources;
+              const items = progress.stats?.items_extracted ?? 0;
+              const successMsg = `Ingestion complete: ${items} line items staged from ${slips} slip files.`;
+              addLog('success', `[AR OCR] ${successMsg}`);
+              setRunFeedback({
+                type: 'success',
+                message: successMsg,
+              });
+            } else if (progress.status === 'ERROR') {
+              const errMsg = progress.error_message || 'Pipeline execution failed.';
+              addLog('error', `[AR OCR] ${errMsg}`);
+              setRunFeedback({
+                type: 'error',
+                message: `AR OCR extraction error: ${errMsg}`,
+              });
+            } else {
+              setRunFeedback({
+                type: 'success',
+                message: 'Extraction finished.',
+              });
+            }
+            await Promise.all([refreshAll(), loadTransactions(), loadSummaryData()]);
+          }
+        }
+      } catch (pollErr) {
+        // Network blip, continue polling
+      }
+    }
+  };
+
   const handleRunArOcr = async (forceReprocess: boolean = false) => {
     setIsRunningOcr(true);
     setRunFeedback(null);
@@ -586,7 +636,15 @@ export const ClientArTab: React.FC = () => {
         month: selectedMonth,
         year: selectedYear,
         force_reprocess: forceReprocess,
+        background: true,
       });
+
+      if (res.background || res.status === 'IN_PROGRESS') {
+        addLog('info', `[AR OCR] Extraction started in background. Connecting to live telemetry for ${currentClient.name}...`);
+        await pollPipelineUntilDone();
+        return;
+      }
+
       const sourcesCount = res.sources_discovered ?? 0;
       const itemsCount = res.items_extracted ?? 0;
 
@@ -608,6 +666,28 @@ export const ClientArTab: React.FC = () => {
       }
       await Promise.all([refreshAll(), loadTransactions(), loadSummaryData()]);
     } catch (err: any) {
+      const errStr = String(err?.message || err || '');
+      const is502OrTimeout = err?.status === 502 || errStr.includes('502') || errStr.toLowerCase().includes('timeout') || errStr.toLowerCase().includes('gateway');
+      if (is502OrTimeout) {
+        addLog('info', `[AR OCR] Proxy connection timeout encountered, but extraction is actively progressing in background. Connecting to telemetry...`);
+        const prog = await fetchPipelineStatus().catch(() => null);
+        if (prog?.is_running) {
+          await pollPipelineUntilDone();
+          return;
+        } else if (prog?.status === 'COMPLETED') {
+          const slips = prog.stats?.slips_processed ?? 0;
+          const items = prog.stats?.items_extracted ?? 0;
+          const successMsg = `Ingestion complete: ${items} line items staged from ${slips} slip files.`;
+          addLog('success', `[AR OCR] ${successMsg}`);
+          setRunFeedback({
+            type: 'success',
+            message: successMsg,
+          });
+          await Promise.all([refreshAll(), loadTransactions(), loadSummaryData()]);
+          return;
+        }
+      }
+
       const errorMsg = `AR OCR extraction error: ${err.message || err}`;
       addLog('error', errorMsg);
       setRunFeedback({
@@ -2705,6 +2785,29 @@ export const ClientArTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Live AR Extraction Telemetry Bar */}
+      {isRunningOcr && (
+        <div className="bg-[#EFF6FF] border border-[#BFDBFE] p-4 rounded-xl text-[#1E40AF] flex flex-col gap-2.5 shadow-xs animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between text-xs font-semibold">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-[#0284C7]" />
+              <span>{pipelineProgress?.current_step || `Extracting slips for ${currentClient.name}...`}</span>
+            </div>
+            <span>{pipelineProgress?.percent || 15}%</span>
+          </div>
+          <div className="w-full bg-[#DBEAFE] h-2 rounded-full overflow-hidden">
+            <div
+              className="bg-[#0284C7] h-full transition-all duration-300 rounded-full"
+              style={{ width: `${Math.max(pipelineProgress?.percent || 15, 5)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-[#3B82F6]">
+            <span>Slips Processed: <strong>{pipelineProgress?.stats?.slips_processed ?? 0}</strong></span>
+            <span>Items Staged to Ledger: <strong>{pipelineProgress?.stats?.items_extracted ?? 0}</strong></span>
+          </div>
+        </div>
+      )}
 
       {/* Execution Feedback Notification Banner */}
       {runFeedback && (

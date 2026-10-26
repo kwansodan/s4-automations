@@ -73,6 +73,8 @@ class RunStrategyPayload(BaseModel):
     year: Optional[int] = None
     auto_post_to_accounting: bool = False
     force_reprocess: bool = False
+    background: bool = False
+    async_run: bool = False
 
 
 class BatchApprovePayload(BaseModel):
@@ -2152,15 +2154,47 @@ async def trigger_client_strategy(
 ) -> Dict[str, Any]:
     """
     Executes the tailored automation strategy for this client (ANR, Polaris, Mr. Osei, or Dynamic Blueprint).
+    Supports background execution when background=True or async_run=True to prevent gateway timeouts.
     """
+    from app.utils.progress_tracker import pipeline_tracker
+
     now = datetime.now()
     month = payload.month or now.strftime("%B") if payload else now.strftime("%B")
     year = payload.year or now.year if payload else now.year
     auto_post = payload.auto_post_to_accounting if payload else False
     force_reprocess = payload.force_reprocess if payload else False
+    is_bg = bool(payload and (payload.background or payload.async_run))
 
     strategy = StrategyFactory.get(client_id)
-    logger.info(f"Executing strategy {strategy.__class__.__name__} for client: {client_id} ({month} {year}, force_reprocess={force_reprocess})")
+    logger.info(f"Executing strategy {strategy.__class__.__name__} for client: {client_id} ({month} {year}, force_reprocess={force_reprocess}, background={is_bg})")
+
+    if is_bg:
+        async def _run_strategy_bg():
+            try:
+                await strategy.execute(month=month, year=year, auto_post=auto_post, force_reprocess=force_reprocess)
+            except Exception as bg_err:
+                logger.error(f"Background strategy execution failed for {client_id}: {bg_err}")
+                pipeline_tracker.fail_pipeline(str(bg_err))
+
+        client_display_name = getattr(strategy, "client_name", client_id)
+        pipeline_tracker.start_pipeline(
+            task_name=f"AR Extraction - {client_display_name}",
+            month=month,
+            year=year,
+            total_stages=4,
+        )
+        asyncio.create_task(_run_strategy_bg())
+
+        return {
+            "client_id": client_id,
+            "status": "IN_PROGRESS",
+            "month": month,
+            "year": year,
+            "message": f"Pipeline extraction started in background for {client_id} ({month} {year}).",
+            "background": True,
+            "sources_discovered": 0,
+            "items_extracted": 0,
+        }
 
     try:
         result = await strategy.execute(month=month, year=year, auto_post=auto_post, force_reprocess=force_reprocess)
