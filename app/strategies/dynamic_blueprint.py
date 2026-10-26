@@ -30,6 +30,7 @@ from app.services.ocr_service import GeminiOCRService, AIModelUnavailableExcepti
 from app.services.zoho_service import ZohoBooksService
 from app.services.zoho_contract_validator import ZohoContractValidator
 from app.services.pipeline_alert_service import PipelineAlertService
+from app.services.customer_matcher import CustomerMatcher
 from app.config import settings
 from app.utils.date_parser import resolve_transaction_date
 from app.utils.logging import get_logger
@@ -89,6 +90,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
 
         if not should_move:
             logger.debug(f"File relocation skipped for '{doc.file_name}' (archive_location={archive_location}, move_processed_files={should_move})")
+            return
+
+        if doc.metadata.get("already_archived") or doc.metadata.get("is_recovery"):
+            logger.debug(f"File relocation skipped for '{doc.file_name}' (already in Processed folder)")
             return
 
         if doc.source_type == SourceType.GOOGLE_DRIVE and doc.source_identifier:
@@ -917,6 +922,108 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     {"file_name": doc.file_name, "items_count": len(items) if items else 1},
                 )
 
+                # Direct Database Staging: Commit every extracted item to PostgreSQL immediately
+                try:
+                    with Session(get_engine()) as db_sess:
+                        staged_to_add = []
+                        target_m = month or getattr(self, "current_run_month", None) or "October"
+                        target_y = year or getattr(self, "current_run_year", None) or 2026
+                        b_id = f"batch_{self.client_id}_{target_m}_{target_y}"
+
+                        for it in doc_items:
+                            raw_meta = it.raw_extracted_data or {}
+                            it_val_status = raw_meta.get("validation_status", "VALID")
+                            it_val_errors = raw_meta.get("validation_errors", [])
+                            it_entity_type = raw_meta.get(
+                                "entity_type",
+                                AccountingEntityType.AR_SALES_INVOICE.value if not is_ap else AccountingEntityType.AP_VENDOR_BILL.value,
+                            )
+                            it_file_name = raw_meta.get("file_name") or doc.file_name
+                            it_source_id = raw_meta.get("source_identifier") or doc.source_identifier
+                            it_drive_url = raw_meta.get("drive_file_url") or (
+                                f"https://drive.google.com/file/d/{it_source_id}/view" if it_source_id else ""
+                            )
+                            raw_meta["drive_file_url"] = it_drive_url
+
+                            it_tx_date = resolve_transaction_date(
+                                extracted_date=raw_meta.get("date"),
+                                file_name=it_file_name,
+                                target_month=target_m,
+                                target_year=target_y,
+                            )
+                            clean_desc = re.sub(r"^[:;\s\-•.]+", "", str(it.item_or_description or "")).strip()
+
+                            # Idempotency check: avoid inserting duplicate items for this slip
+                            existing_staged = db_sess.exec(
+                                select(StagedTransaction).where(
+                                    StagedTransaction.client_id == self.client_id,
+                                    StagedTransaction.source_file_name == str(it_file_name),
+                                    StagedTransaction.item_or_description == clean_desc,
+                                )
+                            ).first()
+                            if existing_staged:
+                                continue
+
+                            # Customer reconciliation check
+                            accounting_ref_id = raw_meta.get("accounting_ref_id")
+                            customer_reconciled = raw_meta.get("customer_reconciled", False)
+                            cust_name = (
+                                raw_meta.get("customer_name")
+                                or doc.metadata.get("customer_name_hint")
+                                or raw_meta.get("raw_customer_name")
+                            )
+                            if not accounting_ref_id and contacts and cust_name:
+                                match_res = CustomerMatcher.match_customer(
+                                    raw_input=cust_name,
+                                    zoho_contacts=contacts,
+                                    saved_mappings=self.custom_config.get("customer_mappings", {}),
+                                )
+                                if match_res and match_res.matched_contact_id:
+                                    accounting_ref_id = match_res.matched_contact_id
+                                    customer_reconciled = True
+                                    raw_meta["reconciled_customer_name"] = match_res.matched_contact_name
+                                    raw_meta["accounting_ref_id"] = match_res.matched_contact_id
+                                    raw_meta["customer_reconciled"] = True
+
+                            staged_rec = StagedTransaction(
+                                client_id=self.client_id,
+                                batch_id=b_id,
+                                pipeline_id=doc_pipeline_id,
+                                pipeline_name=pipeline_name,
+                                pipeline_type="AP" if is_ap else "AR",
+                                entity_type=it_entity_type,
+                                transaction_date=str(it_tx_date),
+                                source_type=self.client.source_type or "google_drive",
+                                source_file_name=str(it_file_name),
+                                source_identifier=it_source_id,
+                                accounting_ref_id=accounting_ref_id,
+                                customer_reconciled=customer_reconciled,
+                                item_or_description=clean_desc,
+                                category_or_account=it.category_or_account,
+                                quantity_or_debit=it.quantity_or_debit,
+                                credit_amount=it.credit_amount,
+                                rate_or_price=it.unit_price,
+                                total_amount=it.total_amount,
+                                reviewed=False,
+                                approved=False,
+                                status="PENDING",
+                                validation_status=it_val_status,
+                                validation_errors=it_val_errors,
+                                checksum=it.source_checksum or checksum,
+                                confidence_score=it.confidence_score,
+                                discrepancy_amount=it.discrepancy,
+                                discrepancy_reason=it.discrepancy_reason,
+                                metadata_json=raw_meta,
+                            )
+                            staged_to_add.append(staged_rec)
+
+                        if staged_to_add:
+                            db_sess.add_all(staged_to_add)
+                            db_sess.commit()
+                            logger.info(f"💾 Committed {len(staged_to_add)} staged items for '{doc.file_name}' to PostgreSQL.")
+                except Exception as stage_direct_err:
+                    logger.error(f"Error direct-staging items for '{doc.file_name}': {stage_direct_err}")
+
                 # Move fresh processed file to Processed/ if enabled
                 await asyncio.to_thread(self._archive_file_if_needed, doc, doc_pipeline_id)
 
@@ -927,23 +1034,37 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         tasks = [_process_single_document(doc, sem) for doc in sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        any_model_unavailable = False
+        unavailable_err = None
         for res in results:
             if isinstance(res, AIModelUnavailableException):
+                any_model_unavailable = True
+                unavailable_err = res
                 err_msg = f"AI Model Unavailable: {res}"
                 logger.error(err_msg)
-                self.log_step(
-                    "EXTRACTION",
-                    f"AI OCR model unavailable. Pipeline terminated to protect data accuracy: {res}",
-                    "error",
-                    {"error": str(res)},
-                )
-                pipeline_tracker.fail_pipeline(err_msg)
-                raise res
+                self.execution_errors.append(err_msg)
             elif isinstance(res, Exception):
                 logger.error(f"Error during document extraction: {res}")
                 self.execution_errors.append(str(res))
             elif isinstance(res, list):
                 extracted_items.extend(res)
+
+        if any_model_unavailable and not extracted_items:
+            # If the entire run failed without a single item staged, fail the tracker and raise
+            self.log_step(
+                "EXTRACTION",
+                f"AI OCR model unavailable. Pipeline terminated to protect data accuracy: {unavailable_err}",
+                "error",
+                {"error": str(unavailable_err)},
+            )
+            pipeline_tracker.fail_pipeline(f"AI Model Unavailable: {unavailable_err}")
+            raise unavailable_err
+        elif any_model_unavailable:
+            self.log_step(
+                "EXTRACTION",
+                f"Notice: Staged {len(extracted_items)} line items. Some documents encountered temporary AI model capacity limits.",
+                "warning",
+            )
 
         return extracted_items
 
@@ -1007,6 +1128,20 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                 if not is_valid:
                     held_count += 1
 
+                clean_desc = re.sub(r"^[:;\s\-•.]+", "", str(it.item_or_description or "")).strip()
+
+                # Check if already staged by direct per-slip staging
+                existing_staged = session.exec(
+                    select(StagedTransaction).where(
+                        StagedTransaction.client_id == self.client_id,
+                        StagedTransaction.source_file_name == str(file_name),
+                        StagedTransaction.item_or_description == clean_desc,
+                    )
+                ).first()
+                if existing_staged:
+                    staged_count += 1
+                    continue
+
                 staged = StagedTransaction(
                     client_id=self.client_id,
                     batch_id=batch_id,
@@ -1018,7 +1153,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     source_type=self.client.source_type or "google_drive",
                     source_file_name=str(file_name),
                     source_identifier=source_identifier,
-                    item_or_description=re.sub(r"^[:;\s\-•.]+", "", str(it.item_or_description or "")).strip(),
+                    item_or_description=clean_desc,
                     category_or_account=it.category_or_account,
                     quantity_or_debit=it.quantity_or_debit,
                     credit_amount=it.credit_amount,

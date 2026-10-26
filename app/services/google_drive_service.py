@@ -28,6 +28,10 @@ class GoogleDriveService:
             self._service = get_google_drive_service()
         return self._service
 
+    @service.setter
+    def service(self, value):
+        self._service = value
+
     @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def find_or_create_folder(self, folder_name: str, parent_id: str) -> str:
         """Finds an existing folder by name inside parent_id or creates a new one."""
@@ -568,6 +572,24 @@ class GoogleDriveService:
         discovered_docs: List[SourceDocument] = []
         ignored_names = {"processed", "archive", "trash", "templates", "backup", "archived", "temp"}
 
+        existing_staged_files: set = set()
+        existing_staged_ids: set = set()
+        try:
+            from sqlmodel import Session, select
+            from app.db.session import get_engine
+            from app.models.db_models import StagedTransaction
+            with Session(get_engine()) as db_session:
+                records = db_session.exec(
+                    select(StagedTransaction.source_file_name, StagedTransaction.source_identifier)
+                ).all()
+                for fn, sid in records:
+                    if fn:
+                        existing_staged_files.add(fn.strip())
+                    if sid:
+                        existing_staged_ids.add(str(sid).strip())
+        except Exception as db_err:
+            logger.debug(f"Recovery check DB query notice: {db_err}")
+
         try:
             # 1. Fetch child folders and loose files in the target root folder
             clean_fid = (folder_id or "").replace("'", "\\'")
@@ -672,6 +694,56 @@ class GoogleDriveService:
                                     )
                                 )
 
+                            # Self-healing recovery sweep: recover any slips already in Processed/ that have no DB records
+                            try:
+                                proc_q = f"'{cust_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and (name = 'Processed' or name = 'processed') and trashed = false"
+                                proc_flds = self.service.files().list(q=proc_q, spaces="drive", fields="files(id, name)").execute().get("files", [])
+                                for pf in proc_flds:
+                                    pf_id = pf["id"]
+                                    proc_files_res = self.service.files().list(
+                                        q=f"'{pf_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+                                        spaces="drive",
+                                        fields="files(id, name, mimeType, webViewLink, size, createdTime)",
+                                        pageSize=150,
+                                    ).execute()
+                                    for pf_file in proc_files_res.get("files", []):
+                                        pf_name = pf_file.get("name", "")
+                                        pf_id_val = pf_file.get("id", "")
+                                        if not self._is_supported_doc(pf_file):
+                                            continue
+                                        if pf_name and (pf_name in existing_staged_files or pf_name.strip() in existing_staged_files):
+                                            continue
+                                        if pf_id_val and (pf_id_val in existing_staged_ids or str(pf_id_val).strip() in existing_staged_ids):
+                                            continue
+                                        logger.info(f"🔄 [Recovery Sweep] Recovering unindexed slip '{pf_name}' from '{cust_name}/Processed' to ledger")
+                                        discovered_docs.append(
+                                            SourceDocument(
+                                                file_name=pf_name,
+                                                source_type=SourceType.GOOGLE_DRIVE,
+                                                source_identifier=pf_id_val,
+                                                mime_type=pf_file.get("mimeType", "image/jpeg"),
+                                                metadata={
+                                                    "folder_id": cust_id,
+                                                    "processed_folder_id": pf_id,
+                                                    "root_folder_id": folder_id,
+                                                    "month_folder_id": m_id,
+                                                    "month_folder_name": m_name,
+                                                    "customer_name_hint": cust_name,
+                                                    "vendor_name_hint": cust_name,
+                                                    "party_name_hint": cust_name,
+                                                    "customer_slug": cust_slug,
+                                                    "month": month,
+                                                    "year": year,
+                                                    "hierarchy_pattern": "month_first_customer_subfolder_recovery",
+                                                    "is_recovery": True,
+                                                    "already_archived": True,
+                                                    "drive_file_url": pf_file.get("webViewLink") or (f"https://drive.google.com/file/d/{pf_id_val}/view" if pf_id_val else ""),
+                                                },
+                                            )
+                                        )
+                            except Exception as r_err:
+                                logger.debug(f"Recovery check note for customer '{cust_name}': {r_err}")
+
                     # Also pick up direct files placed in the Month folder root
                     for f in m_files:
                         if self._is_supported_doc(f):
@@ -693,6 +765,51 @@ class GoogleDriveService:
                                     },
                                 )
                             )
+
+                    # Check for month-level Processed folder recovery
+                    month_proc_flds = [f for f in m_subfolders if f.get("name", "").strip().lower() in ["processed", "archive"]]
+                    for mpf in month_proc_flds:
+                        try:
+                            mpf_id = mpf["id"]
+                            mpf_res = self.service.files().list(
+                                q=f"'{mpf_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+                                spaces="drive",
+                                fields="files(id, name, mimeType, webViewLink, size, createdTime)",
+                                pageSize=150,
+                            ).execute()
+                            for mpf_file in mpf_res.get("files", []):
+                                mf_name = mpf_file.get("name", "")
+                                mf_id_val = mpf_file.get("id", "")
+                                if not self._is_supported_doc(mpf_file):
+                                    continue
+                                if mf_name and (mf_name in existing_staged_files or mf_name.strip() in existing_staged_files):
+                                    continue
+                                if mf_id_val and (mf_id_val in existing_staged_ids or str(mf_id_val).strip() in existing_staged_ids):
+                                    continue
+                                logger.info(f"🔄 [Recovery Sweep] Recovering unindexed direct slip '{mf_name}' from Month Processed to ledger")
+                                discovered_docs.append(
+                                    SourceDocument(
+                                        file_name=mf_name,
+                                        source_type=SourceType.GOOGLE_DRIVE,
+                                        source_identifier=mf_id_val,
+                                        mime_type=mpf_file.get("mimeType", "image/jpeg"),
+                                        metadata={
+                                            "folder_id": m_id,
+                                            "processed_folder_id": mpf_id,
+                                            "root_folder_id": folder_id,
+                                            "month_folder_id": m_id,
+                                            "month_folder_name": m_name,
+                                            "month": month,
+                                            "year": year,
+                                            "hierarchy_pattern": "month_first_direct_recovery",
+                                            "is_recovery": True,
+                                            "already_archived": True,
+                                            "drive_file_url": mpf_file.get("webViewLink") or (f"https://drive.google.com/file/d/{mf_id_val}/view" if mf_id_val else ""),
+                                        },
+                                    )
+                                )
+                        except Exception as mp_err:
+                            logger.debug(f"Month-level recovery note: {mp_err}")
 
             # -------------------------------------------------------------
             # PASS 2: Check for Customer/Vendor-First Hierarchy (Root -> Customer/Vendor Folders -> Month Subfolders)
@@ -740,11 +857,60 @@ class GoogleDriveService:
                                         "customer_slug": cust_slug,
                                         "month": month,
                                         "year": year,
-                                        "hierarchy_pattern": "customer_first_month_subfolder",
-                                        "drive_file_url": s.get("webViewLink") or (f"https://drive.google.com/file/d/{s.get('id')}/view" if s.get("id") else ""),
                                     },
                                 )
                             )
+
+                        # Pass 2 Recovery check: recover unindexed slips in month subfolder's Processed/ folder
+                        try:
+                            c_proc_q = f"'{mf['id']}' in parents and mimeType = 'application/vnd.google-apps.folder' and (name = 'Processed' or name = 'processed') and trashed = false"
+                            c_proc_flds = self.service.files().list(q=c_proc_q, spaces="drive", fields="files(id, name)").execute().get("files", [])
+                            for cpf in c_proc_flds:
+                                cpf_id = cpf["id"]
+                                cpf_res = self.service.files().list(
+                                    q=f"'{cpf_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+                                    spaces="drive",
+                                    fields="files(id, name, mimeType, webViewLink, size, createdTime)",
+                                    pageSize=150,
+                                ).execute()
+                                for cpf_file in cpf_res.get("files", []):
+                                    cpf_name = cpf_file.get("name", "")
+                                    cpf_id_val = cpf_file.get("id", "")
+                                    if not self._is_supported_doc(cpf_file):
+                                        continue
+                                    if cpf_name and (cpf_name in existing_staged_files or cpf_name.strip() in existing_staged_files):
+                                        continue
+                                    if cpf_id_val and (cpf_id_val in existing_staged_ids or str(cpf_id_val).strip() in existing_staged_ids):
+                                        continue
+                                    logger.info(f"🔄 [Recovery Sweep] Recovering unindexed slip '{cpf_name}' from Pass 2 Processed to ledger")
+                                    discovered_docs.append(
+                                        SourceDocument(
+                                            file_name=cpf_name,
+                                            source_type=SourceType.GOOGLE_DRIVE,
+                                            source_identifier=cpf_id_val,
+                                            mime_type=cpf_file.get("mimeType", "image/jpeg"),
+                                            metadata={
+                                                "folder_id": mf["id"],
+                                                "processed_folder_id": cpf_id,
+                                                "root_folder_id": folder_id,
+                                                "month_folder_id": mf["id"],
+                                                "month_folder_name": mf.get("name"),
+                                                "parent_customer_id": cust_id,
+                                                "customer_name_hint": cust_name,
+                                                "vendor_name_hint": cust_name,
+                                                "party_name_hint": cust_name,
+                                                "customer_slug": cust_slug,
+                                                "month": month,
+                                                "year": year,
+                                                "hierarchy_pattern": "customer_first_month_recovery",
+                                                "is_recovery": True,
+                                                "already_archived": True,
+                                                "drive_file_url": cpf_file.get("webViewLink") or (f"https://drive.google.com/file/d/{cpf_id_val}/view" if cpf_id_val else ""),
+                                            },
+                                        )
+                                    )
+                        except Exception as c_rec_err:
+                            logger.debug(f"Pass 2 recovery note: {c_rec_err}")
 
             # -------------------------------------------------------------
             # PASS 3: Flat Folder Discovery (Direct loose files in folder_id)

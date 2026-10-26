@@ -1,5 +1,6 @@
 """Unit tests for production runtime fixes (OCRSlipItem null coercion, ZohoContact currency_code, EmailSourceService params)."""
 
+import json
 import pytest
 from app.models.schemas import OCRSlipItem, OCRSlipExtraction, ZohoContact
 from app.services.email_source_service import EmailSourceService
@@ -150,6 +151,10 @@ async def test_ocr_raises_ai_model_unavailable_on_503(monkeypatch):
     import google.genai as genai_module
     monkeypatch.setattr(genai_module, "Client", MockGenaiClient)
 
+    async def mock_sleep(sec):
+        pass
+    monkeypatch.setattr("asyncio.sleep", mock_sleep)
+
     ocr = GeminiOCRService(api_key="test-key", model_name="gemini-3.6-flash")
 
     with pytest.raises(AIModelUnavailableException) as exc_info:
@@ -161,8 +166,8 @@ async def test_ocr_raises_ai_model_unavailable_on_503(monkeypatch):
             item_catalog=[],
         )
 
-    # Verify only the primary best model was attempted and no inferior models were called
-    assert models_called == ["gemini-3.6-flash"]
+    # Verify only the primary best model was attempted (3 retries on 503) and no inferior models were called
+    assert models_called == ["gemini-3.6-flash"] * 3
     assert "currently unavailable" in str(exc_info.value)
 
 
@@ -529,6 +534,166 @@ async def test_list_client_transactions_strict_month_isolation_no_leakage():
         session.exec(delete(StagedTransaction).where(StagedTransaction.client_id == test_cid))
         session.exec(delete(ClientOrganization).where(ClientOrganization.id == test_cid))
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_google_drive_processed_recovery_sweep(monkeypatch):
+    """Verify discover_documents_multi_convention recovers unindexed slips from Processed folder."""
+    from unittest.mock import MagicMock
+    from app.services.google_drive_service import GoogleDriveService
+    from sqlmodel import Session, delete
+    from app.db.session import get_engine
+    from app.models.db_models import StagedTransaction
+
+    test_cid = "recovery_sweep_client"
+
+    # Clean up DB
+    with Session(get_engine()) as session:
+        session.exec(delete(StagedTransaction).where(StagedTransaction.client_id == test_cid))
+        session.commit()
+
+    drive = GoogleDriveService()
+    mock_service = MagicMock()
+    drive.service = mock_service
+
+    # Setup mock file list queries
+    def mock_files_list(q="", **kwargs):
+        mock_req = MagicMock()
+        if "'root_folder' in parents" in q:
+            # Root contains Month folder 'October 2026'
+            mock_req.execute.return_value = {
+                "files": [{"id": "month_fld_1", "name": "October 2026", "mimeType": "application/vnd.google-apps.folder"}]
+            }
+        elif "'month_fld_1' in parents" in q:
+            # Month folder contains customer subfolder 'Active 8 Spintex'
+            mock_req.execute.return_value = {
+                "files": [{"id": "cust_fld_1", "name": "Active 8 Spintex", "mimeType": "application/vnd.google-apps.folder"}]
+            }
+        elif "'cust_fld_1' in parents" in q and "mimeType != 'application/vnd.google-apps.folder'" in q:
+            # 0 loose files in customer folder
+            mock_req.execute.return_value = {"files": []}
+        elif "'cust_fld_1' in parents" in q and "(name = 'Processed' or name = 'processed')" in q:
+            # Processed folder exists
+            mock_req.execute.return_value = {
+                "files": [{"id": "proc_fld_1", "name": "Processed", "mimeType": "application/vnd.google-apps.folder"}]
+            }
+        elif "'proc_fld_1' in parents" in q:
+            # Processed folder contains 2 slips: 1 already indexed, 1 orphaned
+            mock_req.execute.return_value = {
+                "files": [
+                    {"id": "file_indexed_1", "name": "Active 8 Spintex 10-10-2026.jpg", "mimeType": "image/jpeg", "webViewLink": "https://drive.google.com/1"},
+                    {"id": "file_orphaned_2", "name": "Active 8 Spintex 11-10-2026.jpg", "mimeType": "image/jpeg", "webViewLink": "https://drive.google.com/2"},
+                ]
+            }
+        else:
+            mock_req.execute.return_value = {"files": []}
+        return mock_req
+
+    mock_service.files().list.side_effect = mock_files_list
+
+    # Seed 1 indexed slip in database
+    with Session(get_engine()) as session:
+        session.add(
+            StagedTransaction(
+                client_id=test_cid,
+                batch_id="b1",
+                pipeline_id="p1",
+                pipeline_type="AR",
+                entity_type="ar_sales_invoice",
+                transaction_date="2026-10-10",
+                source_type="google_drive",
+                source_file_name="Active 8 Spintex 10-10-2026.jpg",
+                source_identifier="file_indexed_1",
+                item_or_description="Bath Towel",
+                quantity_or_debit=1.0,
+                rate_or_price=10.0,
+                total_amount=10.0,
+            )
+        )
+        session.commit()
+
+    docs = await drive.discover_documents_multi_convention(
+        folder_id="root_folder",
+        month="October",
+        year=2026,
+    )
+
+    # Should discover only the orphaned slip from Processed folder!
+    assert len(docs) == 1
+    assert docs[0].file_name == "Active 8 Spintex 11-10-2026.jpg"
+    assert docs[0].source_identifier == "file_orphaned_2"
+    assert docs[0].metadata.get("is_recovery") is True
+    assert docs[0].metadata.get("already_archived") is True
+
+    # Clean up DB
+    with Session(get_engine()) as session:
+        session.exec(delete(StagedTransaction).where(StagedTransaction.client_id == test_cid))
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_gemini_ocr_transient_503_backoff_retry(monkeypatch):
+    """Verify GeminiOCRService retries transient 503 errors and succeeds on subsequent attempt."""
+    from unittest.mock import MagicMock
+    from app.services.ocr_service import GeminiOCRService
+
+    ocr = GeminiOCRService()
+    ocr.api_key = "test_api_key"
+    ocr.model_name = "gemini-3.6-flash"
+
+    mock_genai_client = MagicMock()
+    attempt_count = 0
+
+    def mock_generate_content(*args, **kwargs):
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count == 1:
+            # Simulate Google GenAI 503 capacity limit on attempt 1
+            raise Exception("503 UNAVAILABLE: This model is currently experiencing high demand. Spikes in demand are usually temporary.")
+        # Attempt 2 succeeds
+        mock_resp = MagicMock()
+        mock_resp.text = json.dumps({
+            "client_name": "Test Hotel",
+            "date": "10/10/2026",
+            "items": [
+                {
+                    "raw_item_name": "B/Towel",
+                    "standard_item_name": "Bath Towel",
+                    "pickup_qty": 5,
+                    "delivery_qty": 5,
+                    "unit_rate": 12.0,
+                    "confidence_score": "HIGH",
+                }
+            ],
+            "overall_confidence": "HIGH",
+        })
+        return mock_resp
+
+    mock_genai_client.models.generate_content.side_effect = mock_generate_content
+    monkeypatch.setattr("google.genai.Client", lambda api_key: mock_genai_client)
+
+    # Fast sleep to avoid slowing down unit tests
+    sleep_calls = []
+    async def mock_sleep(sec):
+        sleep_calls.append(sec)
+
+    monkeypatch.setattr("asyncio.sleep", mock_sleep)
+
+    result = await ocr.extract_slip_data(
+        file_bytes=b"dummy_image_data",
+        mime_type="image/jpeg",
+        file_name="Active 8 Spintex 10-10-2026.jpg",
+        client_name="Test Hotel",
+        item_catalog=[],
+    )
+
+    assert attempt_count == 2
+    assert len(sleep_calls) == 1
+    assert sleep_calls[0] == 2  # Attempt 1 backed off for 2s
+    assert result.client_name == "Test Hotel"
+    assert len(result.items) == 1
+    assert result.items[0].standard_item_name == "Bath Towel"
+
 
 
 
