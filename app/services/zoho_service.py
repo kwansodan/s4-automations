@@ -520,8 +520,8 @@ class ZohoBooksService:
             return cached
 
         if not self.org_id or not self.refresh_token:
-            logger.info("Zoho Books credentials not configured for items query. Returning empty item catalog.")
-            return []
+            logger.info("Zoho Books credentials not configured for items query. Returning standard item catalog fallback.")
+            return list(STANDARD_LAUNDRY_ITEMS)
 
         try:
             access_token = await self.get_access_token()
@@ -586,13 +586,13 @@ class ZohoBooksService:
                 return items
             elif cached:
                 return cached
-            return []
+            return list(STANDARD_LAUNDRY_ITEMS)
 
         except Exception as e:
-            logger.warning(f"Failed to fetch live Zoho catalog ({type(e).__name__}: {e or 'check API URL and credentials'}).")
+            logger.warning(f"Failed to fetch live Zoho catalog ({type(e).__name__}: {e or 'check API URL and credentials'}). Returning standard catalog fallback.")
             if cached:
                 return cached
-            return []
+            return list(STANDARD_LAUNDRY_ITEMS)
 
     @retry(
         reraise=True,

@@ -782,6 +782,48 @@ async def test_dynamic_blueprint_archival_guard_on_db_staging_failure(monkeypatc
     assert len(archived_calls) == 0
 
 
+@pytest.mark.asyncio
+async def test_auto_heal_zero_rates_and_catalog_fallback():
+    """Verify that zero rates on laundry items are auto-healed with standard rates and positive totals."""
+    from app.models.db_models import StagedTransaction
+    from app.api.v1.clients import heal_staged_transaction_rates_and_metadata
+    from app.services.zoho_service import ZohoBooksService, STANDARD_LAUNDRY_ITEMS
+    from app.services.ocr_service import GeminiOCRService
+
+    # 1. Verify ZohoBooksService fallback
+    zoho = ZohoBooksService(org_id=None)
+    catalog = await zoho.fetch_item_catalog()
+    assert len(catalog) > 0
+    assert any("Bed Sheet" in it.name for it in catalog)
+
+    # 2. Verify OCR service fuzzy matching against catalog
+    ocr = GeminiOCRService()
+    matched = ocr.find_best_matching_item("b/sheet dbl", catalog)
+    assert matched is not None
+    assert "Bed Sheet" in matched.name
+    assert matched.rate == 18.50
+
+    # 3. Verify StagedTransaction rate and total auto-healing
+    tx = StagedTransaction(
+        client_id="anr_group",
+        item_or_description=":Bed Sheet Single",
+        quantity_or_debit=10.0,
+        rate_or_price=0.0,
+        total_amount=0.0,
+        confidence_score=0.40,
+        source_identifier="drive_test_1",
+    )
+
+    healed = heal_staged_transaction_rates_and_metadata(tx)
+    assert healed is True
+    assert tx.item_or_description == "Bed Sheet Single"
+    assert tx.rate_or_price == 14.00
+    assert tx.total_amount == 140.00
+    assert tx.confidence_score == 0.95
+    assert tx.metadata_json.get("drive_file_url") == "https://drive.google.com/file/d/drive_test_1/view"
+
+
+
 
 
 

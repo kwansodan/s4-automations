@@ -1210,6 +1210,9 @@
   .border-\[\#BAE6FD\] {
     border-color: #BAE6FD;
   }
+  .border-\[\#BFDBFE\] {
+    border-color: #BFDBFE;
+  }
   .border-\[\#CBD5E1\] {
     border-color: #CBD5E1;
   }
@@ -1762,6 +1765,9 @@
   .bg-\[\#059669\] {
     background-color: #059669;
   }
+  .bg-\[\#DBEAFE\] {
+    background-color: #DBEAFE;
+  }
   .bg-\[\#ECFDF5\] {
     background-color: #ECFDF5;
   }
@@ -1770,6 +1776,9 @@
   }
   .bg-\[\#ECFDF5\]\/50 {
     background-color: color-mix(in oklab, #ECFDF5 50%, transparent);
+  }
+  .bg-\[\#EFF6FF\] {
+    background-color: #EFF6FF;
   }
   .bg-\[\#F0F9FF\] {
     background-color: #F0F9FF;
@@ -3335,6 +3344,12 @@
   }
   .text-\[\#0F172A\] {
     color: #0F172A;
+  }
+  .text-\[\#1E40AF\] {
+    color: #1E40AF;
+  }
+  .text-\[\#3B82F6\] {
+    color: #3B82F6;
   }
   .text-\[\#9F1239\] {
     color: #9F1239;

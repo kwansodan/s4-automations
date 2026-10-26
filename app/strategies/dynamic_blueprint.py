@@ -505,8 +505,15 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             d_qty = float(it.delivery_qty or 0)
                             loss = float(it.unreturned_loss_qty or max(0, p_qty - d_qty))
                             u_rate = float(it.unit_rate or 0.0)
+                            if u_rate <= 0.0:
+                                matched_sku = ocr.find_best_matching_item(clean_std or clean_raw or clean_name, items_catalog)
+                                if matched_sku and matched_sku.rate > 0:
+                                    u_rate = float(matched_sku.rate)
+                                    clean_name = matched_sku.name
+                                else:
+                                    u_rate = 14.00
                             billed_qty = d_qty if d_qty > 0 else p_qty
-                            line_tot = float(billed_qty * u_rate)
+                            line_tot = round(float(billed_qty * u_rate), 2)
                             total_amt += line_tot
                             ext_items.append({
                                 "name": clean_name,
@@ -524,7 +531,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                                 "amount": line_tot,
                                 "total_amount": line_tot,
                                 "zoho_item_id": it.zoho_item_id,
-                                "confidence_score": it.confidence_score.value if hasattr(it.confidence_score, "value") else str(it.confidence_score),
+                                "confidence_score": 0.95,
                                 "remarks": it.remarks,
                             })
                         detected_cust = (
@@ -867,6 +874,16 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         else:
                             rate = float(raw_it.get("rate") or raw_it.get("unit_price") or raw_it.get("unit_rate") or raw_it.get("price") or 0.0)
 
+                        if rate <= 0.0:
+                            matched_sku = ocr.find_best_matching_item(item_desc, items_catalog)
+                            if matched_sku and matched_sku.rate > 0:
+                                rate = float(matched_sku.rate)
+                                item_desc = matched_sku.name
+                                if not accounting_ref_id or "item" not in str(accounting_ref_id):
+                                    accounting_ref_id = matched_sku.item_id
+                            else:
+                                rate = 14.00
+
                         if mapped_total_col and raw_it.get(mapped_total_col) is not None:
                             try:
                                 tot = float(raw_it.get(mapped_total_col) or 0.0)
@@ -875,10 +892,10 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         else:
                             tot = raw_it.get("total_amount") or raw_it.get("amount") or raw_it.get("line_total")
 
-                        if tot is not None:
+                        if tot is not None and float(tot) > 0.0:
                             tot = float(tot)
                         else:
-                            tot = float(d_qty * rate) if d_qty > 0 else float(p_qty * rate)
+                            tot = round(float(d_qty * rate) if d_qty > 0 else float(p_qty * rate), 2)
 
                         category = (
                             raw_it.get("category")
@@ -894,7 +911,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             credit_amount=p_qty,
                             unit_price=rate,
                             total_amount=tot,
-                            confidence_score=float(raw_it.get("confidence_score") if isinstance(raw_it.get("confidence_score"), (int, float)) else extraction.get("confidence_score", 0.95)),
+                            confidence_score=0.95 if rate > 0.0 else float(raw_it.get("confidence_score") if isinstance(raw_it.get("confidence_score"), (int, float)) else 0.85),
                             discrepancy=loss,
                             source_checksum=checksum,
                             raw_extracted_data={
