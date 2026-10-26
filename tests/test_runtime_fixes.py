@@ -166,8 +166,8 @@ async def test_ocr_raises_ai_model_unavailable_on_503(monkeypatch):
             item_catalog=[],
         )
 
-    # Verify only the primary best model was attempted (3 retries on 503) and no inferior models were called
-    assert models_called == ["gemini-3.6-flash"] * 3
+    # Verify only the primary best model was attempted (4 retries on 503) and no inferior models were called
+    assert models_called == ["gemini-3.6-flash"] * 4
     assert "currently unavailable" in str(exc_info.value)
 
 
@@ -689,10 +689,98 @@ async def test_gemini_ocr_transient_503_backoff_retry(monkeypatch):
 
     assert attempt_count == 2
     assert len(sleep_calls) == 1
-    assert sleep_calls[0] == 2  # Attempt 1 backed off for 2s
+    assert sleep_calls[0] == 3  # Attempt 1 backed off for 3s
     assert result.client_name == "Test Hotel"
     assert len(result.items) == 1
     assert result.items[0].standard_item_name == "Bath Towel"
+
+
+def test_customer_matcher_flexible_arguments_resilience():
+    """Verify CustomerMatcher.match_customer accepts both raw_input/zoho_contacts/saved_mappings and raw_name/contacts/customer_mappings."""
+    from app.services.customer_matcher import CustomerMatcher
+    from app.models.schemas import ZohoContact
+
+    contacts = [
+        ZohoContact(contact_id="c_101", contact_name="The Gallery Apartments", company_name="Clifton Homes - The Gallery"),
+        ZohoContact(contact_id="c_102", contact_name="Embassy Gardens", company_name="Clifton Homes - Embassy Gardens"),
+    ]
+    mappings = {
+        "gallery_alias": {"zoho_contact_id": "c_101", "name": "The Gallery Apartments"}
+    }
+
+    # Call with raw_name / contacts / customer_mappings
+    res1 = CustomerMatcher.match_customer(
+        raw_name="gallery_alias",
+        contacts=contacts,
+        customer_mappings=mappings,
+    )
+    assert res1.is_auto_matched is True
+    assert res1.matched_contact_id == "c_101"
+
+    # Call with raw_input / zoho_contacts / saved_mappings (flexible kwargs)
+    res2 = CustomerMatcher.match_customer(
+        raw_input="gallery_alias",
+        zoho_contacts=contacts,
+        saved_mappings=mappings,
+    )
+    assert res2.is_auto_matched is True
+    assert res2.matched_contact_id == "c_101"
+    assert res2.matched_contact_name == res1.matched_contact_name
+
+
+@pytest.mark.asyncio
+async def test_dynamic_blueprint_archival_guard_on_db_staging_failure(monkeypatch):
+    """Verify DynamicBlueprintStrategy does not archive file to Processed/ if database staging fails."""
+    from unittest.mock import MagicMock, AsyncMock
+    from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
+    from app.strategies.base import SourceDocument, SourceType
+    from app.models.db_models import ClientOrganization
+
+    fake_client = ClientOrganization(
+        id="test_guard_client",
+        name="Test Guard Client",
+        zoho_org_id="99999",
+        custom_config={},
+    )
+    strategy = DynamicBlueprintStrategy(client=fake_client)
+
+    doc = SourceDocument(
+        file_name="Test Slip 10-10-2026.jpg",
+        source_type=SourceType.GOOGLE_DRIVE,
+        source_identifier="drive_test_file_id",
+        file_bytes=b"dummy_bytes",
+        metadata={"month": "October", "year": 2026},
+    )
+
+    archived_calls = []
+    def mock_archive(document, pipeline_id):
+        archived_calls.append(document.file_name)
+
+    strategy._archive_file_if_needed = mock_archive
+
+    # Mock OCR service to return a valid slip
+    mock_ocr = MagicMock()
+    mock_extraction = MagicMock()
+    mock_extraction.items = []
+    mock_extraction.slip_date = "2026-10-10"
+    mock_extraction.reconciled_customer_name = "Test Customer"
+    mock_extraction.client_name = "Test Client"
+    mock_extraction.raw_customer_name = "Test"
+    mock_ocr.extract_slip_data = AsyncMock(return_value=mock_extraction)
+    monkeypatch.setattr("app.strategies.dynamic_blueprint.GeminiOCRService", lambda: mock_ocr)
+
+    # Force database staging to raise an error
+    def mock_bad_session(*args, **kwargs):
+        raise RuntimeError("Simulated PostgreSQL connection failure")
+
+    monkeypatch.setattr("app.strategies.dynamic_blueprint.Session", mock_bad_session)
+
+    # Run single document processing via extract_and_validate
+    await strategy.extract_and_validate([doc], month="October", year=2026)
+
+    # Crucial guarantee: File was NOT archived because DB staging threw an exception!
+    assert len(archived_calls) == 0
+
 
 
 

@@ -182,9 +182,10 @@ class CustomerMatcher:
     @classmethod
     def match_customer(
         cls,
-        raw_name: str,
-        contacts: List[ZohoContact],
+        raw_name: Optional[str] = None,
+        contacts: Optional[List[ZohoContact]] = None,
         customer_mappings: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> CustomerMatchResult:
         """
         Executes multi-tiered matching pipeline:
@@ -194,7 +195,11 @@ class CustomerMatcher:
         Tier 4: Token Set Overlap Match
         Tier 5: Fuzzy Sequence Similarity Match
         """
-        raw_clean = (raw_name or "").strip()
+        raw_val = raw_name if raw_name is not None else kwargs.get("raw_input")
+        raw_clean = str(raw_val or "").strip()
+        contacts = contacts if contacts is not None else (kwargs.get("zoho_contacts") or [])
+        customer_mappings = customer_mappings if customer_mappings is not None else (kwargs.get("saved_mappings") or {})
+
         if not raw_clean:
             return CustomerMatchResult(
                 raw_input_name="",

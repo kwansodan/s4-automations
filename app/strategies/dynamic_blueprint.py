@@ -299,8 +299,12 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
         logger.info(f"[{self.client_name}] Stage 2: Extracting data from {len(sources)} source documents (force_reprocess={force_reprocess})...")
         extracted_items: List[ExtractedLineItem] = []
         ocr = GeminiOCRService()
-        effective_org_id = getattr(self.client, "zoho_org_id", None) or getattr(self.client, "organization_id", None)
-        zoho = ZohoBooksService(org_id=effective_org_id)
+        try:
+            zoho = ZohoBooksService.from_client_id(self.client_id)
+        except Exception as zoho_init_err:
+            logger.warning(f"Could not initialize tenant ZohoBooksService for '{self.client_id}': {zoho_init_err}. Using fallback.")
+            effective_org_id = getattr(self.client, "zoho_org_id", None) or getattr(self.client, "organization_id", None)
+            zoho = ZohoBooksService(org_id=effective_org_id)
 
         # Pre-fetch Zoho Contacts & Catalog for validation
         contacts = await zoho.fetch_active_contacts()
@@ -401,6 +405,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                     return []
 
             async with sem:
+                await asyncio.sleep(0.3)
                 entity_type = doc.metadata.get("entity_type", AccountingEntityType.AR_SALES_INVOICE.value)
                 pipeline_name = doc.metadata.get("pipeline_name", "Default Ingestion Pipeline")
 
@@ -974,9 +979,9 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             )
                             if not accounting_ref_id and contacts and cust_name:
                                 match_res = CustomerMatcher.match_customer(
-                                    raw_input=cust_name,
-                                    zoho_contacts=contacts,
-                                    saved_mappings=self.custom_config.get("customer_mappings", {}),
+                                    raw_name=cust_name,
+                                    contacts=contacts,
+                                    customer_mappings=self.custom_config.get("customer_mappings", {}),
                                 )
                                 if match_res and match_res.matched_contact_id:
                                     accounting_ref_id = match_res.matched_contact_id
@@ -1017,20 +1022,26 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             )
                             staged_to_add.append(staged_rec)
 
+                        staged_successfully = False
                         if staged_to_add:
                             db_sess.add_all(staged_to_add)
                             db_sess.commit()
+                            staged_successfully = True
                             logger.info(f"💾 Committed {len(staged_to_add)} staged items for '{doc.file_name}' to PostgreSQL.")
+                        elif not staged_to_add and doc_items:
+                            # Items were already recorded in database previously
+                            staged_successfully = True
                 except Exception as stage_direct_err:
                     logger.error(f"Error direct-staging items for '{doc.file_name}': {stage_direct_err}")
 
-                # Move fresh processed file to Processed/ if enabled
-                await asyncio.to_thread(self._archive_file_if_needed, doc, doc_pipeline_id)
+                # Move fresh processed file to Processed/ ONLY if direct staging succeeded
+                if staged_successfully:
+                    await asyncio.to_thread(self._archive_file_if_needed, doc, doc_pipeline_id)
 
                 return doc_items
 
-        # Bounded concurrency: process up to 4 documents in parallel for maximum speed and proxy timeout prevention
-        sem = asyncio.Semaphore(4)
+        # Bounded concurrency: process up to 2 documents in parallel to prevent Google GenAI 503 capacity limits
+        sem = asyncio.Semaphore(2)
         tasks = [_process_single_document(doc, sem) for doc in sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

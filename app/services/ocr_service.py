@@ -170,7 +170,7 @@ Return strictly valid JSON conforming to the schema.
         m_name = self.model_name
         last_error = None
 
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):
             try:
                 # 1. Attempt using modern google-genai SDK
                 from google import genai
@@ -214,10 +214,10 @@ Return strictly valid JSON conforming to the schema.
             except Exception as genai_err:
                 last_error = genai_err
                 if is_model_unavailable_error(genai_err):
-                    if attempt < 3:
-                        wait_sec = attempt * 2
+                    if attempt < 4:
+                        wait_sec = attempt * 3
                         logger.warning(
-                            f"Primary AI OCR model '{m_name}' returned transient high-demand 503 on '{file_name}' (attempt {attempt}/3). Backing off for {wait_sec}s..."
+                            f"Primary AI OCR model '{m_name}' returned transient high-demand 503 on '{file_name}' (attempt {attempt}/4). Backing off for {wait_sec}s..."
                         )
                         await asyncio.sleep(wait_sec)
                         continue
@@ -316,7 +316,7 @@ For line items, extract description, quantity, unit_rate, and amount.
 Return strictly valid JSON conforming to the schema.
 """
         
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):
             try:
                 from google import genai
                 from google.genai import types
@@ -353,10 +353,10 @@ Return strictly valid JSON conforming to the schema.
                 return parsed_bill
             except Exception as e:
                 if is_model_unavailable_error(e):
-                    if attempt < 3:
-                        wait_sec = attempt * 2
+                    if attempt < 4:
+                        wait_sec = attempt * 3
                         logger.warning(
-                            f"Primary AI OCR model '{self.model_name}' returned transient 503 on vendor bill '{file_name}' (attempt {attempt}/3). Backing off for {wait_sec}s..."
+                            f"Primary AI OCR model '{self.model_name}' returned transient 503 on vendor bill '{file_name}' (attempt {attempt}/4). Backing off for {wait_sec}s..."
                         )
                         await asyncio.sleep(wait_sec)
                         continue
@@ -785,7 +785,7 @@ Your task is to analyze the provided document/text and transpose raw extracted d
 Analyze thoroughly and return JSON output only.
 """
 
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):
             try:
                 from google import genai
                 from google.genai import types
@@ -816,10 +816,10 @@ Analyze thoroughly and return JSON output only.
 
             except Exception as e:
                 if is_model_unavailable_error(e):
-                    if attempt < 3:
-                        wait_sec = attempt * 2
+                    if attempt < 4:
+                        wait_sec = attempt * 3
                         logger.warning(
-                            f"Primary AI OCR model '{self.model_name}' returned transient 503 during transposition of '{file_name}' (attempt {attempt}/3). Backing off for {wait_sec}s..."
+                            f"Primary AI OCR model '{self.model_name}' returned transient 503 during transposition of '{file_name}' (attempt {attempt}/4). Backing off for {wait_sec}s..."
                         )
                         await asyncio.sleep(wait_sec)
                         continue

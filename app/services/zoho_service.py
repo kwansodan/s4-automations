@@ -309,7 +309,7 @@ class ZohoBooksService:
             return []
 
         except Exception as e:
-            logger.warning(f"Failed to fetch live Zoho contacts ({e}).")
+            logger.warning(f"Failed to fetch live Zoho contacts ({type(e).__name__}: {e or 'check API URL and credentials'}).")
             if cached:
                 return cached
             return []
@@ -589,7 +589,7 @@ class ZohoBooksService:
             return []
 
         except Exception as e:
-            logger.warning(f"Failed to fetch live Zoho catalog ({e}).")
+            logger.warning(f"Failed to fetch live Zoho catalog ({type(e).__name__}: {e or 'check API URL and credentials'}).")
             if cached:
                 return cached
             return []
