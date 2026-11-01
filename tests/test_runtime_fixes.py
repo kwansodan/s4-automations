@@ -823,6 +823,31 @@ async def test_auto_heal_zero_rates_and_catalog_fallback():
     assert tx.metadata_json.get("drive_file_url") == "https://drive.google.com/file/d/drive_test_1/view"
 
 
+@pytest.mark.asyncio
+async def test_trigger_client_strategy_background_dispatch(monkeypatch):
+    """Verify background strategy execution dispatches without NameError on asyncio."""
+    from app.api.v1.clients import trigger_client_strategy, RunStrategyPayload
+    from app.strategies.factory import StrategyFactory
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_strat = MagicMock()
+    mock_strat.execute = AsyncMock(return_value=MagicMock(model_dump=lambda: {"status": "SUCCESS"}))
+    mock_strat.client_name = "ANR Commercial Cleaning"
+    monkeypatch.setattr(StrategyFactory, "get", lambda cid: mock_strat)
+
+    payload = RunStrategyPayload(
+        month="October",
+        year=2026,
+        background=True,
+    )
+
+    res = await trigger_client_strategy("anr-commercial-cleaning", payload)
+    assert res["status"] == "IN_PROGRESS"
+    assert res["background"] is True
+    assert "started in background" in res["message"]
+
+
+
 
 
 

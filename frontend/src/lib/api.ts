@@ -313,6 +313,16 @@ async function handleResponse<T>(
 
     const fullMessage = `${context} failed (${res.status}): ${errorDetail || res.statusText}`;
 
+    // Auto-purge expired session tokens and notify AuthContext
+    if (res.status === 401 && typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      const hadToken = Boolean(localStorage.getItem('S4_AUTH_TOKEN'));
+      if (hadToken) {
+        localStorage.removeItem('S4_AUTH_TOKEN');
+        localStorage.removeItem('S4_AUTH_USER');
+        window.dispatchEvent(new CustomEvent('s4:auth:expired', { detail: { message: errorDetail } }));
+      }
+    }
+
     // Auto-report to in-app ErrorContext & pop notification (unless explicitly silenced)
     if (!options?.silent && typeof window !== 'undefined' && (window as any).__S4_REPORT_ERROR__) {
       (window as any).__S4_REPORT_ERROR__({

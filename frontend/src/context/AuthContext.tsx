@@ -62,6 +62,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
 
+  // Listen for global session expiration events
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      logout();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('s4:auth:expired', handleAuthExpired);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('s4:auth:expired', handleAuthExpired);
+      }
+    };
+  }, []);
+
   // Re-verify and refresh current user organizations on mount if token exists
   useEffect(() => {
     if (!authState.token) return;
@@ -73,10 +88,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user: res.user,
           }));
           localStorage.setItem('S4_AUTH_USER', JSON.stringify(res.user));
+        } else {
+          logout();
         }
       })
       .catch((err) => {
         console.warn('Silent user session refresh notice:', err);
+        if (err?.status === 401 || String(err?.message || '').includes('401')) {
+          logout();
+        }
       });
   }, [authState.token]);
 
