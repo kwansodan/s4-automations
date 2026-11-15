@@ -950,8 +950,8 @@ export const InvoiceModal: React.FC = () => {
   if (!isInvoiceModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="w-full max-w-2xl bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[92vh] overflow-y-auto custom-scrollbar">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
+      <div className="w-full max-w-2xl bg-slate-900 border border-emerald-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl animate-in zoom-in-95 max-h-[92vh] overflow-y-auto custom-scrollbar">
         {/* Modal Top Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
           <div className="flex items-center gap-2">
@@ -1450,23 +1450,23 @@ export const InvoiceModal: React.FC = () => {
                     </div>
                   )}
 
-                  {/* 5. OCR Extraction Confidence Check */}
+                  {/* 5. Extraction Confidence Check */}
                   {hasLowConfidence ? (
                     <div className="flex items-start gap-2 text-amber-300 bg-amber-950/40 border border-amber-500/30 rounded-lg p-2.5">
                       <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                       <div>
                         <span className="font-semibold text-amber-200">
-                          Low OCR Confidence ({scopedLowConfApproved.length}):{' '}
+                          Low Extraction Confidence ({scopedLowConfApproved.length}):{' '}
                         </span>
-                        <span>Some approved items contain unverified OCR digits or text. Review in the ledger if needed.</span>
+                        <span>Some approved items contain unverified characters. Review in the ledger if needed.</span>
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-start gap-2 text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
                       <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
                       <div>
-                        <span className="font-semibold text-white">OCR Confidence: </span>
-                        <span>High extraction confidence across all approved items.</span>
+                        <span className="font-semibold text-white">Extraction Confidence: </span>
+                        <span>High confidence across all approved items.</span>
                       </div>
                     </div>
                   )}
@@ -1667,7 +1667,7 @@ export const InvoiceModal: React.FC = () => {
             {!hasExistingDrafts && (
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1.5">
                 <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
-                  <span>⚡ Idempotent Append Engine</span>
+                  <span>Draft Invoice Creation</span>
                 </div>
                 <p>
                   No existing draft invoices detected for this period. Invoices will be created as new drafts in Zoho Books.

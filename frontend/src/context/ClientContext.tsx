@@ -65,7 +65,7 @@ const DEFAULT_CLIENTS: ClientProfile[] = [
     blueprints: [
       { title: 'Vision OCR Extraction', desc: 'Gemini 3.6 Flash structured JSON extraction on daily control sheets', status: 'active' },
       { title: 'Google Sheets Review Sync', desc: 'Populate Tab 1 (Daily Details) and Tab 2 (Monthly Billing Summary)', status: 'active' },
-      { title: 'Draft Invoicing Engine', desc: '1-Click draft invoice creation appending newly approved line items', status: 'active' },
+      { title: 'Draft Invoicing Engine', desc: 'Draft invoice generation for approved line items', status: 'active' },
     ],
   },
 ];

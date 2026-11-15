@@ -457,21 +457,21 @@ export const ClientSettingsTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-sky-400" />
             <h2 className="text-base font-bold text-white tracking-tight">
-              Client Configuration &amp; Tenant Parameters
+              Organization Settings
             </h2>
             <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
               {currentClient.id}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Isolated storage folders, accounting instance API credentials, AI vision extraction prompt notes, and stakeholder notification routing.
+            Manage integrations, storage connections, and organization preferences.
           </p>
         </div>
 
         {configSaveSuccess && (
           <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
             <CheckCircle2 className="w-4 h-4" />
-            Settings saved into database!
+            Settings saved successfully
           </span>
         )}
       </div>
@@ -699,7 +699,7 @@ export const ClientSettingsTab: React.FC = () => {
               ) : (
                 <div className="space-y-2.5">
                   <p className="text-xs text-slate-300">
-                    Connect this client to their {platformMeta.name} account in 1-Click. No developer app setup or API keys required.
+                    Connect this organization to their {platformMeta.name} account. No developer credentials required.
                   </p>
                   
                   <button
@@ -709,7 +709,7 @@ export const ClientSettingsTab: React.FC = () => {
                     className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer disabled:opacity-50"
                   >
                     <Zap className={`w-4 h-4 text-emerald-200 ${isConnectingOAuth ? 'animate-bounce' : ''}`} />
-                    <span>{isConnectingOAuth ? `Launching ${platformMeta.name} Consent...` : `Connect with ${platformMeta.name} (1-Click)`}</span>
+                    <span>{isConnectingOAuth ? `Launching ${platformMeta.name} Consent...` : `Connect with ${platformMeta.name}`}</span>
                     <ExternalLink className="w-3.5 h-3.5 opacity-70" />
                   </button>
 
@@ -1475,7 +1475,7 @@ export const ClientSettingsTab: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          To protect accounting audit integrity, an organisation <strong>cannot be deleted</strong> as long as it has active ingestion streams.
+          To protect accounting audit integrity, an organisation <strong>cannot be deleted</strong> as long as it has active ingestion pipelines.
         </p>
 
         {((currentClient.pipelines || []).length > 0) ? (
@@ -1486,7 +1486,7 @@ export const ClientSettingsTab: React.FC = () => {
                 Organisation Deletion Locked
               </span>
               <p className="text-[11px] text-slate-400">
-                This client currently has <strong>{(currentClient.pipelines || []).length} active pipeline stream(s)</strong>. Delete streams in the Pipelines tab first.
+                This organization currently has <strong>{(currentClient.pipelines || []).length} active pipeline(s)</strong>. Delete pipelines in the Pipelines tab first.
               </p>
             </div>
             <button
@@ -1503,10 +1503,10 @@ export const ClientSettingsTab: React.FC = () => {
             <div className="space-y-1">
               <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
-                0 Pipeline Streams Active (Deletion Unlocked)
+                0 Pipelines Active (Deletion Unlocked)
               </span>
               <p className="text-[11px] text-slate-300">
-                All streams cleared. You can now safely delete this client organisation.
+                All pipelines cleared. You can now safely delete this organization.
               </p>
             </div>
             <button

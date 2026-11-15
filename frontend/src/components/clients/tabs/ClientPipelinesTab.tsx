@@ -153,14 +153,14 @@ export const ClientPipelinesTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-sky-400" />
             <h2 className="text-base font-bold text-white tracking-tight">
-              Ingestion Pipelines &amp; Automation Streams
+              Ingestion Pipelines
             </h2>
             <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
-              {pipelines.length} Active Streams
+              {pipelines.length} Active
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Configure entity-driven automation streams for Accounts Receivable, Accounts Payable, Bank Feeds, and General Ledger.
+            Configure data ingestion pipelines and source connections.
           </p>
         </div>
 
@@ -342,7 +342,7 @@ export const ClientPipelinesTab: React.FC = () => {
                       onClick={() => handleTriggerStream(pipe.id, pipe.name, true)}
                       disabled={triggeringPipeId === pipe.id}
                       className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/30 text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
-                      title="Force extraction: bypass checksum duplicate skip and populate Google Review Sheet"
+                      title="Force reprocess and sync review sheet"
                     >
                       <Zap className="w-3 h-3 text-amber-400" />
                       <span>Force Reprocess &amp; Sync Sheet</span>

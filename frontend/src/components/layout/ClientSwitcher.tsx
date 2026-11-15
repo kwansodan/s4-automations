@@ -89,13 +89,13 @@ export const ClientSwitcher: React.FC = () => {
         }`}>
           {currentClient?.icon || (isIndividualBusiness ? '🧺' : '🏢')}
         </div>
-        <div className="text-left">
+        <div className="text-left min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-slate-900 group-hover:text-[#0284C7] transition-colors">
+            <span className="text-xs font-bold text-slate-900 group-hover:text-[#0284C7] transition-colors truncate max-w-[100px] sm:max-w-[180px]">
               {currentClient?.name?.split('(')[0].trim() || 'Select Client'}
             </span>
             <span
-              className={`inline-block w-1.5 h-1.5 rounded-full ${
+              className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
                 currentClient?.status === 'live'
                   ? 'bg-emerald-500 shadow-[0_0_6px_#10B981]'
                   : currentClient?.status === 'dev'
@@ -104,12 +104,12 @@ export const ClientSwitcher: React.FC = () => {
               }`}
             />
           </div>
-          <span className="text-[10px] text-slate-500 block max-w-[140px] truncate">
+          <span className="text-[10px] text-slate-500 hidden sm:block max-w-[140px] truncate">
             {isIndividualBusiness ? 'Direct Company Account' : (currentClient?.industry?.split('&')[0].trim() || 'Accounting Portfolio')}
           </span>
         </div>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
+          className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 shrink-0 ${
             isSwitcherOpen ? 'rotate-180' : ''
           }`}
         />
@@ -117,7 +117,7 @@ export const ClientSwitcher: React.FC = () => {
 
       {/* Dropdown Menu */}
       {isSwitcherOpen && (
-        <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute left-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
           {isAccountingFirm ? (
             /* Accounting Firm Practice Portfolio View */
             <>

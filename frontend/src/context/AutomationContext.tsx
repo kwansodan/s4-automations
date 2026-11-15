@@ -3,7 +3,7 @@ import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, LogEntry } from '../types/config';
-import type { InvoicePreflightAudit } from '../types/client';
+import type { InvoicePreflightAudit, SlipPreviewItem } from '../types/client';
 import {
   fetchHealth,
   fetchStats,
@@ -55,6 +55,20 @@ interface AutomationContextType {
   invoicePreflight: InvoicePreflightAudit | null;
   setInvoicePreflight: (audit: InvoicePreflightAudit | null) => void;
 
+  // Responsive Sidebar State
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
+
+  // In-App Document and Slip Review Previewer
+  activeSlipPreview: SlipPreviewItem | null;
+  previewQueue: SlipPreviewItem[];
+  previewIndex: number;
+  openSlipPreview: (item: SlipPreviewItem, queue?: SlipPreviewItem[], index?: number) => void;
+  closeSlipPreview: () => void;
+  navigateSlipPreview: (direction: 'prev' | 'next') => void;
+  updateActiveSlipApproval: (isApproved: boolean) => void;
+
   addLog: (type: 'info' | 'success' | 'warning' | 'error', message: string) => void;
   refreshAll: () => Promise<void>;
   runPipeline: (payload: Record<string, any>) => Promise<any>;
@@ -97,6 +111,85 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
   const [invoicePreflight, setInvoicePreflight] = useState<InvoicePreflightAudit | null>(null);
+
+  // Responsive Sidebar Collapse State with localStorage persistence
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('s4_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('s4_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // In-App Document and Slip Review Previewer State
+  const [activeSlipPreview, setActiveSlipPreview] = useState<SlipPreviewItem | null>(null);
+  const [previewQueue, setPreviewQueue] = useState<SlipPreviewItem[]>([]);
+  const [previewIndex, setPreviewIndex] = useState<number>(0);
+
+  const openSlipPreview = useCallback((item: SlipPreviewItem, queue?: SlipPreviewItem[], index?: number) => {
+    setActiveSlipPreview(item);
+    if (queue && queue.length > 0) {
+      setPreviewQueue(queue);
+      const idx = typeof index === 'number' && index >= 0 ? index : queue.findIndex((q) => q.id === item.id);
+      setPreviewIndex(idx >= 0 ? idx : 0);
+    } else {
+      setPreviewQueue([item]);
+      setPreviewIndex(0);
+    }
+  }, []);
+
+  const closeSlipPreview = useCallback(() => {
+    setActiveSlipPreview(null);
+    setPreviewQueue([]);
+    setPreviewIndex(0);
+  }, []);
+
+  const navigateSlipPreview = useCallback((direction: 'prev' | 'next') => {
+    setPreviewQueue((currentQueue) => {
+      if (currentQueue.length <= 1) return currentQueue;
+      setPreviewIndex((currentIdx) => {
+        let nextIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
+        if (nextIdx < 0) nextIdx = currentQueue.length - 1;
+        if (nextIdx >= currentQueue.length) nextIdx = 0;
+        const nextItem = currentQueue[nextIdx];
+        if (nextItem) {
+          setActiveSlipPreview(nextItem);
+        }
+        return nextIdx;
+      });
+      return currentQueue;
+    });
+  }, []);
+
+  const updateActiveSlipApproval = useCallback((isApproved: boolean) => {
+    setActiveSlipPreview((prev) => prev ? { ...prev, isApproved, status: isApproved ? 'APPROVED' : 'PENDING' } : null);
+    setPreviewQueue((prev) => prev.map((item, idx) => idx === previewIndex ? { ...item, isApproved, status: isApproved ? 'APPROVED' : 'PENDING' } : item));
+  }, [previewIndex]);
+
+  useEffect(() => {
+    if (!activeSlipPreview) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeSlipPreview();
+      } else if (e.key === 'ArrowLeft' && (e.altKey || e.metaKey || document.activeElement?.tagName !== 'INPUT')) {
+        navigateSlipPreview('prev');
+      } else if (e.key === 'ArrowRight' && (e.altKey || e.metaKey || document.activeElement?.tagName !== 'INPUT')) {
+        navigateSlipPreview('next');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSlipPreview, closeSlipPreview, navigateSlipPreview]);
 
   const setActiveTab = useCallback((tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -274,7 +367,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         current_step: `Connecting to Zoho Books and scanning approved items for ${selectedMonth} ${selectedYear}...`,
         stage_index: 1,
         total_stages: 3,
-        task_name: '1-Click Zoho Invoicing',
+        task_name: 'Zoho Invoice Generation',
         month: selectedMonth,
         year: Number(selectedYear),
         recent_logs: [
@@ -396,6 +489,18 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setIsInvoiceModalOpen,
         invoicePreflight,
         setInvoicePreflight,
+
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        toggleSidebarCollapsed,
+
+        activeSlipPreview,
+        previewQueue,
+        previewIndex,
+        openSlipPreview,
+        closeSlipPreview,
+        navigateSlipPreview,
+        updateActiveSlipApproval,
 
         addLog,
         refreshAll,

@@ -530,4 +530,35 @@ export interface InvoicePreflightAudit {
   lossCount?: number;
 }
 
+export interface SlipPreviewItemRow {
+  id: number;
+  description: string;
+  pickedQty?: number;
+  delivQty?: number;
+  lossQty?: number;
+  rate?: number;
+  amount: number;
+  reviewed?: boolean;
+  approved?: boolean;
+}
+
+export interface SlipPreviewItem {
+  id: string;
+  title: string;
+  rawUrl: string;
+  partyName?: string;
+  partyType?: 'Customer' | 'Vendor';
+  date?: string;
+  itemsCount?: number;
+  totalAmount?: number;
+  currency?: string;
+  status?: string;
+  isReviewed?: boolean;
+  isApproved?: boolean;
+  slipKey?: string;
+  txIds?: number[];
+  items?: SlipPreviewItemRow[];
+  onApprove?: () => Promise<void> | void;
+}
+
 

@@ -105,7 +105,7 @@ const STARTER_RECIPES: StarterRecipe[] = [
     blueprints: [
       { title: 'Multi-Channel Ingestion', desc: 'Active ingestion across Drive, Email, and OneDrive', status: 'active' },
       { title: 'Accounting Contract Validator', desc: 'Strict entity-driven schema checks & anomaly engine', status: 'active' },
-      { title: 'Review Ledger & Posting', desc: 'Staging ledger with 1-click draft creation to accounting', status: 'active' },
+      { title: 'Review Ledger & Posting', desc: 'Staging ledger with draft creation to accounting', status: 'active' },
     ],
   },
   {
@@ -147,7 +147,7 @@ const STARTER_RECIPES: StarterRecipe[] = [
     blueprints: [
       { title: 'Handwritten Slip Vision OCR', desc: 'Gemini 3.6 Flash structured JSON extraction on daily slips', status: 'active' },
       { title: 'Loss Reconciler', desc: 'Calculates pickup vs delivery discrepancies and billing summaries', status: 'active' },
-      { title: 'Draft Invoicing', desc: '1-Click draft invoice appending newly approved line items', status: 'active' },
+      { title: 'Draft Invoicing', desc: 'Draft invoice generation for approved line items', status: 'active' },
     ],
   },
   {
@@ -866,7 +866,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                                 <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>1-Click {sel?.name} Multi-Tenant Authorization</span>
+                                <span>{sel?.name} Multi-Tenant Authorization</span>
                               </span>
                               {zohoOrgId ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
@@ -885,7 +885,7 @@ export const ClientSetupWizardModal: React.FC = () => {
                               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2 px-3.5 rounded-lg shadow transition cursor-pointer"
                             >
                               <Zap className="w-3.5 h-3.5" />
-                              <span>{zohoOrgId ? `Re-authorize with ${sel?.name}` : `Connect with ${sel?.name} (1-Click OAuth)`}</span>
+                              <span>{zohoOrgId ? `Re-authorize with ${sel?.name}` : `Connect with ${sel?.name}`}</span>
                             </button>
                           </div>
                         )}

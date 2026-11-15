@@ -46,9 +46,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setActiveTab,
     workspaceSubTab,
     setWorkspaceSubTab,
+    isSidebarCollapsed: isCollapsed,
+    toggleSidebarCollapsed,
   } = useAutomation();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
   const handleNav = (tab: ActiveTab, sub?: WorkspaceSubTab) => {
@@ -71,22 +72,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
       icon: React.ComponentType<{ className?: string }>;
       badge?: string;
     }> = [
-      { sub: 'overview', label: 'Executive Dashboard', icon: LayoutDashboard },
+      { sub: 'overview', label: 'Overview', icon: LayoutDashboard },
     ];
 
     if (activeSections.hasAr) {
-      items.push({ sub: 'ar', label: isIndividualBusiness ? 'Revenue Slips' : 'AR Revenue Ledger', icon: Receipt });
+      items.push({ sub: 'ar', label: isIndividualBusiness ? 'Invoices & Slips' : 'Accounts Receivable', icon: Receipt });
     }
     if (activeSections.hasAp) {
-      items.push({ sub: 'ap', label: 'AP Vendor Bills', icon: DollarSign });
+      items.push({ sub: 'ap', label: 'Accounts Payable', icon: DollarSign });
     }
     
-    // Unified Bank & Reconciliations (absorbs watched accounts, bank statements, client queries)
+    // Unified Bank & Reconciliations
     items.push({
       sub: 'requests',
       label: 'Bank & Reconciliations',
       icon: Landmark,
-      badge: 'Live',
     });
 
     return items;
@@ -100,9 +100,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { sub: 'pipelines', label: 'Pipelines & Streams', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
-    { tab: 'catalog', label: 'Master Item Catalog', icon: Package },
-    { tab: 'contacts', label: 'Contacts & Access', icon: Users },
+    { sub: 'pipelines', label: 'Pipelines', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
+    { tab: 'catalog', label: 'Item Catalog', icon: Package },
+    { tab: 'contacts', label: 'Contacts', icon: Users },
   ];
 
   // Tier 3: Settings & Platform Administration
@@ -175,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
 
           {/* Desktop Collapse Toggle */}
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={toggleSidebarCollapsed}
             className="hidden lg:flex p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent transition cursor-pointer"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -197,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
                     {activeOrganization?.name || 'Switch Workspace'}
                   </span>
                   <span className="text-[9px] text-slate-500 font-mono block truncate">
-                    {activeOrganization?.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Company Account' : 'Accounting Practice Portfolio'}
+                    {activeOrganization?.org_type === 'INDIVIDUAL_BUSINESS' ? 'Direct Business' : 'Accounting Practice'}
                   </span>
                 </div>
               </div>
@@ -207,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
             {isOrgDropdownOpen && (
               <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-[#E2E8F0] rounded-xl p-1.5 shadow-xl z-50 animate-in fade-in">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 block font-mono">
-                  Switch Workspace Model
+                  Switch Organization
                 </span>
                 {user.organizations.map((org) => {
                   const isCurrent = (activeOrganization?.id || 's4_advisory') === org.id;

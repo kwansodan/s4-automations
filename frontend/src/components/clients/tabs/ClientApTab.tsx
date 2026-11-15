@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useClient } from '../../../context/ClientContext';
 import { useAutomation } from '../../../context/AutomationContext';
 import {
@@ -41,7 +41,9 @@ import {
   X,
   Download,
   Edit3,
+  Eye,
 } from 'lucide-react';
+import type { SlipPreviewItem } from '../../../types/client';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -50,7 +52,7 @@ const YEARS = Array.from(new Set([2024, 2025, 2026, 2027, CURRENT_YEAR - 1, CURR
 
 export const ClientApTab: React.FC = () => {
   const { currentClient } = useClient();
-  const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, addLog } = useAutomation();
+  const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, addLog, openSlipPreview } = useAutomation();
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoadingTx, setIsLoadingTx] = useState(false);
@@ -106,6 +108,46 @@ export const ClientApTab: React.FC = () => {
     }
   };
 
+  const formatApTxForPreview = useCallback(
+    (tx: any): SlipPreviewItem => {
+      const driveUrl =
+        tx.metadata_json?.drive_file_url ||
+        (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : '');
+      return {
+        id: String(tx.id),
+        title: tx.source_file_name || 'Vendor Bill Document',
+        rawUrl: driveUrl,
+        partyName: tx.vendor_name || tx.property_name || 'Vendor',
+        partyType: 'Vendor',
+        date: tx.transaction_date,
+        itemsCount: 1,
+        totalAmount: tx.total_amount,
+        currency: 'GHS',
+        status: tx.approved ? 'APPROVED' : tx.reviewed ? 'REVIEWED' : 'PENDING',
+        isReviewed: tx.reviewed,
+        isApproved: tx.approved,
+        txIds: [tx.id],
+        items: [
+          {
+            id: tx.id,
+            description: tx.item_or_description || tx.category_or_account || 'Vendor Bill',
+            rate: tx.rate_or_price ?? 0,
+            amount: tx.total_amount ?? 0,
+            reviewed: tx.reviewed,
+            approved: tx.approved,
+          },
+        ],
+        onApprove: async () => {
+          if (!currentClient?.id) return;
+          await batchToggleTransactions(currentClient.id, [tx.id], 'approved', true);
+          await batchToggleTransactions(currentClient.id, [tx.id], 'reviewed', true);
+          await loadTransactions();
+        },
+      };
+    },
+    [currentClient?.id]
+  );
+
   useEffect(() => {
     loadTransactions();
     setSelectedTxIds(new Set());
@@ -129,7 +171,7 @@ export const ClientApTab: React.FC = () => {
     if (!currentClient?.id) return;
     setIsRunning(true);
     setRunResult(null);
-    addLog('info', `[AP PIPELINE] Ingesting vendor bills into PostgreSQL ledger for ${currentClient.name}...`);
+    addLog('info', `[AP PIPELINE] Ingesting vendor bills for ${currentClient.name}...`);
     try {
       const res = await triggerApPipeline({
         client_id: currentClient.id,
@@ -139,7 +181,7 @@ export const ClientApTab: React.FC = () => {
       });
       setRunResult({
         status: 'COMPLETED',
-        message: 'AP bill ingestion completed and saved to PostgreSQL ledger.',
+        message: 'AP bill ingestion completed.',
         month: selectedMonth,
         year: selectedYear,
       });
@@ -808,7 +850,7 @@ export const ClientApTab: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#64748B] mt-0.5">
-            Audit OCR extracted supplier bills, review vendor expense rollups, and post approved bills directly into the accounting ledger.
+            Review vendor bills, expense rollups, and post approved bills.
           </p>
         </div>
 
@@ -980,7 +1022,7 @@ export const ClientApTab: React.FC = () => {
           </div>
         </button>
 
-        {/* Card 4: AI Low Confidence */}
+        {/* Card 4: Low Confidence */}
         <button
           type="button"
           onClick={() => {
@@ -994,9 +1036,9 @@ export const ClientApTab: React.FC = () => {
           }`}
         >
           <div>
-            <div className="text-[10px] uppercase font-bold text-purple-700">AI Low Confidence</div>
+            <div className="text-[10px] uppercase font-bold text-purple-700">Low Confidence</div>
             <div className="text-lg font-bold text-purple-900 font-mono">{apKpis.lowConfidenceBills}</div>
-            <div className="text-[11px] text-purple-600 font-medium">OCR &lt; 80% legibility</div>
+            <div className="text-[11px] text-purple-600 font-medium">Confidence &lt; 80%</div>
           </div>
           <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl">
             <Sparkles className="w-5 h-5" />
@@ -1054,7 +1096,7 @@ export const ClientApTab: React.FC = () => {
                 </button>
               </div>
               <p className="text-[11px] text-amber-700/90 mt-0.5">
-                No vendor bills recorded in PostgreSQL for these periods. Click any <strong className="font-semibold">[ + ]</strong> badge to manually record a bill.
+                No vendor bills recorded for these dates. Click + to add a bill.
               </p>
             </div>
           </div>
@@ -1174,10 +1216,10 @@ export const ClientApTab: React.FC = () => {
               onClick={handleBatchApproveAp}
               disabled={isApproving || apTransactions.filter((t) => !t.approved).length === 0}
               className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
-              title="1-Click Approve all pending transactions in DB"
+              title="Approve all pending transactions"
             >
               <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isApproving ? 'Approving...' : '1-Click Approve All'}</span>
+              <span>{isApproving ? 'Approving...' : 'Approve All'}</span>
             </button>
 
             <div className="relative">
@@ -1325,7 +1367,7 @@ export const ClientApTab: React.FC = () => {
                 <option value="amount_asc">Bill Total (Low to High)</option>
                 <option value="unreviewed_first">Unreviewed First</option>
                 <option value="unapproved_first">Unapproved First</option>
-                <option value="low_conf_first">AI Low Confidence First</option>
+                <option value="low_conf_first">Low Confidence First</option>
               </select>
             </div>
 
@@ -1362,26 +1404,13 @@ export const ClientApTab: React.FC = () => {
         </div>
       </div>
 
-      {/* In-App PostgreSQL Ledger Notice */}
-      <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#065F46]">
-        <div className="flex items-center gap-2">
-          <span className="flex h-2 w-2 relative shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span>
-            <strong>Native In-App PostgreSQL AP Ledger Active:</strong> Supplier bills are parsed and saved directly into PostgreSQL. Approve line items to post bills into your accounting software.
-          </span>
-        </div>
-      </div>
-
       {/* Summary View Notice & Quick-Switch */}
       {activeSubTab === 'summary' && (
         <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 text-xs text-[#0369A1]">
             <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
             <span>
-              Viewing aggregated vendor totals. To review, approve, or delete individual supplier bills and files, switch to <strong className="text-[#0F172A]">Vendor Bills</strong> or use <strong className="text-rose-600">Delete File</strong>.
+              Viewing aggregated vendor totals. To review, approve, or delete individual vendor bills and files, switch to <strong className="text-[#0F172A]">Vendor Bills</strong> or use <strong className="text-rose-600">Delete File</strong>.
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -1411,7 +1440,7 @@ export const ClientApTab: React.FC = () => {
           {isLoadingTx ? (
             <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
               <RefreshCw className="w-6 h-6 animate-spin text-[#0284C7]" />
-              <p className="text-xs">Loading AP vendor bills from PostgreSQL...</p>
+              <p className="text-xs">Loading vendor bills...</p>
             </div>
           ) : activeSubTab === 'summary' ? (
             /* TAB 1: MONTHLY SUMMARY (ROLLUP) */
@@ -1420,7 +1449,7 @@ export const ClientApTab: React.FC = () => {
                 <Layers className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                 <p className="text-sm font-semibold text-[#0F172A]">No AP monthly summaries found.</p>
                 <p className="text-xs text-[#64748B] mt-1 max-w-sm mx-auto">
-                  Click <strong className="text-[#0284C7]">"Run AP Pipeline"</strong> above or add a manual vendor bill to populate the ledger.
+                  No vendor bills recorded for this period.
                 </p>
               </div>
             ) : (
@@ -1483,8 +1512,122 @@ export const ClientApTab: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/90 text-[#64748B] uppercase tracking-wider font-semibold text-[11px] border-b border-[#E2E8F0]">
+              <>
+                {/* Mobile AP Vendor Bills Glance Cards (< 768px) */}
+                <div className="block md:hidden divide-y divide-slate-200">
+                  {sortedApTransactions.map((tx) => {
+                    const isSelected = selectedTxIds.has(tx.id);
+                    const isLowConf = isItemLowConf(tx);
+                    return (
+                      <div
+                        key={tx.id}
+                        className={`p-3 transition-colors ${
+                          isSelected ? 'bg-sky-50/60' : tx.approved ? 'bg-emerald-50/40' : 'bg-white'
+                        }`}
+                      >
+                        {/* Top row: Checkbox, Vendor / Item Description, Bill Date */}
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectBill(tx.id)}
+                              className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-900 truncate block">
+                                {tx.item_or_description}
+                              </span>
+                              <span className="text-[10px] text-slate-500 truncate block">
+                                {tx.category_or_account || 'Vendor Bill'}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditBillDate(tx);
+                            }}
+                            className="font-mono text-[11px] font-bold text-slate-700 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 shadow-xs flex items-center gap-1 shrink-0"
+                            title="Click to correct bill date"
+                          >
+                            <span>{tx.transaction_date}</span>
+                            <Edit3 className="w-2.5 h-2.5 text-slate-400" />
+                          </button>
+                        </div>
+
+                        {/* Middle row: Badges & Amount */}
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200/80 rounded-lg p-2 mb-2 text-xs font-mono">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                tx.status === 'INVOICED'
+                                  ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                                  : tx.approved
+                                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}
+                            >
+                              {tx.status === 'INVOICED' ? 'Draft Bill Posted' : tx.approved ? 'APPROVED' : 'Pending Review'}
+                            </span>
+                            {isLowConf && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                <span>Low Conf</span>
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-bold text-emerald-600">
+                            {formatCurrency(tx.total_amount)}
+                          </span>
+                        </div>
+
+                        {/* Bottom row: Document link + Quick Approve Toggle */}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {(tx.metadata_json?.drive_file_url || tx.source_identifier) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const queue = sortedApTransactions.map(formatApTxForPreview);
+                                  const idx = sortedApTransactions.findIndex((t) => t.id === tx.id);
+                                  openSlipPreview(formatApTxForPreview(tx), queue, idx >= 0 ? idx : 0);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-sky-600 bg-white border border-sky-200 hover:bg-sky-50 transition shrink-0"
+                                title={`Review bill: ${tx.source_file_name}`}
+                              >
+                                <Eye className="w-3 h-3 text-sky-600" />
+                                <span>View Bill</span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]">
+                                {tx.source_file_name || 'Bill'}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <label className="flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(tx.approved)}
+                                onChange={() => handleToggleApTx(tx.id, 'approved', tx.approved)}
+                                className="w-4 h-4 rounded border-[#CBD5E1] bg-white text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold">Approve</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop / Laptop AP Vendor Bills Table (>= 768px) */}
+                <table className="hidden md:table w-full text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs text-[#64748B] uppercase tracking-wider font-semibold text-[11px] border-b border-[#E2E8F0]">
                   <tr>
                     <th className="py-3 px-4 w-10 text-center">
                       <input
@@ -1556,16 +1699,20 @@ export const ClientApTab: React.FC = () => {
                         <td className="py-3 px-4 text-slate-500">{tx.category_or_account || 'Vendor Bill'}</td>
                         <td className="py-3 px-4 font-mono text-[11px]">
                           {tx.metadata_json?.drive_file_url || tx.source_identifier ? (
-                            <a
-                              href={tx.metadata_json?.drive_file_url || `https://drive.google.com/file/d/${tx.source_identifier}/view`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 hover:underline max-w-[180px] truncate"
-                              title={`Open in Google Drive: ${tx.source_file_name}`}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const queue = sortedApTransactions.map(formatApTxForPreview);
+                                const idx = sortedApTransactions.findIndex((t) => t.id === tx.id);
+                                openSlipPreview(formatApTxForPreview(tx), queue, idx >= 0 ? idx : 0);
+                              }}
+                              className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline max-w-[180px] truncate cursor-pointer text-left"
+                              title={`Review vendor bill in right pane: ${tx.source_file_name}`}
                             >
+                              <Eye className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
                               <span className="truncate">{tx.source_file_name || 'Bill Document'}</span>
-                              <ExternalLink className="w-3 h-3 shrink-0 text-sky-600" />
-                            </a>
+                            </button>
                           ) : (
                             <span className="text-slate-500 truncate max-w-[180px] block" title={tx.source_file_name}>
                               {tx.source_file_name || 'Bill'}
@@ -1638,7 +1785,8 @@ export const ClientApTab: React.FC = () => {
                   })}
                 </tbody>
               </table>
-            )
+            </>
+          )
           )}
         </div>
       </div>
@@ -1654,7 +1802,7 @@ export const ClientApTab: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">Add Manual Vendor Bill</h3>
-                  <p className="text-[11px] text-slate-500">Record a supplier bill or expense missed by OCR ingestion</p>
+                  <p className="text-[11px] text-slate-500">Record a vendor bill or expense</p>
                 </div>
               </div>
               <button
@@ -1841,7 +1989,7 @@ export const ClientApTab: React.FC = () => {
                   <Info className="w-4 h-4 text-amber-600 shrink-0" />
                   Automatic AP Ledger Re-filing
                 </p>
-                Updating this date will update the record in PostgreSQL. If moved to another month, the AP ledger view will switch automatically.
+                Updating this date will update the record. If moved to another month, the ledger view will switch automatically.
               </div>
             </div>
 

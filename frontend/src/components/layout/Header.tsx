@@ -58,10 +58,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
         </div>
 
         {/* Center: Global Period (Month / Year) Selector */}
+        {/* Desktop View */}
         <div className="hidden sm:flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 shadow-sm">
           <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
-            Scope:
+            Period:
           </span>
           <select
             value={selectedMonth}
@@ -87,8 +88,37 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           </select>
         </div>
 
+        {/* Mobile Compact Period Selector */}
+        <div className="flex sm:hidden items-center gap-1 bg-white border border-[#E2E8F0] rounded-xl px-2 py-1 shadow-2xs text-[11px] font-bold text-slate-800">
+          <Calendar className="w-3 h-3 text-[#0284C7] shrink-0" />
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer max-w-[54px] truncate"
+            title="Billing Month"
+          >
+            {MONTHS.map((m) => (
+              <option key={m} value={m} className="bg-white text-slate-800">
+                {m.slice(0, 3)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="bg-transparent text-[11px] font-bold text-[#0284C7] focus:outline-none cursor-pointer"
+            title="Billing Year"
+          >
+            {YEARS.map((y) => (
+              <option key={y} value={y} className="bg-white text-slate-800">
+                '{String(y).slice(-2)}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Right: Telemetry Health & Live Status */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* Mock Mode Tag */}
           {health?.mock_mode && (
             <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 border border-amber-200 text-amber-700 px-2.5 py-0.5 rounded-full">
@@ -98,9 +128,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
 
           {/* Live Progress Pill */}
           {pipelineProgress?.is_running && (
-            <span className="flex items-center gap-1.5 text-xs text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-3 py-1 rounded-full animate-pulse font-medium">
+            <span className="flex items-center gap-1.5 text-xs text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-2 sm:px-3 py-1 rounded-full animate-pulse font-medium">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span className="font-mono font-bold">{pipelineProgress.percent}% Processing</span>
+              <span className="font-mono font-bold">{pipelineProgress.percent}% <span className="hidden sm:inline">Processing</span></span>
             </span>
           )}
 
@@ -108,8 +138,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           <button
             onClick={() => refreshAll()}
             disabled={isLoading}
-            title="Sync Telemetry & State"
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 text-slate-700 hover:text-slate-900 bg-white border border-[#E2E8F0] hover:bg-slate-50 rounded-xl transition cursor-pointer shadow-sm"
+            title="Refresh data"
+            className="flex items-center gap-1.5 text-xs font-semibold px-2.5 sm:px-3 py-1.5 text-slate-700 hover:text-slate-900 bg-white border border-[#E2E8F0] hover:bg-slate-50 rounded-xl transition cursor-pointer shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#0284C7]' : 'text-slate-400'}`} />
             <span className="hidden sm:inline">Sync</span>
@@ -118,17 +148,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           {/* In-App Debug Inspector Trigger */}
           <button
             onClick={() => openDebugDrawer('errors')}
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer shadow-sm ${
+            className={`flex items-center gap-1.5 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border transition cursor-pointer shadow-sm ${
               errors.length > 0
                 ? 'bg-[#FFF1F2] hover:bg-rose-100 border-[#FECDD3] text-[#E11D48] animate-pulse'
                 : 'bg-white hover:bg-slate-50 border-[#E2E8F0] text-slate-600 hover:text-[#0284C7]'
             }`}
-            title="Open In-App Debug Inspector (Ctrl+Shift+D)"
+            title="System Diagnostics (Ctrl+Shift+D)"
           >
             {errors.length > 0 ? (
               <>
                 <AlertTriangle className="w-3.5 h-3.5 text-[#E11D48]" />
-                <span className="font-mono">{errors.length} {errors.length === 1 ? 'Issue' : 'Issues'}</span>
+                <span className="font-mono">{errors.length}</span>
+                <span className="hidden sm:inline font-mono">{errors.length === 1 ? 'Issue' : 'Issues'}</span>
               </>
             ) : (
               <>

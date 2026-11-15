@@ -109,7 +109,7 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
     if (!clientId || !activeFileName) return;
 
     const count = targetFile ? targetFile.count : 'all';
-    const confirmText = `Are you sure you want to permanently delete ${count} staged line items from "${activeFileName}"? This will purge the mistakenly ingested records from PostgreSQL.`;
+    const confirmText = `Are you sure you want to permanently delete ${count} staged line items from "${activeFileName}"? This action cannot be undone.`;
 
     if (!window.confirm(confirmText)) {
       return;
@@ -155,7 +155,7 @@ export const PurgeIngestedFileModal: React.FC<PurgeIngestedFileModalProps> = ({
                 <span>Delete Mistakenly Ingested File</span>
               </h3>
               <p className="text-xs text-[#64748B]">
-                Purge unposted records from PostgreSQL ledger for {clientName} ({selectedMonth} {selectedYear})
+                Delete unposted records for {clientName} ({selectedMonth} {selectedYear})
               </p>
             </div>
           </div>

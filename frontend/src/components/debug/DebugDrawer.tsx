@@ -137,13 +137,13 @@ export const DebugDrawer: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-tight">In-App Debug Inspector</h2>
+                <h2 className="text-base font-bold text-white tracking-tight">System Diagnostics</h2>
                 <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950 border border-sky-500/30 px-2 py-0.5 rounded-full">
-                  Terminal-Free DevTools
+                  Developer Tools
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Inspect live network calls, Python server tracebacks, and runtime state in real-time.
+                Network activity, server logs, and runtime state.
               </p>
             </div>
           </div>

@@ -22,7 +22,7 @@ import {
   ClientTransactionSummaryRow,
   saveCustomerMapping,
 } from '../../../lib/api';
-import type { InvoicePreflightAudit } from '../../../types/client';
+import type { InvoicePreflightAudit, SlipPreviewItem } from '../../../types/client';
 import { formatCurrency, downloadTxt, downloadCsv } from '../../../lib/utils';
 import {
   Receipt,
@@ -63,6 +63,7 @@ import {
   Filter,
   Download,
   Package,
+  Eye,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
@@ -111,6 +112,7 @@ export const ClientArTab: React.FC = () => {
     catalog,
     pipelineProgress,
     setPipelineProgress,
+    openSlipPreview,
   } = useAutomation();
 
   const [search, setSearch] = useState('');
@@ -309,7 +311,7 @@ export const ClientArTab: React.FC = () => {
     const docName = slip.sourceFileName || slip.slipKey;
     if (
       !window.confirm(
-        `Are you sure you want to delete all ${slip.items.length} unposted line items extracted from "${docName}"? This will purge the mistakenly ingested document data from PostgreSQL.`
+        `Are you sure you want to delete all ${slip.items.length} unposted line items extracted from "${docName}"? This action cannot be undone.`
       )
     ) {
       return;
@@ -361,7 +363,7 @@ export const ClientArTab: React.FC = () => {
     const totalItems = selectedSlips.reduce((sum, s) => sum + s.items.length, 0);
     if (
       !window.confirm(
-        `Are you sure you want to permanently delete ${selectedSlips.length} selected slips (${totalItems} line items) from PostgreSQL? This action cannot be undone.`
+        `Are you sure you want to permanently delete ${selectedSlips.length} selected slips (${totalItems} line items)? This action cannot be undone.`
       )
     ) {
       return;
@@ -705,7 +707,7 @@ export const ClientArTab: React.FC = () => {
 
     setIsApproving(true);
     try {
-      await batchApproveTransactions(currentClient.id, idsToApprove, 'Approved via In-App PostgreSQL Ledger');
+      await batchApproveTransactions(currentClient.id, idsToApprove, 'Approved in Accounts Receivable');
       addLog('success', `Approved ${idsToApprove.length} AR transactions for ${currentClient.name}.`);
       await Promise.all([loadTransactions(), loadSummaryData()]);
     } catch (err: any) {
@@ -2215,6 +2217,81 @@ export const ClientArTab: React.FC = () => {
     }
   };
 
+  const formatSlipForPreview = useCallback(
+    (slip: SlipGroup): SlipPreviewItem => ({
+      id: slip.slipKey,
+      title: slip.sourceFileName || 'Delivery Slip',
+      rawUrl: slip.driveUrl || '',
+      partyName: slip.propertyName,
+      partyType: 'Customer',
+      date: slip.slipDate,
+      itemsCount: slip.items.length,
+      totalAmount: slip.totalAmount,
+      currency: 'GHS',
+      status: slip.isFullyApproved ? 'APPROVED' : slip.isFullyReviewed ? 'REVIEWED' : 'PENDING',
+      isReviewed: slip.isFullyReviewed,
+      isApproved: slip.isFullyApproved,
+      slipKey: slip.slipKey,
+      txIds: slip.txIds,
+      items: slip.items.map((it: any) => ({
+        id: it.id,
+        description: it.item_or_description || '',
+        pickedQty: it.credit_amount ?? it.quantity_or_debit ?? 0,
+        delivQty: it.quantity_or_debit ?? 0,
+        lossQty: it.discrepancy_amount ?? 0,
+        rate: it.rate_or_price ?? 0,
+        amount: it.total_amount ?? 0,
+        reviewed: it.reviewed,
+        approved: it.approved,
+      })),
+      onApprove: () => handleToggleSlipApproval(slip),
+    }),
+    [handleToggleSlipApproval]
+  );
+
+  const formatTxForPreview = useCallback(
+    (tx: any): SlipPreviewItem => {
+      const driveUrl =
+        tx.metadata_json?.drive_file_url ||
+        (tx.source_identifier ? `https://drive.google.com/file/d/${tx.source_identifier}/view` : '');
+      return {
+        id: String(tx.id),
+        title: tx.source_file_name || 'Slip Document',
+        rawUrl: driveUrl,
+        partyName: tx.property_name || tx.customer_name || currentClient?.name || 'Customer',
+        partyType: 'Customer',
+        date: tx.transaction_date,
+        itemsCount: 1,
+        totalAmount: tx.total_amount,
+        currency: 'GHS',
+        status: tx.approved ? 'APPROVED' : tx.reviewed ? 'REVIEWED' : 'PENDING',
+        isReviewed: tx.reviewed,
+        isApproved: tx.approved,
+        txIds: [tx.id],
+        items: [
+          {
+            id: tx.id,
+            description: tx.item_or_description || '',
+            pickedQty: tx.credit_amount ?? tx.quantity_or_debit ?? 0,
+            delivQty: tx.quantity_or_debit ?? 0,
+            lossQty: tx.discrepancy_amount ?? 0,
+            rate: tx.rate_or_price ?? 0,
+            amount: tx.total_amount ?? 0,
+            reviewed: tx.reviewed,
+            approved: tx.approved,
+          },
+        ],
+        onApprove: async () => {
+          if (!currentClient?.id) return;
+          await batchToggleTransactions(currentClient.id, [tx.id], 'approved', true);
+          await batchToggleTransactions(currentClient.id, [tx.id], 'reviewed', true);
+          await Promise.all([loadTransactions(), loadSummaryData()]);
+        },
+      };
+    },
+    [currentClient?.id, currentClient?.name]
+  );
+
   const handleStartEdit = (tx: any) => {
     setEditingTxId(tx.id);
     const desc = (tx.item_or_description || '').trim();
@@ -2667,7 +2744,7 @@ export const ClientArTab: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <Receipt className="w-5 h-5 text-[#0284C7]" />
             <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
-              Accounts Receivable &amp; Review Sheets
+              Accounts Receivable
             </h2>
             <span className="text-[10px] font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-2 py-0.5 rounded-full">
               {currentClient.name}
@@ -2678,23 +2755,23 @@ export const ClientArTab: React.FC = () => {
                 title={`Reconciled with Zoho Books Customer: ${matchedZohoContact.contact_name} (${matchedZohoContact.contact_id})`}
               >
                 <CheckCircle2 className="w-3 h-3 text-[#059669] shrink-0" />
-                <span>Zoho Customer: {matchedZohoContact.company_name || matchedZohoContact.contact_name}</span>
+                <span>Zoho: {matchedZohoContact.company_name || matchedZohoContact.contact_name}</span>
                 <span className="font-mono text-[#059669]/80">({matchedZohoContact.contact_id})</span>
               </span>
             ) : (
               <span
                 className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-50 border border-[#E2E8F0] px-2 py-0.5 rounded-full"
-                title="Will match automatically during Zoho invoice creation using name similarity"
+                title="Matches customer in Zoho Books on invoice creation"
               >
                 <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                <span>Auto-reconciles to Zoho Customer</span>
+                <span>Auto-matches customer</span>
               </span>
             )}
           </div>
           <p className="text-xs text-[#64748B] mt-0.5">
             {isCustodyTracking
-              ? 'Audit OCR extracted laundry/sales control slips, reconcile linen losses, and generate Zoho Books invoices.'
-              : 'Audit OCR extracted revenue & sales documents, review line items, and generate Zoho Books invoices.'}
+              ? 'Review customer delivery slips, reconcile custody losses, and generate draft invoices.'
+              : 'Review customer transactions and generate draft invoices.'}
           </p>
         </div>
 
@@ -2770,7 +2847,7 @@ export const ClientArTab: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading || isLoadingTx ? 'animate-spin text-[#0284C7]' : ''}`} />
           </button>
 
-          {/* 1-Click Invoice Export */}
+          {/* Invoice Export */}
           <button
             onClick={handleGenerateInvoicesClick}
             className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer ${
@@ -2877,10 +2954,10 @@ export const ClientArTab: React.FC = () => {
             onClick={handleBatchApprove}
             disabled={isApproving || arStagedTx.filter(t => !t.approved).length === 0}
             className="flex items-center gap-1.5 bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#A7F3D0] text-[#059669] text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40"
-            title="1-Click Approve all pending transactions in DB"
+            title="Approve all pending transactions"
           >
             <CheckCheck className="w-3.5 h-3.5" />
-            <span>{isApproving ? 'Approving...' : '1-Click Approve All'}</span>
+            <span>{isApproving ? 'Approving...' : 'Approve All'}</span>
           </button>
 
           <div className="relative">
@@ -2990,18 +3067,18 @@ export const ClientArTab: React.FC = () => {
 
       {/* Dynamic AR Slips KPI Review Metric Cards */}
       {activeLedgerView === 'daily' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
           {/* Card 1: Total Processed Slips */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-2.5 sm:p-3 shadow-xs flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-bold text-slate-400">Total Slips</div>
-              <div className="text-lg font-bold text-slate-900 font-mono">{groupedSlips.length}</div>
-              <div className="text-[11px] text-slate-500 font-mono">
+              <div className="text-base sm:text-lg font-bold text-slate-900 font-mono">{groupedSlips.length}</div>
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-mono truncate max-w-[100px] sm:max-w-none">
                 {formatCurrency(groupedSlips.reduce((s, g) => s + g.totalAmount, 0))}
               </div>
             </div>
-            <div className="p-2.5 bg-slate-100 rounded-xl text-slate-600">
-              <FileText className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-slate-100 rounded-xl text-slate-600 shrink-0">
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
 
@@ -3009,7 +3086,7 @@ export const ClientArTab: React.FC = () => {
           <button
             type="button"
             onClick={() => setDailyStatusFilter((prev) => (prev === 'UNREVIEWED' ? 'ALL' : 'UNREVIEWED'))}
-            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+            className={`p-2.5 sm:p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
               dailyStatusFilter === 'UNREVIEWED'
                 ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-400/40'
                 : 'bg-white border-[#E2E8F0] hover:border-sky-300'
@@ -3017,11 +3094,11 @@ export const ClientArTab: React.FC = () => {
           >
             <div>
               <div className="text-[10px] uppercase font-bold text-sky-700">Unreviewed Slips</div>
-              <div className="text-lg font-bold text-sky-900 font-mono">{slipKpis.unreviewedSlips}</div>
-              <div className="text-[11px] text-sky-600 font-medium">Click to filter unreviewed</div>
+              <div className="text-base sm:text-lg font-bold text-sky-900 font-mono">{slipKpis.unreviewedSlips}</div>
+              <div className="text-[10px] sm:text-[11px] text-sky-600 font-medium">Click to filter unreviewed</div>
             </div>
-            <div className="p-2.5 bg-sky-100 text-sky-600 rounded-xl">
-              <Clock className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-sky-100 text-sky-600 rounded-xl shrink-0">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </button>
 
@@ -3029,7 +3106,7 @@ export const ClientArTab: React.FC = () => {
           <button
             type="button"
             onClick={() => setDailyStatusFilter((prev) => (prev === 'UNAPPROVED' ? 'ALL' : 'UNAPPROVED'))}
-            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+            className={`p-2.5 sm:p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
               dailyStatusFilter === 'UNAPPROVED'
                 ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/40'
                 : 'bg-white border-[#E2E8F0] hover:border-amber-300'
@@ -3037,38 +3114,38 @@ export const ClientArTab: React.FC = () => {
           >
             <div>
               <div className="text-[10px] uppercase font-bold text-amber-700">Unapproved Slips</div>
-              <div className="text-lg font-bold text-amber-900 font-mono">{slipKpis.unapprovedSlips}</div>
-              <div className="text-[11px] text-amber-600 font-medium">Pending CPA sign-off</div>
+              <div className="text-base sm:text-lg font-bold text-amber-900 font-mono">{slipKpis.unapprovedSlips}</div>
+              <div className="text-[10px] sm:text-[11px] text-amber-600 font-medium">Pending CPA sign-off</div>
             </div>
-            <div className="p-2.5 bg-amber-100 text-amber-600 rounded-xl">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-amber-100 text-amber-600 rounded-xl shrink-0">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </button>
 
-          {/* Card 4: AI Low Confidence */}
+          {/* Card 4: Low Confidence */}
           <button
             type="button"
             onClick={() => setDailyStatusFilter((prev) => (prev === 'LOW_CONFIDENCE' ? 'ALL' : 'LOW_CONFIDENCE'))}
-            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+            className={`p-2.5 sm:p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
               dailyStatusFilter === 'LOW_CONFIDENCE'
                 ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-400/40'
                 : 'bg-white border-[#E2E8F0] hover:border-purple-300'
             }`}
           >
             <div>
-              <div className="text-[10px] uppercase font-bold text-purple-700">AI Low Confidence</div>
-              <div className="text-lg font-bold text-purple-900 font-mono">{slipKpis.lowConfidenceSlips}</div>
-              <div className="text-[11px] text-purple-600 font-medium">OCR &lt; 80% legibility</div>
+              <div className="text-[10px] uppercase font-bold text-purple-700">Low Confidence</div>
+              <div className="text-base sm:text-lg font-bold text-purple-900 font-mono">{slipKpis.lowConfidenceSlips}</div>
+              <div className="text-[10px] sm:text-[11px] text-purple-600 font-medium">Confidence &lt; 80%</div>
             </div>
-            <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl">
-              <Sparkles className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-purple-100 text-purple-600 rounded-xl shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </button>
 
           {/* Card 5: Uncataloged Items */}
           <div
             onClick={() => setDailyStatusFilter((prev) => (prev === 'UNMAPPED' ? 'ALL' : 'UNMAPPED'))}
-            className={`p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
+            className={`p-2.5 sm:p-3 rounded-xl border text-left transition shadow-xs cursor-pointer flex items-center justify-between ${
               dailyStatusFilter === 'UNMAPPED'
                 ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/40'
                 : 'bg-white border-[#E2E8F0] hover:border-rose-300'
@@ -3076,8 +3153,8 @@ export const ClientArTab: React.FC = () => {
           >
             <div>
               <div className="text-[10px] uppercase font-bold text-rose-700">Uncataloged Items</div>
-              <div className="text-lg font-bold text-rose-900 font-mono">{slipKpis.unmappedItems}</div>
-              <div className="text-[11px] text-rose-600 font-medium">
+              <div className="text-base sm:text-lg font-bold text-rose-900 font-mono">{slipKpis.unmappedItems}</div>
+              <div className="text-[10px] sm:text-[11px] text-rose-600 font-medium">
                 {slipKpis.unmappedSlips} {slipKpis.unmappedSlips === 1 ? 'slip' : 'slips'} ({slipKpis.distinctUnmappedNames} distinct)
               </div>
             </div>
@@ -3089,24 +3166,24 @@ export const ClientArTab: React.FC = () => {
                     e.stopPropagation();
                     handleExportUncatalogedItemsCsv();
                   }}
-                  className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition cursor-pointer"
+                  className="p-1.5 sm:p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition cursor-pointer"
                   title="Export Distinct Uncataloged Items (.csv)"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
               )}
-              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
-                <Package className="w-5 h-5" />
+              <div className="p-2 sm:p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             </div>
           </div>
 
           {/* Card 6: Missing Activity Gaps */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 shadow-xs flex items-center justify-between">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-2.5 sm:p-3 shadow-xs flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-bold text-rose-600">Missing Periods</div>
-              <div className="text-lg font-bold text-rose-900 font-mono">{slipKpis.missingPeriodsCount}</div>
-              <div className="text-[11px] text-slate-500 capitalize">{missingCadence} Gaps</div>
+              <div className="text-base sm:text-lg font-bold text-rose-900 font-mono">{slipKpis.missingPeriodsCount}</div>
+              <div className="text-[10px] sm:text-[11px] text-slate-500 capitalize">{missingCadence} Gaps</div>
             </div>
             <div className="flex items-center gap-1.5">
               {missingCadence !== 'disabled' && (
@@ -3153,7 +3230,7 @@ export const ClientArTab: React.FC = () => {
                 </button>
               </div>
               <p className="text-[11px] text-amber-700/90 mt-0.5">
-                No slips recorded in PostgreSQL for these periods. Click any <strong className="font-semibold">[ + ]</strong> badge to manually record a slip.
+                No delivery slips recorded for these dates. Click + to add a slip.
               </p>
             </div>
           </div>
@@ -3511,7 +3588,7 @@ export const ClientArTab: React.FC = () => {
                     ? 'bg-white text-[#0284C7] shadow-xs border border-slate-200/80 font-bold'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
-                title="Organize transactions by daily control slip with 1-click slip approval"
+                title="Organize transactions by delivery slip"
               >
                 <FolderKanban className="w-3.5 h-3.5" />
                 <span>Group by Slip ({groupedSlips.length})</span>
@@ -3552,7 +3629,7 @@ export const ClientArTab: React.FC = () => {
                     setIsPurgeModalOpen(true);
                   }}
                   className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#E11D48] hover:bg-rose-50 bg-white border border-[#FECDD3] rounded-lg transition cursor-pointer shadow-xs"
-                  title="Purge mistakenly uploaded document or file from PostgreSQL"
+                  title="Delete mistakenly uploaded document or file"
                 >
                   <Trash2 className="w-3 h-3 text-[#E11D48]" />
                   <span>Purge File</span>
@@ -3562,22 +3639,6 @@ export const ClientArTab: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Primary In-App PostgreSQL Ledger Notice */}
-      <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#065F46] shadow-xs">
-        <div className="flex items-center gap-2">
-          <span className="flex h-2 w-2 relative shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#059669]"></span>
-          </span>
-          <span>
-            <strong className="text-[#065F46] font-bold">Native In-App PostgreSQL Ledger Active:</strong>{' '}
-            {isCustodyTracking
-              ? 'Daily control slips, linen loss reconciliations, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'
-              : 'Daily revenue documents, quantities, rates, and review approvals are committed directly to PostgreSQL. Zoho Books invoices are generated directly from approved transactions.'}
-          </span>
-        </div>
-      </div>
 
       {/* Summary View Notice & Quick-Switch */}
       {activeLedgerView === 'summary' && (
@@ -3767,7 +3828,7 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 1: IN-APP POSTGRESQL MONTHLY SUMMARY */}
           {activeLedgerView === 'summary' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
+              <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   {renderSummarySortHeader(isCustodyTracking ? 'Standard Item Name' : 'Item / Service Description', 'item_name', 'left')}
                   {isCustodyTracking ? (
@@ -3856,8 +3917,8 @@ export const ClientArTab: React.FC = () => {
                   <tr>
                     <td colSpan={10} className="py-12 text-center text-[#64748B] text-xs">
                       {isLoadingSummary
-                        ? 'Loading PostgreSQL reconciliation summary...'
-                        : `No AR summary line items found for ${selectedMonth} ${selectedYear}. Click 'Run AR Extraction' above to process daily control slips.`}
+                        ? 'Loading summary...'
+                        : `No summary line items found for ${selectedMonth} ${selectedYear}.`}
                     </td>
                   </tr>
                 )}
@@ -3932,9 +3993,139 @@ export const ClientArTab: React.FC = () => {
                     const expanded = isSlipExpanded(slip.slipKey);
                     return (
                       <div key={slip.slipKey} className="transition-colors">
-                        {/* Slip Card Header */}
+                        {/* Mobile Slip Glance Card (< 768px) */}
                         <div
-                          className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
+                          className={`block md:hidden p-3 transition-colors ${
+                            slip.isFullyApproved
+                              ? 'bg-[#ECFDF5]/60 hover:bg-[#ECFDF5]/90'
+                              : slip.totalLossQty > 0
+                              ? 'border-l-4 border-l-[#E11D48] bg-[#FFF1F2]/60 hover:bg-[#FFF1F2]/90'
+                              : 'bg-slate-50/80 hover:bg-slate-100/80'
+                          }`}
+                        >
+                          {/* Top Row: Select, Customer pill, Date */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={selectedSlipKeys.has(slip.slipKey)}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleSelectSlip(slip.slipKey);
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer shrink-0"
+                                title="Select slip for bulk actions"
+                              />
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] truncate max-w-[150px]">
+                                <Building2 className="w-3 h-3 text-[#0284C7] shrink-0" />
+                                <span className="truncate">{slip.propertyName}</span>
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditSlipDate(slip);
+                              }}
+                              className="font-mono text-[11px] font-bold text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#E2E8F0] shadow-xs flex items-center gap-1 shrink-0"
+                              title="Click to correct date for this delivery slip"
+                            >
+                              <span>{slip.slipDate}</span>
+                              <Edit3 className="w-2.5 h-2.5 text-slate-400" />
+                            </button>
+                          </div>
+
+                          {/* Middle Row: Quantities & Amount */}
+                          <div className="flex items-center justify-between gap-2 bg-white/80 border border-slate-200/80 rounded-lg p-2 mb-2 text-xs font-mono">
+                            <div className="flex items-center gap-1.5">
+                              {isCustodyTracking ? (
+                                <>
+                                  <span className="text-[10px] text-slate-500">P:<strong className="text-slate-800 ml-0.5">{slip.totalPickQty}</strong></span>
+                                  <span className="text-slate-300">|</span>
+                                  <span className="text-[10px] text-slate-500">D:<strong className="text-slate-800 ml-0.5">{slip.totalDelivQty}</strong></span>
+                                  {slip.totalLossQty > 0 && (
+                                    <>
+                                      <span className="text-slate-300">|</span>
+                                      <span className="text-[10px] font-bold text-rose-600">-{slip.totalLossQty}</span>
+                                    </>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-slate-500">Qty:<strong className="text-slate-800 ml-0.5">{slip.totalDelivQty}</strong></span>
+                              )}
+                            </div>
+                            <span className="font-bold text-[#059669]">
+                              {formatCurrency(slip.totalAmount)}
+                            </span>
+                          </div>
+
+                          {/* Bottom Row: Actions */}
+                          <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {slip.driveUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const queue = paginatedGroupedSlips.map(formatSlipForPreview);
+                                    const idx = paginatedGroupedSlips.findIndex((s) => s.slipKey === slip.slipKey);
+                                    openSlipPreview(formatSlipForPreview(slip), queue, idx >= 0 ? idx : 0);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#0284C7] bg-white border border-[#BAE6FD] hover:bg-sky-50 transition shrink-0"
+                                  title={`Review slip: ${slip.sourceFileName}`}
+                                >
+                                  <Eye className="w-3 h-3 text-[#0284C7]" />
+                                  <span>View Slip</span>
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[110px]" title={slip.sourceFileName}>
+                                  {slip.sourceFileName}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleSlipExpanded(slip.slipKey)}
+                                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition shrink-0"
+                                title={expanded ? 'Collapse slip line items' : 'Expand slip line items'}
+                              >
+                                <span>{slip.items.length} {slip.items.length === 1 ? 'item' : 'items'}</span>
+                                {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSlipApproval(slip)}
+                              disabled={approvingSlipKey === slip.slipKey}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                                slip.isFullyApproved
+                                  ? 'bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]'
+                                  : slip.isPartiallyApproved
+                                  ? 'bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706]'
+                                  : 'bg-[#059669] hover:bg-[#047857] text-white'
+                              }`}
+                              title={slip.isFullyApproved ? 'Unapprove slip' : 'Approve slip'}
+                            >
+                              {approvingSlipKey === slip.slipKey ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : slip.isFullyApproved ? (
+                                <>
+                                  <CheckCheck className="w-3 h-3 text-[#059669]" />
+                                  <span>Approved</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3 h-3" />
+                                  <span>Approve</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Desktop / Laptop Slip Card Header (>= 768px) */}
+                        <div
+                          className={`hidden md:flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 transition-colors ${
                             slip.isFullyApproved
                               ? 'bg-[#ECFDF5]/50 hover:bg-[#ECFDF5]/80'
                               : slip.totalLossQty > 0
@@ -4052,16 +4243,20 @@ export const ClientArTab: React.FC = () => {
                               )}
 
                             {slip.driveUrl ? (
-                              <a
-                                href={slip.driveUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[#0284C7] hover:text-[#0369A1] hover:underline transition font-mono text-xs group max-w-[280px] truncate"
-                                title={`Open original slip in Google Drive: ${slip.sourceFileName}`}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const queue = paginatedGroupedSlips.map(formatSlipForPreview);
+                                  const idx = paginatedGroupedSlips.findIndex((s) => s.slipKey === slip.slipKey);
+                                  openSlipPreview(formatSlipForPreview(slip), queue, idx >= 0 ? idx : 0);
+                                }}
+                                className="inline-flex items-center gap-1.5 text-[#0284C7] hover:text-[#0369A1] hover:underline transition font-mono text-xs group max-w-[280px] truncate cursor-pointer text-left"
+                                title={`Review slip in right pane: ${slip.sourceFileName}`}
                               >
+                                <Eye className="w-3.5 h-3.5 shrink-0 text-[#0284C7] opacity-80 group-hover:opacity-100 transition" />
                                 <span className="truncate">{slip.sourceFileName}</span>
-                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-[#0284C7]" />
-                              </a>
+                              </button>
                             ) : (
                               <span className="font-mono text-xs text-[#64748B] max-w-[280px] truncate block" title={slip.sourceFileName}>
                                 {slip.sourceFileName}
@@ -4074,7 +4269,7 @@ export const ClientArTab: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Right: Aggregated Totals & 1-Click Approve Entire Slip Button */}
+                        {/* Right: Aggregated Totals & Approve Entire Slip Button */}
                         <div className="flex flex-wrap items-center gap-2.5 shrink-0 justify-between lg:justify-end">
                           <div className="flex items-center gap-1.5 text-xs font-mono">
                             {isCustodyTracking ? (
@@ -4114,7 +4309,7 @@ export const ClientArTab: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* 1-Click Approve Entire Slip Button */}
+                          {/* Approve Entire Slip Button */}
                           <button
                             onClick={() => handleToggleSlipApproval(slip)}
                             disabled={approvingSlipKey === slip.slipKey}
@@ -4125,7 +4320,7 @@ export const ClientArTab: React.FC = () => {
                                 ? 'bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] hover:bg-[#FDE68A]'
                                 : 'bg-[#059669] hover:bg-[#047857] text-white'
                             }`}
-                            title={slip.isFullyApproved ? 'Click to unapprove all items on this slip' : '1-Click Approve all line items on this slip'}
+                            title={slip.isFullyApproved ? 'Click to unapprove all items on this slip' : 'Approve all line items on this slip'}
                           >
                             {approvingSlipKey === slip.slipKey ? (
                               <>
@@ -4605,10 +4800,10 @@ export const ClientArTab: React.FC = () => {
               ) : (
                 <div className="py-12 text-center text-[#64748B] text-xs">
                   {isLoadingTx
-                    ? 'Loading daily slips from PostgreSQL...'
+                    ? 'Loading daily slips...'
                     : dailyCounts.all === 0
-                    ? "No daily slips found in database for this period. Click 'Run AR Extraction' above to process control slips."
-                    : 'No daily slips match the selected filter criteria.'}
+                    ? 'No delivery slips found for this period.'
+                    : 'No delivery slips match the selected filter criteria.'}
                 </div>
               )}
               </div>
@@ -4618,7 +4813,7 @@ export const ClientArTab: React.FC = () => {
           {/* VIEW 2B: IN-APP POSTGRESQL DAILY SLIPS - FLAT TABLE */}
           {activeLedgerView === 'daily' && dailyViewMode === 'flat' && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/90 border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
+              <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-[#E2E8F0] text-[#64748B] uppercase tracking-wider font-semibold text-[11px]">
                 <tr>
                   {renderDailySortHeader('Date', 'transaction_date', 'left')}
                   {renderDailySortHeader(isCustodyTracking ? 'Slip Filename' : 'Document Reference', 'source_file_name', 'left')}
@@ -4658,16 +4853,20 @@ export const ClientArTab: React.FC = () => {
                           <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '-'}</td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             {driveUrl ? (
-                              <a
-                                href={driveUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px]"
-                                title={`Open original slip in Google Drive: ${tx.source_file_name}`}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const queue = paginatedArStagedTx.map(formatTxForPreview);
+                                  const idx = paginatedArStagedTx.findIndex((t) => t.id === tx.id);
+                                  openSlipPreview(formatTxForPreview(tx), queue, idx >= 0 ? idx : 0);
+                                }}
+                                className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px] cursor-pointer text-left"
+                                title={`Review slip in right pane: ${tx.source_file_name}`}
                               >
+                                <Eye className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
                                 <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
-                                <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
-                              </a>
+                              </button>
                             ) : (
                               <span className="font-mono text-[11px] text-slate-500 max-w-[180px] truncate block" title={tx.source_file_name}>
                                 {tx.source_file_name || 'Slip'}
@@ -4812,16 +5011,20 @@ export const ClientArTab: React.FC = () => {
                         <td className="py-3 px-4 font-mono text-[#0F172A] font-semibold whitespace-nowrap">{tx.transaction_date || '-'}</td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           {driveUrl ? (
-                            <a
-                              href={driveUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px]"
-                              title={`Open original slip in Google Drive: ${tx.source_file_name}`}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const queue = paginatedArStagedTx.map(formatTxForPreview);
+                                const idx = paginatedArStagedTx.findIndex((t) => t.id === tx.id);
+                                openSlipPreview(formatTxForPreview(tx), queue, idx >= 0 ? idx : 0);
+                              }}
+                              className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline transition font-mono text-[11px] group max-w-[220px] cursor-pointer text-left"
+                              title={`Review slip in right pane: ${tx.source_file_name}`}
                             >
+                              <Eye className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
                               <span className="truncate">{tx.source_file_name || 'Slip Document'}</span>
-                              <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100 transition text-sky-600" />
-                            </a>
+                            </button>
                           ) : (
                             <span className="font-mono text-[11px] text-slate-500 max-w-[180px] truncate block" title={tx.source_file_name}>
                               {tx.source_file_name || 'Slip'}
@@ -4933,10 +5136,10 @@ export const ClientArTab: React.FC = () => {
                   <tr>
                     <td colSpan={isCustodyTracking ? 12 : 10} className="py-12 text-center text-slate-500 text-xs">
                       {isLoadingTx
-                        ? 'Loading daily slips from PostgreSQL...'
+                        ? 'Loading daily slips...'
                         : dailyCounts.all === 0
-                        ? "No daily slips found in database for this period. Click 'Run AR Extraction' above to process control slips."
-                        : 'No daily slips match the selected filter criteria.'}
+                        ? 'No delivery slips found for this period.'
+                        : 'No delivery slips match the selected filter criteria.'}
                     </td>
                   </tr>
                 )}
@@ -5313,7 +5516,7 @@ export const ClientArTab: React.FC = () => {
                   <Info className="w-4 h-4 text-amber-600 shrink-0" />
                   Automatic Ledger Re-filing
                 </p>
-                Updating this date will update all <strong>{editingDateSlip.items.length} line items</strong> on this delivery slip in PostgreSQL. If moved to another month, the ledger view will switch automatically so you can continue reviewing it.
+                Updating this date will update all <strong>{editingDateSlip.items.length} line items</strong> on this delivery slip. If moved to another month, the ledger view will switch automatically so you can continue reviewing it.
               </div>
             </div>
 

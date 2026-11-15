@@ -6,6 +6,7 @@ import { ErrorProvider } from './context/ErrorContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
 import { DebugDrawer } from './components/debug/DebugDrawer';
+import { DocumentPreviewPane } from './components/common/DocumentPreviewPane';
 import { LoginCard } from './components/auth/LoginCard';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -36,7 +37,7 @@ import { PipelineFloatingWidget } from './components/common/PipelineFloatingWidg
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
-  const { activeTab, setActiveTab, pipelineProgress, isInvoiceModalOpen } = useAutomation();
+  const { activeTab, setActiveTab, pipelineProgress, isInvoiceModalOpen, isSidebarCollapsed } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -157,11 +158,11 @@ const MainLayout: React.FC = () => {
         setIsMobileOpen={setIsMobileMenuOpen}
       />
 
-      {/* Main Content Area (Offset by sidebar width on desktop) */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64 transition-all duration-300">
+      {/* Main Content Area (Offset by dynamic sidebar width on desktop) */}
+      <div className={`flex-1 flex flex-col min-w-0 ${isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'} transition-all duration-300`}>
         <Header onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 w-full max-w-[2160px] mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 py-4 sm:py-6">
           {/* Dynamic Route Switching with Error Boundaries */}
           <ErrorBoundary componentName={`Tab: ${activeTab}`}>
             {activeTab === 'sheets' || activeTab === 'invoicing' ? (
@@ -257,6 +258,7 @@ const MainLayout: React.FC = () => {
       {/* Diagnostics & Debugging Overlays */}
       <ToastContainer />
       <DebugDrawer />
+      <DocumentPreviewPane />
 
       {/* Persistent Background Pipeline Progress Floating Widget */}
       {pipelineProgress?.is_running && !isInvoiceModalOpen && (

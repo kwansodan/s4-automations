@@ -700,7 +700,7 @@ export const ClientOverviewTab: React.FC = () => {
               </div>
               <h3 className="text-sm font-bold text-slate-900">Clarifications &amp; Feeds</h3>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Review unclassified bank transactions in monitored suspense accounts and query clients with 1-click links.
+                Review unclassified bank transactions and query clients.
               </p>
             </div>
             <div className="pt-4 mt-2 border-t border-[#BAE6FD]">
@@ -714,14 +714,14 @@ export const ClientOverviewTab: React.FC = () => {
             </div>
           </div>
 
-          {/* Action 2: AR Revenue Slips */}
+          {/* Action 2: Accounts Receivable */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Revenue Control</span>
                 <Receipt className="w-4 h-4 text-slate-700" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">AR Revenue Ledger</h3>
+              <h3 className="text-sm font-bold text-slate-900">Accounts Receivable</h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 {stagedCount > 0
                   ? `${stagedCount} staged transactions (${currentClient.currency || 'GHS'} ${stagedAmount.toLocaleString()}) awaiting batch sign-off.`
@@ -733,22 +733,22 @@ export const ClientOverviewTab: React.FC = () => {
                 onClick={() => navigateToClientSubTab('ar')}
                 className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
               >
-                <span>Review Revenue Ledger</span>
+                <span>Review Ledger</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Action 3: AP Vendor Bills */}
+          {/* Action 3: Accounts Payable */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Vendor Expenses</span>
                 <DollarSign className="w-4 h-4 text-slate-700" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">AP Vendor Bills</h3>
+              <h3 className="text-sm font-bold text-slate-900">Accounts Payable</h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Inspect AI OCR vendor receipts, verify line-item tax breakdowns, and push draft bills to {currentPlatform.name}.
+                Review vendor receipts, tax breakdowns, and draft bills.
               </p>
             </div>
             <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
@@ -825,7 +825,7 @@ export const ClientOverviewTab: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-900 truncate">
                   {(currentClient.folderId || currentClient.folder_id)
-                    ? 'Google Drive OCR Folder'
+                    ? 'Google Drive Ingestion Folder'
                     : 'Configured Ingestion Channels'}
                 </span>
               </div>
