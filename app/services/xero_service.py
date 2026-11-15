@@ -229,13 +229,50 @@ class XeroService:
             logger.warning(f"Xero fetch_chart_of_accounts error: {e}")
         return []
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Fetch active Bank accounts from Xero (/api.xro/2.0/Accounts where Type == BANK)."""
+        if not self.refresh_token or not self.tenant_id:
+            return []
+        try:
+            token = await self.get_access_token()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Xero-tenant-id": self.tenant_id,
+                    "Accept": "application/json",
+                }
+                resp = await client.get(
+                    f"{self.base_url}/Accounts",
+                    headers=headers,
+                    params={"where": 'Type=="BANK"&&Status=="ACTIVE"'},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    accounts = data.get("Accounts", [])
+                    return [
+                        {
+                            "account_id": str(a.get("AccountID", "")),
+                            "account_name": a.get("Name", ""),
+                            "account_type": a.get("BankAccountType") or "BANK",
+                            "currency": a.get("CurrencyCode", "GHS"),
+                            "account_number_masked": a.get("BankAccountNumber", ""),
+                            "balance": 0.0,
+                            "uncategorized_transactions": 0,
+                            "is_active": a.get("Status") == "ACTIVE",
+                        }
+                        for a in accounts
+                    ]
+        except Exception as e:
+            logger.warning(f"Xero fetch_bank_accounts error: {e}")
+        return []
+
     async def fetch_uncategorized_bank_transactions(
         self,
         watched_accounts: Optional[List[str]] = None,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Pulls unmapped/suspense BankTransactions from Xero (lines coded to 850, 999, etc.)."""
+        """Pulls unmapped/unreconciled BankTransactions from Xero Banking accounts."""
         if not self.refresh_token or not self.tenant_id:
             return []
         try:
@@ -245,7 +282,12 @@ class XeroService:
                 "Xero-tenant-id": self.tenant_id,
                 "Accept": "application/json",
             }
-            watched_norm = [str(w).strip().lower() for w in (watched_accounts or ["850", "999", "suspense", "uncategorized"])]
+            legacy_gl_codes = {"6990", "850", "999", "suspense", "uncategorized", "all"}
+            selected_bank_filters = [
+                str(w).strip().lower()
+                for w in (watched_accounts or [])
+                if str(w).strip() and str(w).strip().lower() not in legacy_gl_codes
+            ]
 
             params = {}
             if date_start:
@@ -266,19 +308,30 @@ class XeroService:
                 results = []
                 for tx in txs:
                     tx_id = str(tx.get("BankTransactionID", ""))
-                    # Xero Date format: /Date(1518048000000+0000)/ or ISO string
                     raw_date = tx.get("DateString") or tx.get("Date", "")
                     tx_type = "CREDIT" if tx.get("Type") == "RECEIVE" else "DEBIT"
                     contact = tx.get("Contact", {})
                     payee_name = contact.get("Name", "")
-                    bank_acc = tx.get("BankAccount", {}).get("Name", "Xero Bank Account")
+                    bank_obj = tx.get("BankAccount", {}) or {}
+                    bank_acc_id = str(bank_obj.get("AccountID", "")).strip()
+                    bank_acc = bank_obj.get("Name") or "Xero Bank Account"
                     total_amt = abs(float(tx.get("Total", 0.0)))
 
+                    if selected_bank_filters:
+                        if (
+                            bank_acc_id.lower() not in selected_bank_filters
+                            and bank_acc.lower() not in selected_bank_filters
+                        ):
+                            continue
+
+                    is_reconciled = bool(tx.get("IsReconciled", False))
                     for line in tx.get("LineItems", []):
                         line_code = str(line.get("AccountCode", "")).lower()
                         line_desc = line.get("Description") or tx.get("Reference") or f"Transaction from {payee_name or 'Payee'}"
-                        is_match = any(w in line_code for w in watched_norm)
-                        if is_match or not watched_accounts:
+                        is_uncategorized = (not is_reconciled) or any(
+                            s in line_code for s in ["850", "999", "suspense", "uncategorized"]
+                        )
+                        if is_uncategorized:
                             line_amt = abs(float(line.get("LineAmount", total_amt)))
                             results.append({
                                 "transaction_id": tx_id,
@@ -287,9 +340,10 @@ class XeroService:
                                 "transaction_type": tx_type,
                                 "description": line_desc,
                                 "payee": payee_name,
+                                "bank_account_id": bank_acc_id,
                                 "bank_account_name": bank_acc,
-                                "account_name": f"Account {line.get('AccountCode')}",
-                                "watched_account": line.get("AccountCode") or "850",
+                                "account_name": bank_acc,
+                                "watched_account": bank_acc_id or bank_acc,
                                 "raw_transaction": tx,
                             })
                             break

@@ -171,6 +171,32 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
         """Fetches live Chart of Accounts from Zoho Books REST API."""
         return await self.zoho.fetch_chart_of_accounts()
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Fetches registered Bank, Credit Card, and Mobile Money accounts from Zoho Books (/bankaccounts)."""
+        if not self.is_live or settings.MOCK_MODE or not self.zoho.org_id:
+            return []
+        try:
+            raw_banks = await self.zoho.fetch_bank_accounts()
+            out = []
+            for b in (raw_banks or []):
+                acc_id = str(b.get("account_id", "")).strip()
+                if not acc_id:
+                    continue
+                out.append({
+                    "account_id": acc_id,
+                    "account_name": b.get("account_name") or "Bank Account",
+                    "account_type": b.get("account_type") or "bank",
+                    "currency": b.get("currency_code") or "GHS",
+                    "account_number_masked": b.get("account_number") or "",
+                    "balance": float(b.get("balance", 0.0) or 0.0),
+                    "uncategorized_transactions": int(b.get("uncategorized_transactions", 0) or 0),
+                    "is_active": b.get("is_active", True) is not False,
+                })
+            return out
+        except Exception as err:
+            logger.warning(f"Could not fetch Zoho bank accounts: {err}")
+            return []
+
     async def fetch_uncategorized_bank_transactions(
         self,
         watched_accounts: Optional[List[str]] = None,
@@ -227,6 +253,7 @@ class ZohoBooksAdapter(BaseAccountingAdapter):
             raw_uncat_feed = await self.zoho.fetch_uncategorized_bank_transactions(
                 date_start=date_start,
                 date_end=date_end,
+                bank_account_ids=watched_accounts,
             )
             for tx in (raw_uncat_feed or []):
                 t_stat = str(tx.get("transaction_status") or tx.get("status") or "").strip().lower()

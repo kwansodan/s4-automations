@@ -6,6 +6,7 @@ import type {
   TriggerType,
   PipelineSimulationResult,
   ChartOfAccountItem,
+  BankAccountItem,
   FolderStructurePattern,
   InvoiceDateRule,
   PaymentTermsRule,
@@ -15,6 +16,7 @@ import {
   probeExternalConnection,
   simulatePipelineExtraction,
   fetchChartOfAccounts,
+  fetchClientBankAccounts,
   updateWatchedAccounts,
 } from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
@@ -332,9 +334,11 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [autoPostToZoho, setAutoPostToZoho] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
 
-  // Watched Accounts Configuration (for BANK streams)
+  // Watched Bank Accounts Configuration (for BANK streams)
   const [watchedAccounts, setWatchedAccounts] = useState<string[]>([]);
   const [customWatchedInput, setCustomWatchedInput] = useState<string>('');
+  const [bankAccounts, setBankAccounts] = useState<BankAccountItem[]>([]);
+  const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState<boolean>(false);
 
   // Client-specific Chart of Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
@@ -391,11 +395,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any; detected_month_folders?: string[]; suggested_hierarchy?: string } | null>(null);
 
-  // Load client-specific Chart of Accounts when modal opens or clientId changes
+  // Load client-specific Chart of Accounts and Banking Module Accounts when modal opens or clientId changes
   useEffect(() => {
     if (!isOpen || !clientId) return;
     let isCancelled = false;
     setIsLoadingAccounts(true);
+    setIsLoadingBankAccounts(true);
 
     fetchChartOfAccounts(clientId)
       .then((data) => {
@@ -407,9 +412,6 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           } else {
             setIsOauthPending(false);
             setAccounts(data.accounts);
-          }
-          if (data.watched_accounts && Array.isArray(data.watched_accounts) && data.watched_accounts.length > 0) {
-            setWatchedAccounts((prev) => (prev.length === 0 ? data.watched_accounts : prev));
           }
         }
       })
@@ -424,6 +426,27 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       .finally(() => {
         if (!isCancelled) {
           setIsLoadingAccounts(false);
+        }
+      });
+
+    fetchClientBankAccounts(clientId)
+      .then((data) => {
+        if (!isCancelled && data) {
+          setBankAccounts(Array.isArray(data.bank_accounts) ? data.bank_accounts : []);
+          if (data.watched_bank_accounts && Array.isArray(data.watched_bank_accounts)) {
+            setWatchedAccounts((prev) => (prev.length === 0 ? data.watched_bank_accounts : prev));
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch client banking accounts for pipeline wizard:', err);
+        if (!isCancelled) {
+          setBankAccounts([]);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingBankAccounts(false);
         }
       });
 
@@ -550,9 +573,13 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setCustomDueDays(sc.custom_due_days || 14);
         setCustomTermsNote(sc.custom_terms_note || '');
         if (initialPipeline.watched_accounts && Array.isArray(initialPipeline.watched_accounts)) {
-          setWatchedAccounts(initialPipeline.watched_accounts);
+          const legacyGl = new Set(['6990', '850', '999', 'suspense', 'uncategorized', 'all']);
+          const cleaned = initialPipeline.watched_accounts.filter(
+            (w) => w && !legacyGl.has(String(w).trim().toLowerCase())
+          );
+          setWatchedAccounts(cleaned);
         } else {
-          setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized']);
+          setWatchedAccounts([]);
         }
       } else {
         const newId = `pipe_${Date.now()}`;
@@ -573,7 +600,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           setSourceType('google_drive');
           setDefaultAccountCode('4000 - Commercial Sales Revenue');
         }
-        setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized']);
+        setWatchedAccounts([]);
         setSourceIdentifier('');
         setAutoPostToZoho(false);
         setIsActive(true);
@@ -798,11 +825,11 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
 
       await onSave(pipelineData);
 
-      if (section === 'BANK' && watchedAccounts.length > 0) {
+      if (section === 'BANK') {
         try {
           await updateWatchedAccounts(clientId, watchedAccounts);
         } catch (syncErr: any) {
-          console.warn('Could not sync watched accounts to client organization:', syncErr);
+          console.warn('Could not sync watched bank accounts to client organization:', syncErr);
         }
       }
 
@@ -993,6 +1020,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                 </div>
               </div>
 
+              {entityType !== 'bank_feed' && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold text-slate-300">
@@ -1099,124 +1127,162 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   Line items extracted from this stream's documents will default to this account if not explicitly overridden by AI SKU matching.
                 </span>
               </div>
+              )}
 
-              {/* Watched Accounts Configuration for Banking Streams */}
+              {/* Monitored Bank Accounts Configuration for Banking Streams */}
               {section === 'BANK' && (
                 <div className="p-4 bg-emerald-950/20 border border-emerald-800/40 rounded-xl space-y-3 mt-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Landmark className="w-4 h-4 text-emerald-400" />
                       <label className="text-xs font-semibold text-white">
-                        Monitored &amp; Watched Accounts (Bank Feeds &amp; Suspense)
+                        Monitored Bank Accounts (Banking Section)
                       </label>
                     </div>
                     <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-700/50 px-2 py-0.5 rounded-full">
-                      {watchedAccounts.length} Monitored
+                      {watchedAccounts.length === 0 ? 'All Active Bank Accounts' : `${watchedAccounts.length} Selected`}
                     </span>
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Transactions posting to these accounts (e.g. suspense clearing, uncategorized expenses, or unallocated funds) are automatically flagged in the Bank &amp; Reconciliations queue for operator clarification.
+                    Uncategorized transactions are pulled strictly from the <strong className="text-slate-200">Banking section</strong> of your connected accounting software (Bank, Credit Card, and Mobile Money accounts), not from Chart of Accounts GL codes. Choose to sync all active bank accounts or filter to specific banking accounts below.
                   </p>
 
-                  {/* Account Chips */}
-                  <div className="flex flex-wrap gap-1.5 min-h-[34px] p-2 bg-slate-950 border border-slate-800 rounded-xl">
-                    {watchedAccounts.length === 0 ? (
-                      <span className="text-[11px] text-slate-500 italic py-0.5">
-                        No accounts currently watched. Add codes or names below.
+                  {/* Scope Mode Toggle */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWatchedAccounts([])}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5 ${
+                        watchedAccounts.length === 0
+                          ? 'bg-emerald-600/30 border-emerald-500 text-emerald-200'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>All Active Bank Accounts (Recommended)</span>
+                    </button>
+                    {bankAccounts.length > 0 && watchedAccounts.length === 0 && (
+                      <span className="text-[11px] text-slate-400">
+                        ({bankAccounts.length} banking account{bankAccounts.length === 1 ? '' : 's'} detected)
                       </span>
-                    ) : (
-                      watchedAccounts.map((acc, accIdx) => (
+                    )}
+                  </div>
+
+                  {/* Connected Banking Module Accounts List */}
+                  {isLoadingBankAccounts ? (
+                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-400 flex items-center gap-2">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Loading accounts from Banking section...</span>
+                    </div>
+                  ) : bankAccounts.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Click to filter to specific Banking accounts (or leave unselected to monitor all):
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {bankAccounts.map((bAcc) => {
+                          const accName = bAcc.account_name;
+                          const isSelected = watchedAccounts.includes(accName) || (bAcc.account_id ? watchedAccounts.includes(bAcc.account_id) : false);
+                          return (
+                            <button
+                              key={bAcc.account_id || accName}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setWatchedAccounts(
+                                    watchedAccounts.filter((w) => w !== accName && w !== bAcc.account_id)
+                                  );
+                                } else {
+                                  setWatchedAccounts([...watchedAccounts, accName]);
+                                }
+                              }}
+                              className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2 ${
+                                isSelected
+                                  ? 'bg-emerald-950/60 border-emerald-500/60 text-emerald-200'
+                                  : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                                  <Landmark className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span className="truncate">{accName}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  {(bAcc.account_type || 'bank').replace('_', ' ').toUpperCase()} &bull; {bAcc.currency || 'GHS'}
+                                  {typeof bAcc.uncategorized_transactions === 'number' && bAcc.uncategorized_transactions > 0
+                                    ? ` • ${bAcc.uncategorized_transactions} uncategorized`
+                                    : ''}
+                                </div>
+                              </div>
+                              <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                                isSelected ? 'bg-emerald-500 border-emerald-400 text-slate-950' : 'border-slate-700'
+                              }`}>
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Selected Bank Account Chips */}
+                  {watchedAccounts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 min-h-[34px] p-2 bg-slate-950 border border-slate-800 rounded-xl">
+                      {watchedAccounts.map((acc, accIdx) => (
                         <span
                           key={accIdx}
-                          className="inline-flex items-center gap-1.5 text-xs font-mono font-medium px-2 py-1 rounded-lg bg-emerald-900/40 text-emerald-300 border border-emerald-700/50"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg bg-emerald-900/40 text-emerald-300 border border-emerald-700/50"
                         >
+                          <Landmark className="w-3 h-3 text-emerald-400" />
                           <span>{acc}</span>
                           <button
                             type="button"
                             onClick={() => setWatchedAccounts(watchedAccounts.filter((_, i) => i !== accIdx))}
                             className="text-emerald-400 hover:text-red-400 transition cursor-pointer"
-                            title="Remove watched account"
+                            title="Remove bank account filter"
                           >
                             <X className="w-3 h-3" />
                           </button>
                         </span>
-                      ))
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  )}
 
-                  {/* Add Input and CoA Quick Selector */}
-                  <div className="space-y-2 pt-1">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customWatchedInput}
-                        onChange={(e) => setCustomWatchedInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const val = customWatchedInput.trim();
-                            if (val && !watchedAccounts.includes(val)) {
-                              setWatchedAccounts([...watchedAccounts, val]);
-                              setCustomWatchedInput('');
-                            }
-                          }
-                        }}
-                        placeholder="Add account code or name (e.g. 6990, 850, Suspense, Uncategorized)"
-                        className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
+                  {/* Manual Bank Account Name Input (if needed) */}
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={customWatchedInput}
+                      onChange={(e) => setCustomWatchedInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
                           const val = customWatchedInput.trim();
                           if (val && !watchedAccounts.includes(val)) {
                             setWatchedAccounts([...watchedAccounts, val]);
                             setCustomWatchedInput('');
                           }
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px]">
-                      <div className="flex items-center gap-1 text-slate-400">
-                        <span>Quick Presets:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const standard = ['6990', '850', 'suspense', 'uncategorized'];
-                            const combined = Array.from(new Set([...watchedAccounts, ...standard]));
-                            setWatchedAccounts(combined);
-                          }}
-                          className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
-                        >
-                          + Standard Suspense (6990, 850, suspense, uncategorized)
-                        </button>
-                      </div>
-                      {accounts.length > 0 && (
-                        <select
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val && !watchedAccounts.includes(val)) {
-                              setWatchedAccounts([...watchedAccounts, val]);
-                            }
-                            e.target.value = '';
-                          }}
-                          defaultValue=""
-                          className="bg-slate-900 border border-slate-800 text-[10px] text-emerald-300 rounded px-2 py-1 cursor-pointer focus:outline-none focus:border-emerald-500"
-                        >
-                          <option value="" disabled>Select from Chart of Accounts...</option>
-                          {accounts.map((acc) => (
-                            <option key={acc.account_id || acc.account_code || acc.account_name} value={acc.account_code || acc.account_name}>
-                              {acc.account_code ? `[${acc.account_code}] ` : ''}{acc.account_name} ({acc.account_type || 'Account'})
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                        }
+                      }}
+                      placeholder="Or type a specific Bank / MoMo account name (e.g. Ecobank GHS, MTN MoMo)"
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = customWatchedInput.trim();
+                        if (val && !watchedAccounts.includes(val)) {
+                          setWatchedAccounts([...watchedAccounts, val]);
+                          setCustomWatchedInput('');
+                        }
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Bank</span>
+                    </button>
                   </div>
                 </div>
               )}

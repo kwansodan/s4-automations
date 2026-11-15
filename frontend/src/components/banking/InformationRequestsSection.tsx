@@ -4,6 +4,7 @@ import { useAutomation } from '../../context/AutomationContext';
 import {
   fetchBankTransactions,
   fetchChartOfAccounts,
+  fetchClientBankAccounts,
   categorizeBankTransaction,
   bulkCategorizeBankTransactions,
   bulkQueryBankTransactions,
@@ -102,10 +103,10 @@ export const InformationRequestsSection: React.FC = () => {
   const platformFeedLabel = currentClient?.accounting_software === 'zoho_books'
     ? 'Zoho Feeds'
     : currentClient?.accounting_software === 'quickbooks_online'
-    ? 'QBO Suspense'
+    ? 'QBO Feeds'
     : currentClient?.accounting_software === 'xero'
-    ? 'Xero Suspense'
-    : 'Watched Feeds';
+    ? 'Xero Feeds'
+    : 'Bank Feeds';
 
   const [transactions, setTransactions] = useState<BankTransactionRecord[]>([]);
   const [metrics, setMetrics] = useState({
@@ -122,6 +123,11 @@ export const InformationRequestsSection: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('UNMAPPED');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Bank Account Filter State
+  const [selectedBankAccount, setSelectedBankAccount] = useState<string>('ALL');
+  const [availableBankAccounts, setAvailableBankAccounts] = useState<string[]>([]);
+  const [bankAccountCounts, setBankAccountCounts] = useState<Record<string, number>>({});
+
   // Month & Year Filter State (Synchronized with Global Canonical Header Scope)
   const [selectedMonth, setSelectedMonth] = useState<string>(globalMonth || 'ALL');
   const [selectedYear, setSelectedYear] = useState<string>(globalYear ? String(globalYear) : 'ALL');
@@ -133,6 +139,11 @@ export const InformationRequestsSection: React.FC = () => {
     if (globalMonth) setSelectedMonth(globalMonth);
     if (globalYear) setSelectedYear(String(globalYear));
   }, [globalMonth, globalYear]);
+
+  // Reset selectedBankAccount when switching clients
+  useEffect(() => {
+    setSelectedBankAccount('ALL');
+  }, [currentClient?.id]);
 
   // Compute dynamic year options including any historical periods returned by accounting platform
   const dynamicYearOptions = useMemo(() => {
@@ -221,9 +232,10 @@ export const InformationRequestsSection: React.FC = () => {
     if (!currentClient) return;
     setIsLoading(true);
     try {
-      const [txRes, coaRes] = await Promise.all([
-        fetchBankTransactions(currentClient.id, statusFilter, searchQuery, selectedMonth, selectedYear),
+      const [txRes, coaRes, bankAccRes] = await Promise.all([
+        fetchBankTransactions(currentClient.id, statusFilter, searchQuery, selectedMonth, selectedYear, selectedBankAccount),
         fetchChartOfAccounts(currentClient.id),
+        fetchClientBankAccounts(currentClient.id).catch(() => ({ bank_accounts: [] })),
       ]);
 
       if (txRes.available_months) {
@@ -232,6 +244,20 @@ export const InformationRequestsSection: React.FC = () => {
       if (txRes.period_counts) {
         setPeriodCounts(txRes.period_counts);
       }
+
+      const countsMap: Record<string, number> = { ...(txRes.bank_account_counts || {}) };
+      const bankSet = new Set<string>(txRes.available_bank_accounts || []);
+      if (Array.isArray(bankAccRes?.bank_accounts)) {
+        bankAccRes.bank_accounts.forEach((b: any) => {
+          const bName = (b?.account_name || '').trim();
+          if (bName) {
+            bankSet.add(bName);
+          }
+        });
+      }
+      setAvailableBankAccounts(Array.from(bankSet).sort());
+      setBankAccountCounts(countsMap);
+
       setMetrics(txRes.metrics || {
         total_count: 0,
         total_uncategorized: 0,
@@ -263,7 +289,6 @@ export const InformationRequestsSection: React.FC = () => {
         setAccounts(coaRes.accounts);
       }
 
-
       // Initialize inline account selectors
       const initialRowAccounts: { [id: number]: string } = {};
       const initialRowPayees: { [id: number]: string } = {};
@@ -285,7 +310,7 @@ export const InformationRequestsSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentClient, statusFilter, searchQuery, selectedMonth, selectedYear, addLog]);
+  }, [currentClient, statusFilter, searchQuery, selectedMonth, selectedYear, selectedBankAccount, addLog]);
 
   useEffect(() => {
     loadData();
@@ -669,8 +694,41 @@ export const InformationRequestsSection: React.FC = () => {
             ))}
           </div>
 
-          {/* Controls: Month & Year Selector + Search Box */}
+          {/* Controls: Bank Account Filter + Month & Year Selector + Search Box */}
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Bank Account Filter Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 shadow-xs">
+              <Landmark className="w-3.5 h-3.5 text-[#059669] shrink-0" />
+              <select
+                value={selectedBankAccount}
+                onChange={(e) => setSelectedBankAccount(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[200px] truncate"
+                title="Filter transactions by Bank Account"
+              >
+                <option value="ALL" className="bg-white text-slate-800">
+                  All Bank Accounts{availableBankAccounts.length > 0 ? ` (${availableBankAccounts.length})` : ''}
+                </option>
+                {availableBankAccounts.map((bName) => {
+                  const cnt = bankAccountCounts[bName];
+                  return (
+                    <option key={bName} value={bName} className="bg-white text-slate-800">
+                      {bName}{cnt !== undefined ? ` (${cnt})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedBankAccount !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedBankAccount('ALL')}
+                  className="ml-1 text-slate-400 hover:text-[#E11D48] hover:bg-[#FFF1F2] p-0.5 rounded transition cursor-pointer"
+                  title="Clear bank account filter (Show all bank accounts)"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
             {/* Month & Year Dropdown */}
             <div className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 shadow-xs">
               <Calendar className="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
@@ -722,7 +780,7 @@ export const InformationRequestsSection: React.FC = () => {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search description, payee, amount..."
+                placeholder="Search description, bank, payee, amount..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-sans shadow-xs"
@@ -730,6 +788,47 @@ export const InformationRequestsSection: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Quick Bank Account Filter Pills (when multiple bank accounts exist or one is actively filtered) */}
+        {(availableBankAccounts.length > 1 || selectedBankAccount !== 'ALL') && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1 text-xs">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Landmark className="w-3 h-3 text-[#059669]" />
+              <span>Bank Accounts:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedBankAccount('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer border ${
+                selectedBankAccount === 'ALL'
+                  ? 'bg-[#059669] text-white border-[#059669] shadow-xs'
+                  : 'bg-white text-slate-700 border-[#E2E8F0] hover:bg-slate-50'
+              }`}
+            >
+              All Bank Accounts ({Object.values(bankAccountCounts).reduce((a, b) => a + b, 0) || metrics.total_count})
+            </button>
+            {availableBankAccounts.map((bName) => {
+              const cnt = bankAccountCounts[bName] ?? 0;
+              const isActive = selectedBankAccount === bName;
+              return (
+                <button
+                  key={bName}
+                  type="button"
+                  onClick={() => setSelectedBankAccount(bName)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer border flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-[#059669] text-white border-[#059669] shadow-xs'
+                      : 'bg-white text-slate-700 border-[#E2E8F0] hover:bg-slate-50'
+                  }`}
+                >
+                  <Landmark className={`w-3 h-3 ${isActive ? 'text-white' : 'text-[#059669]'}`} />
+                  <span>{bName}</span>
+                  <span className={`text-[11px] ${isActive ? 'text-white/80' : 'text-slate-400'}`}>({cnt})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Quick Period Selector Pills */}
         {availableMonths && availableMonths.length > 0 && (
@@ -771,28 +870,35 @@ export const InformationRequestsSection: React.FC = () => {
           </div>
         )}
 
-        {/* Active Month & Year Indicator Banner */}
-        {(selectedMonth !== 'ALL' || selectedYear !== 'ALL') && (
+        {/* Active Month, Year, or Bank Account Indicator Banner */}
+        {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || selectedBankAccount !== 'ALL') && (
           <div className="flex items-center justify-between text-xs bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl px-3 py-1.5 animate-in fade-in">
             <div className="flex items-center gap-2">
               <span className="inline-block w-2 h-2 rounded-full bg-[#0284C7] animate-pulse" />
               <span className="text-slate-700 font-medium">
                 Showing transactions for{' '}
+                {selectedBankAccount !== 'ALL' && (
+                  <>
+                    <strong className="text-[#059669]">{selectedBankAccount}</strong>
+                    {' • '}
+                  </>
+                )}
                 <strong className="text-[#0284C7]">
                   {selectedMonth !== 'ALL' ? selectedMonth : 'All Months'}
                   {selectedYear !== 'ALL' ? ` ${selectedYear}` : ' (All Years)'}
                 </strong>{' '}
-                ({transactions.length} shown of {metrics.total_count} uncategorized bank transactions)
+                ({transactions.length} shown of {metrics.total_count} bank transactions)
               </span>
             </div>
             <button
               onClick={() => {
                 setSelectedMonth('ALL');
                 setSelectedYear('ALL');
+                setSelectedBankAccount('ALL');
               }}
               className="text-[11px] text-[#0284C7] hover:underline cursor-pointer font-medium"
             >
-              Show All Periods
+              Reset Period &amp; Bank Filters
             </button>
           </div>
         )}
@@ -882,8 +988,8 @@ export const InformationRequestsSection: React.FC = () => {
             <p className="text-slate-500 max-w-md mx-auto">
               {metrics.total_count > 0
                 ? `You have ${metrics.total_count} uncategorized bank transactions synchronized, but none fall under ${selectedMonth !== 'ALL' ? selectedMonth : ''} ${selectedYear !== 'ALL' ? selectedYear : ''}. Switch periods or view all below.`
-                : selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL'
-                ? `No transactions match the current filter (${[selectedMonth !== 'ALL' && selectedMonth, selectedYear !== 'ALL' && selectedYear, statusFilter !== 'ALL' && statusFilter].filter(Boolean).join(', ')}).`
+                : selectedMonth !== 'ALL' || selectedYear !== 'ALL' || selectedBankAccount !== 'ALL' || searchQuery || statusFilter !== 'ALL'
+                ? `No transactions match the current filter (${[selectedBankAccount !== 'ALL' && selectedBankAccount, selectedMonth !== 'ALL' && selectedMonth, selectedYear !== 'ALL' && selectedYear, statusFilter !== 'ALL' && statusFilter].filter(Boolean).join(', ')}).`
                 : 'All bank transactions are currently classified, or none have been imported yet from your accounting software.'}
             </p>
 
@@ -911,11 +1017,12 @@ export const InformationRequestsSection: React.FC = () => {
             )}
 
             <div className="flex items-center justify-center gap-3 pt-2">
-              {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || searchQuery || statusFilter !== 'ALL') && (
+              {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || selectedBankAccount !== 'ALL' || searchQuery || statusFilter !== 'ALL') && (
                 <button
                   onClick={() => {
                     setSelectedMonth('ALL');
                     setSelectedYear('ALL');
+                    setSelectedBankAccount('ALL');
                     setSearchQuery('');
                     setStatusFilter('ALL');
                   }}
@@ -951,7 +1058,8 @@ export const InformationRequestsSection: React.FC = () => {
                       className="rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7] cursor-pointer"
                     />
                   </th>
-                  <th className="py-3 px-3">Date / Account</th>
+                  <th className="py-3 px-3">Date</th>
+                  <th className="py-3 px-3">Bank Account</th>
                   <th className="py-3 px-3">Raw Description</th>
                   <th className="py-3 px-3">Amount (GHS)</th>
                   <th className="py-3 px-4">Chart of Accounts Category</th>
@@ -967,6 +1075,7 @@ export const InformationRequestsSection: React.FC = () => {
                   const isAnswered = tx.status === 'CLIENT_ANSWERED';
                   const isMapped = tx.status === 'MAPPED' || tx.status === 'POSTED';
                   const isSaving = savingRowIds[tx.id] || false;
+                  const bankAccLabel = tx.bank_account_name || 'Bank Account';
 
                   return (
                     <tr
@@ -988,9 +1097,26 @@ export const InformationRequestsSection: React.FC = () => {
                         />
                       </td>
 
-                      {/* Date & Account */}
+                      {/* Date */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
                         <span className="font-mono font-bold text-slate-900 block">{tx.transaction_date}</span>
+                      </td>
+
+                      {/* Bank Account */}
+                      <td className="py-3.5 px-3 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedBankAccount(selectedBankAccount === bankAccLabel ? 'ALL' : bankAccLabel)
+                          }
+                          title={`Click to filter by ${bankAccLabel}`}
+                          className="inline-flex items-center gap-1.5 text-left group cursor-pointer"
+                        >
+                          <Landmark className="w-3.5 h-3.5 text-[#059669] shrink-0" />
+                          <span className="text-xs font-semibold text-slate-800 group-hover:text-[#059669] group-hover:underline truncate max-w-[160px]">
+                            {bankAccLabel}
+                          </span>
+                        </button>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {tx.source_file_name?.includes('Zoho') ? (
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">Zoho Feed</span>
@@ -1001,9 +1127,6 @@ export const InformationRequestsSection: React.FC = () => {
                           ) : (
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">Statement</span>
                           )}
-                          <span className="text-[10px] text-slate-700 font-medium truncate max-w-[140px]" title={tx.bank_account_name || 'Bank Account'}>
-                            {tx.bank_account_name || 'Bank Account'}
-                          </span>
                         </div>
                       </td>
 

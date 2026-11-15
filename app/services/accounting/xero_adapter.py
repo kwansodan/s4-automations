@@ -151,6 +151,10 @@ class XeroAdapter(BaseAccountingAdapter):
             ]
         return []
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Returns active Bank accounts from Xero."""
+        return await self.xero.fetch_bank_accounts()
+
     async def fetch_uncategorized_bank_transactions(
         self,
         watched_accounts: Optional[List[str]] = None,

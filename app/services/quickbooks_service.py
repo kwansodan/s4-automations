@@ -242,13 +242,52 @@ class QuickBooksService:
             logger.warning(f"QuickBooks fetch_chart_of_accounts error: {e}")
         return []
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Fetch registered Bank and Credit Card accounts from QuickBooks Online Banking section."""
+        if not self.refresh_token:
+            return []
+        try:
+            token = await self.get_access_token()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                }
+                query = "select * from Account where AccountType in ('Bank', 'Credit Card') and Active = true maxresults 100"
+                resp = await client.get(
+                    f"{self.base_url}/query",
+                    params={"query": query},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    accounts = data.get("QueryResponse", {}).get("Account", [])
+                    out = []
+                    for a in accounts:
+                        acc_id = str(a.get("Id", "")).strip()
+                        if not acc_id:
+                            continue
+                        out.append({
+                            "account_id": acc_id,
+                            "account_name": a.get("Name") or "QuickBooks Bank Account",
+                            "account_type": a.get("AccountType") or "Bank",
+                            "currency": (a.get("CurrencyRef") or {}).get("value") or "GHS",
+                            "account_number_masked": str(a.get("AcctNum") or ""),
+                            "balance": float(a.get("CurrentBalance", 0.0) or 0.0),
+                            "is_active": a.get("Active", True) is not False,
+                        })
+                    return out
+        except Exception as e:
+            logger.warning(f"QuickBooks fetch_bank_accounts error: {e}")
+        return []
+
     async def fetch_uncategorized_transactions(
         self,
         watched_accounts: Optional[List[str]] = None,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Pulls unmapped/suspense transactions from QuickBooks Online (e.g. Purchases in 6990, 850)."""
+        """Pulls unmapped bank transactions strictly from QuickBooks Online Bank and Credit Card accounts."""
         if not self.refresh_token:
             return []
         try:
@@ -257,7 +296,30 @@ class QuickBooksService:
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
             }
-            watched_norm = [str(w).strip().lower() for w in (watched_accounts or ["6990", "850", "uncategorized", "suspense"])]
+            # 1. Discover registered Bank and Credit Card accounts in QBO Banking
+            bank_accounts = await self.fetch_bank_accounts()
+            bank_map = {str(b["account_id"]).strip(): b["account_name"] for b in bank_accounts}
+
+            legacy_gl_codes = {"6990", "850", "4990", "999", "suspense", "uncategorized", "all", "*"}
+            target_bank_filters = set()
+            if watched_accounts:
+                for w in watched_accounts:
+                    w_clean = str(w).strip().lower()
+                    if w_clean and w_clean not in legacy_gl_codes:
+                        target_bank_filters.add(w_clean)
+
+            allowed_bank_ids = set(bank_map.keys())
+            if target_bank_filters and bank_accounts:
+                matched_ids = {
+                    str(b["account_id"]).strip()
+                    for b in bank_accounts
+                    if str(b["account_id"]).strip().lower() in target_bank_filters
+                    or str(b["account_name"]).strip().lower() in target_bank_filters
+                }
+                if matched_ids:
+                    allowed_bank_ids = matched_ids
+
+            uncat_keywords = ["uncategorized", "ask my accountant", "suspense", "6990", "4990", "850"]
 
             where_clauses = []
             if date_start:
@@ -266,55 +328,100 @@ class QuickBooksService:
                 where_clauses.append(f"TxnDate <= '{date_end}'")
             where_sql = f" where {' and '.join(where_clauses)}" if where_clauses else ""
 
-            tx_query = f"select * from Purchase{where_sql} maxresults 100"
+            results = []
             async with httpx.AsyncClient(timeout=20.0) as client:
+                # A. Query Purchases (Outflows from Bank / Credit Card accounts)
+                tx_query = f"select * from Purchase{where_sql} maxresults 100"
                 resp = await client.get(
                     f"{self.base_url}/query",
                     params={"query": tx_query},
                     headers=headers,
                 )
-                if resp.status_code != 200:
-                    logger.warning(f"QuickBooks purchase query returned {resp.status_code}: {resp.text}")
-                    return []
+                if resp.status_code == 200:
+                    purchases = resp.json().get("QueryResponse", {}).get("Purchase", [])
+                    for p in purchases:
+                        p_id = str(p.get("Id", ""))
+                        p_date = p.get("TxnDate", "")
+                        total_amt = float(p.get("TotalAmt", 0.0))
+                        entity_ref = p.get("EntityRef", {})
+                        payee_name = entity_ref.get("name", "")
+                        acc_ref = p.get("AccountRef", {})
+                        bank_acc_id = str(acc_ref.get("value", "")).strip()
+                        bank_acc_name = bank_map.get(bank_acc_id) or acc_ref.get("name") or "QuickBooks Bank Account"
 
-                data = resp.json()
-                purchases = data.get("QueryResponse", {}).get("Purchase", [])
-                results = []
-                for p in purchases:
-                    p_id = str(p.get("Id", ""))
-                    p_date = p.get("TxnDate", "")
-                    total_amt = float(p.get("TotalAmt", 0.0))
-                    entity_ref = p.get("EntityRef", {})
-                    payee_name = entity_ref.get("name", "")
-                    bank_acc = p.get("AccountRef", {}).get("name", "QuickBooks Bank Account")
+                        # Strictly enforce that the source payment account is a registered Bank/Credit Card account
+                        if allowed_bank_ids and bank_acc_id and bank_acc_id not in allowed_bank_ids:
+                            continue
 
-                    # Check each line item to see if it targets a watched account
-                    for line in p.get("Line", []):
-                        detail = line.get("AccountBasedExpenseLineDetail", {})
-                        line_acc_ref = detail.get("AccountRef", {})
-                        line_acc_id = str(line_acc_ref.get("value", "")).lower()
-                        line_acc_name = str(line_acc_ref.get("name", "")).lower()
+                        for line in p.get("Line", []):
+                            detail = line.get("AccountBasedExpenseLineDetail", {})
+                            line_acc_ref = detail.get("AccountRef", {})
+                            line_acc_id = str(line_acc_ref.get("value", "")).lower()
+                            line_acc_name = str(line_acc_ref.get("name", "")).lower()
 
-                        is_match = any(
-                            w in line_acc_id or w in line_acc_name
-                            for w in watched_norm
-                        )
-                        if is_match or not watched_accounts:
-                            line_amt = float(line.get("Amount", total_amt))
-                            desc = line.get("Description") or p.get("PrivateNote") or f"Purchase from {payee_name or 'Vendor'}"
-                            results.append({
-                                "transaction_id": p_id,
-                                "date": p_date,
-                                "amount": line_amt,
-                                "transaction_type": "DEBIT",
-                                "description": desc,
-                                "payee": payee_name,
-                                "bank_account_name": bank_acc,
-                                "account_name": line_acc_ref.get("name") or "Uncategorized Expense",
-                                "watched_account": line_acc_ref.get("name") or "6990",
-                                "raw_transaction": p,
-                            })
-                            break
+                            is_uncat = any(k in line_acc_id or k in line_acc_name for k in uncat_keywords)
+                            if is_uncat:
+                                line_amt = float(line.get("Amount", total_amt))
+                                desc = line.get("Description") or p.get("PrivateNote") or f"Purchase from {payee_name or 'Vendor'}"
+                                results.append({
+                                    "transaction_id": p_id,
+                                    "date": p_date,
+                                    "amount": line_amt,
+                                    "transaction_type": "DEBIT",
+                                    "description": desc,
+                                    "payee": payee_name,
+                                    "bank_account_id": bank_acc_id,
+                                    "bank_account_name": bank_acc_name,
+                                    "account_name": line_acc_ref.get("name") or "Uncategorized Expense",
+                                    "raw_transaction": p,
+                                })
+                                break
+
+                # B. Query Deposits (Inflows to Bank accounts)
+                dep_query = f"select * from Deposit{where_sql} maxresults 100"
+                dep_resp = await client.get(
+                    f"{self.base_url}/query",
+                    params={"query": dep_query},
+                    headers=headers,
+                )
+                if dep_resp.status_code == 200:
+                    deposits = dep_resp.json().get("QueryResponse", {}).get("Deposit", [])
+                    for d in deposits:
+                        d_id = str(d.get("Id", ""))
+                        d_date = d.get("TxnDate", "")
+                        total_amt = float(d.get("TotalAmt", 0.0))
+                        dep_to_ref = d.get("DepositToAccountRef", {})
+                        bank_acc_id = str(dep_to_ref.get("value", "")).strip()
+                        bank_acc_name = bank_map.get(bank_acc_id) or dep_to_ref.get("name") or "QuickBooks Bank Account"
+
+                        if allowed_bank_ids and bank_acc_id and bank_acc_id not in allowed_bank_ids:
+                            continue
+
+                        for line in d.get("Line", []):
+                            detail = line.get("DepositLineDetail", {})
+                            line_acc_ref = detail.get("AccountRef", {})
+                            line_acc_id = str(line_acc_ref.get("value", "")).lower()
+                            line_acc_name = str(line_acc_ref.get("name", "")).lower()
+                            entity_name = (detail.get("Entity") or {}).get("name", "")
+
+                            is_uncat = any(k in line_acc_id or k in line_acc_name for k in uncat_keywords)
+                            if is_uncat:
+                                line_amt = float(line.get("Amount", total_amt))
+                                desc = line.get("Description") or d.get("PrivateNote") or f"Deposit from {entity_name or 'Customer'}"
+                                results.append({
+                                    "transaction_id": f"dep_{d_id}",
+                                    "date": d_date,
+                                    "amount": line_amt,
+                                    "transaction_type": "CREDIT",
+                                    "description": desc,
+                                    "payee": entity_name,
+                                    "bank_account_id": bank_acc_id,
+                                    "bank_account_name": bank_acc_name,
+                                    "account_name": line_acc_ref.get("name") or "Uncategorized Income",
+                                    "raw_transaction": d,
+                                })
+                                break
+
                 return results
         except Exception as e:
             logger.warning(f"QuickBooks fetch_uncategorized_transactions error: {e}")

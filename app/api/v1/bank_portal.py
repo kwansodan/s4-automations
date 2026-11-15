@@ -478,9 +478,103 @@ async def accountant_get_chart_of_accounts(client_id: str) -> Dict[str, Any]:
         }
 
 
-@bank_accountant_router.put("/clients/{client_id}/watched-accounts", summary="Accountant: Update Watched Accounts")
+@bank_accountant_router.get("/clients/{client_id}/bank-accounts", summary="Accountant: Get Live Banking Module Accounts")
+async def accountant_get_bank_accounts(client_id: str) -> Dict[str, Any]:
+    """Returns active Bank, Credit Card, and Mobile Money accounts from the accounting platform's Banking section."""
+    with Session(get_engine()) as session:
+        client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+        if not client:
+            software = "zoho_books"
+            if "xero" in client_id.lower() or "polaris" in client_id.lower():
+                software = "xero"
+            elif "qbo" in client_id.lower() or "quickbooks" in client_id.lower() or "mr_osei" in client_id.lower():
+                software = "quickbooks_online"
+            client = ClientOrganization(
+                id=client_id,
+                name=client_id.replace("_", " ").title(),
+                accounting_software=software,
+                watched_accounts=[],
+            )
+
+        software = client.accounting_software or "zoho_books"
+        cfg = client.custom_config or {}
+
+        # Resolve configured watched bank accounts (ignoring legacy GL codes)
+        legacy_gl = {"6990", "850", "999", "suspense", "uncategorized", "all"}
+        raw_watched = list(client.watched_accounts or [])
+        for p in (client.pipelines or []):
+            if isinstance(p, dict) and str(p.get("section", "")).upper() == "BANK":
+                p_watched = p.get("watched_accounts")
+                if isinstance(p_watched, list):
+                    raw_watched = p_watched
+                    break
+        watched_bank_accounts = [
+            str(w).strip()
+            for w in raw_watched
+            if str(w).strip() and str(w).strip().lower() not in legacy_gl
+        ]
+
+        if software == "zoho_books":
+            has_token = bool(cfg.get("zoho_refresh_token") or settings.ZOHO_REFRESH_TOKEN)
+        elif software in ["quickbooks_online", "quickbooks"]:
+            has_token = bool(cfg.get("quickbooks_refresh_token") or settings.QUICKBOOKS_REFRESH_TOKEN)
+        elif software == "xero":
+            has_token = bool(cfg.get("xero_refresh_token") or settings.XERO_REFRESH_TOKEN)
+        else:
+            has_token = True
+
+        has_oauth = bool(has_token or settings.MOCK_MODE)
+        bank_accounts: List[Dict[str, Any]] = []
+
+        if has_oauth:
+            try:
+                adapter = AccountingAdapterFactory.get(software, client.id)
+                bank_accounts = await adapter.fetch_bank_accounts()
+            except Exception as err:
+                logger.warning(f"Failed to fetch live bank accounts for client '{client_id}': {err}")
+                bank_accounts = []
+
+        # Also merge any distinct bank_account_name values already stored in BankTransaction rows for this client
+        existing_txs = session.exec(
+            select(BankTransaction).where(BankTransaction.client_id == client_id)
+        ).all()
+        known_names = {str(b.get("account_name", "")).strip().lower() for b in bank_accounts if b.get("account_name")}
+        generic_placeholders = {"bank account", "zoho bank feed", "quickbooks bank feed", "xero bank feed", "watched account", ""}
+        for tx in existing_txs:
+            b_name = (tx.bank_account_name or "").strip()
+            if b_name and b_name.lower() not in known_names and b_name.lower() not in generic_placeholders:
+                known_names.add(b_name.lower())
+                meta = tx.metadata_json or {}
+                b_id = (
+                    meta.get("zoho_account_id")
+                    or meta.get("qbo_account_id")
+                    or meta.get("from_account_id")
+                    or b_name
+                )
+                bank_accounts.append({
+                    "account_id": str(b_id),
+                    "account_name": b_name,
+                    "account_type": "bank",
+                    "currency": "GHS",
+                    "account_number_masked": "",
+                    "balance": 0.0,
+                    "uncategorized_transactions": 0,
+                    "is_active": True,
+                })
+
+        return {
+            "client_id": client_id,
+            "accounting_software": software,
+            "oauth_pending": not has_oauth,
+            "watched_bank_accounts": watched_bank_accounts,
+            "bank_accounts": bank_accounts,
+            "bank_accounts_count": len(bank_accounts),
+        }
+
+
+@bank_accountant_router.put("/clients/{client_id}/watched-accounts", summary="Accountant: Update Watched Bank Accounts")
 async def accountant_update_watched_accounts(client_id: str, payload: WatchedAccountsUpdate) -> Dict[str, Any]:
-    """Updates the list of Chart of Accounts IDs monitored for uncategorized transactions."""
+    """Updates the list of Bank Accounts monitored for uncategorized transactions."""
     with Session(get_engine()) as session:
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
         if not client:
@@ -510,7 +604,7 @@ async def accountant_update_watched_accounts(client_id: str, payload: WatchedAcc
             "success": True,
             "client_id": client_id,
             "watched_accounts": client.watched_accounts,
-            "message": f"Updated {len(payload.watched_accounts)} watched Chart of Accounts for {client.name}.",
+            "message": f"Updated monitored bank accounts for {client.name}.",
         }
 
 
@@ -557,7 +651,7 @@ def _matches_month_and_year(date_str: str, target_month: Optional[str], target_y
         if len(sub_parts) >= 2:
             try:
                 y_from_str = int(sub_parts[0])
-                if tx_year is not None and tx_year != y_from_str:
+                if tx_year is None or tx_year != y_from_str:
                     return False
                 target_m_num = int(sub_parts[1])
             except ValueError:
@@ -655,6 +749,7 @@ async def accountant_list_bank_transactions(
     search: Optional[str] = Query(None, description="Search description, payee, or amount"),
     month: Optional[str] = Query("ALL", description="ALL, month name ('September'), month number ('09'), or 'YYYY-MM'"),
     year: Optional[str] = Query(None, description="Filter by year e.g. 2026 or ALL"),
+    bank_account: Optional[str] = Query("ALL", description="Filter by bank account name or ALL"),
 ) -> Dict[str, Any]:
     """Lists uncategorized bank transactions requiring classification or client attention."""
     with Session(get_engine()) as session:
@@ -666,7 +761,7 @@ async def accountant_list_bank_transactions(
         if not settings.MOCK_MODE:
             purge_legacy_mock_bank_transactions(session, client_id=client_id)
 
-        # Auto-align polarity and status of existing bank transactions based on raw accounting feed metadata
+        # Auto-align polarity, bank account name, and status of existing bank transactions based on raw accounting feed metadata
         all_for_client = session.exec(select(BankTransaction).where(BankTransaction.client_id == client_id)).all()
         needs_commit = False
         for t in all_for_client:
@@ -693,7 +788,21 @@ async def accountant_list_bank_transactions(
                     session.add(t)
                     needs_commit = True
 
-                # 2. Align status if already categorized or matched in Zoho Books
+                # 2. Align bank_account_name if raw transaction carries a specific bank account name
+                raw_bank_name = str(
+                    raw.get("from_account_name")
+                    or raw.get("account_name")
+                    or (raw.get("AccountRef", {}) or {}).get("name")
+                    or (raw.get("DepositToAccountRef", {}) or {}).get("name")
+                    or (raw.get("BankAccount", {}) or {}).get("Name")
+                    or ""
+                ).strip()
+                if raw_bank_name and (not t.bank_account_name or t.bank_account_name in ("Bank Account", "Zoho Bank Feed", "QuickBooks Bank Feed", "Xero Bank Feed")):
+                    t.bank_account_name = raw_bank_name
+                    session.add(t)
+                    needs_commit = True
+
+                # 3. Align status if already categorized or matched in Zoho Books
                 raw_stat = str(raw.get("transaction_status") or raw.get("status") or "").strip().lower()
                 if raw_stat in ("categorized", "matched", "manually_added", "excluded") and t.status == "UNMAPPED":
                     t.status = "MAPPED"
@@ -713,15 +822,29 @@ async def accountant_list_bank_transactions(
 
         transactions = session.exec(query.order_by(BankTransaction.transaction_date.desc(), BankTransaction.id.desc())).all()
 
-        total_count = len(all_for_client)
-        total_uncategorized = sum(1 for t in all_for_client if t.status == "UNMAPPED")
-        total_pending_client = sum(1 for t in all_for_client if t.status == "CLARIFICATION_REQUESTED")
-        total_client_answered = sum(1 for t in all_for_client if t.status == "CLIENT_ANSWERED")
-        total_mapped = sum(1 for t in all_for_client if t.status == "MAPPED")
+        # Discover distinct bank accounts across the client's period-matching transactions
+        period_matching_all = [t for t in all_for_client if _matches_month_and_year(t.transaction_date, month, year)]
+        bank_account_counts: Dict[str, int] = {}
+        for t in period_matching_all:
+            b_name = (t.bank_account_name or "Bank Account").strip()
+            bank_account_counts[b_name] = bank_account_counts.get(b_name, 0) + 1
+        available_bank_accounts = sorted(list(bank_account_counts.keys()))
+
+        # Calculate metrics (scoped to selected bank_account if specified)
+        metrics_pool = all_for_client
+        if bank_account and bank_account.upper() != "ALL":
+            b_target = bank_account.strip().lower()
+            metrics_pool = [t for t in all_for_client if (t.bank_account_name or "Bank Account").strip().lower() == b_target]
+
+        total_count = len(metrics_pool)
+        total_uncategorized = sum(1 for t in metrics_pool if t.status == "UNMAPPED")
+        total_pending_client = sum(1 for t in metrics_pool if t.status == "CLARIFICATION_REQUESTED")
+        total_client_answered = sum(1 for t in metrics_pool if t.status == "CLIENT_ANSWERED")
+        total_mapped = sum(1 for t in metrics_pool if t.status == "MAPPED")
 
         # Discover distinct periods and transaction counts per period
         period_counts = {}
-        for t in all_for_client:
+        for t in metrics_pool:
             ym = _extract_year_month(t.transaction_date)
             if ym:
                 period_counts[ym] = period_counts.get(ym, 0) + 1
@@ -731,12 +854,18 @@ async def accountant_list_bank_transactions(
         # Apply in-memory month/year filter
         filtered = [t for t in transactions if _matches_month_and_year(t.transaction_date, month, year)]
 
+        # Apply bank_account filter
+        if bank_account and bank_account.upper() != "ALL":
+            b_target = bank_account.strip().lower()
+            filtered = [t for t in filtered if (t.bank_account_name or "Bank Account").strip().lower() == b_target]
+
         # Search filter
         if search:
             s_low = search.lower()
             filtered = [
                 t for t in filtered
                 if s_low in t.description.lower()
+                or (t.bank_account_name and s_low in t.bank_account_name.lower())
                 or (t.payee_name and s_low in t.payee_name.lower())
                 or (t.mapped_account_name and s_low in t.mapped_account_name.lower())
                 or (t.client_explanation and s_low in t.client_explanation.lower())
@@ -747,8 +876,11 @@ async def accountant_list_bank_transactions(
             "client_id": client_id,
             "month": month,
             "year": year,
+            "bank_account": bank_account or "ALL",
             "available_months": available_months,
             "period_counts": period_counts,
+            "available_bank_accounts": available_bank_accounts,
+            "bank_account_counts": bank_account_counts,
             "metrics": {
                 "total_count": total_count,
                 "filtered_count": len(filtered),
@@ -1136,9 +1268,25 @@ async def accountant_sync_bank_feeds(
             session.commit()
             logger.info(f"Purged {len(legacy_gl_txs)} historical GL register records for client {client_id}.")
 
+        # Resolve monitored bank accounts from the client's BANK pipeline or watched_accounts
+        legacy_gl = {"6990", "850", "999", "suspense", "uncategorized", "all"}
+        raw_watched = list(client.watched_accounts or [])
+        for p in (client.pipelines or []):
+            if isinstance(p, dict) and str(p.get("section", "")).upper() == "BANK":
+                p_watched = p.get("watched_accounts")
+                if isinstance(p_watched, list):
+                    raw_watched = p_watched
+                    break
+        watched_bank_accounts = [
+            str(w).strip()
+            for w in raw_watched
+            if str(w).strip() and str(w).strip().lower() not in legacy_gl
+        ]
+
         target_year_int = int(year) if (year and year.upper() != "ALL" and year.strip().isdigit()) else None
         adapter = AccountingAdapterFactory.get(client.accounting_software, client.id)
         feeds = await adapter.fetch_uncategorized_bank_transactions(
+            watched_accounts=watched_bank_accounts if watched_bank_accounts else None,
             month=month,
             year=target_year_int,
         )
@@ -1215,10 +1363,16 @@ async def accountant_sync_bank_feeds(
                 )
             ).first()
             if existing:
-                # Refresh transaction_type if newly resolved or corrected from feed
+                updated_existing = False
                 new_type = f.get("transaction_type")
                 if new_type and existing.transaction_type != new_type:
                     existing.transaction_type = new_type
+                    updated_existing = True
+                feed_bank_name = f.get("bank_account_name") or f.get("account_name")
+                if feed_bank_name and feed_bank_name not in ("Bank Account", "Zoho Bank Feed", "QuickBooks Bank Feed", "Xero Bank Feed") and existing.bank_account_name != feed_bank_name:
+                    existing.bank_account_name = feed_bank_name
+                    updated_existing = True
+                if updated_existing:
                     session.add(existing)
                     synced_count += 1
                 continue
@@ -1232,6 +1386,8 @@ async def accountant_sync_bank_feeds(
                     meta["zoho_account_id"] = f.get("zoho_account_id")
                 if f.get("qbo_transaction_id"):
                     meta["qbo_transaction_id"] = f.get("qbo_transaction_id")
+                if f.get("qbo_account_id"):
+                    meta["qbo_account_id"] = f.get("qbo_account_id")
                 if f.get("xero_transaction_id"):
                     meta["xero_transaction_id"] = f.get("xero_transaction_id")
                 if f.get("raw_transaction"):

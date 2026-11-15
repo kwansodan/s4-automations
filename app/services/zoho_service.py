@@ -1469,30 +1469,44 @@ class ZohoBooksService:
         account_id: Optional[str] = None,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
+        bank_account_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Pulls unclassified/uncategorized bank transactions from Zoho Books (/banktransactions?transaction_status=uncategorized).
-        If account_id is not specified, iterates across all registered bank and credit card accounts.
+        Strictly queries bank accounts registered in the Zoho Books Banking module (/bankaccounts).
         """
         if not self.org_id:
             logger.info("No live Zoho credentials/org_id; returning empty uncategorized transactions.")
             return []
 
-        # If specific account provided, fetch directly
-        if account_id:
-            return await self.fetch_bank_transactions(
-                account_id=account_id,
-                status="uncategorized",
-                date_start=date_start,
-                date_end=date_end,
-            )
-
-        # Otherwise, discover active bank accounts first
         all_uncat: List[Dict[str, Any]] = []
         seen_tx_ids = set()
         try:
             bank_accounts = await self.fetch_bank_accounts()
-            for bacc in (bank_accounts or []):
+            # Build filter set of selected banking accounts (ignoring legacy GL codes like 6990, 850, suspense, uncategorized)
+            legacy_gl_codes = {"6990", "850", "4990", "999", "suspense", "uncategorized", "all", "*"}
+            target_filters = set()
+            if account_id and str(account_id).strip().lower() not in legacy_gl_codes:
+                target_filters.add(str(account_id).strip().lower())
+            if bank_account_ids:
+                for bid in bank_account_ids:
+                    b_clean = str(bid).strip().lower()
+                    if b_clean and b_clean not in legacy_gl_codes:
+                        target_filters.add(b_clean)
+
+            # Filter bank_accounts if valid banking account filters were specified and match at least one bank account
+            accounts_to_query = bank_accounts or []
+            if target_filters and accounts_to_query:
+                matched_accounts = [
+                    b for b in accounts_to_query
+                    if str(b.get("account_id", "")).strip().lower() in target_filters
+                    or str(b.get("account_name", "")).strip().lower() in target_filters
+                ]
+                if matched_accounts:
+                    accounts_to_query = matched_accounts
+
+            for bacc in accounts_to_query:
                 b_id = str(bacc.get("account_id", ""))
+                b_name = bacc.get("account_name") or "Zoho Bank Account"
                 if not b_id:
                     continue
                 txs = await self.fetch_bank_transactions(
@@ -1505,7 +1519,7 @@ class ZohoBooksService:
                     tid = str(t.get("transaction_id", ""))
                     if tid and tid not in seen_tx_ids:
                         seen_tx_ids.add(tid)
-                        t["from_account_name"] = bacc.get("account_name")
+                        t["from_account_name"] = b_name
                         t["from_account_id"] = b_id
                         all_uncat.append(t)
         except Exception as err:

@@ -399,6 +399,17 @@ export interface ChartOfAccountItem {
   is_suspense?: boolean;
 }
 
+export interface BankAccountItem {
+  account_id: string;
+  account_name: string;
+  account_type?: string;
+  currency?: string;
+  account_number_masked?: string;
+  balance?: number;
+  uncategorized_transactions?: number;
+  is_active?: boolean;
+}
+
 export interface BankTransactionRecord {
   id: number;
   client_id: string;

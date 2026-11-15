@@ -94,6 +94,10 @@ class BaseAccountingAdapter(ABC):
         """Fetches Chart of Accounts directory from the target accounting platform."""
         pass
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Fetches registered Bank, Credit Card, and Mobile Money accounts from the Banking module."""
+        return []
+
     @abstractmethod
     async def fetch_uncategorized_bank_transactions(
         self,

@@ -1229,13 +1229,17 @@ export async function fetchBankTransactions(
   status: string = 'ALL',
   search?: string,
   month?: string,
-  year?: number | string
+  year?: number | string,
+  bankAccount?: string
 ): Promise<{
   client_id: string;
   month?: string;
   year?: number | string;
+  bank_account?: string;
   available_months?: string[];
   period_counts?: Record<string, number>;
+  available_bank_accounts?: string[];
+  bank_account_counts?: Record<string, number>;
   metrics: {
     total_count: number;
     filtered_count?: number;
@@ -1251,11 +1255,26 @@ export async function fetchBankTransactions(
   if (search) params.append('search', search);
   if (month && month !== 'ALL') params.append('month', month);
   if (year && year !== 'ALL') params.append('year', year.toString());
+  if (bankAccount && bankAccount !== 'ALL') params.append('bank_account', bankAccount);
 
   const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/transactions?${params.toString()}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse(res, 'Fetch transactions in watched accounts');
+  return handleResponse(res, 'Fetch bank transactions');
+}
+
+export async function fetchClientBankAccounts(clientId: string): Promise<{
+  client_id: string;
+  accounting_software: string;
+  oauth_pending?: boolean;
+  watched_bank_accounts: string[];
+  bank_accounts: any[];
+  bank_accounts_count: number;
+}> {
+  const res = await resilientFetch(`/api/v1/bank/clients/${clientId}/bank-accounts`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch Client Banking Accounts');
 }
 
 export async function fetchChartOfAccounts(clientId: string): Promise<{

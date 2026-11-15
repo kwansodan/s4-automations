@@ -258,7 +258,7 @@ export const ClientPipelinesTab: React.FC = () => {
                         </span>
                       </p>
                     )}
-                    {pipe.default_account_code && (
+                    {pipe.default_account_code && pipe.entity_type !== 'bank_feed' && (
                       <p className="flex items-center justify-between">
                         <span className="text-slate-500 text-[11px]">Default Account:</span>
                         <span className="text-emerald-400 font-mono text-[11px]">{pipe.default_account_code}</span>
@@ -278,31 +278,44 @@ export const ClientPipelinesTab: React.FC = () => {
                         )}
                       </div>
                     )}
-                    {pipe.section === 'BANK' && (
-                      <div className="mt-2.5 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] text-emerald-400 font-semibold">
-                          <span className="flex items-center gap-1">
-                            <Landmark className="w-3 h-3 text-emerald-400" />
-                            <span>Watched Accounts</span>
-                          </span>
-                          <span className="text-[9px] font-mono font-bold bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-700/50">
-                            {(pipe.watched_accounts || currentClient.watched_accounts || []).length} accounts
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(pipe.watched_accounts || currentClient.watched_accounts || ['6990', '850', 'suspense', 'uncategorized']).slice(0, 4).map((acc, aIdx) => (
-                            <span key={aIdx} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-700/50">
-                              {acc}
+                    {pipe.section === 'BANK' && (() => {
+                      const legacyGl = new Set(['6990', '850', '999', 'suspense', 'uncategorized', 'all']);
+                      const rawBankList = pipe.watched_accounts || currentClient.watched_accounts || [];
+                      const selectedBanks = rawBankList.filter((w) => w && !legacyGl.has(String(w).trim().toLowerCase()));
+                      return (
+                        <div className="mt-2.5 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] text-emerald-400 font-semibold">
+                            <span className="flex items-center gap-1">
+                              <Landmark className="w-3 h-3 text-emerald-400" />
+                              <span>Banking Module Scope</span>
                             </span>
-                          ))}
-                          {(pipe.watched_accounts || currentClient.watched_accounts || []).length > 4 && (
-                            <span className="text-[9px] text-emerald-400 font-mono self-center">
-                              +{(pipe.watched_accounts || currentClient.watched_accounts || []).length - 4} more
+                            <span className="text-[9px] font-mono font-bold bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-700/50">
+                              {selectedBanks.length === 0 ? 'All Bank Accounts' : `${selectedBanks.length} selected`}
                             </span>
-                          )}
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {selectedBanks.length === 0 ? (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-200 border border-emerald-700/40">
+                                All Active Bank / MoMo Accounts
+                              </span>
+                            ) : (
+                              <>
+                                {selectedBanks.slice(0, 4).map((acc, aIdx) => (
+                                  <span key={aIdx} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-700/50">
+                                    {acc}
+                                  </span>
+                                ))}
+                                {selectedBanks.length > 4 && (
+                                  <span className="text-[9px] text-emerald-400 font-mono self-center">
+                                    +{selectedBanks.length - 4} more
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Last Run Summary Preview Card */}

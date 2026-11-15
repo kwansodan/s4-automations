@@ -160,6 +160,10 @@ class QuickBooksAdapter(BaseAccountingAdapter):
             ]
         return []
 
+    async def fetch_bank_accounts(self) -> List[Dict[str, Any]]:
+        """Returns active Bank and Credit Card accounts from QuickBooks Online."""
+        return await self.qbo.fetch_bank_accounts()
+
     async def fetch_uncategorized_bank_transactions(
         self,
         watched_accounts: Optional[List[str]] = None,
@@ -223,6 +227,7 @@ class QuickBooksAdapter(BaseAccountingAdapter):
                     "category_confidence": 0.90,
                     "external_transaction_id": tx_id,
                     "qbo_transaction_id": tx_id,
+                    "qbo_account_id": tx.get("bank_account_id"),
                     "raw_transaction": tx.get("raw_transaction"),
                 })
             return results
