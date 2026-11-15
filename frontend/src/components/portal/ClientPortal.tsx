@@ -19,18 +19,26 @@ import {
   Trash2,
 } from 'lucide-react';
 
-interface BankTransaction {
+interface PortalItem {
   id: number;
+  item_key?: string;
+  item_source?: string;
+  pipeline_type?: 'BANK' | 'AR' | 'AP' | 'GENERAL';
   client_id: string;
   transaction_date: string;
   description: string;
+  party_or_account_name?: string;
   amount: number;
   transaction_type: string;
   status: string;
   client_explanation?: string;
   accountant_query?: string;
   client_attachments?: Array<{ name: string; size?: number; type?: string; url?: string }>;
+  line_count?: number;
+  line_items?: Array<{ id: number; description: string; amount: number; category?: string }>;
 }
+
+const getItemKey = (tx: PortalItem): string => tx.item_key || `BANK:${tx.id}`;
 
 export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackToAdmin }) => {
   const [sessionToken, setSessionToken] = useState<string | null>(() => localStorage.getItem('s4_portal_token'));
@@ -49,12 +57,13 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Transactions State
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [transactions, setTransactions] = useState<PortalItem[]>([]);
   const [isLoadingTx, setIsLoadingTx] = useState(false);
-  const [explanationInputs, setExplanationInputs] = useState<{ [id: number]: string }>({});
-  const [attachmentsMap, setAttachmentsMap] = useState<{ [id: number]: Array<{ name: string; size?: number; type?: string }> }>({});
-  const [submittingIds, setSubmittingIds] = useState<{ [id: number]: boolean }>({});
+  const [explanationInputs, setExplanationInputs] = useState<{ [key: string]: string }>({});
+  const [attachmentsMap, setAttachmentsMap] = useState<{ [key: string]: Array<{ name: string; size?: number; type?: string; url?: string }> }>({});
+  const [submittingIds, setSubmittingIds] = useState<{ [key: string]: boolean }>({});
   const [searchFilter, setSearchFilter] = useState('');
+  const [pipelineFilter, setPipelineFilter] = useState<'ALL' | 'BANK' | 'AR' | 'AP' | 'GENERAL'>('ALL');
 
   // Load Transactions when logged in
   const fetchPortalTransactions = async () => {
@@ -73,15 +82,16 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
       // Initialize inputs with existing explanations and attachments
-      const initialInputs: { [id: number]: string } = {};
-      const initialAttachments: { [id: number]: Array<{ name: string; size?: number; type?: string }> } = {};
+      const initialInputs: { [key: string]: string } = {};
+      const initialAttachments: { [key: string]: Array<{ name: string; size?: number; type?: string; url?: string }> } = {};
       if (Array.isArray(data)) {
-        data.forEach((tx) => {
+        data.forEach((tx: PortalItem) => {
+          const key = getItemKey(tx);
           if (tx.client_explanation) {
-            initialInputs[tx.id] = tx.client_explanation;
+            initialInputs[key] = tx.client_explanation;
           }
           if (tx.client_attachments && tx.client_attachments.length > 0) {
-            initialAttachments[tx.id] = tx.client_attachments;
+            initialAttachments[key] = tx.client_attachments;
           }
         });
       }
@@ -179,13 +189,17 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
   };
 
   // Submit Explanation
-  const handleSubmitExplanation = async (txId: number) => {
-    const text = explanationInputs[txId]?.trim();
+  const handleSubmitExplanation = async (tx: PortalItem) => {
+    const key = getItemKey(tx);
+    const text = explanationInputs[key]?.trim();
     if (!text) return;
 
-    setSubmittingIds((prev) => ({ ...prev, [txId]: true }));
+    setSubmittingIds((prev) => ({ ...prev, [key]: true }));
     try {
-      const res = await fetch(`/api/v1/portal/transactions/${txId}/explain`, {
+      const endpoint = tx.item_key
+        ? `/api/v1/portal/items/${encodeURIComponent(tx.item_key)}/explain`
+        : `/api/v1/portal/transactions/${tx.id}/explain`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,18 +207,17 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
         },
         body: JSON.stringify({
           client_explanation: text,
-          client_attachments: attachmentsMap[txId] || [],
+          client_attachments: attachmentsMap[key] || [],
         }),
       });
       if (res.ok) {
-        const result = await res.json();
         setTransactions((prev) =>
           prev.map((t) =>
-            t.id === txId
+            getItemKey(t) === key
               ? {
                   ...t,
                   client_explanation: text,
-                  client_attachments: attachmentsMap[txId] || [],
+                  client_attachments: attachmentsMap[key] || [],
                   status: 'CLIENT_ANSWERED',
                 }
               : t
@@ -214,7 +227,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
     } catch (err) {
       console.error('Failed submitting explanation:', err);
     } finally {
-      setSubmittingIds((prev) => ({ ...prev, [txId]: false }));
+      setSubmittingIds((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -229,10 +242,14 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
   };
 
   const filteredTxs = transactions.filter((t) => {
+    if (pipelineFilter !== 'ALL' && (t.pipeline_type || 'BANK') !== pipelineFilter) {
+      return false;
+    }
     if (!searchFilter) return true;
     const query = searchFilter.trim().toLowerCase();
     return (
       (t.description || '').toLowerCase().includes(query) ||
+      (t.party_or_account_name || '').toLowerCase().includes(query) ||
       (t.transaction_date || '').includes(query) ||
       (t.accountant_query && t.accountant_query.toLowerCase().includes(query)) ||
       (t.client_explanation && t.client_explanation.toLowerCase().includes(query))
@@ -421,8 +438,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                   </span>
                 </div>
                 <p className="text-xs text-[#64748B] mt-1 max-w-2xl font-normal">
-                  Your accounting team at S4 Automations has ingested recent bank statement lines. Please review any
-                  unexplained deposits, withdrawals, or queries below and provide short written explanations.
+                  Your accounting team at S4 Automations has flagged the items below for clarification across your bank accounts, sales receivables, vendor bills, and monthly documents. Please provide a short explanation or attach supporting receipts.
                 </p>
               </div>
 
@@ -440,33 +456,58 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
             </div>
 
             {/* Filter / Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="relative w-full sm:w-80">
-                <input
-                  type="text"
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  placeholder="Search transactions or queries..."
-                  className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] shadow-xs"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'ALL' as const, label: 'All Requests' },
+                  { id: 'BANK' as const, label: 'Bank Transactions' },
+                  { id: 'AR' as const, label: 'Receivables (AR)' },
+                  { id: 'AP' as const, label: 'Vendor Bills (AP)' },
+                  { id: 'GENERAL' as const, label: 'Document Requests' },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setPipelineFilter(pill.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                      pipelineFilter === pill.id
+                        ? 'bg-[#0284C7] text-white shadow-2xs'
+                        : 'bg-white hover:bg-slate-50 text-slate-600 border border-[#E2E8F0]'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
               </div>
 
-              <button
-                onClick={fetchPortalTransactions}
-                disabled={isLoadingTx}
-                className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer shadow-xs"
-              >
-                <Clock className={`w-3.5 h-3.5 text-[#0284C7] ${isLoadingTx ? 'animate-spin' : ''}`} />
-                <span>Refresh List</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1 sm:w-72">
+                  <input
+                    type="text"
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    placeholder="Search transactions, customers, vendors..."
+                    className="w-full bg-white border border-[#E2E8F0] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] shadow-xs"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                </div>
+
+                <button
+                  onClick={fetchPortalTransactions}
+                  disabled={isLoadingTx}
+                  className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer shadow-xs shrink-0"
+                >
+                  <Clock className={`w-3.5 h-3.5 text-[#0284C7] ${isLoadingTx ? 'animate-spin' : ''}`} />
+                  <span>Refresh List</span>
+                </button>
+              </div>
             </div>
 
             {/* Transactions List */}
             {isLoadingTx ? (
               <div className="p-16 text-center text-slate-500 bg-white border border-[#E2E8F0] rounded-2xl flex flex-col items-center justify-center gap-2 shadow-xs">
                 <Clock className="w-6 h-6 animate-spin text-[#0284C7]" />
-                <p className="text-xs font-medium">Loading uncategorized bank transactions requiring attention...</p>
+                <p className="text-xs font-medium">Loading information requests and transactions requiring attention...</p>
               </div>
             ) : filteredTxs.length === 0 ? (
               <div className="p-16 text-center text-slate-500 bg-white border border-[#E2E8F0] rounded-2xl flex flex-col items-center justify-center gap-3 shadow-xs">
@@ -475,19 +516,29 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">All Caught Up!</h3>
                 <p className="text-xs text-slate-500 max-w-sm">
-                  There are currently no unexplained uncategorized bank transactions requiring your input. Thank you for keeping your
-                  books up to date!
+                  There are currently no pending information requests or unexplained transactions requiring your input. Thank you for keeping your books up to date!
                 </p>
               </div>
             ) : (
               <div className="space-y-4">
                 {filteredTxs.map((tx) => {
+                  const key = getItemKey(tx);
                   const isAnswered = tx.status === 'CLIENT_ANSWERED';
-                  const isSubmitting = submittingIds[tx.id] || false;
+                  const isSubmitting = submittingIds[key] || false;
+                  const pType = tx.pipeline_type || 'BANK';
+
+                  const badgeMeta =
+                    pType === 'AR'
+                      ? { label: 'Receivable / Sales Slip', cls: 'bg-sky-50 text-sky-700 border-sky-200', prefix: 'Customer' }
+                      : pType === 'AP'
+                      ? { label: 'Vendor Bill / Expense', cls: 'bg-violet-50 text-violet-700 border-violet-200', prefix: 'Vendor' }
+                      : pType === 'GENERAL'
+                      ? { label: 'Document Request', cls: 'bg-slate-100 text-slate-700 border-slate-200', prefix: 'Topic' }
+                      : { label: 'Bank Statement Line', cls: 'bg-amber-50 text-amber-800 border-amber-200', prefix: 'Bank Account' };
 
                   return (
                     <div
-                      key={tx.id}
+                      key={key}
                       className={`bg-white border rounded-2xl p-5 shadow-sm transition ${
                         isAnswered
                           ? 'border-[#BAE6FD]'
@@ -499,17 +550,27 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                         {/* Transaction Details */}
                         <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xs font-mono font-bold text-slate-500">{tx.transaction_date}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                tx.transaction_type === 'CREDIT'
-                                  ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
-                                  : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
-                              }`}
-                            >
-                              {tx.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeMeta.cls}`}>
+                              {badgeMeta.label}
                             </span>
+                            <span className="text-xs font-mono font-bold text-slate-500">{tx.transaction_date}</span>
+                            {pType === 'BANK' && (
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  tx.transaction_type === 'CREDIT'
+                                    ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                                    : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
+                                }`}
+                              >
+                                {tx.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
+                              </span>
+                            )}
+                            {tx.party_or_account_name && (
+                              <span className="text-[11px] font-semibold text-slate-600">
+                                {badgeMeta.prefix}: <strong className="text-slate-900">{tx.party_or_account_name}</strong>
+                              </span>
+                            )}
                             {isAnswered ? (
                               <span className="bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-[#059669]" /> Answered
@@ -527,6 +588,25 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
 
                           <h4 className="text-sm font-bold text-[#0F172A]">{tx.description}</h4>
 
+                          {/* Grouped Slip Line Items if multiple */}
+                          {tx.line_items && tx.line_items.length > 1 && (
+                            <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Slip Line Items ({tx.line_items.length})
+                              </p>
+                              <div className="divide-y divide-slate-200/60 text-xs">
+                                {tx.line_items.map((li) => (
+                                  <div key={li.id} className="py-1 flex items-center justify-between gap-2">
+                                    <span className="text-slate-700">{li.description}</span>
+                                    <span className="font-mono font-semibold text-slate-900">
+                                      GHS {Number(li.amount || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Accountant Question / Query Callout */}
                           {tx.accountant_query && (
                             <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
@@ -540,12 +620,17 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                         </div>
 
                         {/* Transaction Amount */}
-                        <div className="text-right shrink-0">
-                          <p className="text-lg font-mono font-bold text-[#0F172A]">
-                            {tx.transaction_type === 'CREDIT' ? '+' : '-'}GHS {tx.amount.toFixed(2)}
-                          </p>
-                          <p className="text-[10px] text-slate-400">Statement Amount</p>
-                        </div>
+                        {pType !== 'GENERAL' && (
+                          <div className="text-right shrink-0">
+                            <p className="text-lg font-mono font-bold text-[#0F172A]">
+                              {pType === 'BANK' ? (tx.transaction_type === 'CREDIT' ? '+' : '-') : ''}GHS{' '}
+                              {Number(tx.amount || 0).toFixed(2)}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {pType === 'AR' ? 'Slip Total' : pType === 'AP' ? 'Bill Amount' : 'Statement Amount'}
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Client Explanation Input Form */}
@@ -554,11 +639,11 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                           <div className="flex-1 relative">
                             <input
                               type="text"
-                              value={explanationInputs[tx.id] || ''}
+                              value={explanationInputs[key] || ''}
                               onChange={(e) =>
-                                setExplanationInputs((prev) => ({ ...prev, [tx.id]: e.target.value }))
+                                setExplanationInputs((prev) => ({ ...prev, [key]: e.target.value }))
                               }
-                              placeholder="Type explanation (e.g. Paid XYZ Supplier for detergents / Laundry supplies)..."
+                              placeholder="Type your response or explanation for your accountant..."
                               className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] shadow-xs"
                             />
                           </div>
@@ -566,7 +651,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                           {/* Attach Receipt Trigger */}
                           <label className="flex items-center justify-center gap-1 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 shadow-xs">
                             <Paperclip className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Attach Receipt</span>
+                            <span>Attach Document</span>
                             <input
                               type="file"
                               className="hidden"
@@ -585,7 +670,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                                     };
                                     setAttachmentsMap((prev) => ({
                                       ...prev,
-                                      [tx.id]: [...(prev[tx.id] || []), newAtt],
+                                      [key]: [...(prev[key] || []), newAtt],
                                     }));
                                   };
                                   reader.readAsDataURL(file);
@@ -596,8 +681,8 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                           </label>
 
                           <button
-                            onClick={() => handleSubmitExplanation(tx.id)}
-                            disabled={isSubmitting || !explanationInputs[tx.id]?.trim()}
+                            onClick={() => handleSubmitExplanation(tx)}
+                            disabled={isSubmitting || !explanationInputs[key]?.trim()}
                             className={`flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-40 ${
                               isAnswered
                                 ? 'bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] shadow-xs'
@@ -616,9 +701,9 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                         </div>
 
                         {/* Uploaded Attachments Chips */}
-                        {attachmentsMap[tx.id] && attachmentsMap[tx.id].length > 0 && (
+                        {attachmentsMap[key] && attachmentsMap[key].length > 0 && (
                           <div className="flex flex-wrap gap-2 pt-1">
-                            {attachmentsMap[tx.id].map((att, idx) => (
+                            {attachmentsMap[key].map((att, idx) => (
                               <div
                                 key={idx}
                                 className="flex items-center gap-1.5 bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] px-2.5 py-1 rounded-lg text-[11px] font-mono shadow-xs"
@@ -630,7 +715,7 @@ export const ClientPortal: React.FC<{ onBackToAdmin?: () => void }> = ({ onBackT
                                   onClick={() => {
                                     setAttachmentsMap((prev) => ({
                                       ...prev,
-                                      [tx.id]: prev[tx.id].filter((_, i) => i !== idx),
+                                      [key]: prev[key].filter((_, i) => i !== idx),
                                     }));
                                   }}
                                   className="text-slate-400 hover:text-[#E11D48] transition p-0.5 cursor-pointer ml-1"

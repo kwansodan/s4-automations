@@ -595,7 +595,7 @@ export const ClientOverviewTab: React.FC = () => {
           onClick={() => {
             if (activeSections.hasAr) navigateToClientSubTab('ar');
             else if (activeSections.hasAp) navigateToClientSubTab('ap');
-            else if (activeSections.hasBank) navigateToClientSubTab('requests');
+            else if (activeSections.hasBank) navigateToClientSubTab('bank');
           }}
           className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#A7F3D0] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
@@ -707,7 +707,7 @@ export const ClientOverviewTab: React.FC = () => {
               </div>
               <div className="pt-4 mt-2 border-t border-[#BAE6FD]">
                 <button
-                  onClick={() => navigateToClientSubTab('requests')}
+                  onClick={() => navigateToClientSubTab('bank')}
                   className="w-full flex items-center justify-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold py-2 rounded-lg shadow-sm transition cursor-pointer"
                 >
                   <span>Open Bank Queue</span>

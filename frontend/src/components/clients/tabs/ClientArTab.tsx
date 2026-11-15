@@ -64,9 +64,11 @@ import {
   Download,
   Package,
   Eye,
+  HelpCircle,
 } from 'lucide-react';
 import { ZohoItemSearchableSelect } from './ZohoItemSearchableSelect';
 import { PurgeIngestedFileModal } from '../../modals/PurgeIngestedFileModal';
+import { QueryComposerModal, QueryContextSummary } from '../../modals/QueryComposerModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CURRENT_YEAR = new Date().getFullYear();
@@ -95,6 +97,9 @@ export interface SlipGroup {
   reconciledContactName?: string;
   minConfidence: number;
   status: string;
+  queryStatus?: string | null;
+  accountantQuery?: string | null;
+  clientExplanation?: string | null;
 }
 
 export const ClientArTab: React.FC = () => {
@@ -113,6 +118,7 @@ export const ClientArTab: React.FC = () => {
     pipelineProgress,
     setPipelineProgress,
     openSlipPreview,
+    navigateToClientSubTab,
   } = useAutomation();
 
   const [search, setSearch] = useState('');
@@ -129,6 +135,11 @@ export const ClientArTab: React.FC = () => {
   // Purge Mistaken Ingestion Modal State
   const [isPurgeModalOpen, setIsPurgeModalOpen] = useState<boolean>(false);
   const [purgeTargetFileName, setPurgeTargetFileName] = useState<string>('');
+
+  // Client Clarification / Information Request Modal State
+  const [isQueryModalOpen, setIsQueryModalOpen] = useState<boolean>(false);
+  const [queryStagedTxIds, setQueryStagedTxIds] = useState<number[]>([]);
+  const [queryContextSummary, setQueryContextSummary] = useState<QueryContextSummary | null>(null);
 
   // Filters, Sorting & Pagination State
   const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'UNREVIEWED' | 'UNAPPROVED' | 'LOW_CONFIDENCE' | 'PENDING' | 'APPROVED' | 'DISCREPANCY' | 'INVOICED' | 'UNMAPPED'>('ALL');
@@ -1415,6 +1426,16 @@ export const ClientArTab: React.FC = () => {
       g.isCustomerReconciled = Boolean(effectiveContactId);
       g.reconciledContactId = effectiveContactId;
       g.reconciledContactName = effectiveContactName;
+
+      const queriedItem =
+        g.items.find((i) => (i.query_status || i.metadata_json?.query_status) === 'CLIENT_ANSWERED') ||
+        g.items.find((i) => (i.query_status || i.metadata_json?.query_status) === 'CLARIFICATION_REQUESTED') ||
+        g.items.find((i) => (i.query_status || i.metadata_json?.query_status) === 'RESOLVED');
+      if (queriedItem) {
+        g.queryStatus = queriedItem.query_status || queriedItem.metadata_json?.query_status;
+        g.accountantQuery = queriedItem.accountant_query || queriedItem.metadata_json?.accountant_query;
+        g.clientExplanation = queriedItem.client_explanation || queriedItem.metadata_json?.client_explanation;
+      }
     });
 
     list.sort((a, b) => {
@@ -3269,6 +3290,29 @@ export const ClientArTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => {
+                const selectedSlips = groupedSlips.filter((s) => selectedSlipKeys.has(s.slipKey));
+                const allTxIds = selectedSlips.flatMap((s) => s.txIds);
+                const totalAmt = selectedSlips.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+                const customers = Array.from(new Set(selectedSlips.map((s) => s.propertyName)));
+                setQueryStagedTxIds(allTxIds);
+                setQueryContextSummary({
+                  title: `${selectedSlips.length} Delivery Slip${selectedSlips.length > 1 ? 's' : ''} (${allTxIds.length} Line Items)`,
+                  subtitle: selectedSlips.map((s) => s.sourceFileName).slice(0, 3).join(', '),
+                  amount: totalAmt,
+                  date: `${selectedMonth} ${selectedYear}`,
+                  partyName: customers.join(', '),
+                });
+                setIsQueryModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Ask Client</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleBulkApproveSlips}
               disabled={isBulkApproving}
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer disabled:opacity-50"
@@ -4242,6 +4286,36 @@ export const ClientArTab: React.FC = () => {
                                 </span>
                               )}
 
+                              {slip.queryStatus === 'CLIENT_ANSWERED' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToClientSubTab('requests');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-300 hover:bg-teal-100 shrink-0 cursor-pointer"
+                                  title={`Client Answered: ${slip.clientExplanation || 'Click to open in Information Requests'}`}
+                                >
+                                  <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                                  <span>Client Answered</span>
+                                </button>
+                              )}
+
+                              {slip.queryStatus === 'CLARIFICATION_REQUESTED' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToClientSubTab('requests');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100 shrink-0 cursor-pointer"
+                                  title={`Awaiting Client: ${slip.accountantQuery || 'Click to track in Information Requests'}`}
+                                >
+                                  <HelpCircle className="w-3 h-3 text-amber-600" />
+                                  <span>Awaiting Client</span>
+                                </button>
+                              )}
+
                             {slip.driveUrl ? (
                               <button
                                 type="button"
@@ -4343,6 +4417,29 @@ export const ClientArTab: React.FC = () => {
                                 <span>Approve Slip ({slip.items.length})</span>
                               </>
                             )}
+                          </button>
+
+                          {/* Ask Client / Request Info about this Slip */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQueryStagedTxIds(slip.txIds);
+                              setQueryContextSummary({
+                                title: slip.sourceFileName || `${slip.propertyName} Slip`,
+                                subtitle: `${slip.items.length} line item(s) • Picked: ${slip.totalPickQty}, Delivered: ${slip.totalDelivQty}`,
+                                amount: slip.totalAmount,
+                                date: slip.slipDate,
+                                partyName: slip.propertyName,
+                                initialQuery: slip.accountantQuery || undefined,
+                              });
+                              setIsQueryModalOpen(true);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-700 hover:bg-amber-50 bg-white border border-amber-300 hover:border-amber-400 transition cursor-pointer shadow-xs shrink-0"
+                            title={`Send an information request to the client about "${slip.sourceFileName || 'this slip'}"`}
+                          >
+                            <HelpCircle className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Ask Client</span>
                           </button>
 
                           {/* Edit Slip Date */}
@@ -5105,6 +5202,27 @@ export const ClientArTab: React.FC = () => {
                         <td className="py-3 px-4 text-center whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5">
                             <button
+                              type="button"
+                              onClick={() => {
+                                const prop = extractPropertyName(tx.source_file_name, tx.metadata_json) || currentClient?.name || 'Customer';
+                                setQueryStagedTxIds([tx.id]);
+                                setQueryContextSummary({
+                                  title: `${toTitleCase(tx.item_or_description)} (${tx.source_file_name || 'Slip'})`,
+                                  subtitle: `Qty: ${delivQty} • Rate: ${formatCurrency(rate)}`,
+                                  amount: total,
+                                  date: tx.transaction_date,
+                                  partyName: prop,
+                                  initialQuery: tx.accountant_query || tx.metadata_json?.accountant_query || undefined,
+                                });
+                                setIsQueryModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold text-amber-700 hover:bg-amber-50 border border-amber-300 transition cursor-pointer"
+                              title="Ask Client about this line item"
+                            >
+                              <HelpCircle className="w-3 h-3 text-amber-600" />
+                              <span>Ask Client</span>
+                            </button>
+                            <button
                               onClick={() => handleStartEdit(tx)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 transition cursor-pointer"
                               title="Edit item name, quantities, or rate"
@@ -5660,6 +5778,20 @@ export const ClientArTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Client Clarification / Information Request Composer Modal */}
+      <QueryComposerModal
+        isOpen={isQueryModalOpen}
+        onClose={() => setIsQueryModalOpen(false)}
+        pipelineType="AR"
+        stagedTransactionIds={queryStagedTxIds}
+        contextSummary={queryContextSummary}
+        onSuccess={() => {
+          loadTransactions();
+          setSelectedSlipKeys(new Set());
+        }}
+      />
     </div>
   );
 };
+

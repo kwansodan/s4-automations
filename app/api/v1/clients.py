@@ -1419,10 +1419,13 @@ async def list_client_transactions(
         p_up = pipeline_type.upper()
         if p_up == "AR":
             query = query.where(
-                (StagedTransaction.pipeline_type == "AR")
-                | (StagedTransaction.pipeline_type == "ar_sales_invoice")
-                | (StagedTransaction.pipeline_type.is_(None))
-                | (StagedTransaction.pipeline_type != "AP")
+                (
+                    (StagedTransaction.pipeline_type == "AR")
+                    | (StagedTransaction.pipeline_type == "ar_sales_invoice")
+                    | (StagedTransaction.pipeline_type.is_(None))
+                    | (StagedTransaction.pipeline_type != "AP")
+                )
+                & (StagedTransaction.pipeline_type != "GENERAL")
             )
         else:
             query = query.where(StagedTransaction.pipeline_type == p_up)
@@ -1483,7 +1486,23 @@ async def list_client_transactions(
     if limit and len(transactions) > limit:
         transactions = transactions[:limit]
 
-    return [t.model_dump() for t in transactions]
+    serialized_list = []
+    for t in transactions:
+        d = t.model_dump()
+        meta = t.metadata_json or {}
+        d["query_status"] = meta.get("query_status", "NONE")
+        d["accountant_query"] = meta.get("accountant_query")
+        d["client_explanation"] = meta.get("client_explanation")
+        d["client_attachments"] = meta.get("client_attachments", [])
+        d["query_date"] = meta.get("query_date")
+        d["response_date"] = meta.get("response_date")
+        d["resolved_date"] = meta.get("resolved_date")
+        d["recipient_email"] = meta.get("recipient_email")
+        d["reminder_count"] = meta.get("reminder_count", 0)
+        d["query_history"] = meta.get("query_history", [])
+        serialized_list.append(d)
+
+    return serialized_list
 
 
 @router.get("/{client_id}/transactions/summary", summary="Get Aggregated Monthly Summary from PostgreSQL Ledger")
@@ -1501,10 +1520,13 @@ async def get_client_transactions_summary(
 
     if p_type == "AR":
         pipe_filter = (
-            (StagedTransaction.pipeline_type == "AR")
-            | (StagedTransaction.pipeline_type == "ar_sales_invoice")
-            | (StagedTransaction.pipeline_type.is_(None))
-            | (StagedTransaction.pipeline_type != "AP")
+            (
+                (StagedTransaction.pipeline_type == "AR")
+                | (StagedTransaction.pipeline_type == "ar_sales_invoice")
+                | (StagedTransaction.pipeline_type.is_(None))
+                | (StagedTransaction.pipeline_type != "AP")
+            )
+            & (StagedTransaction.pipeline_type != "GENERAL")
         )
     else:
         pipe_filter = (StagedTransaction.pipeline_type == p_type)

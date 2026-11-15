@@ -25,6 +25,7 @@ import {
   Globe,
   CreditCard,
   Sparkles,
+  HelpCircle,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -85,11 +86,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     // Unified Bank & Reconciliations (Active only when a BANK pipeline stream is configured)
     if (activeSections.hasBank) {
       items.push({
-        sub: 'requests',
+        sub: 'bank',
         label: 'Bank & Reconciliations',
         icon: Landmark,
       });
     }
+
+    // Unified Information Requests Control Center (Available for every client across AR, AP, Bank, and General)
+    items.push({
+      sub: 'requests',
+      label: 'Information Requests',
+      icon: HelpCircle,
+    });
 
     return items;
   }, [activeSections, isIndividualBusiness]);

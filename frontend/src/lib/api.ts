@@ -1422,14 +1422,18 @@ export async function verifyPortalMagicToken(token: string): Promise<{
 }
 
 export async function submitPortalExplanation(
-  txId: number,
+  txId: number | string,
   sessionToken: string,
   payload: {
     client_explanation: string;
     client_attachments?: any[];
   }
-): Promise<{ success: boolean; transaction: any }> {
-  const res = await resilientFetch(`/api/v1/portal/transactions/${txId}/explain`, {
+): Promise<{ success: boolean; item_key?: string; updated_count?: number; transaction?: any }> {
+  const isItemKey = typeof txId === 'string' && (txId.startsWith('BANK:') || txId.startsWith('STAGED:'));
+  const endpoint = isItemKey
+    ? `/api/v1/portal/items/${encodeURIComponent(txId)}/explain`
+    : `/api/v1/portal/transactions/${txId}/explain`;
+  const res = await resilientFetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1439,6 +1443,111 @@ export async function submitPortalExplanation(
   });
   return handleResponse(res, 'Submit portal explanation');
 }
+
+export async function fetchInformationRequests(params?: {
+  client_id?: string;
+  pipeline_type?: string;
+  status?: string;
+  search?: string;
+}): Promise<any> {
+  const q = new URLSearchParams();
+  if (params?.client_id && params.client_id !== 'ALL') q.append('client_id', params.client_id);
+  if (params?.pipeline_type && params.pipeline_type !== 'ALL') q.append('pipeline_type', params.pipeline_type);
+  if (params?.status && params.status !== 'ALL') q.append('status', params.status);
+  if (params?.search) q.append('search', params.search);
+  const queryStr = q.toString() ? `?${q.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/bank/requests${queryStr}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch information requests');
+}
+
+export async function createInformationRequest(payload: {
+  client_id: string;
+  pipeline_type: 'BANK' | 'AR' | 'AP' | 'GENERAL';
+  query_text: string;
+  recipient_email?: string;
+  send_immediately?: boolean;
+  bank_transaction_ids?: number[];
+  staged_transaction_ids?: number[];
+  general_title?: string;
+  general_amount?: number;
+  general_date?: string;
+  party_name?: string;
+}): Promise<{
+  success: boolean;
+  client_id: string;
+  pipeline_type: string;
+  updated_count: number;
+  magic_url: string;
+  recipient_email?: string;
+  email_sent?: boolean;
+  message: string;
+}> {
+  const res = await resilientFetch('/api/v1/bank/requests/create', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Create information request');
+}
+
+export async function remindInformationRequests(payload: {
+  item_keys: string[];
+  recipient_email?: string;
+  custom_note?: string;
+}): Promise<{
+  success: boolean;
+  reminded_count: number;
+  emails_sent: number;
+  magic_urls: Record<string, string>;
+  message: string;
+}> {
+  const res = await resilientFetch('/api/v1/bank/requests/remind', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Send information request reminder');
+}
+
+export async function resolveInformationRequests(payload: {
+  item_keys: string[];
+  approve_in_ledger?: boolean;
+  resolution_note?: string;
+}): Promise<{
+  success: boolean;
+  resolved_count: number;
+  message: string;
+}> {
+  const res = await resilientFetch('/api/v1/bank/requests/resolve', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Resolve information requests');
+}
+
+export async function followupInformationRequest(payload: {
+  item_key: string;
+  query_text: string;
+  recipient_email?: string;
+  send_immediately?: boolean;
+}): Promise<{
+  success: boolean;
+  item_key: string;
+  magic_url: string;
+  email_sent?: boolean;
+  message: string;
+}> {
+  const res = await resilientFetch('/api/v1/bank/requests/followup', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Send follow-up question');
+}
+
 
 // ---------------------------------------------------------------------------
 // 1-Click Multi-Tenant OAuth2 Connection Engine (Zoho, QuickBooks, Xero)

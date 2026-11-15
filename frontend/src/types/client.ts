@@ -574,4 +574,126 @@ export interface SlipPreviewItem {
   onApprove?: () => Promise<void> | void;
 }
 
+export type InformationRequestPipelineType = 'BANK' | 'AR' | 'AP' | 'GENERAL';
 
+export type InformationRequestStatus = 'CLARIFICATION_REQUESTED' | 'CLIENT_ANSWERED' | 'RESOLVED';
+
+export interface InformationRequestHistoryEntry {
+  actor?: 'ACCOUNTANT' | 'CLIENT';
+  sender?: 'accountant' | 'client' | string;
+  action?: string;
+  message: string;
+  text?: string;
+  timestamp: string;
+  recipient_email?: string;
+  attachments?: Array<{ name: string; url?: string; size?: number; type?: string }>;
+}
+
+export interface InformationRequestItem {
+  id: number;
+  item_key: string;
+  request_id?: string;
+  source_kind: 'BANK' | 'STAGED';
+  pipeline_type: InformationRequestPipelineType;
+  client_id: string;
+  client_name: string;
+  client_currency: string;
+  transaction_ids: number[];
+  primary_id: number;
+  items_count: number;
+  line_count: number;
+  transaction_date: string;
+  title: string;
+  description: string;
+  party_or_account_name: string;
+  source_file_name?: string;
+  drive_file_id?: string | null;
+  drive_file_url?: string | null;
+  amount: number;
+  transaction_type: 'DEBIT' | 'CREDIT';
+  query_status: InformationRequestStatus;
+  status?: string;
+  accountant_query: string;
+  client_explanation?: string;
+  client_attachments?: Array<{ name: string; url?: string; size?: number; type?: string }>;
+  query_date?: string;
+  response_date?: string;
+  resolved_date?: string;
+  recipient_email?: string;
+  reminder_count: number;
+  last_reminded_at?: string;
+  age_hours: number;
+  is_overdue: boolean;
+  query_history?: InformationRequestHistoryEntry[];
+  mapped_account_id?: string;
+  mapped_account_name?: string;
+  assigned_category?: string;
+  magic_url?: string;
+  reviewed?: boolean;
+  approved?: boolean;
+  line_items?: Array<{
+    id: number;
+    description: string;
+    quantity?: number;
+    credit_amount?: number;
+    rate?: number;
+    amount: number;
+  }>;
+}
+
+export interface ClientRequestSummaryItem {
+  client_id: string;
+  client_name: string;
+  total: number;
+  total_requests: number;
+  awaiting_client: number;
+  pending_count: number;
+  needs_review: number;
+  answered_count: number;
+  overdue: number;
+  overdue_count: number;
+  resolved: number;
+}
+
+export interface InformationRequestsResponse {
+  client_id?: string | null;
+  metrics: {
+    total_count: number;
+    total_requests: number;
+    awaiting_client: number;
+    pending_client_count: number;
+    needs_review: number;
+    client_answered_count: number;
+    overdue_72h: number;
+    overdue_count: number;
+    resolved: number;
+    resolved_count: number;
+    ar_count: number;
+    ap_count: number;
+    bank_count: number;
+    general_count: number;
+    by_pipeline: {
+      BANK: number;
+      AR: number;
+      AP: number;
+      GENERAL: number;
+    };
+  };
+  client_summaries: ClientRequestSummaryItem[];
+  items: InformationRequestItem[];
+  requests: InformationRequestItem[];
+}
+
+export interface CreateInformationRequestPayload {
+  client_id: string;
+  pipeline_type: InformationRequestPipelineType;
+  query_text: string;
+  recipient_email?: string;
+  send_immediately?: boolean;
+  bank_transaction_ids?: number[];
+  staged_transaction_ids?: number[];
+  general_title?: string;
+  general_amount?: number;
+  general_date?: string;
+  party_name?: string;
+}

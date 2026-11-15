@@ -257,3 +257,191 @@ async def test_sync_watched_accounts_with_month_scope():
         assert "synced_new_count" in sync_data
         assert any(term in sync_data["message"].lower() for term in ["watched accounts", "bank feed", "uncategorized"])
 
+
+@pytest.mark.asyncio
+async def test_unified_information_requests_control_center_and_portal():
+    """Test creating, listing, reminding, following up, portal answering, and resolving AR, AP, BANK, and GENERAL requests."""
+    from app.models.db_models import StagedTransaction
+
+    with Session(get_engine()) as session:
+        ar_tx = StagedTransaction(
+            client_id="anr_group",
+            batch_id="batch_ar_test",
+            pipeline_type="AR",
+            entity_type="invoice_item",
+            transaction_date="2026-10-12",
+            source_type="google_drive",
+            source_file_name="Labadi_Beach_Hotel_12_10_2026.jpg",
+            item_or_description="Bed Sheets King Size",
+            category_or_account="Sales",
+            quantity_or_debit=50.0,
+            credit_amount=48.0,
+            rate_or_price=10.0,
+            total_amount=500.0,
+            reviewed=False,
+            approved=False,
+            status="PENDING",
+            metadata_json={"customer_name": "Labadi Beach Hotel"},
+        )
+        ap_tx = StagedTransaction(
+            client_id="anr_group",
+            batch_id="batch_ap_test",
+            pipeline_type="AP",
+            entity_type="vendor_bill",
+            transaction_date="2026-10-14",
+            source_type="google_drive",
+            source_file_name="ECG_Power_Bill_Oct26.pdf",
+            item_or_description="Electricity Utility Bill",
+            category_or_account="Utilities Expense",
+            quantity_or_debit=1.0,
+            rate_or_price=1200.0,
+            total_amount=1200.0,
+            reviewed=False,
+            approved=False,
+            status="PENDING",
+            metadata_json={"vendor_name": "Electricity Company of Ghana"},
+        )
+        session.add(ar_tx)
+        session.add(ap_tx)
+        session.commit()
+        session.refresh(ar_tx)
+        session.refresh(ap_tx)
+        ar_id = ar_tx.id
+        ap_id = ap_tx.id
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Create AR request
+        ar_req_res = await ac.post(
+            "/api/v1/bank/requests/create",
+            json={
+                "client_id": "anr_group",
+                "pipeline_type": "AR",
+                "staged_transaction_ids": [ar_id],
+                "query_text": "Please confirm why 2 bed sheets were short on delivery.",
+                "recipient_email": "ops@anrgroup.com",
+                "send_immediately": False,
+            },
+        )
+        assert ar_req_res.status_code == 200
+        ar_req_data = ar_req_res.json()
+        assert ar_req_data["success"] is True
+        ar_item_key = f"STAGED:{ar_id}"
+
+        # 2. Create AP request
+        ap_req_res = await ac.post(
+            "/api/v1/bank/requests/create",
+            json={
+                "client_id": "anr_group",
+                "pipeline_type": "AP",
+                "staged_transaction_ids": [ap_id],
+                "query_text": "Please attach the official VAT receipt for this ECG bill.",
+                "recipient_email": "finance@anrgroup.com",
+                "send_immediately": False,
+            },
+        )
+        assert ap_req_res.status_code == 200
+        ap_item_key = f"STAGED:{ap_id}"
+
+        # 3. Create GENERAL ad-hoc request
+        gen_req_res = await ac.post(
+            "/api/v1/bank/requests/create",
+            json={
+                "client_id": "anr_group",
+                "pipeline_type": "GENERAL",
+                "general_title": "October Payroll Summary Schedule",
+                "party_name": "Monthly Close",
+                "general_amount": 0.0,
+                "query_text": "Please upload the signed October payroll summary sheet.",
+                "recipient_email": "hr@anrgroup.com",
+                "send_immediately": False,
+            },
+        )
+        assert gen_req_res.status_code == 200
+        gen_req_data = gen_req_res.json()
+        assert gen_req_data["success"] is True
+        gen_item_key = gen_req_data["request_ids"][0]
+
+        # 4. Verify GENERAL request does NOT pollute AR transactions list
+        ar_list_res = await ac.get("/api/clients/anr_group/transactions?pipeline_type=AR")
+        assert ar_list_res.status_code == 200
+        ar_list_items = ar_list_res.json()
+        assert isinstance(ar_list_items, list)
+        assert all(item.get("pipeline_type") != "GENERAL" for item in ar_list_items)
+        matched_ar = [item for item in ar_list_items if item["id"] == ar_id]
+        assert len(matched_ar) == 1
+        assert matched_ar[0]["query_status"] == "CLARIFICATION_REQUESTED"
+
+        # 5. List requests in Control Center
+        cc_res = await ac.get("/api/v1/bank/requests?client_id=anr_group")
+        assert cc_res.status_code == 200
+        cc_data = cc_res.json()
+        assert cc_data["metrics"]["total_count"] >= 3
+        assert cc_data["metrics"]["ar_count"] >= 1
+        assert cc_data["metrics"]["ap_count"] >= 1
+        assert cc_data["metrics"]["general_count"] >= 1
+        returned_keys = {i["item_key"] for i in cc_data["items"]}
+        assert ar_item_key in returned_keys
+        assert ap_item_key in returned_keys
+        assert gen_item_key in returned_keys
+
+        # 6. Client Portal lists all pipeline requests & accepts explanation for STAGED AR item
+        session_token = generate_portal_token("anr_group", "ANR Logistics Group")
+        portal_list = await ac.get(
+            "/api/v1/portal/transactions",
+            headers={"Authorization": f"Bearer {session_token}"},
+        )
+        assert portal_list.status_code == 200
+        portal_items = portal_list.json()
+        portal_keys = {p.get("item_key") for p in portal_items}
+        assert ar_item_key in portal_keys
+        assert ap_item_key in portal_keys
+
+        explain_ar_res = await ac.post(
+            f"/api/v1/portal/items/{ar_item_key}/explain",
+            headers={"Authorization": f"Bearer {session_token}"},
+            json={
+                "client_explanation": "2 sheets were stained and kept back for re-washing.",
+                "client_attachments": [{"name": "Signed_Delivery_Note.jpg", "size": 45200}],
+            },
+        )
+        assert explain_ar_res.status_code == 200
+        assert explain_ar_res.json()["success"] is True
+
+        # 7. Send reminder & follow-up on AP request
+        remind_res = await ac.post(
+            "/api/v1/bank/requests/remind",
+            json={"item_keys": [ap_item_key]},
+        )
+        assert remind_res.status_code == 200
+        assert remind_res.json()["reminded_count"] == 1
+
+        followup_res = await ac.post(
+            "/api/v1/bank/requests/followup",
+            json={
+                "item_key": ap_item_key,
+                "query_text": "Also confirm the meter number on the ECG bill.",
+                "send_immediately": False,
+            },
+        )
+        assert followup_res.status_code == 200
+        assert followup_res.json()["success"] is True
+
+        # 8. Resolve AR request with 1-click ledger approval
+        resolve_res = await ac.post(
+            "/api/v1/bank/requests/resolve",
+            json={
+                "item_keys": [ar_item_key],
+                "approve_in_ledger": True,
+            },
+        )
+        assert resolve_res.status_code == 200
+        assert resolve_res.json()["resolved_count"] == 1
+
+        # Verify AR item is now approved and RESOLVED
+        ar_after = await ac.get("/api/clients/anr_group/transactions?pipeline_type=AR")
+        matched_after = [item for item in ar_after.json() if item["id"] == ar_id][0]
+        assert matched_after["approved"] is True
+        assert matched_after["query_status"] == "RESOLVED"
+
+

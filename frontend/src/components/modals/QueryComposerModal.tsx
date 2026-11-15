@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useClient } from '../../context/ClientContext';
 import { useAutomation } from '../../context/AutomationContext';
-import { queryBankTransaction, fetchClientContacts } from '../../lib/api';
-import type { BankTransactionRecord } from '../../types/client';
+import {
+  queryBankTransaction,
+  createInformationRequest,
+  fetchClientContacts,
+} from '../../lib/api';
+import type { BankTransactionRecord, InformationRequestPipelineType } from '../../types/client';
 import type { ClientContact } from '../../types/contacts';
 import {
   X,
@@ -10,57 +14,130 @@ import {
   HelpCircle,
   Sparkles,
   Mail,
-  User,
-  CheckCircle2,
-  FileText,
   DollarSign,
   Calendar,
-  Zap,
+  Receipt,
+  Landmark,
+  FileText,
 } from 'lucide-react';
 
-interface QueryComposerModalProps {
-  transaction: BankTransactionRecord | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: (updatedTx: BankTransactionRecord) => void;
+export interface QueryContextSummary {
+  title: string;
+  subtitle?: string;
+  amount?: number;
+  date?: string;
+  partyName?: string;
+  itemsCount?: number;
+  initialQuery?: string;
 }
 
-const QUICK_TEMPLATES = [
-  'Please provide the business purpose and vendor invoice for this transaction.',
-  'What goods or services were purchased with this transfer? Please attach receipt.',
-  'Is this an operating business expense or director loan / personal draw?',
-  'Could you clarify if this payment is for the main office or a specific client project?',
-];
+interface QueryComposerModalProps {
+  transaction?: BankTransactionRecord | null;
+  pipelineType?: InformationRequestPipelineType;
+  bankTransactionIds?: number[];
+  stagedTransactionIds?: number[];
+  contextSummary?: QueryContextSummary | null;
+  targetClientId?: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (result?: any) => void;
+}
+
+const TEMPLATES_BY_PIPELINE: Record<InformationRequestPipelineType, string[]> = {
+  BANK: [
+    'Please provide the business purpose and vendor invoice for this bank transaction.',
+    'What goods or services were purchased with this transfer? Please attach the receipt.',
+    'Is this an operating business expense or a director loan / personal draw?',
+    'Could you clarify if this payment is for the main office or a specific client project?',
+  ],
+  AR: [
+    'Please confirm the customer name and agreed unit rate for this delivery slip.',
+    'There is a discrepancy between picked and delivered quantities on this slip. Please clarify.',
+    'Is this slip billable under the monthly contract or should it be invoiced separately?',
+    'Please attach the signed customer acknowledgment or purchase order for this receivable.',
+  ],
+  AP: [
+    'Please attach the official tax invoice or VAT receipt from this vendor.',
+    'Which expense category or cost center should this vendor bill be allocated to?',
+    'Please confirm if this vendor bill has already been paid or remains payable.',
+    'Could you verify the quantity and agreed unit price on this supplier bill?',
+  ],
+  GENERAL: [
+    'Please upload the signed contract or supporting schedule for this accounting period.',
+    'Please provide the missing monthly statement or supporting tax certificate.',
+    'Could you confirm if there are any unrecorded cash expenses or credit notes for this month?',
+    'Please review and confirm the attached schedule so we can finalize the monthly close.',
+  ],
+};
 
 export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
-  transaction,
+  transaction = null,
+  pipelineType,
+  bankTransactionIds,
+  stagedTransactionIds,
+  contextSummary = null,
+  targetClientId,
   isOpen,
   onClose,
   onSuccess,
 }) => {
-  const { currentClient } = useClient();
+  const { currentClient, clients } = useClient();
   const { addLog } = useAutomation();
 
+  const resolvedPipeline: InformationRequestPipelineType =
+    pipelineType || (transaction ? 'BANK' : 'GENERAL');
+
+  const activeClient =
+    (targetClientId ? clients.find((c) => c.id === targetClientId) : currentClient) || currentClient;
+
+  const templates = TEMPLATES_BY_PIPELINE[resolvedPipeline] || TEMPLATES_BY_PIPELINE.BANK;
+
   const [queryText, setQueryText] = useState(
-    transaction?.accountant_query || QUICK_TEMPLATES[0]
+    contextSummary?.initialQuery || transaction?.accountant_query || templates[0]
   );
+  const [generalTitle, setGeneralTitle] = useState(contextSummary?.title || '');
+  const [generalParty, setGeneralParty] = useState(contextSummary?.partyName || '');
+  const [generalAmount, setGeneralAmount] = useState(
+    contextSummary?.amount ? String(contextSummary.amount) : ''
+  );
+  const [generalDate, setGeneralDate] = useState(
+    contextSummary?.date || new Date().toISOString().slice(0, 10)
+  );
+
   const [recipientEmail, setRecipientEmail] = useState<string>(() => {
-    if (currentClient?.team_members && currentClient.team_members.length > 0) {
-      const cfo = currentClient.team_members.find((m) => m.role === 'CFO' || m.role === 'Financial_Controller');
-      return cfo ? cfo.email : currentClient.team_members[0].email;
+    if (activeClient?.team_members && activeClient.team_members.length > 0) {
+      const cfo = activeClient.team_members.find(
+        (m) => m.role === 'CFO' || m.role === 'Financial_Controller'
+      );
+      return cfo ? cfo.email : activeClient.team_members[0].email;
     }
-    return currentClient?.sourceEmail || 'cfo@clientorg.com';
+    return activeClient?.sourceEmail || 'cfo@clientorg.com';
   });
   const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isOpen && currentClient?.id) {
-      fetchClientContacts(currentClient.id)
+    if (isOpen) {
+      const nextTemplates = TEMPLATES_BY_PIPELINE[resolvedPipeline] || TEMPLATES_BY_PIPELINE.BANK;
+      setQueryText(
+        contextSummary?.initialQuery || transaction?.accountant_query || nextTemplates[0]
+      );
+      setGeneralTitle(contextSummary?.title || '');
+      setGeneralParty(contextSummary?.partyName || '');
+      setGeneralAmount(contextSummary?.amount ? String(contextSummary.amount) : '');
+      setGeneralDate(contextSummary?.date || new Date().toISOString().slice(0, 10));
+    }
+  }, [isOpen, resolvedPipeline, transaction?.id, contextSummary?.title]);
+
+  useEffect(() => {
+    if (isOpen && activeClient?.id) {
+      fetchClientContacts(activeClient.id)
         .then((res) => {
           if (res.contacts && res.contacts.length > 0) {
             setContacts(res.contacts);
-            const cfo = res.contacts.find((c) => c.role === 'CFO' || c.role === 'Financial_Controller');
+            const cfo = res.contacts.find(
+              (c) => c.role === 'CFO' || c.role === 'Financial_Controller'
+            );
             if (cfo) {
               setRecipientEmail(cfo.email);
             } else if (res.contacts[0]) {
@@ -70,9 +147,12 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
         })
         .catch(() => {});
     }
-  }, [isOpen, currentClient?.id]);
+  }, [isOpen, activeClient?.id]);
 
-  if (!isOpen || !transaction) return null;
+  if (!isOpen) return null;
+  if (resolvedPipeline === 'BANK' && !transaction && (!bankTransactionIds || bankTransactionIds.length === 0)) {
+    return null;
+  }
 
   const handleSendQuery = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,25 +160,90 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = await queryBankTransaction(transaction.id, {
+      if (
+        resolvedPipeline === 'BANK' &&
+        transaction &&
+        (!bankTransactionIds || bankTransactionIds.length <= 1)
+      ) {
+        const res = await queryBankTransaction(transaction.id, {
+          query_text: queryText.trim(),
+          recipient_email: recipientEmail.trim(),
+          send_immediately: true,
+        });
+        addLog(
+          'success',
+          `Clarification request dispatched to ${res.recipient_email || recipientEmail} for ${activeClient?.currency || 'GHS'} ${Number(transaction.amount || 0).toLocaleString()} bank transaction.`
+        );
+        onSuccess(res.transaction);
+        onClose();
+        return;
+      }
+
+      const res = await createInformationRequest({
+        client_id: activeClient.id,
+        pipeline_type: resolvedPipeline,
         query_text: queryText.trim(),
         recipient_email: recipientEmail.trim(),
         send_immediately: true,
+        bank_transaction_ids:
+          resolvedPipeline === 'BANK'
+            ? bankTransactionIds && bankTransactionIds.length > 0
+              ? bankTransactionIds
+              : transaction
+              ? [transaction.id]
+              : []
+            : undefined,
+        staged_transaction_ids:
+          resolvedPipeline === 'AR' || resolvedPipeline === 'AP'
+            ? stagedTransactionIds || []
+            : undefined,
+        general_title: resolvedPipeline === 'GENERAL' ? generalTitle.trim() || 'General Accounting Inquiry' : undefined,
+        general_amount: resolvedPipeline === 'GENERAL' && generalAmount ? Number(generalAmount) : undefined,
+        general_date: resolvedPipeline === 'GENERAL' ? generalDate : undefined,
+        party_name: resolvedPipeline === 'GENERAL' ? generalParty.trim() || 'General Request' : undefined,
       });
 
-      addLog('success', `📧 Clarification query dispatched to ${res.recipient_email || recipientEmail} for GHS ${transaction.amount.toLocaleString()} transaction!`);
-      onSuccess(res.transaction);
+      addLog(
+        'success',
+        `Information request (${resolvedPipeline}) dispatched to ${res.recipient_email || recipientEmail}.`
+      );
+      onSuccess(res);
       onClose();
     } catch (err: any) {
-      addLog('error', `Could not send query: ${err.message}`);
+      addLog('error', `Could not send information request: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const pipelineBadge = {
+    BANK: {
+      label: 'Bank & Reconciliations',
+      icon: Landmark,
+      color: 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]',
+    },
+    AR: {
+      label: 'Accounts Receivable (Customer)',
+      icon: Receipt,
+      color: 'bg-[#F0F9FF] text-[#0284C7] border-[#BAE6FD]',
+    },
+    AP: {
+      label: 'Accounts Payable (Vendor)',
+      icon: DollarSign,
+      color: 'bg-amber-50 text-amber-700 border-amber-200',
+    },
+    GENERAL: {
+      label: 'General Information Request',
+      icon: FileText,
+      color: 'bg-purple-50 text-purple-700 border-purple-200',
+    },
+  }[resolvedPipeline];
+
+  const BadgeIcon = pipelineBadge.icon;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-5 text-slate-800">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-5 text-slate-800 max-h-[92vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
@@ -107,11 +252,21 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
               <HelpCircle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
-                Draw Client Attention / Send Clarification Query
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-[#0F172A] tracking-tight">
+                  Send Client Information Request
+                </h2>
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${pipelineBadge.color}`}>
+                  <BadgeIcon className="w-3 h-3" />
+                  {pipelineBadge.label}
+                </span>
+              </div>
               <p className="text-xs text-[#64748B]">
-                {currentClient?.name || 'Client Organisation'} • Transaction #{transaction.id}
+                {activeClient?.name || 'Client Organisation'}
+                {transaction ? ` • Bank Item #${transaction.id}` : ''}
+                {stagedTransactionIds && stagedTransactionIds.length > 0
+                  ? ` • ${stagedTransactionIds.length} Ledger Item${stagedTransactionIds.length > 1 ? 's' : ''}`
+                  : ''}
               </p>
             </div>
           </div>
@@ -123,30 +278,124 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
           </button>
         </div>
 
-        {/* Transaction Summary Card */}
-        <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3.5 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[#64748B] flex items-center gap-1.5 font-mono">
-              <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
-              {transaction.transaction_date}
-            </span>
-            <span className="font-bold text-[#0F172A] text-sm font-mono flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5 text-[#059669]" />
-              {transaction.transaction_type === 'CREDIT' ? '+' : '-'}GHS {transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-1 ${
-                transaction.transaction_type === 'CREDIT' ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]' : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
-              }`}>
-                {transaction.transaction_type === 'CREDIT' ? 'Transfer In (+)' : 'Transfer Out (-)'}
+        {/* Context Card for BANK / AR / AP or Editable Fields for GENERAL */}
+        {resolvedPipeline === 'GENERAL' ? (
+          <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Request Subject / Document Needed *
+                </label>
+                <input
+                  type="text"
+                  value={generalTitle}
+                  onChange={(e) => setGeneralTitle(e.target.value)}
+                  placeholder="e.g., Missing October GCB Bank Statement"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Related Customer / Vendor / Account (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={generalParty}
+                  onChange={(e) => setGeneralParty(e.target.value)}
+                  placeholder="e.g., Tax Authority / Main Account"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#0284C7]"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Reference Date
+                </label>
+                <input
+                  type="date"
+                  value={generalDate}
+                  onChange={(e) => setGeneralDate(e.target.value)}
+                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-[#0284C7]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Reference Amount ({activeClient?.currency || 'GHS'}, Optional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={generalAmount}
+                  onChange={(e) => setGeneralAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-[#0284C7]"
+                />
+              </div>
+            </div>
+          </div>
+        ) : transaction ? (
+          <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#64748B] flex items-center gap-1.5 font-mono">
+                <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
+                {transaction.transaction_date}
               </span>
+              <span className="font-bold text-[#0F172A] text-sm font-mono flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-[#059669]" />
+                {transaction.transaction_type === 'CREDIT' ? '+' : '-'}
+                {activeClient?.currency || 'GHS'}{' '}
+                {Number(transaction.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-1 ${
+                    transaction.transaction_type === 'CREDIT'
+                      ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                      : 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
+                  }`}
+                >
+                  {transaction.transaction_type === 'CREDIT' ? 'Money In (+)' : 'Money Out (-)'}
+                </span>
+              </span>
+            </div>
+            <p className="text-xs font-mono text-slate-800 break-words bg-white px-2.5 py-1.5 rounded-lg border border-[#E2E8F0]">
+              {transaction.description}
+            </p>
+            <span className="text-[11px] text-[#0284C7] block font-mono">
+              Bank Account: {transaction.bank_account_name || 'Primary Bank Account'}
             </span>
           </div>
-          <p className="text-xs font-mono text-slate-800 break-words bg-white px-2.5 py-1.5 rounded-lg border border-[#E2E8F0]">
-            {transaction.description}
-          </p>
-          <span className="text-[11px] text-[#0284C7] block font-mono">
-            Bank Account: {transaction.bank_account_name || 'Uncategorized Bank Feed'}
-          </span>
-        </div>
+        ) : contextSummary ? (
+          <div className="bg-slate-50 border border-[#E2E8F0] rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#64748B] flex items-center gap-1.5 font-mono">
+                <Calendar className="w-3.5 h-3.5 text-[#0284C7]" />
+                {contextSummary.date || 'Current Period'}
+              </span>
+              {contextSummary.amount !== undefined && (
+                <span className="font-bold text-[#0F172A] text-sm font-mono flex items-center gap-1">
+                  <DollarSign className="w-3.5 h-3.5 text-[#059669]" />
+                  {activeClient?.currency || 'GHS'}{' '}
+                  {Number(contextSummary.amount || 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              )}
+            </div>
+            <div className="bg-white px-3 py-2 rounded-lg border border-[#E2E8F0]">
+              <p className="text-xs font-bold text-slate-900">{contextSummary.title}</p>
+              {contextSummary.subtitle && (
+                <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{contextSummary.subtitle}</p>
+              )}
+            </div>
+            {contextSummary.partyName && (
+              <span className="text-[11px] text-[#0284C7] block font-mono">
+                {resolvedPipeline === 'AR' ? 'Customer' : resolvedPipeline === 'AP' ? 'Vendor' : 'Account'}:{' '}
+                {contextSummary.partyName}
+              </span>
+            )}
+          </div>
+        ) : null}
 
         {/* Quick Question Templates */}
         <div className="space-y-1.5">
@@ -155,7 +404,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             <span>Suggested Clarification Templates:</span>
           </label>
           <div className="grid grid-cols-1 gap-1.5">
-            {QUICK_TEMPLATES.map((tmpl, idx) => (
+            {templates.map((tmpl, idx) => (
               <button
                 key={idx}
                 type="button"
@@ -181,7 +430,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
             rows={3}
-            placeholder="Type specific question or context for the client..."
+            placeholder="Type specific question or supporting document request for the client..."
             className="w-full bg-white border border-[#E2E8F0] rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] resize-none font-sans shadow-xs"
           />
         </div>
@@ -200,7 +449,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
               placeholder="cfo@clientorg.com"
               className="flex-1 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] font-mono shadow-xs"
             />
-            {(contacts.length > 0 || (currentClient?.team_members && currentClient.team_members.length > 0)) && (
+            {(contacts.length > 0 || (activeClient?.team_members && activeClient.team_members.length > 0)) && (
               <select
                 value={recipientEmail}
                 onChange={(e) => {
@@ -215,7 +464,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
                         {c.name} ({c.role.replace('_', ' ')})
                       </option>
                     ))
-                  : currentClient?.team_members?.map((m) => (
+                  : activeClient?.team_members?.map((m) => (
                       <option key={m.id} value={m.email}>
                         {m.name} ({m.role.replace('_', ' ')})
                       </option>
@@ -224,7 +473,7 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             )}
           </div>
           <span className="text-[10px] text-slate-500 block">
-            A secure 1-click magic link is generated automatically, allowing the recipient to answer without typing an OTP code.
+            A secure 1-click magic link is generated automatically so the client can reply and upload documents in the Client Portal without needing a password.
           </span>
         </div>
 
@@ -244,11 +493,11 @@ export const QueryComposerModal: React.FC<QueryComposerModalProps> = ({
             className="inline-flex items-center gap-2 bg-[#0284C7] hover:bg-[#0EA5E9] active:bg-[#0369A1] disabled:opacity-50 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-xs transition cursor-pointer"
           >
             {isSubmitting ? (
-              <span>Dispatching Alert...</span>
+              <span>Dispatching Request...</span>
             ) : (
               <>
                 <Send className="w-3.5 h-3.5" />
-                <span>Send Query &amp; Notify Client</span>
+                <span>Send Request &amp; Notify Client</span>
               </>
             )}
           </button>
