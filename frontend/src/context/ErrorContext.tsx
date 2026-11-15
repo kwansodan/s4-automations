@@ -268,11 +268,25 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const lastSeqRef = useRef<number>(0);
 
-  // Sync backend server errors and warnings continuously into ErrorContext
+  const serverPollBlockedRef = useRef<boolean>(false);
+
+  const isPlatformAdminSession = (): boolean => {
+    if (typeof localStorage === 'undefined') return false;
+    if (!localStorage.getItem('S4_AUTH_TOKEN')) return false;
+    try {
+      const rawUser = localStorage.getItem('S4_AUTH_USER');
+      if (!rawUser) return false;
+      const parsed = JSON.parse(rawUser);
+      return Boolean(parsed?.is_platform_admin);
+    } catch {
+      return false;
+    }
+  };
+
+  // Sync backend server errors and warnings continuously into ErrorContext (Platform Super-Admin only)
   const syncServerIssues = useCallback(
     async (isInitial = false) => {
-      // Do not poll server errors if visitor is unauthenticated
-      if (typeof localStorage === 'undefined' || !localStorage.getItem('S4_AUTH_TOKEN')) {
+      if (serverPollBlockedRef.current || !isPlatformAdminSession()) {
         return;
       }
       try {
@@ -325,8 +339,10 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             lastSeqRef.current = res.latest_seq;
           }
         }
-      } catch (err) {
-        // Backend temporarily unreachable or offline; avoid cascading alerts
+      } catch (err: any) {
+        if (err?.status === 401 || err?.status === 403) {
+          serverPollBlockedRef.current = true;
+        }
       }
     },
     [reportError]
@@ -340,11 +356,26 @@ export const ErrorProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     syncServerIssues(true);
 
+    const handleAuthChanged = () => {
+      serverPollBlockedRef.current = false;
+      syncServerIssues(true);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('s4:auth:changed', handleAuthChanged);
+      window.addEventListener('storage', handleAuthChanged);
+    }
+
     const interval = setInterval(() => {
       syncServerIssues(false);
     }, 6000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('s4:auth:changed', handleAuthChanged);
+        window.removeEventListener('storage', handleAuthChanged);
+      }
+    };
   }, [syncServerIssues]);
 
   // Expose global reporting function on window for non-React code (e.g. state.js)

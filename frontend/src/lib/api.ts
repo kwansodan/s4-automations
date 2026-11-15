@@ -16,6 +16,19 @@ import type {
   InviteTeamMemberPayload,
 } from '../types/contacts';
 
+import type {
+  AdminOverviewData,
+  PlatformSuperAdmin,
+  CrossTenantUser,
+  AdminTenantDetail,
+  AdminAgentFleetEntry,
+  AdminAgentRunEntry,
+  AdminAgentMessageEntry,
+  GatewayHealthData,
+  AdminAuditLogEntry,
+  TenantTelemetryBreakdown,
+} from '../types/admin';
+
 const DIRECT_BACKEND_URL = 'https://autapi.service4gh.com';
 
 function resolveApiBase(): string {
@@ -55,6 +68,10 @@ function getAuthHeaders(additionalHeaders: Record<string, string> = {}): Record<
     const token = localStorage.getItem('S4_AUTH_TOKEN');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+    const impersonateOrgId = localStorage.getItem('S4_IMPERSONATE_ORG_ID');
+    if (impersonateOrgId) {
+      headers['X-Impersonate-Org-Id'] = impersonateOrgId;
     }
   }
   return headers;
@@ -174,14 +191,25 @@ async function resilientFetch(path: string, options: RequestInit = {}): Promise<
     headersRecord['Content-Type'] = 'application/json';
   }
 
-  // Automatically attach Bearer token from localStorage if not explicitly supplied
+  // Automatically attach Bearer token and active impersonation header from localStorage if not explicitly supplied
   const hasAuth = Object.keys(headersRecord).some(
     (k) => k.toLowerCase() === 'authorization'
   );
-  if (!hasAuth && typeof localStorage !== 'undefined') {
-    const token = localStorage.getItem('S4_AUTH_TOKEN');
-    if (token) {
-      headersRecord['Authorization'] = `Bearer ${token}`;
+  const hasImpersonate = Object.keys(headersRecord).some(
+    (k) => k.toLowerCase() === 'x-impersonate-org-id'
+  );
+  if (typeof localStorage !== 'undefined') {
+    if (!hasAuth) {
+      const token = localStorage.getItem('S4_AUTH_TOKEN');
+      if (token) {
+        headersRecord['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    if (!hasImpersonate) {
+      const impersonateOrgId = localStorage.getItem('S4_IMPERSONATE_ORG_ID');
+      if (impersonateOrgId) {
+        headersRecord['X-Impersonate-Org-Id'] = impersonateOrgId;
+      }
     }
   }
 
@@ -1036,7 +1064,7 @@ export async function fetchStats(month?: string, year?: number): Promise<Dashboa
     headers: getAuthHeaders(),
   });
   if (res.status === 404) {
-    res = await resilientFetch(`/api/config/stats${query}`, {
+    res = await resilientFetch(`/api/stats${query}`, {
       headers: getAuthHeaders(),
     });
   }
@@ -1176,10 +1204,14 @@ export async function updateConfig(newConfig: Record<string, any>): Promise<{ su
 // -------------------------------------------------------------------------
 
 export async function mapBankTransaction(txId: number, mappedAccountId: string): Promise<any> {
-  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/map`, {
+  const res = await resilientFetch(`/api/v1/bank/transactions/${txId}/categorize`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ mapped_account_id: mappedAccountId }),
+    body: JSON.stringify({
+      mapped_account_id: mappedAccountId,
+      mapped_account_name: mappedAccountId,
+      post_to_accounting: false,
+    }),
   });
   return handleResponse<any>(res, 'Map bank transaction');
 }
@@ -3081,6 +3113,617 @@ export async function saveTenantWhatsAppConfig(
   });
   return handleResponse(res, `Save WhatsApp config for ${clientId}`);
 }
+
+export async function executeAgentGoal(
+  clientId: string,
+  agentId: string,
+  payload: {
+    goal?: string;
+    month?: string;
+    year?: number;
+    autonomy_override?: import('../types/client').AgentAutonomyLevel;
+    explicit_human_command?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  run: import('../types/client').AgentExecutionRun;
+}> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/${agentId}/execute-goal`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Execute goal for agent ${agentId}`);
+}
+
+export async function fetchAgentRuns(
+  clientId: string,
+  agentId: string,
+  limit = 25
+): Promise<{
+  client_id: string;
+  agent_id: string;
+  count: number;
+  runs: import('../types/client').AgentExecutionRun[];
+}> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/${agentId}/runs?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, `Fetch reasoning runs for agent ${agentId}`);
+}
+
+export async function updateAgentAutonomyPolicy(
+  clientId: string,
+  agentId: string,
+  payload: {
+    autonomy_level?: import('../types/client').AgentAutonomyLevel;
+    schedule_frequency?: string;
+    auto_approve_threshold?: number;
+    auto_apply_knowledge?: boolean;
+    auto_query_anomalies?: boolean;
+    proactive_SLA_reminders?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  agent: import('../types/client').IngestionPipeline;
+}> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/${agentId}/autonomy`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Update autonomy policy for agent ${agentId}`);
+}
+
+export async function triggerAgentHeartbeat(payload?: {
+  client_id?: string;
+  force?: boolean;
+  month?: string;
+  year?: number;
+}): Promise<{
+  status: string;
+  clients_checked: number;
+  agents_evaluated: number;
+  runs_executed: number;
+  runs_skipped: number;
+  executed_runs: import('../types/client').AgentExecutionRun[];
+}> {
+  const res = await resilientFetch(`/api/v1/agents/heartbeat`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload || {}),
+  });
+  return handleResponse(res, 'Trigger multi-agent heartbeat sweep');
+}
+
+// =========================================================================
+// Platform Admin Console (/api/v1/admin/*)
+// =========================================================================
+
+export async function fetchAdminOverview(): Promise<AdminOverviewData> {
+  const res = await resilientFetch(`/api/v1/admin/overview`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch platform admin overview');
+}
+
+export async function createAdminOrganization(payload: {
+  name: string;
+  org_type?: string;
+  plan_tier?: string;
+  max_clients?: number;
+  billing_email?: string;
+  trial_days?: number;
+  owner_email?: string;
+  owner_name?: string;
+  white_label_logo_url?: string;
+  custom_portal_subdomain?: string;
+  storage_strategy?: string;
+  custom_gdrive_folder_id?: string;
+}): Promise<{ success: boolean; message: string; organization: any }> {
+  const res = await resilientFetch(`/api/v1/admin/organizations`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Create organization tenant');
+}
+
+export async function fetchAdminOrganizationDetail(orgId: string): Promise<AdminTenantDetail> {
+  const res = await resilientFetch(`/api/v1/admin/organizations/${orgId}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, `Fetch organization detail ${orgId}`);
+}
+
+export async function updateAdminOrganizationSettings(
+  orgId: string,
+  payload: {
+    name?: string;
+    org_type?: string;
+    billing_email?: string;
+    white_label_logo_url?: string;
+    custom_portal_subdomain?: string;
+    storage_strategy?: string;
+    custom_gdrive_folder_id?: string;
+  }
+): Promise<{ success: boolean; message: string; organization: any }> {
+  const res = await resilientFetch(`/api/v1/admin/organizations/${orgId}/settings`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Update organization settings ${orgId}`);
+}
+
+export async function updateAdminOrganizationStatus(
+  orgId: string,
+  payload: {
+    is_active: boolean;
+    subscription_status?: string;
+    reason?: string;
+  }
+): Promise<{ success: boolean; message: string; organization: any }> {
+  const res = await resilientFetch(`/api/v1/admin/organizations/${orgId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Update organization status ${orgId}`);
+}
+
+export async function startAdminImpersonation(
+  organizationId: string,
+  reason?: string
+): Promise<{
+  success: boolean;
+  impersonating_org: {
+    id: string;
+    name: string;
+    org_type: string;
+    plan_tier: string;
+    subscription_status: string;
+    is_active: boolean;
+  };
+  message: string;
+}> {
+  const res = await resilientFetch(`/api/v1/admin/impersonate`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ organization_id: organizationId, reason: reason || 'Platform operator inspection' }),
+  });
+  return handleResponse(res, 'Start tenant impersonation');
+}
+
+export async function exitAdminImpersonation(organizationId?: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const res = await resilientFetch(`/api/v1/admin/impersonate/exit`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ organization_id: organizationId || null }),
+  });
+  return handleResponse(res, 'Exit tenant impersonation');
+}
+
+export async function fetchPlatformSuperAdmins(): Promise<{
+  super_admins: PlatformSuperAdmin[];
+  total_count: number;
+}> {
+  const res = await resilientFetch(`/api/v1/admin/super-admins`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch platform super-admins');
+}
+
+export async function addPlatformSuperAdmin(payload: {
+  email: string;
+  name?: string;
+  notes?: string;
+}): Promise<{ success: boolean; super_admin: PlatformSuperAdmin }> {
+  const res = await resilientFetch(`/api/v1/admin/super-admins`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Add platform super-admin');
+}
+
+export async function revokePlatformSuperAdmin(adminId: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const res = await resilientFetch(`/api/v1/admin/super-admins/${adminId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Revoke platform super-admin');
+}
+
+export async function fetchAdminUsers(params?: {
+  organization_id?: string;
+  role?: string;
+  search?: string;
+}): Promise<{ users: CrossTenantUser[]; total_count: number }> {
+  const qs = new URLSearchParams();
+  if (params?.organization_id) qs.set('organization_id', params.organization_id);
+  if (params?.role) qs.set('role', params.role);
+  if (params?.search) qs.set('search', params.search);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/admin/users${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch platform users');
+}
+
+export async function updateAdminMembership(
+  membershipId: string,
+  payload: { role?: string; title?: string; is_primary?: boolean }
+): Promise<{ success: boolean; membership: any }> {
+  const res = await resilientFetch(`/api/v1/admin/memberships/${membershipId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Update user membership');
+}
+
+export async function fetchAdminAgentFleet(params?: {
+  client_id?: string;
+  organization_id?: string;
+}): Promise<{ total_agents: number; agents: AdminAgentFleetEntry[] }> {
+  const qs = new URLSearchParams();
+  if (params?.client_id) qs.set('client_id', params.client_id);
+  if (params?.organization_id) qs.set('organization_id', params.organization_id);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/admin/agent-fleet${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch global agent fleet');
+}
+
+export async function fetchAdminAgentRuns(params?: {
+  client_id?: string;
+  status_filter?: string;
+  trigger_type?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ runs: AdminAgentRunEntry[]; total_count: number }> {
+  const qs = new URLSearchParams();
+  if (params?.client_id) qs.set('client_id', params.client_id);
+  if (params?.status_filter) qs.set('status_filter', params.status_filter);
+  if (params?.trigger_type) qs.set('trigger_type', params.trigger_type);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/admin/agent-runs${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch global agent runs');
+}
+
+export async function fetchAdminAgentMessages(params?: {
+  channel?: string;
+  direction?: string;
+  client_id?: string;
+  limit?: number;
+}): Promise<{ messages: AdminAgentMessageEntry[]; total_count: number }> {
+  const qs = new URLSearchParams();
+  if (params?.channel) qs.set('channel', params.channel);
+  if (params?.direction) qs.set('direction', params.direction);
+  if (params?.client_id) qs.set('client_id', params.client_id);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/admin/agent-messages${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch global agent messages');
+}
+
+export async function fetchAdminGatewayHealth(): Promise<GatewayHealthData> {
+  const res = await resilientFetch(`/api/v1/admin/gateway-health`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch gateway health');
+}
+
+export async function fetchAdminAuditLogs(params?: {
+  client_id?: string;
+  action?: string;
+  actor_email?: string;
+  source_type?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  logs: AdminAuditLogEntry[];
+  total_count: number;
+  available_actions: string[];
+}> {
+  const qs = new URLSearchParams();
+  if (params?.client_id) qs.set('client_id', params.client_id);
+  if (params?.action) qs.set('action', params.action);
+  if (params?.actor_email) qs.set('actor_email', params.actor_email);
+  if (params?.source_type) qs.set('source_type', params.source_type);
+  if (params?.search) qs.set('search', params.search);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/admin/audit-logs${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch audit logs');
+}
+
+export async function downloadAdminAuditLogsCsv(params?: {
+  client_id?: string;
+  action?: string;
+  actor_email?: string;
+  source_type?: string;
+  search?: string;
+}): Promise<void> {
+  const qs = new URLSearchParams();
+  qs.set('format', 'csv');
+  if (params?.client_id) qs.set('client_id', params.client_id);
+  if (params?.action) qs.set('action', params.action);
+  if (params?.actor_email) qs.set('actor_email', params.actor_email);
+  if (params?.source_type) qs.set('source_type', params.source_type);
+  if (params?.search) qs.set('search', params.search);
+  const res = await resilientFetch(`/api/v1/admin/audit-logs?${qs.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`CSV export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `s4_audit_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+export async function fetchAdminTenantTelemetry(days: number = 30): Promise<TenantTelemetryBreakdown> {
+  const res = await resilientFetch(`/api/v1/admin/telemetry/tenants?days=${days}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Fetch per-tenant AI telemetry');
+}
+
+// ============================================================================
+// General Ledger (GL) Closing & Working Papers Interfaces & API Functions
+// ============================================================================
+
+export interface TrialBalanceAccount {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface TrialBalanceResponse {
+  client_id: string;
+  client_name: string;
+  period_month: string;
+  period_year: number;
+  currency: string;
+  accounts: TrialBalanceAccount[];
+  total_debits: number;
+  total_credits: number;
+  is_balanced: boolean;
+  source: string;
+}
+
+export interface ManualJournalWorkingPaperItem {
+  id?: number;
+  paper_id: string;
+  client_id: string;
+  journal_id?: string;
+  journal_reference?: string;
+  title: string;
+  adjustment_type: string;
+  standard_reference?: string;
+  entity_policy_applied?: string;
+  period_month: string;
+  period_year: number;
+  currency: string;
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+  status: 'DRAFT' | 'SUGGESTED' | 'APPROVED' | 'POSTED_TO_ERP' | 'REJECTED';
+  entries_count?: number;
+  journal_payload?: {
+    journal_entries: Array<{
+      account_id: string;
+      account_name?: string;
+      debit_or_credit: 'debit' | 'credit';
+      amount: number;
+      description?: string;
+    }>;
+    notes?: string;
+  };
+  math_schedules?: Record<string, any>;
+  memo_markdown?: string;
+  attachment_urls?: string[];
+  prepared_by: string;
+  approved_by?: string;
+  posted_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface AuditClosingResponse {
+  status: string;
+  client_id: string;
+  period: string;
+  adjustments_detected: number;
+  suggested_adjustments: any[];
+  created_working_papers: any[];
+}
+
+export async function fetchTrialBalance(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<TrialBalanceResponse> {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (year) qs.set('year', String(year));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/trial-balance${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<TrialBalanceResponse>(res, 'Fetch trial balance');
+}
+
+export async function fetchWorkingPapers(
+  clientId: string,
+  params?: { year?: number; month?: string; status?: string }
+): Promise<ManualJournalWorkingPaperItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.year) qs.set('year', String(params.year));
+  if (params?.month) qs.set('month', params.month);
+  if (params?.status) qs.set('status', params.status);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/working-papers${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ManualJournalWorkingPaperItem[]>(res, 'Fetch working papers');
+}
+
+export async function fetchWorkingPaperDetail(
+  clientId: string,
+  paperId: string
+): Promise<ManualJournalWorkingPaperItem> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/working-papers/${paperId}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ManualJournalWorkingPaperItem>(res, 'Fetch working paper detail');
+}
+
+export async function auditAndSuggestWorkingPapers(
+  clientId: string,
+  payload: { month: string; year: number; auto_create_working_papers?: boolean; auto_approve?: boolean }
+): Promise<AuditClosingResponse> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/working-papers/audit-and-suggest`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<AuditClosingResponse>(res, 'Audit GL and suggest journals');
+}
+
+export async function createWorkingPaper(
+  clientId: string,
+  payload: any
+): Promise<any> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/working-papers`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Create manual journal working paper');
+}
+
+export async function approveAndPostJournal(
+  clientId: string,
+  paperId: string
+): Promise<{ status: string; message: string; journal: any }> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/working-papers/${paperId}/approve-and-post`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+  });
+  return handleResponse(res, 'Approve and post journal to ERP');
+}
+
+// ============================================================================
+// Financial Reporting (FR) Statement Packs Interfaces & API Functions
+// ============================================================================
+
+export interface FinancialStatementReportItem {
+  id?: number;
+  report_id: string;
+  client_id: string;
+  report_title: string;
+  reporting_framework: string;
+  period_type: string;
+  period_month?: string;
+  period_quarter?: string;
+  period_year: number;
+  currency: string;
+  is_audited: boolean;
+  status: 'DRAFT' | 'CONTROLLER_REVIEWED' | 'BOARD_READY' | 'PUBLISHED';
+  revenue?: number;
+  net_profit?: number;
+  total_assets?: number;
+  is_balanced?: boolean;
+  notes_count?: number;
+  income_statement?: Record<string, any>;
+  balance_sheet?: Record<string, any>;
+  cash_flow_statement?: Record<string, any>;
+  equity_statement?: Record<string, any>;
+  notes_to_accounts?: Array<{
+    note_number: number;
+    title: string;
+    content: string;
+  }>;
+  financial_ratios?: Record<string, any>;
+  executive_commentary?: string;
+  prepared_by: string;
+  published_at?: string;
+  created_at: string;
+}
+
+export async function fetchFinancialReports(
+  clientId: string,
+  params?: { year?: number; period_type?: string }
+): Promise<FinancialStatementReportItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.year) qs.set('year', String(params.year));
+  if (params?.period_type) qs.set('period_type', params.period_type);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/fr/${clientId}/reports${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<FinancialStatementReportItem[]>(res, 'Fetch financial reports');
+}
+
+export async function generateFinancialReport(
+  clientId: string,
+  payload: {
+    period_type?: string;
+    period_month?: string;
+    period_quarter?: string;
+    period_year: number;
+    reporting_framework?: string;
+  }
+): Promise<any> {
+  const res = await resilientFetch(`/api/v1/fr/${clientId}/reports/generate`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Generate financial statement report');
+}
+
+export async function fetchFinancialReportDetail(
+  clientId: string,
+  reportId: string
+): Promise<FinancialStatementReportItem> {
+  const res = await resilientFetch(`/api/v1/fr/${clientId}/reports/${reportId}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<FinancialStatementReportItem>(res, 'Fetch financial report detail');
+}
+
+
 
 
 

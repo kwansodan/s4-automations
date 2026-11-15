@@ -1135,14 +1135,14 @@ export const ClientApTab: React.FC = () => {
 
       {/* Floating / Sticky Bulk Actions Toolbar */}
       {selectedTxIds.size > 0 && (
-        <div className="sticky top-4 z-30 bg-[#0F172A] text-white rounded-xl p-3 shadow-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+        <div className="sticky top-4 z-30 bg-[#F0F9FF] text-[#0F172A] rounded-xl p-3 shadow-md border border-[#BAE6FD] flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-sky-400" />
+            <CheckSquare className="w-4 h-4 text-[#0284C7]" />
             <span className="font-bold text-xs">
               {selectedTxIds.size} {selectedTxIds.size === 1 ? 'Bill' : 'Bills'} Selected
             </span>
-            <span className="text-slate-400 text-xs hidden sm:inline">•</span>
-            <span className="text-emerald-400 font-mono font-bold text-xs">
+            <span className="text-slate-600 text-xs hidden sm:inline">•</span>
+            <span className="text-emerald-700 font-mono font-bold text-xs">
               {formatCurrency(
                 apTransactions.filter((t) => selectedTxIds.has(t.id)).reduce((sum, t) => sum + (t.total_amount || 0), 0)
               )}
@@ -1206,7 +1206,7 @@ export const ClientApTab: React.FC = () => {
             <button
               type="button"
               onClick={() => setSelectedTxIds(new Set())}
-              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+              className="p-1.5 hover:bg-sky-100 rounded-lg text-slate-500 hover:text-[#0F172A] transition cursor-pointer"
               title="Deselect all bills"
             >
               <X className="w-4 h-4" />

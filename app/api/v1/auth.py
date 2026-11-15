@@ -3,8 +3,9 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 
 from app.services.auth_service import AuthService
+from app.services.audit_service import AuditService
 from app.api.deps import (
-    require_admin_user,
+    require_authenticated_user,
     enforce_otp_request_rate_limit,
     enforce_otp_verify_rate_limit,
 )
@@ -27,7 +28,7 @@ class OtpVerifyPayload(BaseModel):
     dependencies=[Depends(enforce_otp_request_rate_limit)],
 )
 async def request_login_otp(payload: OtpRequestPayload) -> Dict[str, Any]:
-    """Generates a secure 6-digit OTP and sends it to s4bookkeeping@service4gh.com."""
+    """Generates a secure 6-digit OTP and sends it to authorized admin or team member emails."""
     result = AuthService.request_otp(payload.email)
     if not result.get("success"):
         raise HTTPException(status_code=403, detail=result.get("message"))
@@ -48,7 +49,7 @@ async def verify_login_otp(payload: OtpVerifyPayload) -> Dict[str, Any]:
 
 
 @router.get("/me", summary="Get Current Authenticated User")
-async def get_current_user(user: Dict[str, Any] = Depends(require_admin_user)) -> Dict[str, Any]:
+async def get_current_user(user: Dict[str, Any] = Depends(require_authenticated_user)) -> Dict[str, Any]:
     """Validates the authorization bearer token and returns current user info."""
     return {"authenticated": True, "user": user}
 
@@ -60,44 +61,65 @@ class SwitchOrgPayload(BaseModel):
 @router.post("/switch-org", summary="Switch Active Organization Context")
 async def switch_active_organization(
     payload: SwitchOrgPayload,
-    user: Dict[str, Any] = Depends(require_admin_user),
+    user: Dict[str, Any] = Depends(require_authenticated_user),
 ) -> Dict[str, Any]:
     """Switches the active primary organization context for the authenticated user."""
     from sqlmodel import Session, select
     from app.db.session import get_engine
-    from app.models.db_models import UserOrganizationMembership, Organization
+    from app.models.db_models import UserOrganizationMembership, FirmTeamMember, Organization
 
     target_org_id = payload.organization_id.strip()
+    is_sa = bool(user.get("is_platform_admin"))
+
     with Session(get_engine()) as session:
+        target_org = session.exec(select(Organization).where(Organization.id == target_org_id)).first()
+        if not target_org:
+            raise HTTPException(status_code=404, detail=f"Organization '{target_org_id}' not found.")
+
         memberships = session.exec(
             select(UserOrganizationMembership).where(UserOrganizationMembership.user_email == user["email"])
         ).all()
 
-        target_found = False
+        team_access = session.exec(
+            select(FirmTeamMember).where(
+                FirmTeamMember.email == user["email"],
+                FirmTeamMember.organization_id == target_org_id,
+                FirmTeamMember.status.in_(["ACTIVE", "INVITED"]),
+            )
+        ).first()
+
+        has_direct_membership = any(m.organization_id == target_org_id for m in memberships)
+        if not is_sa and not has_direct_membership and not team_access:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You are not authorized to access organization '{target_org_id}'.",
+            )
+
         for m in memberships:
-            if m.organization_id == target_org_id:
-                m.is_primary = True
-                target_found = True
-            else:
-                m.is_primary = False
+            m.is_primary = (m.organization_id == target_org_id)
             session.add(m)
 
-        # If user is admin/owner and membership record doesn't exist yet, auto-provision it
-        if not target_found:
-            target_org = session.exec(select(Organization).where(Organization.id == target_org_id)).first()
-            if target_org:
-                new_m = UserOrganizationMembership(
+        if not has_direct_membership:
+            session.add(
+                UserOrganizationMembership(
                     user_email=user["email"],
                     organization_id=target_org_id,
-                    role="ADMIN",
-                    title="Platform Administrator",
+                    role="PLATFORM_SUPER_ADMIN" if is_sa else (team_access.role if team_access else "STAFF"),
+                    title="Platform Super-Admin" if is_sa else (team_access.role if team_access else "Team Member"),
                     is_primary=True,
                 )
-                session.add(new_m)
-                target_found = True
+            )
 
-        if target_found:
-            session.commit()
+        session.commit()
+
+    if is_sa:
+        AuditService.log(
+            client_id=target_org_id,
+            action="ADMIN_ORG_SWITCH",
+            actor_email=user["email"],
+            details={"organization_id": target_org_id, "via": "switch-org"},
+            source_type="admin_console",
+        )
 
     current_org, orgs = AuthService.get_user_organizations(user["email"])
     user["organization"] = current_org
@@ -112,7 +134,7 @@ async def switch_active_organization(
 
 @router.get("/organizations", summary="List User Organizations")
 async def list_user_organizations(
-    user: Dict[str, Any] = Depends(require_admin_user),
+    user: Dict[str, Any] = Depends(require_authenticated_user),
 ) -> Dict[str, Any]:
     """Returns the list of organizations accessible by the authenticated user."""
     current_org, orgs = AuthService.get_user_organizations(user["email"])

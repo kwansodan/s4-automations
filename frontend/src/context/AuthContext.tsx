@@ -1,23 +1,59 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { AuthState, AuthUser } from '../types/auth';
-import { requestOtpApi, verifyOtpApi, switchActiveOrganization, fetchCurrentUser } from '../lib/api';
+import {
+  requestOtpApi,
+  verifyOtpApi,
+  switchActiveOrganization,
+  fetchCurrentUser,
+  startAdminImpersonation,
+  exitAdminImpersonation,
+} from '../lib/api';
+
+export interface ImpersonatingOrgState {
+  id: string;
+  name: string;
+  org_type?: string;
+  plan_tier?: string;
+  subscription_status?: string;
+  is_active?: boolean;
+}
 
 interface AuthContextType extends AuthState {
+  isPlatformAdmin: boolean;
+  isOrgAdmin: boolean;
+  impersonatingOrg: ImpersonatingOrgState | null;
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
   requestOtp: (email: string) => Promise<{ success: boolean; message: string; dev_hint?: string | null }>;
   verifyOtp: (email: string, otp: string) => Promise<boolean>;
   switchOrganization: (organizationId: string) => Promise<boolean>;
+  startImpersonation: (organizationId: string, reason?: string) => Promise<boolean>;
+  exitImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [impersonatingOrg, setImpersonatingOrg] = useState<ImpersonatingOrgState | null>(() => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const impId = localStorage.getItem('S4_IMPERSONATE_ORG_ID');
+      const impMeta = localStorage.getItem('S4_IMPERSONATE_ORG_META');
+      if (impId && impMeta) {
+        return JSON.parse(impMeta);
+      }
+      if (impId) {
+        return { id: impId, name: impId };
+      }
+    } catch {}
+    return null;
+  });
+
   const [authState, setAuthState] = useState<AuthState>(() => {
     if (typeof localStorage === 'undefined') {
       return { isAuthenticated: false, user: null, token: null };
     }
-    
+
     // Check URL parameters for explicit logout or 1-click magic auto-login
     if (typeof window !== 'undefined' && window?.location) {
       const search = window.location.search || '';
@@ -25,6 +61,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (search.includes('logout') || search.includes('auth=login') || hash.includes('login') || hash.includes('logout')) {
         localStorage.removeItem('S4_AUTH_TOKEN');
         localStorage.removeItem('S4_AUTH_USER');
+        localStorage.removeItem('S4_IMPERSONATE_ORG_ID');
+        localStorage.removeItem('S4_IMPERSONATE_ORG_META');
         return { isAuthenticated: false, user: null, token: null };
       }
 
@@ -58,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       isAuthenticated: Boolean(token),
       token: token || null,
-      user: user || (token ? { email: '', name: 'Authenticated Member', role: 'admin' } : null),
+      user: user || (token ? { email: '', name: 'Authenticated Member', role: 'bookkeeper' } : null),
     };
   });
 
@@ -88,6 +126,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user: res.user,
           }));
           localStorage.setItem('S4_AUTH_USER', JSON.stringify(res.user));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('s4:auth:changed'));
+          }
+          if (!res.user.is_platform_admin) {
+            localStorage.removeItem('S4_IMPERSONATE_ORG_ID');
+            localStorage.removeItem('S4_IMPERSONATE_ORG_META');
+            setImpersonatingOrg(null);
+          } else if (res.user.impersonating_org_id && res.user.organization) {
+            const meta: ImpersonatingOrgState = {
+              id: res.user.organization.id,
+              name: res.user.organization.name,
+              org_type: res.user.organization.org_type,
+              plan_tier: res.user.organization.plan_tier,
+              subscription_status: res.user.organization.subscription_status,
+              is_active: res.user.organization.is_active,
+            };
+            localStorage.setItem('S4_IMPERSONATE_ORG_META', JSON.stringify(meta));
+            setImpersonatingOrg(meta);
+          }
         } else {
           logout();
         }
@@ -103,21 +160,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (token: string, user: AuthUser) => {
     localStorage.setItem('S4_AUTH_TOKEN', token);
     localStorage.setItem('S4_AUTH_USER', JSON.stringify(user));
+    localStorage.removeItem('S4_IMPERSONATE_ORG_ID');
+    localStorage.removeItem('S4_IMPERSONATE_ORG_META');
+    setImpersonatingOrg(null);
     setAuthState({
       isAuthenticated: true,
       token,
       user,
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('s4:auth:changed'));
+    }
   };
 
   const logout = () => {
     localStorage.removeItem('S4_AUTH_TOKEN');
     localStorage.removeItem('S4_AUTH_USER');
+    localStorage.removeItem('S4_IMPERSONATE_ORG_ID');
+    localStorage.removeItem('S4_IMPERSONATE_ORG_META');
+    setImpersonatingOrg(null);
     setAuthState({
       isAuthenticated: false,
       token: null,
       user: null,
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('s4:auth:changed'));
+    }
   };
 
   const requestOtp = async (email: string) => {
@@ -156,15 +225,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const startImpersonation = async (organizationId: string, reason?: string): Promise<boolean> => {
+    try {
+      const res = await startAdminImpersonation(organizationId, reason);
+      if (res?.success && res.impersonating_org) {
+        localStorage.setItem('S4_IMPERSONATE_ORG_ID', organizationId);
+        localStorage.setItem('S4_IMPERSONATE_ORG_META', JSON.stringify(res.impersonating_org));
+        setImpersonatingOrg(res.impersonating_org);
+        const me = await fetchCurrentUser();
+        if (me?.authenticated && me.user) {
+          setAuthState((prev) => ({
+            ...prev,
+            user: me.user,
+          }));
+          localStorage.setItem('S4_AUTH_USER', JSON.stringify(me.user));
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to start tenant impersonation:', err);
+      return false;
+    }
+  };
+
+  const exitImpersonation = async (): Promise<void> => {
+    const currentId = impersonatingOrg?.id;
+    try {
+      await exitAdminImpersonation(currentId);
+    } catch (err) {
+      console.warn('Notice exiting impersonation:', err);
+    } finally {
+      localStorage.removeItem('S4_IMPERSONATE_ORG_ID');
+      localStorage.removeItem('S4_IMPERSONATE_ORG_META');
+      setImpersonatingOrg(null);
+      try {
+        const me = await fetchCurrentUser();
+        if (me?.authenticated && me.user) {
+          setAuthState((prev) => ({
+            ...prev,
+            user: me.user,
+          }));
+          localStorage.setItem('S4_AUTH_USER', JSON.stringify(me.user));
+        }
+      } catch {}
+    }
+  };
+
+  const isPlatformAdmin = Boolean(authState.user?.is_platform_admin);
+  const isOrgAdmin = Boolean(authState.user?.is_org_admin || authState.user?.role === 'admin' || isPlatformAdmin);
+
   return (
     <AuthContext.Provider
       value={{
         ...authState,
+        isPlatformAdmin,
+        isOrgAdmin,
+        impersonatingOrg,
         login,
         logout,
         requestOtp,
         verifyOtp,
         switchOrganization,
+        startImpersonation,
+        exitImpersonation,
       }}
     >
       {children}

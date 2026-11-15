@@ -2,9 +2,12 @@
 
 from typing import Dict, Any, Optional
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 import inngest
+from sqlmodel import Session
 
+from app.api.deps import get_accessible_client_ids, require_admin_user, verify_client_access
+from app.db.session import get_engine
 from app.inngest_client import inngest_client
 from app.models.inngest_events import PipelineTriggerEvent
 from app.utils.logging import get_logger
@@ -18,6 +21,7 @@ router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 async def trigger_pipeline(
     payload: Optional[PipelineTriggerEvent] = None,
     background_tasks: BackgroundTasks = None,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """
     Manually triggers the daily billing & OCR ingestion pipeline via Inngest event dispatch
@@ -32,6 +36,29 @@ async def trigger_pipeline(
     target_month = event_data.get("month") or now.strftime("%B")
     target_year = int(event_data.get("year") or now.year)
     filter_clients = event_data.get("client_slugs")
+
+    with Session(get_engine()) as session:
+        if filter_clients:
+            targets = [filter_clients] if isinstance(filter_clients, str) else list(filter_clients)
+            for target_c in targets:
+                verify_client_access(
+                    session,
+                    current_user,
+                    str(target_c),
+                    allow_missing_for_platform_admin=True,
+                )
+        elif not current_user.get("is_platform_admin"):
+            allowed_clients = get_accessible_client_ids(session, current_user)
+            if allowed_clients is not None:
+                if not allowed_clients:
+                    return {
+                        "status": "SKIPPED",
+                        "message": "No accessible clients found in your organization.",
+                        "event": "anr/pipeline.trigger",
+                        "data": event_data,
+                    }
+                filter_clients = sorted(allowed_clients)
+                event_data["client_slugs"] = filter_clients
 
     # 1. Execute immediately in a dedicated background daemon thread with its own event loop
     # This prevents heavy synchronous Google Drive/Sheets I/O from blocking the main FastAPI loop
@@ -84,13 +111,18 @@ async def trigger_pipeline(
 async def trigger_invoices_pipeline_alias(
     payload: Optional[Dict[str, Any]] = None,
     background_tasks: BackgroundTasks = None,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Alias forwarding /pipeline/trigger-invoices to /invoices/generate."""
     from app.api.v1.invoices import trigger_invoice_generation
     from app.models.inngest_events import InvoiceGenerateEvent
 
     inv_payload = InvoiceGenerateEvent(**payload) if payload else None
-    return await trigger_invoice_generation(payload=inv_payload, background_tasks=background_tasks)
+    return await trigger_invoice_generation(
+        payload=inv_payload,
+        background_tasks=background_tasks,
+        current_user=current_user,
+    )
 
 
 @router.get("/status", summary="Get Pipeline Real-time Progress")
@@ -137,7 +169,10 @@ async def reset_pipeline_endpoint() -> Dict[str, Any]:
 
 
 @router.post("/simulate", summary="Interactive AI Pipeline Simulation Lab")
-async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:
+async def simulate_pipeline_extraction(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """
     Simulates AI extraction on a test sample (image, PDF, or text) with human-written
     transposition instructions, mapping raw information into the target accounting entity schema.
@@ -195,6 +230,15 @@ async def simulate_pipeline_extraction(request: Request) -> Dict[str, Any]:
             field_mappings_dict = body.get("field_mappings") or {}
         except Exception:
             pass
+
+    if client_id:
+        with Session(get_engine()) as session:
+            verify_client_access(
+                session,
+                current_user,
+                str(client_id),
+                allow_missing_for_platform_admin=True,
+            )
 
     # Append field mappings directives to human instructions
     if field_mappings_dict and isinstance(field_mappings_dict, dict):

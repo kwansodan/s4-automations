@@ -124,6 +124,10 @@ def run_schema_migrations(active_engine: Engine):
         ("organizations", "billing_contact_email", "VARCHAR"),
         ("organizations", "billing_contact_phone", "VARCHAR"),
         ("organizations", "billing_notes", "VARCHAR"),
+        ("organizations", "white_label_logo_url", "VARCHAR"),
+        ("organizations", "custom_portal_subdomain", "VARCHAR"),
+        ("organizations", "storage_strategy", "VARCHAR DEFAULT 'platform_managed'"),
+        ("organizations", "storage_credentials", f"{json_type} DEFAULT '{{}}'"),
 
         # clients table
         ("clients", "organization_id", "VARCHAR DEFAULT 's4_advisory'"),
@@ -525,6 +529,26 @@ def init_db():
                 )
                 session.add(admin_member)
                 session.commit()
+
+            # Ensure PlatformAdminUser root & configured allowlist rows exist
+            from app.models.db_models import PlatformAdminUser
+            root_email = (settings.AUTH_EMAIL or "s4bookkeeping@service4gh.com").strip().lower()
+            for sa_email in settings.get_platform_admin_emails():
+                existing_sa = session.exec(
+                    select(PlatformAdminUser).where(PlatformAdminUser.email == sa_email)
+                ).first()
+                if not existing_sa:
+                    session.add(
+                        PlatformAdminUser(
+                            email=sa_email,
+                            name="Root Platform Administrator" if sa_email == root_email else "Platform Super-Admin",
+                            is_active=True,
+                            is_root=(sa_email == root_email),
+                            notes="Boot-seeded from environment configuration",
+                            added_by="system",
+                        )
+                    )
+            session.commit()
 
             # Ensure any legacy synthetic mock bank transactions are purged
             from app.models.db_models import BankTransaction

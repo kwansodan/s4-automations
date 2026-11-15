@@ -612,13 +612,14 @@ Return ONLY a valid JSON list of objects.
 
             # Pattern B: COA / GL Account mapping ("map X to Y", "categorize X under Y")
             coa_match = re.search(
-                r"(?:map|categorize|assign|book|post)\s+['\"]?([^'\"]+?)['\"]?\s+(?:to|under|as|into)\s+['\"]?([^'\".;\n]+)['\"]?",
+                r"(?:map|categorize|categorise|assign|book|post)\s+['\"]?([^'\"]+?)['\"]?\s+(?:to|under|as|into)\s+['\"]?(.+?)(?=['\"]?(?:\s+(?:and|then)\s+(?:auto[- ]?approve|approve|generate|draft|send|follow|raise|scan|reconcile|check)\b|[;\n.]|$))",
                 line,
                 re.IGNORECASE,
             )
             if coa_match:
                 trig = re.sub(r"^(?:all|any|payments? to|bills? from|transactions? for)\s+", "", coa_match.group(1).strip(), flags=re.I)
-                targ = coa_match.group(2).strip()
+                trig = re.sub(r"\s+(?:transactions?|txns?|debits?|credits?|charges?|expenses?|payments?)$", "", trig, flags=re.I).strip()
+                targ = coa_match.group(2).strip().rstrip(".,; ")
                 results.append({
                     "category": "COA_MAPPING_RULE",
                     "section": sec if sec != "ALL" else "BANK",

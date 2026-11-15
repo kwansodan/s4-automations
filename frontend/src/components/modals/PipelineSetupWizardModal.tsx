@@ -10,6 +10,7 @@ import type {
   FolderStructurePattern,
   InvoiceDateRule,
   PaymentTermsRule,
+  AgentAutonomyLevel,
 } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
 import {
@@ -364,6 +365,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [triggerType, setTriggerType] = useState<TriggerType>('scheduled_cron');
   const [cronExpression, setCronExpression] = useState<string>('0 20 * * *');
   const [cronScheduleHuman, setCronScheduleHuman] = useState<string>('Daily at 8:00 PM');
+  const [autonomyLevel, setAutonomyLevel] = useState<AgentAutonomyLevel>('semi_autonomous');
+  const [scheduleFrequency, setScheduleFrequency] = useState<string>('daily_morning');
+  const [autoApproveThreshold, setAutoApproveThreshold] = useState<number>(0.92);
+  const [autoApplyKnowledge, setAutoApplyKnowledge] = useState<boolean>(true);
+  const [autoQueryAnomalies, setAutoQueryAnomalies] = useState<boolean>(false);
+  const [proactiveSlaReminders, setProactiveSlaReminders] = useState<boolean>(true);
 
   // Channel External Configuration Details
   const [allowedSenders, setAllowedSenders] = useState<string>('');
@@ -550,6 +557,20 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setTriggerType(initialPipeline.trigger_type || 'scheduled_cron');
         setCronExpression(initialPipeline.cron_expression || '0 20 * * *');
         setCronScheduleHuman(initialPipeline.cron_schedule_human || initialPipeline.schedule || 'Daily at 8:00 PM');
+        setAutonomyLevel(initialPipeline.autonomy_level || 'semi_autonomous');
+        setScheduleFrequency(
+          initialPipeline.schedule_frequency === 'daily'
+            ? 'daily_morning'
+            : initialPipeline.schedule_frequency || 'daily_morning'
+        );
+        setAutoApproveThreshold(
+          typeof initialPipeline.auto_approve_threshold === 'number'
+            ? initialPipeline.auto_approve_threshold
+            : 0.92
+        );
+        setAutoApplyKnowledge(initialPipeline.auto_apply_knowledge !== false);
+        setAutoQueryAnomalies(Boolean(initialPipeline.auto_query_anomalies));
+        setProactiveSlaReminders(initialPipeline.proactive_SLA_reminders !== false);
         setHumanInstructions(initialPipeline.human_instructions || '');
         setAllowedSenders(initialPipeline.source_config?.allowed_senders || '');
         setOneDriveTenantId(initialPipeline.source_config?.tenant_id || '');
@@ -613,6 +634,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setTriggerType('scheduled_cron');
         setCronExpression('0 20 * * *');
         setCronScheduleHuman('Daily at 8:00 PM');
+        setAutonomyLevel('semi_autonomous');
+        setScheduleFrequency('daily_morning');
+        setAutoApproveThreshold(0.92);
+        setAutoApplyKnowledge(true);
+        setAutoQueryAnomalies(false);
+        setProactiveSlaReminders(true);
         setAllowedSenders('');
         setOneDriveTenantId('');
         setOneDriveClientId('');
@@ -798,6 +825,12 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         cron_schedule_human: triggerType === 'scheduled_cron' ? cronScheduleHuman : undefined,
         schedule: triggerType === 'scheduled_cron' ? (cronScheduleHuman || 'Daily') : (triggerType === 'realtime_webhook' ? 'Realtime Webhook' : 'Manual Only'),
         webhook_slug: triggerType === 'realtime_webhook' ? `pipe_${pipeId || 'stream'}` : undefined,
+        autonomy_level: autonomyLevel,
+        schedule_frequency: scheduleFrequency === 'daily' ? 'daily_morning' : scheduleFrequency,
+        auto_approve_threshold: autoApproveThreshold,
+        auto_apply_knowledge: autoApplyKnowledge,
+        auto_query_anomalies: autoQueryAnomalies,
+        proactive_SLA_reminders: proactiveSlaReminders,
         human_instructions: humanInstructions.trim() || undefined,
         field_mappings: Object.keys(fieldMappings).length > 0 ? fieldMappings : undefined,
         missing_cadence: missingCadence,
@@ -2408,6 +2441,141 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   </p>
                 </div>
               )}
+
+              {/* Autonomy Policy & Proactive Watchdogs */}
+              <div className="bg-slate-950/70 border border-sky-500/30 rounded-xl p-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-sky-400" />
+                      <span>Autonomy Policy &amp; Proactive Watchdogs</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Define how independently this agent executes ReAct accounting tools on heartbeat schedules and email/WhatsApp commands.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Autonomy Mode Selector */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {[
+                    {
+                      id: 'copilot' as AgentAutonomyLevel,
+                      title: 'Copilot',
+                      desc: 'Ingests files and proposes mappings only. Holds approvals and external posts for human review.',
+                    },
+                    {
+                      id: 'semi_autonomous' as AgentAutonomyLevel,
+                      title: 'Semi-Autonomous',
+                      desc: 'Auto-applies taught rules, clears high-confidence entries, and chases anomalies within guardrails.',
+                    },
+                    {
+                      id: 'full_autonomous' as AgentAutonomyLevel,
+                      title: 'Full Autopilot',
+                      desc: 'Runs end-to-end close autonomously, including Customer invoices, Vendor bills, and overdue follow-ups.',
+                    },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setAutonomyLevel(mode.id)}
+                      className={`text-left rounded-xl p-3 border transition cursor-pointer ${
+                        autonomyLevel === mode.id
+                          ? 'bg-sky-500/15 border-sky-400 text-white shadow'
+                          : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{mode.title}</div>
+                      <p className="text-[10px] leading-relaxed mt-1 opacity-85">{mode.desc}</p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Schedule Frequency + Confidence Threshold */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300 block">
+                      Heartbeat Schedule Frequency
+                    </label>
+                    <select
+                      value={scheduleFrequency === 'daily' ? 'daily_morning' : scheduleFrequency === 'monthly' ? 'monthly_cutoff' : scheduleFrequency}
+                      onChange={(e) => setScheduleFrequency(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="hourly">Hourly (Continuous Sweep)</option>
+                      <option value="every_6_hours">Every 6 Hours (Periodic Sweep)</option>
+                      <option value="daily_morning">Daily Morning (24h Cycle)</option>
+                      <option value="daily_evening">Daily Evening (EOD Sweep)</option>
+                      <option value="weekly">Weekly (Close Review)</option>
+                      <option value="monthly_cutoff">Monthly Cutoff (Period End)</option>
+                      <option value="manual">Manual Only (No Scheduled Sweep)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                      <span>Auto-Approve Confidence Threshold</span>
+                      <span className="font-mono text-sky-300">
+                        {Math.round(autoApproveThreshold * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.50"
+                      max="1.00"
+                      step="0.01"
+                      value={autoApproveThreshold}
+                      onChange={(e) => setAutoApproveThreshold(parseFloat(e.target.value))}
+                      className="w-full accent-sky-500 cursor-pointer"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Minimum AI confidence required before Semi-Autonomous or Full Autopilot approves ledger entries.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Proactive Watchdog Checkboxes */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                  <label className="flex items-start gap-2 bg-slate-900/70 border border-slate-800 rounded-xl p-2.5 cursor-pointer hover:border-slate-700 transition">
+                    <input
+                      type="checkbox"
+                      checked={autoApplyKnowledge}
+                      onChange={(e) => setAutoApplyKnowledge(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span className="text-[11px] text-slate-300">
+                      <strong className="text-white block">Reactive Knowledge Heal</strong>
+                      Retroactively fix matching UNMAPPED entries when taught a new rule.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2 bg-slate-900/70 border border-slate-800 rounded-xl p-2.5 cursor-pointer hover:border-slate-700 transition">
+                    <input
+                      type="checkbox"
+                      checked={autoQueryAnomalies}
+                      onChange={(e) => setAutoQueryAnomalies(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span className="text-[11px] text-slate-300">
+                      <strong className="text-white block">Proactive Anomaly Queries</strong>
+                      Automatically raise clarification links for unresolved transactions.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2 bg-slate-900/70 border border-slate-800 rounded-xl p-2.5 cursor-pointer hover:border-slate-700 transition">
+                    <input
+                      type="checkbox"
+                      checked={proactiveSlaReminders}
+                      onChange={(e) => setProactiveSlaReminders(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-700 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span className="text-[11px] text-slate-300">
+                      <strong className="text-white block">72h SLA Follow-Ups</strong>
+                      Send polite reminders when clarification requests exceed 72 hours.
+                    </span>
+                  </label>
+                </div>
+              </div>
 
               {/* Auto-Post & Active Toggles */}
               <div className="space-y-3 pt-3 border-t border-slate-800">

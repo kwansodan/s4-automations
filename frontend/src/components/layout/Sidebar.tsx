@@ -26,6 +26,8 @@ import {
   CreditCard,
   Sparkles,
   HelpCircle,
+  Scale,
+  BarChart3,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,7 +36,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen }) => {
-  const { user, logout, switchOrganization } = useAuth();
+  const { user, logout, switchOrganization, isPlatformAdmin } = useAuth();
   const {
     currentClient,
     isIndividualBusiness,
@@ -99,6 +101,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
       icon: HelpCircle,
     });
 
+    // GL Accountant: General Ledger Review, Adjustments & Working Papers
+    items.push({
+      sub: 'gl',
+      label: 'GL & Closing',
+      icon: Scale,
+    });
+
+    // Financial Reporting: Multi-Statement Packs & Disclosures
+    items.push({
+      sub: 'fr',
+      label: 'Financial Reports',
+      icon: BarChart3,
+    });
+
     return items;
   }, [activeSections, isIndividualBusiness]);
 
@@ -124,14 +140,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     badge?: string;
   }> = [
     { sub: 'settings', label: isIndividualBusiness ? 'Company Settings' : 'Client Settings', icon: Settings2 },
-    ...(user?.role === 'admin'
+    ...(isPlatformAdmin
       ? [
-          { tab: 'config' as ActiveTab, label: 'Platform Settings', icon: SlidersHorizontal, badge: 'Admin' },
-          { tab: 'billing' as ActiveTab, label: 'Firm Billing', icon: CreditCard },
-          { tab: 'social' as ActiveTab, label: 'Release Hub', icon: Sparkles },
+          { tab: 'admin' as ActiveTab, label: 'Platform Admin', icon: ShieldCheck, badge: 'Console' },
         ]
       : []),
-    { tab: 'logs' as ActiveTab, label: 'System Logs', icon: Terminal },
   ];
 
   return (
@@ -393,10 +406,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               {!isCollapsed && (
                 <div className="min-w-0">
                   <span className="text-xs font-semibold text-slate-900 block truncate">
-                    {user?.email?.split('@')[0] || 'Admin'}
+                    {user?.email?.split('@')[0] || 'User'}
                   </span>
-                  <span className="text-[10px] text-[#059669] font-mono block">
-                    {user?.role === 'admin' ? 'Platform Administrator' : user?.role === 'bookkeeper' ? 'Staff Bookkeeper' : 'Auditor'}
+                  <span className="text-[10px] text-[#059669] font-mono block truncate">
+                    {isPlatformAdmin
+                      ? 'Platform Super-Admin'
+                      : user?.role === 'admin'
+                      ? 'Organization Admin'
+                      : user?.role === 'bookkeeper'
+                      ? 'Staff Bookkeeper'
+                      : 'Auditor'}
                   </span>
                 </div>
               )}

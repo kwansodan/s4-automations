@@ -4,11 +4,11 @@ import type { SheetsReviewData } from '../types/sheets';
 import type { ZohoCatalogData } from '../types/zoho';
 import type { SystemConfig, LogEntry } from '../types/config';
 import type { InvoicePreflightAudit, SlipPreviewItem } from '../types/client';
+import type { AdminTab } from '../types/admin';
 import {
   fetchHealth,
   fetchStats,
   fetchConfig,
-  fetchSheetsData,
   fetchCatalog,
   fetchPipelineStatus,
   triggerPipeline,
@@ -20,15 +20,17 @@ import {
 import { useAuth } from './AuthContext';
 import { parseCurrentRoute, syncUrlWithRoute, initRouteListener } from '../lib/router';
 
-export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts' | 'landing-manager' | 'billing';
+export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts' | 'landing-manager' | 'billing' | 'admin';
 
-export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'agents' | 'settings';
+export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'gl' | 'fr' | 'requests' | 'pipelines' | 'agents' | 'settings';
 
 interface AutomationContextType {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   workspaceSubTab: WorkspaceSubTab;
   setWorkspaceSubTab: (sub: WorkspaceSubTab) => void;
+  adminSubTab: AdminTab;
+  setAdminSubTab: (sub: AdminTab) => void;
   navigateToClientSubTab: (sub: WorkspaceSubTab) => void;
 
   selectedMonth: string;
@@ -82,14 +84,15 @@ const AutomationContext = createContext<AutomationContextType | undefined>(undef
 
 const ALL_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isPlatformAdmin } = useAuth();
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => parseCurrentRoute().tab);
   const [workspaceSubTab, setWorkspaceSubTabState] = useState<WorkspaceSubTab>(() => parseCurrentRoute().subTab || 'requests');
+  const [adminSubTab, setAdminSubTabState] = useState<AdminTab>(() => parseCurrentRoute().adminSubTab || 'overview');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const currentMonthIndex = new Date().getMonth();
     return ALL_MONTHS[currentMonthIndex] || 'January';
@@ -193,14 +196,20 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const setActiveTab = useCallback((tab: ActiveTab) => {
     setActiveTabState(tab);
-    syncUrlWithRoute(tab, workspaceSubTab);
-  }, [workspaceSubTab]);
+    syncUrlWithRoute(tab, workspaceSubTab, false, adminSubTab);
+  }, [workspaceSubTab, adminSubTab]);
 
   const setWorkspaceSubTab = useCallback((sub: WorkspaceSubTab) => {
     setWorkspaceSubTabState(sub);
     setActiveTabState('workspace');
     syncUrlWithRoute('workspace', sub);
   }, []);
+
+  const setAdminSubTab = useCallback((sub: AdminTab) => {
+    setAdminSubTabState(sub);
+    setActiveTabState('admin');
+    syncUrlWithRoute('admin', workspaceSubTab, false, sub);
+  }, [workspaceSubTab]);
 
   const navigateToClientSubTab = useCallback((sub: WorkspaceSubTab) => {
     setWorkspaceSubTabState(sub);
@@ -215,6 +224,9 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (route.subTab) {
         setWorkspaceSubTabState(route.subTab);
       }
+      if (route.adminSubTab) {
+        setAdminSubTabState(route.adminSubTab);
+      }
     });
     return unbind;
   }, []);
@@ -222,9 +234,9 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Synchronize and clean initial URL on authentication or state change
   useEffect(() => {
     if (isAuthenticated && activeTab !== 'portal' && activeTab !== 'privacy') {
-      syncUrlWithRoute(activeTab, workspaceSubTab, true);
+      syncUrlWithRoute(activeTab, workspaceSubTab, true, adminSubTab);
     }
-  }, [isAuthenticated, activeTab, workspaceSubTab]);
+  }, [isAuthenticated, activeTab, workspaceSubTab, adminSubTab]);
 
   const addLog = useCallback((type: 'info' | 'success' | 'warning' | 'error', message: string) => {
     setLogs((prev) => [
@@ -246,10 +258,12 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           addLog('error', `Stats fetch failed: ${err.message}`);
           return null;
         }),
-        fetchConfig().catch((err) => {
-          addLog('error', `Config fetch failed: ${err.message}`);
-          return { status: 'ok', config: {} };
-        }),
+        isPlatformAdmin
+          ? fetchConfig().catch((err) => {
+              addLog('error', `Config fetch failed: ${err.message}`);
+              return { status: 'ok', config: {} };
+            })
+          : Promise.resolve({ status: 'ok', config: {} }),
         Promise.resolve({ daily_details: [], monthly_summary: [] }),
         fetchCatalog().catch((err) => {
           addLog('error', `Zoho catalog fetch failed: ${err.message}`);
@@ -274,7 +288,7 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, selectedMonth, selectedYear, addLog]);
+  }, [isAuthenticated, isPlatformAdmin, selectedMonth, selectedYear, addLog]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -465,6 +479,8 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setActiveTab,
         workspaceSubTab,
         setWorkspaceSubTab,
+        adminSubTab,
+        setAdminSubTab,
         navigateToClientSubTab,
         selectedMonth,
         setSelectedMonth,

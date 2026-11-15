@@ -16,6 +16,7 @@ import type {
 } from '../../types/client';
 import { QueryComposerModal } from '../modals/QueryComposerModal';
 import { SearchableAccountSelect } from '../banking/SearchableAccountSelect';
+import { resolveDocumentEmbed } from '../../lib/documentEmbed';
 import {
   HelpCircle,
   CheckCircle2,
@@ -1580,12 +1581,44 @@ export const InformationRequestsControlCenter: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 bg-slate-100 p-4 overflow-auto flex items-center justify-center min-h-[420px]">
-              <img
-                src={`/api/v1/clients/drive-files/${encodeURIComponent(previewDriveFileId)}/preview`}
-                alt="Source Document Preview"
-                className="max-w-full max-h-[75vh] rounded-lg shadow-sm object-contain"
-              />
+            <div className="flex-1 bg-slate-100 p-4 overflow-auto flex flex-col items-center justify-center min-h-[420px] gap-3">
+              {(() => {
+                const rawRef = (previewDriveFileId || '').trim();
+                const sourceUrl = /^https?:\/\//i.test(rawRef)
+                  ? rawRef
+                  : `https://drive.google.com/file/d/${encodeURIComponent(rawRef)}/view`;
+                const resolved = resolveDocumentEmbed(sourceUrl);
+                return (
+                  <>
+                    {resolved.embedUrl && resolved.isImage ? (
+                      <img
+                        src={resolved.embedUrl}
+                        alt="Source Document Preview"
+                        className="max-w-full max-h-[75vh] rounded-lg shadow-sm object-contain"
+                      />
+                    ) : resolved.embedUrl && resolved.canEmbed ? (
+                      <iframe
+                        src={resolved.embedUrl}
+                        title="Source Document Preview"
+                        className="w-full h-[75vh] rounded-lg border border-slate-200 bg-white shadow-sm"
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-600">Preview unavailable for this document.</p>
+                    )}
+                    {resolved.rawUrl && (
+                      <a
+                        href={resolved.rawUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#0284C7] hover:text-[#0369A1]"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {resolved.sourceType === 'google_drive' ? 'Open in Google Drive' : 'Open Original Document'}
+                      </a>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

@@ -467,6 +467,67 @@ class ZohoBooksService:
             logger.info(f"Created new Vendor in Zoho Books: {vendor_name}")
             return new_vendor
 
+    async def fetch_active_vendors(self) -> List[ZohoContact]:
+        """Fetches active vendor contacts from Zoho Books."""
+        if not self.org_id or not self.refresh_token:
+            return []
+        try:
+            access_token = await self.get_access_token()
+            headers = self._get_headers(access_token)
+            url = f"{self.books_api_url}/contacts"
+            vendors: List[ZohoContact] = []
+            page = 1
+            has_more_page = True
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while has_more_page:
+                    params = {
+                        "organization_id": self.org_id,
+                        "filter_by": "Status.Active",
+                        "contact_type": "vendor",
+                        "per_page": 200,
+                        "page": page,
+                    }
+                    response = await client.get(url, headers=headers, params=params)
+                    if response.status_code == 401:
+                        access_token = await self.get_access_token(force_refresh=True)
+                        headers = self._get_headers(access_token)
+                        response = await client.get(url, headers=headers, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+                    for c in data.get("contacts", []):
+                        vendors.append(
+                            ZohoContact(
+                                contact_id=str(c.get("contact_id", "")),
+                                contact_name=c.get("contact_name", "") or c.get("company_name", ""),
+                                company_name=c.get("company_name", ""),
+                                email=c.get("email", ""),
+                                status=c.get("status", "active"),
+                                currency_code=c.get("currency_code", "GHS") or "GHS",
+                            )
+                        )
+                    has_more_page = bool(data.get("page_context", {}).get("has_more_page", False))
+                    page += 1
+                    if page > 10:
+                        break
+            return vendors
+        except Exception as e:
+            logger.warning(f"Could not fetch live Zoho vendors: {e}")
+            return []
+
+    async def find_or_create_vendor_contact(self, vendor_name: str) -> Optional[ZohoContact]:
+        """Resolves a Vendor contact by name from Zoho Books (or creates it if absent)."""
+        cleaned = (vendor_name or "").strip().lower()
+        if not cleaned or not self.can_transact():
+            return None
+        vendors = await self.fetch_active_vendors()
+        for v in vendors:
+            if v.contact_name.strip().lower() == cleaned or (v.company_name and v.company_name.strip().lower() == cleaned):
+                return v
+        for v in vendors:
+            if cleaned in v.contact_name.strip().lower() or (v.contact_name and v.contact_name.strip().lower() in cleaned):
+                return v
+        return await self.create_vendor_contact(vendor_name.strip())
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),

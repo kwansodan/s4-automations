@@ -15,6 +15,7 @@ from app.utils.logging import get_logger
 logger = get_logger("social_api")
 
 router = APIRouter(prefix="/social", tags=["Feature Release & Social Broadcaster"])
+public_router = APIRouter(prefix="/social", tags=["Changelog Public"])
 
 
 # -------------------------------------------------------------------------
@@ -264,7 +265,7 @@ async def get_release_history(
         return []
 
 
-@router.get("/changelog")
+@public_router.get("/changelog")
 async def get_public_changelog(
     limit: int = 30,
     db: Session = Depends(get_db_session)

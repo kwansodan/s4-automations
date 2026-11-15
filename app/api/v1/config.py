@@ -32,6 +32,11 @@ ALLOWED_CONFIG_KEYS = {
     "ZOHO_ORG_ID",
     "ZOHO_ACCOUNTS_URL",
     "ZOHO_BOOKS_API_URL",
+    "QUICKBOOKS_CLIENT_ID",
+    "QUICKBOOKS_CLIENT_SECRET",
+    "QUICKBOOKS_ENVIRONMENT",
+    "XERO_CLIENT_ID",
+    "XERO_CLIENT_SECRET",
     "CONTROL_SHEETS_FOLDER_ID",
     "GOOGLE_SERVICE_ACCOUNT_EMAIL",
     "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64",
@@ -45,6 +50,12 @@ ALLOWED_CONFIG_KEYS = {
     "SMTP_PASSWORD",
     "SMTP_FROM",
     "NOTIFICATION_EMAIL",
+    "PLATFORM_ADMIN_EMAILS",
+    "AGENT_EMAIL_DOMAIN",
+    "WHATSAPP_PLATFORM_NUMBER",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_VERIFY_TOKEN",
     "LINKEDIN_ACCESS_TOKEN",
     "LINKEDIN_AUTHOR_URN",
     "LINKEDIN_ORGANIZATION_ID",
@@ -58,6 +69,7 @@ ALLOWED_CONFIG_KEYS = {
     "TWITTER_ACCESS_TOKEN",
     "TWITTER_ACCESS_SECRET",
     "MOCK_MODE",
+    "APP_BASE_URL",
     "ALLOWED_ORIGINS",
 }
 
@@ -68,6 +80,8 @@ async def update_configuration(payload: Dict[str, Any]) -> Dict[str, Any]:
     Updates system configuration dynamically in memory and persists to .env file.
     Only whitelisted keys are accepted.
     """
+    from app.services.audit_service import AuditService
+
     logger.info("Received configuration update from authenticated admin.")
     persist = payload.pop("persist_to_file", True)
 
@@ -76,6 +90,14 @@ async def update_configuration(payload: Dict[str, Any]) -> Dict[str, Any]:
     if persist:
         settings.save_to_env_file()
         logger.info("Successfully persisted sanitized configuration to .env file.")
+
+    AuditService.log(
+        client_id="platform",
+        action="CONFIG_UPDATED",
+        actor_email="platform_admin",
+        details={"updated_keys": sorted(sanitized_payload.keys()), "persisted": bool(persist)},
+        source_type="admin_console",
+    )
 
     return {
         "status": "UPDATED",

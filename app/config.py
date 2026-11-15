@@ -53,7 +53,11 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_FILE: Optional[str] = Field(default=None, description="Path to Service Account JSON key file")
 
     # Authentication & Email OTP
-    AUTH_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Admin login email for S4 Automations")
+    AUTH_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Primary root admin email for S4 Automations")
+    PLATFORM_ADMIN_EMAILS: str = Field(
+        default="",
+        description="Comma-separated list of emails granted Platform Super-Admin privileges",
+    )
     AUTH_SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens")
     SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens and OAuth state")
 
@@ -140,6 +144,18 @@ class Settings(BaseSettings):
         """Returns parsed list of allowed CORS origins."""
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
+    def get_platform_admin_emails(self) -> list[str]:
+        """Returns normalized lowercase list of configured Platform Super-Admin emails."""
+        emails = set()
+        if self.AUTH_EMAIL and self.AUTH_EMAIL.strip():
+            emails.add(self.AUTH_EMAIL.strip().lower())
+        if self.PLATFORM_ADMIN_EMAILS:
+            for item in self.PLATFORM_ADMIN_EMAILS.split(","):
+                cleaned = item.strip().lower()
+                if cleaned:
+                    emails.add(cleaned)
+        return sorted(emails)
+
     def get_masked_dict(self) -> dict:
         """Returns configuration dictionary with secrets masked for safe frontend display."""
         def mask(val: str) -> str:
@@ -162,6 +178,11 @@ class Settings(BaseSettings):
             "ZOHO_ORG_ID": self.ZOHO_ORG_ID,
             "ZOHO_ACCOUNTS_URL": self.ZOHO_ACCOUNTS_URL,
             "ZOHO_BOOKS_API_URL": self.ZOHO_BOOKS_API_URL,
+            "QUICKBOOKS_CLIENT_ID": self.QUICKBOOKS_CLIENT_ID or "",
+            "QUICKBOOKS_CLIENT_SECRET": mask(self.QUICKBOOKS_CLIENT_SECRET or ""),
+            "QUICKBOOKS_ENVIRONMENT": self.QUICKBOOKS_ENVIRONMENT,
+            "XERO_CLIENT_ID": self.XERO_CLIENT_ID or "",
+            "XERO_CLIENT_SECRET": mask(self.XERO_CLIENT_SECRET or ""),
             "GOOGLE_SERVICE_ACCOUNT_EMAIL": self.GOOGLE_SERVICE_ACCOUNT_EMAIL,
             "CONTROL_SHEETS_FOLDER_ID": self.CONTROL_SHEETS_FOLDER_ID,
             "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64": mask(self.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 or ""),
@@ -176,7 +197,13 @@ class Settings(BaseSettings):
             "SMTP_PASSWORD": mask(self.SMTP_PASSWORD or ""),
             "SMTP_FROM": self.SMTP_FROM,
             "AUTH_EMAIL": self.AUTH_EMAIL,
+            "PLATFORM_ADMIN_EMAILS": self.PLATFORM_ADMIN_EMAILS,
             "NOTIFICATION_EMAIL": self.NOTIFICATION_EMAIL,
+            "AGENT_EMAIL_DOMAIN": self.AGENT_EMAIL_DOMAIN,
+            "WHATSAPP_PLATFORM_NUMBER": self.WHATSAPP_PLATFORM_NUMBER,
+            "WHATSAPP_PHONE_NUMBER_ID": self.WHATSAPP_PHONE_NUMBER_ID or "",
+            "WHATSAPP_ACCESS_TOKEN": mask(self.WHATSAPP_ACCESS_TOKEN or ""),
+            "WHATSAPP_VERIFY_TOKEN": mask(self.WHATSAPP_VERIFY_TOKEN),
             "DATABASE_URL": mask(self.DATABASE_URL),
             "LINKEDIN_ACCESS_TOKEN": mask(self.LINKEDIN_ACCESS_TOKEN or ""),
             "LINKEDIN_AUTHOR_URN": self.LINKEDIN_AUTHOR_URN or "",
@@ -195,6 +222,7 @@ class Settings(BaseSettings):
             "LOG_LEVEL": self.LOG_LEVEL,
             "MOCK_MODE": self.MOCK_MODE,
             "APP_BASE_URL": self.APP_BASE_URL,
+            "ALLOWED_ORIGINS": self.ALLOWED_ORIGINS,
         }
 
     def update_values(self, new_values: dict):
@@ -223,6 +251,11 @@ class Settings(BaseSettings):
             f"ZOHO_ORG_ID={self.ZOHO_ORG_ID}",
             f"ZOHO_ACCOUNTS_URL={self.ZOHO_ACCOUNTS_URL}",
             f"ZOHO_BOOKS_API_URL={self.ZOHO_BOOKS_API_URL}",
+            f"QUICKBOOKS_CLIENT_ID={self.QUICKBOOKS_CLIENT_ID or ''}",
+            f"QUICKBOOKS_CLIENT_SECRET={self.QUICKBOOKS_CLIENT_SECRET or ''}",
+            f"QUICKBOOKS_ENVIRONMENT={self.QUICKBOOKS_ENVIRONMENT}",
+            f"XERO_CLIENT_ID={self.XERO_CLIENT_ID or ''}",
+            f"XERO_CLIENT_SECRET={self.XERO_CLIENT_SECRET or ''}",
             "",
             f"GOOGLE_SERVICE_ACCOUNT_EMAIL={self.GOOGLE_SERVICE_ACCOUNT_EMAIL}",
             f"CONTROL_SHEETS_FOLDER_ID={self.CONTROL_SHEETS_FOLDER_ID}",
@@ -230,6 +263,7 @@ class Settings(BaseSettings):
             f"GOOGLE_SERVICE_ACCOUNT_FILE={self.GOOGLE_SERVICE_ACCOUNT_FILE or ''}",
             "",
             f"AUTH_EMAIL={self.AUTH_EMAIL}",
+            f"PLATFORM_ADMIN_EMAILS={self.PLATFORM_ADMIN_EMAILS}",
             f"MAILJET_API_KEY={self.MAILJET_API_KEY or ''}",
             f"MAILJET_SECRET_KEY={self.MAILJET_SECRET_KEY or ''}",
             f"MAILJET_FROM_EMAIL={self.MAILJET_FROM_EMAIL}",
@@ -240,6 +274,11 @@ class Settings(BaseSettings):
             f"SMTP_PASSWORD={self.SMTP_PASSWORD or ''}",
             f"SMTP_FROM={self.SMTP_FROM}",
             f"NOTIFICATION_EMAIL={self.NOTIFICATION_EMAIL}",
+            f"AGENT_EMAIL_DOMAIN={self.AGENT_EMAIL_DOMAIN}",
+            f"WHATSAPP_PLATFORM_NUMBER={self.WHATSAPP_PLATFORM_NUMBER}",
+            f"WHATSAPP_PHONE_NUMBER_ID={self.WHATSAPP_PHONE_NUMBER_ID or ''}",
+            f"WHATSAPP_ACCESS_TOKEN={self.WHATSAPP_ACCESS_TOKEN or ''}",
+            f"WHATSAPP_VERIFY_TOKEN={self.WHATSAPP_VERIFY_TOKEN}",
             f"DATABASE_URL={self.DATABASE_URL}",
             "",
             f"LINKEDIN_ACCESS_TOKEN={self.LINKEDIN_ACCESS_TOKEN or ''}",
@@ -256,6 +295,7 @@ class Settings(BaseSettings):
             f"LOG_LEVEL={self.LOG_LEVEL}",
             f"MOCK_MODE={'true' if self.MOCK_MODE else 'false'}",
             f"APP_BASE_URL={self.APP_BASE_URL}",
+            f"ALLOWED_ORIGINS={self.ALLOWED_ORIGINS}",
         ]
         with open(env_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")

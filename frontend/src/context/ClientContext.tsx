@@ -75,6 +75,7 @@ export interface ActiveAccountingSections {
   hasAp: boolean;
   hasBank: boolean;
   hasGl: boolean;
+  hasFr: boolean;
   activeCount: number;
 }
 
@@ -151,10 +152,11 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Sync with backend PostgreSQL database on mount or when active organization changes
   const refreshClients = React.useCallback(async () => {
+    if (!user) return;
     try {
-      const orgFilter = isIndividualBusiness ? activeOrg?.id : undefined;
+      const orgFilter = activeOrg?.id;
       const dbClients = await fetchClients(orgFilter);
-      if (dbClients && Array.isArray(dbClients) && dbClients.length > 0) {
+      if (dbClients && Array.isArray(dbClients)) {
         const mapped: ClientProfile[] = dbClients.map((c: any) => {
           const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
           const storedPipes = getStoredPipelines(c.id);
@@ -179,7 +181,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           return {
             id: c.id,
-            organization_id: c.organization_id || 's4_advisory',
+            organization_id: c.organization_id || activeOrg?.id || 's4_advisory',
             name: c.name,
             industry: c.industry,
             icon: c.icon || defaultMatch?.icon || '🏢',
@@ -217,26 +219,36 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setClients(mapped);
         if (typeof localStorage !== 'undefined') {
           try {
-            localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(mapped));
+            if (mapped.length > 0) {
+              localStorage.setItem('S4_CLIENTS_LIST', JSON.stringify(mapped));
+            } else {
+              localStorage.removeItem('S4_CLIENTS_LIST');
+            }
           } catch (e) {}
         }
 
-        // If in individual business mode, lock focus onto company client
-        if (isIndividualBusiness) {
+        if (mapped.length === 0) {
+          setCurrentClientId('');
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('S4_ACTIVE_CLIENT');
+          }
+        } else if (isIndividualBusiness) {
           const matched = mapped.find(
             (c) => c.id === activeOrg?.id || c.organization_id === activeOrg?.id
           );
           if (matched) {
             setCurrentClientId(matched.id);
-          } else if (mapped.length > 0) {
+          } else {
             setCurrentClientId(mapped[0].id);
           }
+        } else if (!mapped.some((c) => c.id === currentClientId)) {
+          setCurrentClientId(mapped[0].id);
         }
       }
     } catch (err) {
       console.warn('Using local client registry fallback:', err);
     }
-  }, [activeOrg?.id, isIndividualBusiness]);
+  }, [user, activeOrg?.id, isIndividualBusiness, currentClientId]);
 
   useEffect(() => {
     refreshClients();
@@ -252,6 +264,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       hasAp: active.some((p: any) => p.section?.toUpperCase() === 'AP' || p.entity_type?.startsWith('ap_')),
       hasBank: active.some((p: any) => p.section?.toUpperCase() === 'BANK' || p.entity_type?.includes('statement') || p.entity_type?.includes('bank') || p.entity_type === 'momo_statement' || p.entity_type === 'bank_feed'),
       hasGl: active.some((p: any) => p.section?.toUpperCase() === 'GL' || p.entity_type?.startsWith('gl_')),
+      hasFr: active.some((p: any) => p.section?.toUpperCase() === 'FR' || p.entity_type?.startsWith('fr_')),
       activeCount: active.length,
     };
   }, [currentClient]);

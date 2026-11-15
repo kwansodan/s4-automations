@@ -2,7 +2,10 @@
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks, Query, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException
+from sqlmodel import Session
+from app.db.session import get_engine
+from app.api.deps import get_accessible_client_ids, require_admin_user, verify_client_access
 import inngest
 
 from app.inngest_client import inngest_client
@@ -158,6 +161,7 @@ async def check_existing_draft_invoices(
 async def trigger_invoice_generation(
     payload: Optional[InvoiceGenerateEvent] = None,
     background_tasks: BackgroundTasks = None,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """
     Triggers Zoho Draft Invoice creation for all approved rows in the review sheet.
@@ -179,6 +183,33 @@ async def trigger_invoice_generation(
     due_date = event_data.get("due_date")
     terms = event_data.get("terms")
     confirm_delete = bool(event_data.get("confirm_delete", False))
+
+    user_dict: Dict[str, Any] = current_user if isinstance(current_user, dict) else {"is_platform_admin": True}
+
+    with Session(get_engine()) as session:
+        if filter_client_name:
+            verify_client_access(
+                session,
+                user_dict,
+                str(filter_client_name),
+                allow_missing_for_platform_admin=True,
+            )
+        elif not user_dict.get("is_platform_admin"):
+            allowed_clients = get_accessible_client_ids(session, user_dict)
+            if allowed_clients is not None:
+                if not allowed_clients:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="No accessible clients in your organization to invoice.",
+                    )
+                if len(allowed_clients) == 1:
+                    filter_client_name = next(iter(allowed_clients))
+                    event_data["client_id"] = filter_client_name
+                else:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Tenant administrators must specify a client_id within their organization to trigger invoice generation.",
+                    )
 
     if mode == "regenerate" and not confirm_delete:
         raise HTTPException(

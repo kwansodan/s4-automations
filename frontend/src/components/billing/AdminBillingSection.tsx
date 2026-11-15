@@ -337,7 +337,7 @@ export const AdminBillingSection: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* 1. Top Header Toolbar */}
-      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-[#E2E8F0] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-md">
@@ -347,7 +347,7 @@ export const AdminBillingSection: React.FC = () => {
               <h2 className="text-base font-bold text-white tracking-tight">
                 Platform Billing, Subscriptions &amp; Cost Monitor
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#64748B]">
                 Manage customer subscriptions, MoMo payment verifications, free trial lifecycle, and 3rd-party API infrastructure costs.
               </p>
             </div>
@@ -369,7 +369,7 @@ export const AdminBillingSection: React.FC = () => {
           <button
             onClick={loadData}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-[#E2E8F0] rounded-xl text-xs font-semibold transition cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -378,7 +378,7 @@ export const AdminBillingSection: React.FC = () => {
       </div>
 
       {/* 2. Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-3 overflow-x-auto">
         {[
           { id: 'overview', label: 'Financial Overview & Margins', icon: TrendingUp },
           { id: 'subscriptions', label: `Customer Subscriptions (${subscriptions.length})`, icon: Building2 },
@@ -395,8 +395,8 @@ export const AdminBillingSection: React.FC = () => {
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer border ${
                 isActive
-                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/50 shadow-sm'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-emerald-600/20 text-emerald-700 border-emerald-500/50 shadow-sm'
+                  : 'bg-white border-[#E2E8F0] text-[#64748B] hover:text-white'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -412,67 +412,67 @@ export const AdminBillingSection: React.FC = () => {
           {/* KPI Strip */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* KPI 1: Monthly Recurring Revenue */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between text-xs text-[#64748B] mb-1">
                 <span>Monthly Recurring Revenue</span>
-                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <DollarSign className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="text-2xl font-black text-white tracking-tight">
                 GHS {overview?.mrr_ghs.toLocaleString() || '2,800'}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <div className="text-[11px] text-[#64748B] mt-1 flex items-center justify-between">
                 <span>≈ ${overview?.mrr_usd.toLocaleString() || '210'} / mo</span>
-                <span className="font-mono text-emerald-400 font-bold">ARR: GHS {overview?.arr_ghs.toLocaleString() || '33,600'}</span>
+                <span className="font-mono text-emerald-600 font-bold">ARR: GHS {overview?.arr_ghs.toLocaleString() || '33,600'}</span>
               </div>
             </div>
 
             {/* KPI 2: 30-Day Third-Party Infrastructure Cost */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between text-xs text-[#64748B] mb-1">
                 <span>3rd-Party Infrastructure Cost</span>
-                <Zap className="w-4 h-4 text-sky-400" />
+                <Zap className="w-4 h-4 text-[#0284C7]" />
               </div>
-              <div className="text-2xl font-black text-sky-400 tracking-tight">
+              <div className="text-2xl font-black text-[#0284C7] tracking-tight">
                 GHS {overview?.infra_cost_30d_ghs.toLocaleString() || '18.40'}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <div className="text-[11px] text-[#64748B] mt-1 flex items-center justify-between">
                 <span>Gemini OCR + Zoho + Mailjet</span>
-                <span className="font-mono text-slate-300">(${overview?.infra_cost_30d_usd.toFixed(2) || '1.36'})</span>
+                <span className="font-mono text-slate-700">(${overview?.infra_cost_30d_usd.toFixed(2) || '1.36'})</span>
               </div>
             </div>
 
             {/* KPI 3: Gross Profit Margin */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between text-xs text-[#64748B] mb-1">
                 <span>Gross Profit Margin</span>
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
               </div>
-              <div className="text-2xl font-black text-emerald-400 tracking-tight flex items-baseline gap-2">
+              <div className="text-2xl font-black text-emerald-600 tracking-tight flex items-baseline gap-2">
                 <span>{overview?.gross_profit_margin_percent || 99.3}%</span>
-                <span className="text-xs font-semibold text-emerald-500 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <span className="text-xs font-semibold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-500/30">
                   Elite SaaS
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
+              <div className="text-[11px] text-[#64748B] mt-1">
                 Revenue collected vs. Cloud API COGS
               </div>
             </div>
 
             {/* KPI 4: Active Accounts & Trials */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between text-xs text-[#64748B] mb-1">
                 <span>Customer Pipeline</span>
-                <Users className="w-4 h-4 text-indigo-400" />
+                <Users className="w-4 h-4 text-indigo-600" />
               </div>
               <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
                 <span>{overview?.active_subscriptions_count || 1} Paid</span>
-                <span className="text-xs font-bold text-amber-400 font-mono">
+                <span className="text-xs font-bold text-amber-600 font-mono">
                   +{overview?.trialing_accounts_count || 0} Trials
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-                <span className="text-amber-300">{overview?.expiring_trials_count || 0} trials expiring</span>
-                <span className="text-rose-400 font-bold">{overview?.overdue_payments_count || 0} overdue</span>
+              <div className="text-[11px] text-[#64748B] mt-1 flex items-center justify-between">
+                <span className="text-amber-700">{overview?.expiring_trials_count || 0} trials expiring</span>
+                <span className="text-rose-600 font-bold">{overview?.overdue_payments_count || 0} overdue</span>
               </div>
             </div>
           </div>
@@ -480,117 +480,117 @@ export const AdminBillingSection: React.FC = () => {
           {/* S4 Pricing Structure Showcase & Option 2 Boosters */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Starter Plan Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3 flex flex-col justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B] bg-slate-100 px-2 py-0.5 rounded">
                   Boutique &amp; Single Entity
                 </span>
-                <div className="text-xl font-bold text-white mt-1">GHS 850 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <p className="text-xs text-slate-400 mt-1">
+                <div className="text-xl font-bold text-white mt-1">GHS 850 <span className="text-xs font-normal text-[#64748B]">/ month</span></div>
+                <p className="text-xs text-[#64748B] mt-1">
                   For single restaurants, hotels, retail shops, or commercial laundries managing their own books.
                 </p>
-                <div className="mt-4 space-y-1.5 text-xs text-slate-300">
+                <div className="mt-4 space-y-1.5 text-xs text-slate-700">
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Up to 500 documents / month</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Gemini 2.5/3.6 Flash Vision OCR</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>1-Click Sync to Zoho Books / QuickBooks</span>
                   </div>
                 </div>
               </div>
-              <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+              <div className="pt-3 border-t border-[#E2E8F0] text-[11px] text-[#64748B] flex items-center justify-between">
                 <span>Option 2 Add-ons</span>
-                <span className="font-mono text-emerald-400 font-bold">+250 / +500 Slips</span>
+                <span className="font-mono text-emerald-600 font-bold">+250 / +500 Slips</span>
               </div>
             </div>
 
             {/* Firm Pro Card (Recommended) */}
-            <div className="bg-gradient-to-b from-slate-900 to-emerald-950/20 border-2 border-emerald-500/60 rounded-2xl p-5 space-y-3 flex flex-col justify-between shadow-xl shadow-emerald-950/30">
+            <div className="bg-gradient-to-b from-white to-emerald-50/60 border-2 border-emerald-500/60 rounded-2xl p-5 space-y-3 flex flex-col justify-between shadow-xl shadow-emerald-950/30">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-500/40">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-500/40">
                     Most Popular for CPAs
                   </span>
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
                 </div>
-                <div className="text-xl font-bold text-white mt-1">GHS 2,800 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <p className="text-xs text-slate-400 mt-1">
+                <div className="text-xl font-bold text-white mt-1">GHS 2,800 <span className="text-xs font-normal text-[#64748B]">/ month</span></div>
+                <p className="text-xs text-[#64748B] mt-1">
                   Purpose-built for accounting &amp; advisory firms managing multi-client portfolios.
                 </p>
-                <div className="mt-4 space-y-1.5 text-xs text-slate-300">
+                <div className="mt-4 space-y-1.5 text-xs text-slate-700">
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Up to 15 client organizations included</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>3,000 documents / month across all clients</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Client Clarification Magic Portal</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Automatic MoMo &amp; Bank feed matching</span>
                   </div>
                 </div>
               </div>
-              <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+              <div className="pt-3 border-t border-[#E2E8F0] text-[11px] text-[#64748B] flex items-center justify-between">
                 <span>Extra Clients</span>
-                <span className="font-mono text-emerald-400 font-bold">GHS 150 / client / mo</span>
+                <span className="font-mono text-emerald-600 font-bold">GHS 150 / client / mo</span>
               </div>
             </div>
 
             {/* Enterprise Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3 flex flex-col justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B] bg-slate-100 px-2 py-0.5 rounded">
                   Scale &amp; Enterprise
                 </span>
-                <div className="text-xl font-bold text-white mt-1">GHS 6,500 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <p className="text-xs text-slate-400 mt-1">
+                <div className="text-xl font-bold text-white mt-1">GHS 6,500 <span className="text-xs font-normal text-[#64748B]">/ month</span></div>
+                <p className="text-xs text-[#64748B] mt-1">
                   For large accounting practices (30+ clients) or high-volume multi-branch hospitality groups.
                 </p>
-                <div className="mt-4 space-y-1.5 text-xs text-slate-300">
+                <div className="mt-4 space-y-1.5 text-xs text-slate-700">
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Up to 50 client organizations</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>10,000 documents / month</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Custom blueprint pipeline rules &amp; SLA</span>
                   </div>
                 </div>
               </div>
-              <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+              <div className="pt-3 border-t border-[#E2E8F0] text-[11px] text-[#64748B] flex items-center justify-between">
                 <span>Support</span>
-                <span className="font-mono text-emerald-400 font-bold">Dedicated Account Mgr</span>
+                <span className="font-mono text-emerald-600 font-bold">Dedicated Account Mgr</span>
               </div>
             </div>
           </div>
 
           {/* Option 2 Booster Packs Banner */}
-          <div className="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-5">
+          <div className="bg-white border border-emerald-500/30 rounded-2xl p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded border border-emerald-500/30">
                     Option 2 Approved
                   </span>
                   <h3 className="text-sm font-bold text-white">Mid-Month Document Booster Packs</h3>
                 </div>
-                <p className="text-xs text-slate-300 mt-1">
+                <p className="text-xs text-slate-700 mt-1">
                   When any customer reaches their monthly document quota, they never stop. Slips draw from their active booster credit balance, and credits roll over month to month without expiring.
                 </p>
               </div>
@@ -599,10 +599,10 @@ export const AdminBillingSection: React.FC = () => {
                 {overview?.booster_packs?.map((bp: BoosterPackOption, idx: number) => (
                   <div
                     key={idx}
-                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center min-w-[110px]"
+                    className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center min-w-[110px]"
                   >
                     <div className="text-xs font-black text-white">+{bp.slips} Slips</div>
-                    <div className="text-[11px] font-mono text-emerald-400 font-bold">GHS {bp.price_ghs}</div>
+                    <div className="text-[11px] font-mono text-emerald-600 font-bold">GHS {bp.price_ghs}</div>
                     <div className="text-[9px] text-slate-500 font-mono">GHS {bp.unit_rate}/slip</div>
                   </div>
                 ))}
@@ -615,11 +615,11 @@ export const AdminBillingSection: React.FC = () => {
       {/* TAB 2: CUSTOMER SUBSCRIPTIONS & BOOSTER PACKS */}
       {activeTab === 'subscriptions' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
             {/* Search & Filter Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1 max-w-md bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
-                <Search className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-2 flex-1 max-w-md bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5">
+                <Search className="w-4 h-4 text-[#64748B]" />
                 <input
                   type="text"
                   value={subSearch}
@@ -630,11 +630,11 @@ export const AdminBillingSection: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <Filter className="w-3.5 h-3.5 text-[#64748B]" />
                 <select
                   value={subFilter}
                   onChange={(e) => setSubFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none"
+                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="ACTIVE">Active Paid</option>
@@ -649,7 +649,7 @@ export const AdminBillingSection: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <tr className="border-b border-[#E2E8F0] text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                     <th className="pb-3 pl-2">Customer Organization</th>
                     <th className="pb-3">Plan Tier</th>
                     <th className="pb-3">Status</th>
@@ -659,7 +659,7 @@ export const AdminBillingSection: React.FC = () => {
                     <th className="pb-3 text-right pr-2">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 text-slate-200">
+                <tbody className="divide-y divide-[#E2E8F0] text-[#0F172A]">
                   {subscriptions
                     .filter((s) => {
                       if (subFilter !== 'ALL' && s.subscription_status !== subFilter) return false;
@@ -667,15 +667,15 @@ export const AdminBillingSection: React.FC = () => {
                       return true;
                     })
                     .map((sub) => (
-                      <tr key={sub.id} className="hover:bg-slate-800/40 transition">
+                      <tr key={sub.id} className="hover:bg-slate-100/40 transition">
                         <td className="py-3 pl-2">
                           <div className="font-bold text-white">{sub.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">
+                          <div className="text-[10px] text-[#64748B] font-mono">
                             {sub.id} • {sub.billing_contact_phone || 'No phone'}
                           </div>
                         </td>
                         <td className="py-3">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 border border-[#E2E8F0] text-slate-700">
                             {sub.plan_tier?.toUpperCase()}
                           </span>
                         </td>
@@ -683,10 +683,10 @@ export const AdminBillingSection: React.FC = () => {
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                               sub.subscription_status === 'ACTIVE'
-                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-500/40'
                                 : sub.subscription_status === 'TRIALING'
-                                ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
-                                : 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                                ? 'bg-amber-50 text-amber-700 border-amber-500/40'
+                                : 'bg-rose-50 text-rose-700 border-rose-500/40'
                             }`}
                           >
                             {sub.subscription_status}
@@ -696,11 +696,11 @@ export const AdminBillingSection: React.FC = () => {
                           <div className="space-y-1 max-w-[140px]">
                             <div className="flex justify-between text-[10px] font-mono">
                               <span>{sub.monthly_documents_processed} / {sub.monthly_document_allowance}</span>
-                              <span className={sub.quota_utilization_percent > 85 ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                              <span className={sub.quota_utilization_percent > 85 ? 'text-amber-600 font-bold' : 'text-[#64748B]'}>
                                 {sub.quota_utilization_percent}%
                               </span>
                             </div>
-                            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${
                                   sub.quota_utilization_percent > 90
@@ -716,7 +716,7 @@ export const AdminBillingSection: React.FC = () => {
                         </td>
                         <td className="py-3">
                           {sub.topup_document_balance > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-600 bg-emerald-50 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                               +{sub.topup_document_balance} Slips (Active)
                             </span>
                           ) : (
@@ -725,7 +725,7 @@ export const AdminBillingSection: React.FC = () => {
                         </td>
                         <td className="py-3 font-mono font-bold text-white">
                           {sub.currency} {sub.base_price?.toLocaleString()}
-                          <span className="text-[10px] font-normal text-slate-400 block">
+                          <span className="text-[10px] font-normal text-[#64748B] block">
                             {sub.billing_cycle?.toLowerCase()}
                           </span>
                         </td>
@@ -736,7 +736,7 @@ export const AdminBillingSection: React.FC = () => {
                               setBoosterSlips(500);
                               setBoosterPriceGhs(550);
                             }}
-                            className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-500/40 rounded-lg text-[11px] font-bold transition cursor-pointer"
                           >
                             + Booster Pack
                           </button>
@@ -752,7 +752,7 @@ export const AdminBillingSection: React.FC = () => {
                               setEditContactEmail(sub.billing_contact_email || '');
                               setEditContactPhone(sub.billing_contact_phone || '');
                             }}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-[11px] font-semibold transition cursor-pointer"
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-[#E2E8F0] rounded-lg text-[11px] font-semibold transition cursor-pointer"
                           >
                             Edit
                           </button>
@@ -769,10 +769,10 @@ export const AdminBillingSection: React.FC = () => {
       {/* TAB 3: FREE TRIAL LIFECYCLE CENTER */}
       {activeTab === 'trials' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-white">Free Trial Onboarding &amp; Conversion Cockpit</h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#64748B]">
                 Track prospective firm trials. Standard pilot gives 14 days or 50 free slips. Extend or convert trials with 1 click.
               </p>
             </div>
@@ -783,25 +783,25 @@ export const AdminBillingSection: React.FC = () => {
                 .map((trial) => (
                   <div
                     key={trial.id}
-                    className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 flex flex-col justify-between"
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 flex flex-col justify-between"
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-white">{trial.name}</span>
-                        <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950 border border-amber-500/40 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-500/40 px-2 py-0.5 rounded-full">
                           {trial.trial_days_remaining !== undefined ? `${trial.trial_days_remaining}d Left` : 'Active Trial'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono">
+                      <p className="text-[11px] text-[#64748B] font-mono">
                         {trial.billing_contact_phone || trial.billing_contact_email || 'Contact pending'}
                       </p>
 
                       <div className="pt-2">
-                        <div className="flex justify-between text-[11px] text-slate-300 font-mono mb-1">
+                        <div className="flex justify-between text-[11px] text-slate-700 font-mono mb-1">
                           <span>Trial Slips Used</span>
                           <span className="font-bold">{trial.monthly_documents_processed} / {trial.trial_document_quota}</span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-amber-500 rounded-full"
                             style={{
@@ -812,10 +812,10 @@ export const AdminBillingSection: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-850 flex items-center gap-2">
+                    <div className="pt-3 border-t border-[#E2E8F0] flex items-center gap-2">
                       <button
                         onClick={() => handleExtendTrial(trial, 14)}
-                        className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition cursor-pointer"
+                        className="flex-1 py-1.5 bg-white hover:bg-slate-100 text-amber-700 border border-amber-500/30 rounded-lg text-xs font-bold transition cursor-pointer"
                       >
                         +14 Days
                       </button>
@@ -842,11 +842,11 @@ export const AdminBillingSection: React.FC = () => {
       {/* TAB 4: PAYMENTS & MOMO LEDGER */}
       {activeTab === 'payments' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-white">Platform Payments Ledger (MoMo &amp; Bank Wire)</h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-[#64748B]">
                   Track customer subscription invoices, Mobile Money transaction IDs, and manual wire receipts.
                 </p>
               </div>
@@ -855,7 +855,7 @@ export const AdminBillingSection: React.FC = () => {
                 <select
                   value={payFilter}
                   onChange={(e) => setPayFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none"
+                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none"
                 >
                   <option value="ALL">All Payment Statuses</option>
                   <option value="PAID">Paid / Verified</option>
@@ -868,7 +868,7 @@ export const AdminBillingSection: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <tr className="border-b border-[#E2E8F0] text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                     <th className="pb-3 pl-2">Invoice / Ref</th>
                     <th className="pb-3">Organization</th>
                     <th className="pb-3">Amount</th>
@@ -879,29 +879,29 @@ export const AdminBillingSection: React.FC = () => {
                     <th className="pb-3 text-right pr-2">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 text-slate-200">
+                <tbody className="divide-y divide-[#E2E8F0] text-[#0F172A]">
                   {payments
                     .filter((p) => payFilter === 'ALL' || p.payment_status === payFilter)
                     .map((pay) => (
-                      <tr key={pay.id} className="hover:bg-slate-800/40 transition">
-                        <td className="py-3 pl-2 font-mono text-sky-400 font-bold">
+                      <tr key={pay.id} className="hover:bg-slate-100/40 transition">
+                        <td className="py-3 pl-2 font-mono text-[#0284C7] font-bold">
                           {pay.invoice_number}
                         </td>
                         <td className="py-3 font-semibold text-white">
                           {pay.organization_id}
                         </td>
-                        <td className="py-3 font-mono font-bold text-emerald-400">
+                        <td className="py-3 font-mono font-bold text-emerald-600">
                           {pay.currency} {pay.amount.toLocaleString()}
                         </td>
                         <td className="py-3">
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                             {pay.payment_type}
                           </span>
                         </td>
-                        <td className="py-3 font-mono text-slate-300">
-                          <span className="text-amber-400 font-bold">{pay.payment_channel}</span>
+                        <td className="py-3 font-mono text-slate-700">
+                          <span className="text-amber-600 font-bold">{pay.payment_channel}</span>
                           {pay.transaction_reference && (
-                            <span className="text-[10px] text-slate-400 block">
+                            <span className="text-[10px] text-[#64748B] block">
                               Ref: {pay.transaction_reference}
                             </span>
                           )}
@@ -910,16 +910,16 @@ export const AdminBillingSection: React.FC = () => {
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                               pay.payment_status === 'PAID'
-                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-500/40'
                                 : pay.payment_status === 'PENDING_VERIFICATION'
-                                ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
-                                : 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                                ? 'bg-amber-50 text-amber-700 border-amber-500/40'
+                                : 'bg-rose-50 text-rose-700 border-rose-500/40'
                             }`}
                           >
                             {pay.payment_status}
                           </span>
                         </td>
-                        <td className="py-3 text-[11px] text-slate-400 font-mono">
+                        <td className="py-3 text-[11px] text-[#64748B] font-mono">
                           {pay.created_at ? new Date(pay.created_at).toLocaleDateString() : '-'}
                         </td>
                         <td className="py-3 text-right pr-2">
@@ -944,21 +944,21 @@ export const AdminBillingSection: React.FC = () => {
       {/* TAB 5: 3RD-PARTY PAID SERVICES COST MONITOR */}
       {activeTab === 'costs' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-white">3rd-Party Paid Services Infrastructure Monitor</h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-[#64748B]">
                   Real-time token and call consumption across Google Gemini Vision, Zoho Books, Mailjet, and Google Cloud.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Timeframe:</span>
+                <span className="text-xs text-[#64748B]">Timeframe:</span>
                 <select
                   value={costDays}
                   onChange={(e) => setCostDays(Number(e.target.value))}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none"
+                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none"
                 >
                   <option value={7}>Last 7 Days</option>
                   <option value={30}>Last 30 Days</option>
@@ -973,16 +973,16 @@ export const AdminBillingSection: React.FC = () => {
                 Object.entries(costData.summary.services).map(([key, s]: [string, any]) => (
                   <div
                     key={key}
-                    className="bg-slate-950 border border-slate-850 rounded-xl p-4 space-y-3"
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white">{s.name}</span>
-                      <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                      <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-500/30">
                         GHS {s.cost_ghs} (${s.cost_usd})
                       </span>
                     </div>
 
-                    <div className="space-y-1.5 text-xs text-slate-300 font-mono">
+                    <div className="space-y-1.5 text-xs text-slate-700 font-mono">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Total Calls:</span>
                         <span className="font-bold text-white">{s.calls.toLocaleString()}</span>
@@ -990,7 +990,7 @@ export const AdminBillingSection: React.FC = () => {
                       {s.tokens > 0 && (
                         <div className="flex justify-between">
                           <span className="text-slate-500">Tokens Processed:</span>
-                          <span className="text-sky-400">{s.tokens.toLocaleString()}</span>
+                          <span className="text-[#0284C7]">{s.tokens.toLocaleString()}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
@@ -999,7 +999,7 @@ export const AdminBillingSection: React.FC = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Errors:</span>
-                        <span className={s.errors > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}>
+                        <span className={s.errors > 0 ? 'text-rose-600 font-bold' : 'text-[#64748B]'}>
                           {s.errors}
                         </span>
                       </div>
@@ -1009,14 +1009,14 @@ export const AdminBillingSection: React.FC = () => {
             </div>
 
             {/* Customer Infrastructure Cost Attribution */}
-            <div className="pt-4 border-t border-slate-800">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+            <div className="pt-4 border-t border-[#E2E8F0]">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
                 Top Cost-Consuming Customer Organizations
               </h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <tr className="border-b border-[#E2E8F0] text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                       <th className="pb-2.5 pl-2">Customer / Client ID</th>
                       <th className="pb-2.5">Total API Operations</th>
                       <th className="pb-2.5">Gemini Tokens</th>
@@ -1024,14 +1024,14 @@ export const AdminBillingSection: React.FC = () => {
                       <th className="pb-2.5">USD Equiv</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850 text-slate-200 font-mono">
+                  <tbody className="divide-y divide-[#E2E8F0] text-[#0F172A] font-mono">
                     {costData?.summary?.client_attribution?.map((ca: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-800/40">
+                      <tr key={idx} className="hover:bg-slate-100/40">
                         <td className="py-2.5 pl-2 font-bold text-white">{ca.client_id}</td>
                         <td className="py-2.5">{ca.total_calls} calls</td>
-                        <td className="py-2.5 text-sky-400">{ca.gemini_tokens.toLocaleString()}</td>
-                        <td className="py-2.5 text-emerald-400 font-bold">GHS {ca.cost_ghs}</td>
-                        <td className="py-2.5 text-slate-400">${ca.cost_usd}</td>
+                        <td className="py-2.5 text-[#0284C7]">{ca.gemini_tokens.toLocaleString()}</td>
+                        <td className="py-2.5 text-emerald-600 font-bold">GHS {ca.cost_ghs}</td>
+                        <td className="py-2.5 text-[#64748B]">${ca.cost_usd}</td>
                       </tr>
                     ))}
                     {(!costData?.summary?.client_attribution || costData.summary.client_attribution.length === 0) && (
@@ -1052,17 +1052,17 @@ export const AdminBillingSection: React.FC = () => {
       {/* TAB 6: GLOBAL PRICING & BOOSTER RATES EDITOR */}
       {activeTab === 'pricing' && (
         <form onSubmit={handleSavePricing} className="space-y-6 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-6">
             {/* Header & Save Action */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0]">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded border border-emerald-500/30">
                     Platform Master Catalog
                   </span>
                   <h3 className="text-sm font-bold text-white">Global Pricing, Tiers &amp; Booster Rates</h3>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-[#64748B] mt-1">
                   Adjust default platform-wide subscription plans, add or modify Option 2 booster pack prices, and configure free trial rules.
                 </p>
               </div>
@@ -1080,9 +1080,9 @@ export const AdminBillingSection: React.FC = () => {
             </div>
 
             {/* General Currency & Global FX Rate */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-950 border border-slate-850">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Primary Currency
                 </label>
                 <select
@@ -1090,7 +1090,7 @@ export const AdminBillingSection: React.FC = () => {
                   onChange={(e) =>
                     setPricingConfig(pricingConfig ? { ...pricingConfig, currency: e.target.value } : null)
                   }
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
                 >
                   <option value="GHS">GHS (Ghanaian Cedi)</option>
                   <option value="USD">USD (US Dollar)</option>
@@ -1098,7 +1098,7 @@ export const AdminBillingSection: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   USD to GHS FX Rate
                 </label>
                 <input
@@ -1110,12 +1110,12 @@ export const AdminBillingSection: React.FC = () => {
                       pricingConfig ? { ...pricingConfig, usd_to_ghs_rate: Number(e.target.value) } : null
                     )
                   }
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Free Trial Duration (Days)
                 </label>
                 <input
@@ -1126,12 +1126,12 @@ export const AdminBillingSection: React.FC = () => {
                       pricingConfig ? { ...pricingConfig, trial_days: Number(e.target.value) } : null
                     )
                   }
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Trial Document Quota (Slips)
                 </label>
                 <input
@@ -1142,7 +1142,7 @@ export const AdminBillingSection: React.FC = () => {
                       pricingConfig ? { ...pricingConfig, trial_document_quota: Number(e.target.value) } : null
                     )
                   }
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
                 />
               </div>
             </div>
@@ -1154,7 +1154,7 @@ export const AdminBillingSection: React.FC = () => {
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                     1. Standard Platform Subscription Tiers
                   </h4>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-[#64748B]">
                     Defines default prices, included volume, and client limits when new organizations subscribe.
                   </p>
                 </div>
@@ -1164,7 +1164,7 @@ export const AdminBillingSection: React.FC = () => {
                 {pricingConfig?.tiers?.map((tier, tIdx) => (
                   <div
                     key={tier.tier_id || tIdx}
-                    className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 relative flex flex-col justify-between"
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative flex flex-col justify-between"
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -1179,7 +1179,7 @@ export const AdminBillingSection: React.FC = () => {
                           }}
                           className="font-bold text-xs text-white bg-transparent border-b border-transparent focus:border-slate-600 focus:outline-none pb-0.5"
                         />
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-[#64748B]">
                           {tier.tier_id}
                         </span>
                       </div>
@@ -1194,7 +1194,7 @@ export const AdminBillingSection: React.FC = () => {
                           setPricingConfig({ ...pricingConfig, tiers: newTiers });
                         }}
                         placeholder="Tier description..."
-                        className="text-[11px] text-slate-400 bg-transparent border-b border-transparent focus:border-slate-600 focus:outline-none w-full"
+                        className="text-[11px] text-[#64748B] bg-transparent border-b border-transparent focus:border-slate-600 focus:outline-none w-full"
                       />
 
                       <div className="grid grid-cols-2 gap-2 text-xs pt-1">
@@ -1209,7 +1209,7 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, price_ghs: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
                           />
                         </div>
 
@@ -1224,7 +1224,7 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, price_annual_ghs: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
                           />
                         </div>
                       </div>
@@ -1241,7 +1241,7 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, document_allowance: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-sky-400 font-mono focus:outline-none font-bold"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-[#0284C7] font-mono focus:outline-none font-bold"
                           />
                         </div>
 
@@ -1256,7 +1256,7 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, max_clients: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
                           />
                         </div>
                       </div>
@@ -1274,7 +1274,7 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, overage_rate_ghs: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
                           />
                         </div>
 
@@ -1289,13 +1289,13 @@ export const AdminBillingSection: React.FC = () => {
                               newTiers[tIdx] = { ...tier, extra_client_price_ghs: Number(e.target.value) };
                               setPricingConfig({ ...pricingConfig, tiers: newTiers });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
                           />
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px]">
+                    <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between text-[10px]">
                       <span className="text-slate-500">Badge Label:</span>
                       <input
                         type="text"
@@ -1306,7 +1306,7 @@ export const AdminBillingSection: React.FC = () => {
                           newTiers[tIdx] = { ...tier, badge: e.target.value };
                           setPricingConfig({ ...pricingConfig, tiers: newTiers });
                         }}
-                        className="bg-transparent text-right font-mono text-emerald-400 focus:outline-none border-b border-transparent focus:border-slate-600"
+                        className="bg-transparent text-right font-mono text-emerald-600 focus:outline-none border-b border-transparent focus:border-slate-600"
                       />
                     </div>
                   </div>
@@ -1315,13 +1315,13 @@ export const AdminBillingSection: React.FC = () => {
             </div>
 
             {/* Section 2: Option 2 Rollover Booster Packs */}
-            <div className="space-y-3 pt-4 border-t border-slate-800">
+            <div className="space-y-3 pt-4 border-t border-[#E2E8F0]">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                     2. Option 2 Mid-Month Rollover Booster Packs
                   </h4>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-[#64748B]">
                     On-demand slip packs that clients or admins can activate when monthly limits are reached. Credits never expire and roll over indefinitely.
                   </p>
                 </div>
@@ -1332,14 +1332,14 @@ export const AdminBillingSection: React.FC = () => {
                 {pricingConfig?.booster_packs?.map((bp, bpIdx) => (
                   <div
                     key={bp.id || bpIdx}
-                    className="bg-slate-950 border border-slate-855 rounded-xl p-3.5 space-y-2 relative flex flex-col justify-between"
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-2 relative flex flex-col justify-between"
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-white">+{bp.slips} Slips</span>
                           {bp.is_popular && (
-                            <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                            <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-500/30 font-semibold">
                               Popular
                             </span>
                           )}
@@ -1348,7 +1348,7 @@ export const AdminBillingSection: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleRemoveBooster(bpIdx)}
-                            className="text-slate-500 hover:text-rose-400 p-0.5 transition cursor-pointer"
+                            className="text-slate-500 hover:text-rose-600 p-0.5 transition cursor-pointer"
                             title="Remove booster pack"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1370,11 +1370,11 @@ export const AdminBillingSection: React.FC = () => {
                               newPacks[bpIdx] = { ...bp, price_ghs: p, unit_rate: u };
                               setPricingConfig({ ...pricingConfig, booster_packs: newPacks });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-emerald-400 font-mono font-bold focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-emerald-600 font-mono font-bold focus:outline-none"
                           />
                         </div>
 
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                        <div className="flex items-center justify-between text-[11px] text-[#64748B] font-mono">
                           <span>Unit Rate:</span>
                           <span className="text-white">GHS {bp.unit_rate || (bp.price_ghs / (bp.slips || 1)).toFixed(2)}/slip</span>
                         </div>
@@ -1390,7 +1390,7 @@ export const AdminBillingSection: React.FC = () => {
                               newPacks[bpIdx] = { ...bp, badge: e.target.value };
                               setPricingConfig({ ...pricingConfig, booster_packs: newPacks });
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-300 text-[11px] focus:outline-none"
+                            className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-slate-700 text-[11px] focus:outline-none"
                           />
                         </div>
                       </div>
@@ -1399,9 +1399,9 @@ export const AdminBillingSection: React.FC = () => {
                 ))}
 
                 {/* Add Custom Pack Card */}
-                <div className="bg-slate-950/60 border border-dashed border-slate-800 rounded-xl p-3.5 space-y-2.5 flex flex-col justify-between">
+                <div className="bg-[#F8FAFC] border border-dashed border-[#E2E8F0] rounded-xl p-3.5 space-y-2.5 flex flex-col justify-between">
                   <div>
-                    <span className="text-xs font-bold text-slate-300 block mb-2">
+                    <span className="text-xs font-bold text-slate-700 block mb-2">
                       + Add Custom Booster Pack
                     </span>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1411,7 +1411,7 @@ export const AdminBillingSection: React.FC = () => {
                           type="number"
                           value={newBoosterSlips}
                           onChange={(e) => setNewBoosterSlips(Number(e.target.value))}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
+                          className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
                         />
                       </div>
                       <div>
@@ -1420,7 +1420,7 @@ export const AdminBillingSection: React.FC = () => {
                           type="number"
                           value={newBoosterPrice}
                           onChange={(e) => setNewBoosterPrice(Number(e.target.value))}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-emerald-400 font-mono text-xs focus:outline-none"
+                          className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-emerald-600 font-mono text-xs focus:outline-none"
                         />
                       </div>
                     </div>
@@ -1432,7 +1432,7 @@ export const AdminBillingSection: React.FC = () => {
                         value={newBoosterBadge}
                         onChange={(e) => setNewBoosterBadge(e.target.value)}
                         placeholder="e.g. Enterprise Pack"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-300 text-xs focus:outline-none"
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-slate-700 text-xs focus:outline-none"
                       />
                     </div>
                   </div>
@@ -1440,9 +1440,9 @@ export const AdminBillingSection: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleAddCustomBooster}
-                    className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-[#0F172A] rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                    <Plus className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Add Pack to Catalog</span>
                   </button>
                 </div>
@@ -1450,8 +1450,8 @@ export const AdminBillingSection: React.FC = () => {
             </div>
 
             {/* Section 3: Sync & Save Controls */}
-            <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+            <div className="pt-4 border-t border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
                 <input
                   type="checkbox"
                   checked={pricingConfig?.sync_landing_page ?? true}
@@ -1460,7 +1460,7 @@ export const AdminBillingSection: React.FC = () => {
                       pricingConfig ? { ...pricingConfig, sync_landing_page: e.target.checked } : null
                     )
                   }
-                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                  className="rounded border-[#E2E8F0] text-emerald-600 focus:ring-emerald-500 w-4 h-4"
                 />
                 <span>
                   Synchronize pricing updates to public landing page pricing cards automatically
@@ -1482,16 +1482,16 @@ export const AdminBillingSection: React.FC = () => {
 
       {/* MODAL: Apply Option 2 Booster Pack */}
       {selectedOrgForBooster && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-emerald-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-emerald-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <div>
                 <h3 className="text-sm font-bold text-white">Apply Option 2 Booster Pack</h3>
-                <p className="text-xs text-slate-400">Organization: {selectedOrgForBooster.name}</p>
+                <p className="text-xs text-[#64748B]">Organization: {selectedOrgForBooster.name}</p>
               </div>
               <button
                 onClick={() => setSelectedOrgForBooster(null)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-[#64748B] hover:text-white p-1"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1499,7 +1499,7 @@ export const AdminBillingSection: React.FC = () => {
 
             <form onSubmit={handleApplyBooster} className="space-y-4 text-xs">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1.5">
                   Select Booster Pack (Credits Never Expire)
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -1517,14 +1517,14 @@ export const AdminBillingSection: React.FC = () => {
                       }}
                       className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
                         boosterSlips === bp.slips
-                          ? 'bg-emerald-950 border-emerald-500 text-white font-bold'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                          ? 'bg-emerald-50 border-emerald-500 text-white font-bold'
+                          : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B] hover:text-white'
                       }`}
                     >
                       <div className="font-bold">+{bp.slips} Slips</div>
-                      <div className="text-[10px] text-emerald-400 font-mono">GHS {bp.price_ghs}</div>
+                      <div className="text-[10px] text-emerald-600 font-mono">GHS {bp.price_ghs}</div>
                       {bp.badge && (
-                        <div className="text-[8px] text-slate-400 truncate mt-0.5">{bp.badge}</div>
+                        <div className="text-[8px] text-[#64748B] truncate mt-0.5">{bp.badge}</div>
                       )}
                     </button>
                   ))}
@@ -1532,13 +1532,13 @@ export const AdminBillingSection: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Payment Channel
                 </label>
                 <select
                   value={boosterChannel}
                   onChange={(e) => setBoosterChannel(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="MTN_MOMO">MTN Mobile Money</option>
                   <option value="VODAFONE_CASH">Telecel / Vodafone Cash</option>
@@ -1549,7 +1549,7 @@ export const AdminBillingSection: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   MoMo Transaction ID / Reference (Optional)
                 </label>
                 <input
@@ -1557,7 +1557,7 @@ export const AdminBillingSection: React.FC = () => {
                   value={boosterRef}
                   onChange={(e) => setBoosterRef(e.target.value)}
                   placeholder="e.g. MM-2026-99410"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
 
@@ -1565,7 +1565,7 @@ export const AdminBillingSection: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedOrgForBooster(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1584,16 +1584,16 @@ export const AdminBillingSection: React.FC = () => {
 
       {/* MODAL: Edit Customer Subscription */}
       {selectedOrgForEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <div>
                 <h3 className="text-sm font-bold text-white">Edit Subscription: {selectedOrgForEdit.name}</h3>
-                <p className="text-xs text-slate-400">Modify plan tier, included document limits, and billing terms.</p>
+                <p className="text-xs text-[#64748B]">Modify plan tier, included document limits, and billing terms.</p>
               </div>
               <button
                 onClick={() => setSelectedOrgForEdit(null)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-[#64748B] hover:text-white p-1"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1602,13 +1602,13 @@ export const AdminBillingSection: React.FC = () => {
             <form onSubmit={handleSaveSubscription} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Plan Tier
                   </label>
                   <select
                     value={editTier}
                     onChange={(e) => setEditTier(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   >
                     <option value="starter">Starter (500 docs)</option>
                     <option value="pro">CPA Firm Pro (3,000 docs)</option>
@@ -1617,39 +1617,39 @@ export const AdminBillingSection: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Base Price (GHS)
                   </label>
                   <input
                     type="number"
                     value={editPrice}
                     onChange={(e) => setEditPrice(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Monthly Document Allowance
                   </label>
                   <input
                     type="number"
                     value={editAllowance}
                     onChange={(e) => setEditAllowance(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Billing Cycle
                   </label>
                   <select
                     value={editCycle}
                     onChange={(e) => setEditCycle(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   >
                     <option value="MONTHLY">Monthly</option>
                     <option value="ANNUALLY">Annually (15% Off)</option>
@@ -1659,7 +1659,7 @@ export const AdminBillingSection: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Billing Contact Name
                   </label>
                   <input
@@ -1667,12 +1667,12 @@ export const AdminBillingSection: React.FC = () => {
                     value={editContactName}
                     onChange={(e) => setEditContactName(e.target.value)}
                     placeholder="e.g. K. Danso"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     MoMo Phone Number
                   </label>
                   <input
@@ -1680,7 +1680,7 @@ export const AdminBillingSection: React.FC = () => {
                     value={editContactPhone}
                     onChange={(e) => setEditContactPhone(e.target.value)}
                     placeholder="024XXXXXXX"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -1689,7 +1689,7 @@ export const AdminBillingSection: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedOrgForEdit(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1708,16 +1708,16 @@ export const AdminBillingSection: React.FC = () => {
 
       {/* MODAL: Record Offline / MoMo Payment */}
       {isRecordPayOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <div>
                 <h3 className="text-sm font-bold text-white">Record MoMo / Bank Wire Payment</h3>
-                <p className="text-xs text-slate-400">Post an incoming platform subscription settlement.</p>
+                <p className="text-xs text-[#64748B]">Post an incoming platform subscription settlement.</p>
               </div>
               <button
                 onClick={() => setIsRecordPayOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-[#64748B] hover:text-white p-1"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1725,14 +1725,14 @@ export const AdminBillingSection: React.FC = () => {
 
             <form onSubmit={handleRecordPaymentSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Customer Organization
                 </label>
                 <select
                   value={payOrgId}
                   onChange={(e) => setPayOrgId(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                 >
                   <option value="">-- Select Organization --</option>
                   {subscriptions.map((org) => (
@@ -1745,7 +1745,7 @@ export const AdminBillingSection: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Amount (GHS)
                   </label>
                   <input
@@ -1753,18 +1753,18 @@ export const AdminBillingSection: React.FC = () => {
                     value={payAmount}
                     onChange={(e) => setPayAmount(Number(e.target.value))}
                     required
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Payment Type
                   </label>
                   <select
                     value={payType}
                     onChange={(e) => setPayType(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   >
                     <option value="SUBSCRIPTION">Monthly Subscription</option>
                     <option value="BOOSTER_PACK">Booster Top-Up Pack</option>
@@ -1775,13 +1775,13 @@ export const AdminBillingSection: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Payment Channel
                   </label>
                   <select
                     value={payChannel}
                     onChange={(e) => setPayChannel(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   >
                     <option value="MTN_MOMO">MTN Mobile Money</option>
                     <option value="VODAFONE_CASH">Vodafone / Telecel Cash</option>
@@ -1791,7 +1791,7 @@ export const AdminBillingSection: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Period Covered
                   </label>
                   <input
@@ -1799,13 +1799,13 @@ export const AdminBillingSection: React.FC = () => {
                     value={payPeriod}
                     onChange={(e) => setPayPeriod(e.target.value)}
                     placeholder="e.g. September 2026"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   MoMo Transaction ID / Reference
                 </label>
                 <input
@@ -1813,7 +1813,7 @@ export const AdminBillingSection: React.FC = () => {
                   value={payRef}
                   onChange={(e) => setPayRef(e.target.value)}
                   placeholder="e.g. MTN-9938102938"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-white focus:outline-none font-mono"
                 />
               </div>
 
@@ -1821,7 +1821,7 @@ export const AdminBillingSection: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsRecordPayOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>

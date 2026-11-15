@@ -7,9 +7,14 @@ export interface Organization {
   name: string;
   org_type: OrganizationType;
   plan_tier: string;
+  subscription_status?: string;
+  is_active?: boolean;
   max_clients?: number;
   industry?: string;
   icon?: string;
+  white_label_logo_url?: string | null;
+  custom_portal_subdomain?: string | null;
+  storage_strategy?: string;
   role?: string;
   title?: string;
   is_primary?: boolean;
@@ -256,6 +261,48 @@ export interface IngestionPipeline {
   whatsapp_webhook_url?: string;
   email_webhook_url?: string;
   persona_instructions?: string;
+  autonomy_level?: AgentAutonomyLevel;
+  schedule_frequency?: 'hourly' | 'every_6_hours' | 'daily_morning' | 'daily_evening' | 'weekly' | 'monthly_cutoff' | 'manual' | string;
+  auto_approve_threshold?: number;
+  auto_apply_knowledge?: boolean;
+  auto_query_anomalies?: boolean;
+  proactive_SLA_reminders?: boolean;
+}
+
+export type AgentAutonomyLevel = 'copilot' | 'semi_autonomous' | 'full_autonomous';
+
+export interface AgentReasoningStep {
+  step_index: number;
+  thought: string;
+  tool_name: string;
+  tool_input: Record<string, any>;
+  tool_output_summary: string;
+  status: 'SUCCESS' | 'FAILED' | 'AWAITING_HUMAN' | string;
+  timestamp: string;
+}
+
+export interface AgentExecutionRun {
+  id?: number;
+  run_id: string;
+  client_id: string;
+  agent_id: string;
+  agent_name?: string;
+  section?: string;
+  trigger_type: string;
+  trigger_source?: string | null;
+  goal: string;
+  autonomy_level: AgentAutonomyLevel | string;
+  status: 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'AWAITING_HUMAN' | 'FAILED' | string;
+  reasoning_steps: AgentReasoningStep[];
+  actions_taken_count: number;
+  items_processed: number;
+  items_auto_approved: number;
+  items_categorized: number;
+  queries_dispatched: number;
+  invoices_drafted: number;
+  summary_report: string;
+  started_at: string;
+  completed_at?: string | null;
 }
 
 export type AccountingAgent = IngestionPipeline;
@@ -772,7 +819,11 @@ export interface AgentMessageItem {
   }>;
   status: string;
   external_message_id?: string | null;
-  metadata_json: Record<string, any>;
+  metadata_json?: Record<string, any>;
+  ai_metadata?: {
+    agent_run?: AgentExecutionRun;
+    [key: string]: any;
+  };
   created_at?: string | null;
 }
 

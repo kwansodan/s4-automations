@@ -294,28 +294,28 @@ export const MultiChannelLaunchpad: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Banner & Tab Controls */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-xl backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-sky-400 font-semibold text-xs uppercase tracking-wider mb-1">
-            <Sparkles className="w-4 h-4 text-sky-400" />
+          <div className="flex items-center gap-2 text-[#0284C7] font-semibold text-xs uppercase tracking-wider mb-1">
+            <Sparkles className="w-4 h-4 text-[#0284C7]" />
             <span>Accounting Feature Launchpad</span>
           </div>
           <h1 className="text-xl font-black text-white flex items-center gap-2">
             <span>Multi-Channel Release Broadcaster</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Automatically craft and dispatch accounting feature announcements across <strong className="text-sky-300">LinkedIn</strong>, <strong className="text-sky-300">X (Twitter)</strong>, <strong className="text-sky-300">Client Email (Mailjet)</strong>, and the <strong className="text-sky-300">In-App Changelog</strong> with 1 click.
+          <p className="text-xs text-[#64748B] mt-1 max-w-2xl">
+            Automatically craft and dispatch accounting feature announcements across <strong className="text-[#0284C7]">LinkedIn</strong>, <strong className="text-[#0284C7]">X (Twitter)</strong>, <strong className="text-[#0284C7]">Client Email (Mailjet)</strong>, and the <strong className="text-[#0284C7]">In-App Changelog</strong> with 1 click.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 shrink-0">
+        <div className="flex items-center gap-2 bg-[#F8FAFC] p-1.5 rounded-xl border border-[#E2E8F0] shrink-0">
           <button
             type="button"
             onClick={() => setActiveSubTab('composer')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
               activeSubTab === 'composer'
                 ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                : 'text-slate-400 hover:text-white'
+                : 'text-[#64748B] hover:text-white'
             }`}
           >
             <Share2 className="w-3.5 h-3.5" />
@@ -327,7 +327,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
               activeSubTab === 'changelog'
                 ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                : 'text-slate-400 hover:text-white'
+                : 'text-[#64748B] hover:text-white'
             }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
@@ -339,7 +339,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
               activeSubTab === 'history'
                 ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                : 'text-slate-400 hover:text-white'
+                : 'text-[#64748B] hover:text-white'
             }`}
           >
             <History className="w-3.5 h-3.5" />
@@ -353,12 +353,12 @@ export const MultiChannelLaunchpad: React.FC = () => {
           {/* Left Column: Feature Ingestion & AI Tuning (5 cols) */}
           <div className="lg:col-span-5 space-y-5">
             {/* Git Commit Selector */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-white">
-                  <GitCommit className="w-4 h-4 text-emerald-400" />
+                  <GitCommit className="w-4 h-4 text-emerald-600" />
                   <span>1. Pick From Commits</span>
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/50">
+                  <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                     {commits.length} commits
                   </span>
                 </div>
@@ -366,7 +366,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   type="button"
                   onClick={loadCommits}
                   disabled={isLoadingCommits}
-                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                  className="text-[11px] text-[#64748B] hover:text-white flex items-center gap-1 transition cursor-pointer"
                   title="Refresh commits from repository"
                 >
                   <RefreshCw className={`w-3 h-3 ${isLoadingCommits ? 'animate-spin' : ''}`} />
@@ -382,13 +382,13 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   placeholder="Search commits by message, hash, or author..."
                   value={commitSearchQuery}
                   onChange={(e) => setCommitSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-8 pr-12 py-1.5 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-8 pr-12 py-1.5 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
                 />
                 {commitSearchQuery && (
                   <button
                     type="button"
                     onClick={() => setCommitSearchQuery('')}
-                    className="absolute right-2 top-1.5 text-[10px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded cursor-pointer transition"
+                    className="absolute right-2 top-1.5 text-[10px] text-[#64748B] hover:text-white bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded cursor-pointer transition"
                   >
                     Clear
                   </button>
@@ -397,7 +397,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
               <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                 {filteredCommits.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                  <div className="py-6 text-center text-xs text-slate-500 border border-dashed border-[#E2E8F0] rounded-xl">
                     {commits.length === 0 ? 'No commits loaded.' : `No commits found matching "${commitSearchQuery}".`}
                   </div>
                 ) : (
@@ -409,12 +409,12 @@ export const MultiChannelLaunchpad: React.FC = () => {
                         onClick={() => handleSelectCommit(c)}
                         className={`p-2 rounded-xl text-xs cursor-pointer border transition ${
                           isSelected
-                            ? 'bg-sky-950/60 border-sky-500/60 text-white shadow-sm ring-1 ring-sky-500/30'
-                            : 'bg-slate-950/60 border-slate-850 text-slate-300 hover:border-slate-700'
+                            ? 'bg-[#F0F9FF] border-sky-500/60 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-slate-700 hover:border-[#E2E8F0]'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-1 text-[10px] text-slate-400 mb-1">
-                          <span className="font-mono text-sky-400 bg-sky-950 px-1.5 py-0.5 rounded border border-sky-800/40 font-semibold">
+                        <div className="flex items-center justify-between gap-1 text-[10px] text-[#64748B] mb-1">
+                          <span className="font-mono text-[#0284C7] bg-[#F0F9FF] px-1.5 py-0.5 rounded border border-sky-200 font-semibold">
                             {c.hash}
                           </span>
                           <span className="text-[10px] text-slate-500">{c.author ? `${c.author} • ` : ''}{c.date}</span>
@@ -428,31 +428,31 @@ export const MultiChannelLaunchpad: React.FC = () => {
             </div>
 
             {/* Custom Feature Details & Target Lens */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-4">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-4">
               <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <Sliders className="w-4 h-4 text-sky-400" />
+                <Sliders className="w-4 h-4 text-[#0284C7]" />
                 <span>2. Feature Context &amp; Audience Lens</span>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Feature Headline / Title</label>
+                  <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Feature Headline / Title</label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g. 1-Click Zoho Books OAuth Connect & Automated File Routing"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-medium"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-medium"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Accounting Domain</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Accounting Domain</label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
                     >
                       <option value="ACCOUNTING_AUTOMATION">Accounting Automation</option>
                       <option value="AP_WORKFLOW">AP Vendor Bills</option>
@@ -465,11 +465,11 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Target Audience</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Target Audience</label>
                     <select
                       value={targetAudience}
                       onChange={(e) => setTargetAudience(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
                     >
                       <option value="Accounting Firms & Bookkeepers">Accounting Firms & CPAs</option>
                       <option value="CFOs & Finance Controllers">CFOs & Controllers</option>
@@ -480,13 +480,13 @@ export const MultiChannelLaunchpad: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">What Was Built (Bullet Points)</label>
+                  <label className="block text-[11px] font-semibold text-[#64748B] mb-1">What Was Built (Bullet Points)</label>
                   <textarea
                     rows={3}
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
                     placeholder="Describe how it works, what was automated, and the hours saved..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 leading-relaxed resize-none"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 leading-relaxed resize-none"
                   />
                 </div>
 
@@ -506,8 +506,8 @@ export const MultiChannelLaunchpad: React.FC = () => {
           {/* Right Column: Multi-Channel Studio & Broadcast Panel (7 cols) */}
           <div className="lg:col-span-7 space-y-5">
             {/* Studio Navigation Tabs */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-md space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-xl backdrop-blur-md space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
                 <div className="flex items-center gap-1 sm:gap-2">
                   <button
                     type="button"
@@ -515,7 +515,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                       selectedChannelTab === 'linkedin'
                         ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40'
-                        : 'text-slate-400 hover:text-white'
+                        : 'text-[#64748B] hover:text-white'
                     }`}
                   >
                     <Linkedin className="w-3.5 h-3.5 text-blue-400" />
@@ -527,11 +527,11 @@ export const MultiChannelLaunchpad: React.FC = () => {
                     onClick={() => setSelectedChannelTab('twitter')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                       selectedChannelTab === 'twitter'
-                        ? 'bg-sky-600/20 text-sky-400 border border-sky-500/40'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-sky-600/20 text-[#0284C7] border border-sky-500/40'
+                        : 'text-[#64748B] hover:text-white'
                     }`}
                   >
-                    <Twitter className="w-3.5 h-3.5 text-sky-400" />
+                    <Twitter className="w-3.5 h-3.5 text-[#0284C7]" />
                     <span>X (Twitter)</span>
                   </button>
 
@@ -540,11 +540,11 @@ export const MultiChannelLaunchpad: React.FC = () => {
                     onClick={() => setSelectedChannelTab('email')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                       selectedChannelTab === 'email'
-                        ? 'bg-amber-600/20 text-amber-400 border border-amber-500/40'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-amber-600/20 text-amber-600 border border-amber-500/40'
+                        : 'text-[#64748B] hover:text-white'
                     }`}
                   >
-                    <Mail className="w-3.5 h-3.5 text-amber-400" />
+                    <Mail className="w-3.5 h-3.5 text-amber-600" />
                     <span>Client Email</span>
                   </button>
 
@@ -553,11 +553,11 @@ export const MultiChannelLaunchpad: React.FC = () => {
                     onClick={() => setSelectedChannelTab('changelog')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                       selectedChannelTab === 'changelog'
-                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/40'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-emerald-600/20 text-emerald-600 border border-emerald-500/40'
+                        : 'text-[#64748B] hover:text-white'
                     }`}
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Changelog</span>
                   </button>
                 </div>
@@ -572,21 +572,21 @@ export const MultiChannelLaunchpad: React.FC = () => {
               {selectedChannelTab === 'linkedin' && (
                 <div className="space-y-4">
                   {/* LinkedIn Target & Business Page Connection Card */}
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div
                           className={`p-2.5 rounded-xl border shrink-0 ${
                             linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
-                              ? 'bg-blue-950/60 border-blue-500/50 text-blue-400'
-                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                              ? 'bg-sky-50 border-sky-200 text-[#0284C7]'
+                              : 'bg-white border-[#E2E8F0] text-[#64748B]'
                           }`}
                         >
                           <Building2 className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white">
+                            <span className="text-xs font-bold text-[#0F172A]">
                               {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
                                 ? (linkedInConfig.organization_name || linkedInConfig.organization_id)
                                 : 'Personal Profile (Default)'}
@@ -595,9 +595,9 @@ export const MultiChannelLaunchpad: React.FC = () => {
                               className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
                                 linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
                                   ? linkedInConfig.has_access_token
-                                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
-                                    : 'bg-blue-950/60 text-blue-300 border-blue-800'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-sky-50 text-sky-700 border-sky-200'
+                                  : 'bg-slate-100 text-[#64748B] border-[#E2E8F0]'
                               }`}
                             >
                               {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
@@ -607,7 +607,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                                 : 'Personal Feed'}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <p className="text-[11px] text-[#64748B] mt-0.5">
                             {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
                               ? 'Feature announcements will broadcast directly under this LinkedIn Business Page.'
                               : 'Want to broadcast updates directly under your Company / Business Page?'}
@@ -619,9 +619,9 @@ export const MultiChannelLaunchpad: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setIsLinkedInModalOpen(true)}
-                          className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                         >
-                          <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                          <Building2 className="w-3.5 h-3.5 text-[#0284C7]" />
                           <span>
                             {linkedInConfig?.posting_mode === 'organization' && linkedInConfig?.organization_id
                               ? 'Manage Page'
@@ -645,10 +645,10 @@ export const MultiChannelLaunchpad: React.FC = () => {
                                 )}/admin/feed/posts/`;
                               window.open(adminUrl, '_blank', 'noreferrer');
                             }}
-                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                            className="px-3 py-1.5 bg-white hover:bg-slate-50 text-[#0F172A] border border-[#E2E8F0] rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
                             title="Copies post copy to clipboard and opens your Company Admin Feed"
                           >
-                            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                            <ExternalLink className="w-3.5 h-3.5 text-[#64748B]" />
                             <span>
                               {copiedChannel === 'linkedin-admin' ? 'Copied & Opening...' : 'Open Page Composer'}
                             </span>
@@ -660,8 +660,8 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
                   {/* Alternative Hooks Selector */}
                   {generatedContent?.linkedin?.hooks && generatedContent.linkedin.hooks.length > 0 && (
-                    <div className="space-y-2 bg-slate-950/80 p-3 rounded-xl border border-slate-850">
-                      <p className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                    <div className="space-y-2 bg-[#F8FAFC] p-3 rounded-xl border border-[#E2E8F0]">
+                      <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
                         <span>🎯 Pick Opening Hook Angle:</span>
                       </p>
                       <div className="space-y-1.5">
@@ -671,11 +671,11 @@ export const MultiChannelLaunchpad: React.FC = () => {
                             onClick={() => handleApplyHook(hook, idx)}
                             className={`p-2 rounded-lg text-[11px] cursor-pointer border transition leading-relaxed ${
                               selectedHookIndex === idx
-                                ? 'bg-blue-950/50 border-blue-500/50 text-blue-200'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                ? 'bg-sky-50 border-sky-200 text-[#0F172A]'
+                                : 'bg-white border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]'
                             }`}
                           >
-                            <span className="font-bold text-blue-400 mr-1.5">Angle {idx + 1}:</span>
+                            <span className="font-bold text-[#0284C7] mr-1.5">Angle {idx + 1}:</span>
                             <span>{hook}</span>
                           </div>
                         ))}
@@ -686,12 +686,12 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   {/* LinkedIn Editor & Feed Mockup */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-300">LinkedIn Post Copy</label>
+                      <label className="text-[11px] font-bold text-slate-700">LinkedIn Post Copy</label>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => handleCopy(linkedinBody, 'linkedin')}
-                          className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold cursor-pointer"
+                          className="text-[10px] text-[#0284C7] hover:text-[#0284C7] flex items-center gap-1 font-semibold cursor-pointer"
                         >
                           <Copy className="w-3 h-3" />
                           <span>{copiedChannel === 'linkedin' ? 'Copied!' : 'Copy'}</span>
@@ -736,7 +736,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                       value={linkedinBody}
                       onChange={(e) => setLinkedinBody(e.target.value)}
                       placeholder="Click 'Generate with Gemini' to craft a high-impact LinkedIn post..."
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 leading-relaxed font-sans"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 text-xs text-[#0F172A] focus:outline-none focus:border-blue-500 leading-relaxed font-sans"
                     />
                   </div>
                 </div>
@@ -746,12 +746,12 @@ export const MultiChannelLaunchpad: React.FC = () => {
               {selectedChannelTab === 'twitter' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold text-slate-300">X (Twitter) Main Tweet</label>
+                    <label className="text-[11px] font-bold text-slate-700">X (Twitter) Main Tweet</label>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleCopy(twitterTweet, 'twitter')}
-                        className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold cursor-pointer"
+                        className="text-[10px] text-[#0284C7] hover:text-[#0284C7] flex items-center gap-1 font-semibold cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
                         <span>{copiedChannel === 'twitter' ? 'Copied!' : 'Copy'}</span>
@@ -760,7 +760,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                         href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterTweet)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
+                        className="text-[10px] text-[#0284C7] hover:text-[#0284C7] flex items-center gap-1 font-semibold"
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>Open X Composer</span>
@@ -773,15 +773,15 @@ export const MultiChannelLaunchpad: React.FC = () => {
                     value={twitterTweet}
                     onChange={(e) => setTwitterTweet(e.target.value)}
                     placeholder="Tweet text..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 leading-relaxed"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 text-xs text-[#0F172A] focus:outline-none focus:border-sky-500 leading-relaxed"
                   />
 
                   {/* Thread Breakdown */}
                   {generatedContent?.twitter?.thread && generatedContent.twitter.thread.length > 0 && (
-                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 space-y-2">
-                      <p className="text-[11px] font-bold text-slate-300">🧵 3-Tweet Thread Breakdown:</p>
+                    <div className="bg-[#F8FAFC] p-3 rounded-xl border border-[#E2E8F0] space-y-2">
+                      <p className="text-[11px] font-bold text-slate-700">🧵 3-Tweet Thread Breakdown:</p>
                       {generatedContent.twitter.thread.map((t, i) => (
-                        <div key={i} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300">
+                        <div key={i} className="p-2 bg-white border border-[#E2E8F0] rounded-lg text-xs text-slate-700">
                           {t}
                         </div>
                       ))}
@@ -794,20 +794,20 @@ export const MultiChannelLaunchpad: React.FC = () => {
               {selectedChannelTab === 'email' && (
                 <div className="space-y-4">
                   {/* Audience & Subscriber Target Strip */}
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl border bg-amber-950/60 border-amber-500/40 text-amber-400 shrink-0">
+                        <div className="p-2.5 rounded-xl border bg-amber-50 border-amber-500/40 text-amber-600 shrink-0">
                           <Users className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-white">Email Audience &amp; Recipients</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
                               {audienceCount} Active Contacts
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <p className="text-[11px] text-[#64748B] mt-0.5">
                             Manage partner firms, client contacts, and leads for release broadcasts &amp; email updates.
                           </p>
                         </div>
@@ -817,16 +817,16 @@ export const MultiChannelLaunchpad: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setIsAudienceModalOpen(true)}
-                          className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-700 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                         >
-                          <Users className="w-3.5 h-3.5 text-amber-400" />
+                          <Users className="w-3.5 h-3.5 text-amber-600" />
                           <span>Manage Email List (CRUD)</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-850 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <span className="text-[11px] font-semibold text-slate-400">Target Audience:</span>
+                    <div className="pt-2 border-t border-[#E2E8F0] flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-[11px] font-semibold text-[#64748B]">Target Audience:</span>
                       <div className="flex items-center gap-1.5">
                         {[
                           { id: 'all', label: `All Active (${audienceCount})` },
@@ -840,8 +840,8 @@ export const MultiChannelLaunchpad: React.FC = () => {
                             onClick={() => setTargetAudienceTier(seg.id)}
                             className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition cursor-pointer ${
                               targetAudienceTier === seg.id
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                ? 'bg-amber-500/20 text-amber-700 border-amber-500/50 shadow-sm'
+                                : 'bg-white border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]'
                             }`}
                           >
                             {seg.label}
@@ -852,19 +852,19 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">Email Subject Line</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Subject Line</label>
                     <input
                       type="text"
                       value={emailSubject}
                       onChange={(e) => setEmailSubject(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">Email HTML Preview</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Email HTML Preview</label>
                     <div
-                      className="bg-slate-950 border border-slate-800 rounded-xl p-4 max-h-80 overflow-y-auto"
+                      className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 max-h-80 overflow-y-auto"
                       dangerouslySetInnerHTML={{ __html: emailHtml || '<p class="text-xs text-slate-500">No email drafted yet.</p>' }}
                     />
                   </div>
@@ -876,80 +876,80 @@ export const MultiChannelLaunchpad: React.FC = () => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Version Number</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Version Number</label>
                       <input
                         type="text"
                         value={version}
                         onChange={(e) => setVersion(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                        className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-white font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Category</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Category</label>
                       <input
                         type="text"
                         value={category}
                         disabled
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400"
+                        className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-[#64748B]"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">Markdown Release Note</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Markdown Release Note</label>
                     <textarea
                       rows={6}
                       value={changelogMarkdown}
                       onChange={(e) => setChangelogMarkdown(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
               )}
 
               {/* Channel Broadcaster Action Bar */}
-              <div className="pt-4 border-t border-slate-800 space-y-3">
+              <div className="pt-4 border-t border-[#E2E8F0] space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-xs font-bold text-slate-300">Channels to Broadcast:</span>
+                  <span className="text-xs font-bold text-slate-700">Channels to Broadcast:</span>
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={broadcastChannels.linkedin}
                         onChange={(e) => setBroadcastChannels({ ...broadcastChannels, linkedin: e.target.checked })}
-                        className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
+                        className="rounded bg-[#F8FAFC] border-[#E2E8F0] text-blue-600 focus:ring-0"
                       />
                       <span className="flex items-center gap-1"><Linkedin className="w-3 h-3 text-blue-400" /> LinkedIn</span>
                     </label>
 
-                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={broadcastChannels.twitter}
                         onChange={(e) => setBroadcastChannels({ ...broadcastChannels, twitter: e.target.checked })}
-                        className="rounded bg-slate-950 border-slate-700 text-sky-600 focus:ring-0"
+                        className="rounded bg-[#F8FAFC] border-[#E2E8F0] text-sky-600 focus:ring-0"
                       />
-                      <span className="flex items-center gap-1"><Twitter className="w-3 h-3 text-sky-400" /> X (Twitter)</span>
+                      <span className="flex items-center gap-1"><Twitter className="w-3 h-3 text-[#0284C7]" /> X (Twitter)</span>
                     </label>
 
-                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={broadcastChannels.email}
                         onChange={(e) => setBroadcastChannels({ ...broadcastChannels, email: e.target.checked })}
-                        className="rounded bg-slate-950 border-slate-700 text-amber-600 focus:ring-0"
+                        className="rounded bg-[#F8FAFC] border-[#E2E8F0] text-amber-600 focus:ring-0"
                       />
-                      <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-amber-400" /> Client Email</span>
+                      <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-amber-600" /> Client Email</span>
                     </label>
 
-                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={broadcastChannels.changelog}
                         onChange={(e) => setBroadcastChannels({ ...broadcastChannels, changelog: e.target.checked })}
-                        className="rounded bg-slate-950 border-slate-700 text-emerald-600 focus:ring-0"
+                        className="rounded bg-[#F8FAFC] border-[#E2E8F0] text-emerald-600 focus:ring-0"
                       />
-                      <span className="flex items-center gap-1"><BookOpen className="w-3 h-3 text-emerald-400" /> Changelog</span>
+                      <span className="flex items-center gap-1"><BookOpen className="w-3 h-3 text-emerald-600" /> Changelog</span>
                     </label>
                   </div>
                 </div>
@@ -966,18 +966,18 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
                 {/* Real-Time Delivery Feedback */}
                 {broadcastResult && (
-                  <div className="bg-emerald-950/50 border border-emerald-500/40 rounded-xl p-3 text-xs text-emerald-200 space-y-1.5 animate-in fade-in">
-                    <div className="flex items-center gap-2 font-bold text-emerald-300">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div className="bg-emerald-50 border border-emerald-500/40 rounded-xl p-3 text-xs text-emerald-200 space-y-1.5 animate-in fade-in">
+                    <div className="flex items-center gap-2 font-bold text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span>Release Broadcast Completed! (v{broadcastResult.version})</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                       {broadcastResult.delivery_status?.linkedin && (
-                        <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <div className="bg-white p-2 rounded-lg border border-[#E2E8F0]">
                           <p className="font-bold text-[11px] text-blue-400 flex items-center gap-1">
                             <Linkedin className="w-3 h-3" /> LinkedIn
                           </p>
-                          <p className="text-[10px] text-slate-300 mt-0.5">
+                          <p className="text-[10px] text-slate-700 mt-0.5">
                             {broadcastResult.delivery_status.linkedin.mode === 'api'
                               ? `Posted to ${
                                   broadcastResult.delivery_status.linkedin.target === 'organization'
@@ -999,7 +999,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                               }
                               target="_blank"
                               rel="noreferrer"
-                              className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold mt-1"
+                              className="text-[10px] text-[#0284C7] hover:text-[#0284C7] flex items-center gap-1 font-semibold mt-1"
                             >
                               <ExternalLink className="w-2.5 h-2.5" />
                               <span>
@@ -1012,29 +1012,29 @@ export const MultiChannelLaunchpad: React.FC = () => {
                         </div>
                       )}
                       {broadcastResult.delivery_status?.twitter && (
-                        <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-                          <p className="font-bold text-[11px] text-sky-400 flex items-center gap-1">
+                        <div className="bg-white p-2 rounded-lg border border-[#E2E8F0]">
+                          <p className="font-bold text-[11px] text-[#0284C7] flex items-center gap-1">
                             <Twitter className="w-3 h-3" /> X (Twitter)
                           </p>
-                          <p className="text-[10px] text-slate-300 mt-0.5">Ready to Share 🚀</p>
+                          <p className="text-[10px] text-slate-700 mt-0.5">Ready to Share 🚀</p>
                         </div>
                       )}
                       {broadcastResult.delivery_status?.email && (
-                        <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-                          <p className="font-bold text-[11px] text-amber-400 flex items-center gap-1">
+                        <div className="bg-white p-2 rounded-lg border border-[#E2E8F0]">
+                          <p className="font-bold text-[11px] text-amber-600 flex items-center gap-1">
                             <Mail className="w-3 h-3" /> Client Email
                           </p>
-                          <p className="text-[10px] text-slate-300 mt-0.5">
+                          <p className="text-[10px] text-slate-700 mt-0.5">
                             {broadcastResult.delivery_status.email.dispatched_count || 1} Delivered ✅
                           </p>
                         </div>
                       )}
                       {broadcastResult.delivery_status?.changelog && (
-                        <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-                          <p className="font-bold text-[11px] text-emerald-400 flex items-center gap-1">
+                        <div className="bg-white p-2 rounded-lg border border-[#E2E8F0]">
+                          <p className="font-bold text-[11px] text-emerald-600 flex items-center gap-1">
                             <BookOpen className="w-3 h-3" /> Changelog
                           </p>
-                          <p className="text-[10px] text-slate-300 mt-0.5">Live on Portal ✅</p>
+                          <p className="text-[10px] text-slate-700 mt-0.5">Live on Portal ✅</p>
                         </div>
                       )}
                     </div>
@@ -1048,14 +1048,14 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
       {/* Subtab 2: Public In-App Changelog */}
       {activeSubTab === 'changelog' && (
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-emerald-400" />
+                <BookOpen className="w-5 h-5 text-emerald-600" />
                 <span>What's New in S4 Automations</span>
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[#64748B] mt-0.5">
                 Audit-ready timeline of all deployed accounting workflows, API updates, and OCR vision improvements.
               </p>
             </div>
@@ -1063,7 +1063,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
               type="button"
               onClick={loadChangelog}
               disabled={isLoadingChangelog}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingChangelog ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
@@ -1072,13 +1072,13 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
           <div className="space-y-6">
             {changelogItems.map((item) => (
-              <div key={item.id} className="relative pl-6 border-l-2 border-slate-800 space-y-2">
-                <div className="absolute -left-1.5 top-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-slate-900" />
+              <div key={item.id} className="relative pl-6 border-l-2 border-[#E2E8F0] space-y-2">
+                <div className="absolute -left-1.5 top-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-[#E2E8F0]" />
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                  <span className="font-mono text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     v{item.version}
                   </span>
-                  <span className="text-[11px] font-semibold text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/40 uppercase">
+                  <span className="text-[11px] font-semibold text-[#0284C7] bg-[#F0F9FF] px-2 py-0.5 rounded border border-sky-200 uppercase">
                     {item.category}
                   </span>
                   {item.published_at && (
@@ -1089,10 +1089,10 @@ export const MultiChannelLaunchpad: React.FC = () => {
                 </div>
 
                 <h3 className="text-sm font-bold text-white">{item.title}</h3>
-                <p className="text-xs text-slate-300 leading-relaxed">{item.summary}</p>
+                <p className="text-xs text-slate-700 leading-relaxed">{item.summary}</p>
 
                 {item.changelog_entry && item.changelog_entry !== item.summary && (
-                  <div className="bg-slate-950/60 rounded-xl p-3 text-xs text-slate-400 font-sans border border-slate-850 whitespace-pre-line leading-relaxed">
+                  <div className="bg-[#F8FAFC] rounded-xl p-3 text-xs text-[#64748B] font-sans border border-[#E2E8F0] whitespace-pre-line leading-relaxed">
                     {item.changelog_entry}
                   </div>
                 )}
@@ -1104,44 +1104,44 @@ export const MultiChannelLaunchpad: React.FC = () => {
 
       {/* Subtab 3: Broadcast History */}
       {activeSubTab === 'history' && (
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <History className="w-5 h-5 text-sky-400" />
+                <History className="w-5 h-5 text-[#0284C7]" />
                 <span>Multi-Channel Dispatch History</span>
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[#64748B] mt-0.5">
                 Record of previous feature broadcasts, active distribution channels, and delivery confirmations.
               </p>
             </div>
             <button
               type="button"
               onClick={loadChangelog}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Refresh</span>
             </button>
           </div>
 
-          <div className="divide-y divide-slate-800">
+          <div className="divide-y divide-[#E2E8F0]">
             {historyItems.map((h) => (
               <div key={h.id} className="py-4 space-y-2">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-sky-400 bg-sky-950 px-2 py-0.5 rounded border border-sky-800/40">
+                      <span className="font-mono text-xs font-bold text-[#0284C7] bg-[#F0F9FF] px-2 py-0.5 rounded border border-sky-200">
                         v{h.version}
                       </span>
                       <h4 className="text-xs font-bold text-white">{h.title}</h4>
                       {h.commit_hash && (
-                        <span className="font-mono text-[10px] text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded">
+                        <span className="font-mono text-[10px] text-slate-500 bg-[#F8FAFC] px-1.5 py-0.5 rounded">
                           {h.commit_hash}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">{h.summary}</p>
+                    <p className="text-xs text-[#64748B] mt-1">{h.summary}</p>
                   </div>
 
                   <span className="text-[10px] text-slate-500 shrink-0">
@@ -1154,7 +1154,7 @@ export const MultiChannelLaunchpad: React.FC = () => {
                   {(h.channels_broadcasted || []).map((ch) => (
                     <span
                       key={ch}
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 capitalize"
+                      className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-[#E2E8F0] capitalize"
                     >
                       {ch}
                     </span>

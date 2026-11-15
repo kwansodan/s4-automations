@@ -51,13 +51,18 @@ class AuditService:
         client_id: Optional[str] = None,
         action: Optional[str] = None,
         limit: int = 100,
+        allowed_client_ids: Optional[set] = None,
     ) -> List[AuditLog]:
-        """Queries historical audit logs."""
+        """Queries historical audit logs scoped to optional client or allowed tenant client set."""
+        if allowed_client_ids is not None and not allowed_client_ids:
+            return []
         try:
             with Session(engine) as session:
                 statement = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
                 if client_id:
                     statement = statement.where(AuditLog.client_id == client_id)
+                elif allowed_client_ids is not None:
+                    statement = statement.where(AuditLog.client_id.in_(sorted(allowed_client_ids)))
                 if action:
                     statement = statement.where(AuditLog.action == action)
                 return list(session.exec(statement).all())

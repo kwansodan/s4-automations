@@ -1,6 +1,7 @@
 """Client Organization Management, Ingestion Setup & Strategy Execution Endpoints."""
 
 import asyncio
+import copy
 from typing import List, Dict, Any, Optional
 import re
 from datetime import datetime, timezone
@@ -365,32 +366,68 @@ DEFAULT_ANR_PIPELINES: List[Dict[str, Any]] = [
         "is_active": True,
         "active": True,
     },
+    {
+        "id": "pipe_anr_gl_closing",
+        "name": "General Ledger & Closing Accountant",
+        "section": "GL",
+        "entity_type": "gl_journal",
+        "source_type": "general_ledger",
+        "source_identifier": "zoho_books_ledger",
+        "schedule": "Monthly at Period Close",
+        "auto_post_draft": False,
+        "is_active": True,
+        "active": True,
+    },
+    {
+        "id": "pipe_anr_financial_reporting",
+        "name": "Financial Reporting & Disclosures Agent",
+        "section": "FR",
+        "entity_type": "fr_statement_pack",
+        "source_type": "general_ledger",
+        "source_identifier": "financial_statements",
+        "schedule": "Monthly post-closing",
+        "auto_post_draft": False,
+        "is_active": True,
+        "active": True,
+    },
 ]
+
+
+from app.api.deps import require_authenticated_user, verify_org_access
+
+
+def _apply_org_client_filter(query, organization_id: Optional[str]):
+    """Applies strict multi-tenant client scoping to SQLModel ClientOrganization query."""
+    if organization_id and organization_id not in ("s4_advisory", "all"):
+        return query.where(
+            (ClientOrganization.organization_id == organization_id)
+            | (ClientOrganization.id == organization_id)
+            | ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
+        )
+    if organization_id == "s4_advisory":
+        return query.where(
+            (ClientOrganization.organization_id == "s4_advisory")
+            | (ClientOrganization.organization_id == None)
+            | (ClientOrganization.organization_id == "")
+        )
+    return query
 
 
 @router.get("", summary="List All Accounting Client Organizations")
 async def list_clients(
     organization_id: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> List[Dict[str, Any]]:
-    """Returns all registered client organizations filtered by organization context (if provided) with self-healing schema repair."""
+    """Returns registered client organizations strictly scoped by active organization or Super-Admin context."""
+    is_sa = bool(current_user.get("is_platform_admin"))
+    effective_org_id = verify_org_access(current_user, organization_id)
+
     try:
-        query = select(ClientOrganization)
-        if organization_id and organization_id not in ("s4_advisory", "all"):
-            query = query.where(
-                (ClientOrganization.organization_id == organization_id) |
-                (ClientOrganization.id == organization_id) |
-                ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
-            )
-        elif organization_id == "s4_advisory":
-            query = query.where(
-                (ClientOrganization.organization_id == "s4_advisory") |
-                (ClientOrganization.organization_id == None) |
-                (ClientOrganization.organization_id == "")
-            )
+        query = _apply_org_client_filter(select(ClientOrganization), effective_org_id)
         clients = db.exec(query).all()
-        # Fallback if specific org filter returned empty: show all registered clients
-        if not clients:
+        # Only fall back to all clients on unimpersonated Platform Super-Admin requests without org filter
+        if not clients and effective_org_id is None and is_sa:
             clients = db.exec(select(ClientOrganization)).all()
 
         updated = False
@@ -407,44 +444,24 @@ async def list_clients(
             except Exception as commit_err:
                 logger.warning(f"Could not auto-heal ANR pipelines: {commit_err}")
         return [dump_sanitized_client(c) for c in clients]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"Error querying clients ({e}). Running immediate schema repair...")
         from app.db.session import run_schema_migrations, get_engine, init_db
         try:
             run_schema_migrations(get_engine())
             with Session(get_engine()) as retry_db:
-                retry_query = select(ClientOrganization)
-                if organization_id and organization_id not in ("s4_advisory", "all"):
-                    retry_query = retry_query.where(
-                        (ClientOrganization.organization_id == organization_id) |
-                        (ClientOrganization.id == organization_id) |
-                        ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
-                    )
-                elif organization_id == "s4_advisory":
-                    retry_query = retry_query.where(
-                        (ClientOrganization.organization_id == "s4_advisory") |
-                        (ClientOrganization.organization_id == None) |
-                        (ClientOrganization.organization_id == "")
-                    )
+                retry_query = _apply_org_client_filter(select(ClientOrganization), effective_org_id)
                 clients = retry_db.exec(retry_query).all()
-                if not clients:
-                    clients = retry_db.exec(select(ClientOrganization)).all()
                 return [dump_sanitized_client(c) for c in clients]
         except Exception as retry_err:
             logger.error(f"Retry querying clients failed ({retry_err}). Attempting full init_db recovery...")
             try:
                 init_db()
                 with Session(get_engine()) as final_db:
-                    final_query = select(ClientOrganization)
-                    if organization_id:
-                        final_query = final_query.where(
-                            (ClientOrganization.organization_id == organization_id) |
-                            (ClientOrganization.id == organization_id) |
-                            ((organization_id == "anr_group_direct") & (ClientOrganization.id == "anr_group"))
-                        )
+                    final_query = _apply_org_client_filter(select(ClientOrganization), effective_org_id)
                     clients = final_db.exec(final_query).all()
-                    if not clients and organization_id in ("s4_advisory", None):
-                        clients = final_db.exec(select(ClientOrganization)).all()
                     return [dump_sanitized_client(c) for c in clients]
             except Exception as final_err:
                 logger.error(f"Critical clients query failure: {final_err}")
@@ -455,9 +472,12 @@ async def list_clients(
 @router.post("", summary="Register a New Accounting Client")
 async def create_client(
     payload: ClientCreatePayload,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Registers a new client organization in PostgreSQL."""
+    target_org_id = verify_org_access(current_user, payload.organization_id) or "s4_advisory"
+
     slug = payload.name.lower().replace(" ", "_").replace("-", "_")
     slug = "".join(c for c in slug if c.isalnum() or c == "_").strip("_")
 
@@ -479,7 +499,7 @@ async def create_client(
 
     new_client = ClientOrganization(
         id=slug,
-        organization_id=payload.organization_id or "s4_advisory",
+        organization_id=target_org_id,
         name=payload.name,
         industry=payload.industry,
         icon=payload.icon,
@@ -795,6 +815,39 @@ async def delete_pipeline(
     return client.agents
 
 
+def _persist_agent_pipeline_run_stats(
+    db: Session,
+    client: ClientOrganization,
+    pipeline_id: str,
+    summary_payload: Dict[str, Any],
+    now_iso: str,
+    fallback_items: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """Persists run stats cleanly across both client.pipelines and client.agents."""
+    try:
+        db.refresh(client)
+    except Exception:
+        pass
+    base_items = list(client.pipelines or client.agents or fallback_items or [])
+    updated_pipes = copy.deepcopy(base_items)
+    updated_agents = copy.deepcopy(list(client.agents or base_items))
+    for collection in (updated_pipes, updated_agents):
+        for item in collection:
+            if str(item.get("id")) == str(pipeline_id):
+                item["last_triggered_at"] = now_iso
+                item["last_run_at"] = now_iso
+                item["total_runs_count"] = int(item.get("total_runs_count") or 0) + 1
+                item["last_run_summary"] = copy.deepcopy(summary_payload)
+    client.pipelines = updated_pipes
+    client.agents = updated_agents
+    client.last_run_at = datetime.now(timezone.utc)
+    client.updated_at = datetime.now(timezone.utc)
+    flag_modified(client, "pipelines")
+    flag_modified(client, "agents")
+    db.add(client)
+    db.commit()
+
+
 @router.post("/{client_id}/agents/{pipeline_id}/trigger", summary="Trigger a Specific Accounting Agent")
 @router.post("/{client_id}/pipelines/{pipeline_id}/trigger", summary="Trigger a Specific Accounting Agent (Legacy Alias)")
 async def trigger_pipeline_stream(
@@ -873,18 +926,18 @@ async def trigger_pipeline_stream(
                 "auto_post": False,
             }
 
-            if client.pipeline_streams:
-                updated_streams = []
-                for st in client.pipeline_streams:
-                    if st.get("id") == pipeline_id:
-                        st["last_run_summary"] = summary_payload
-                        st["last_run_at"] = now_iso
-                        st["total_runs_count"] = (st.get("total_runs_count") or 0) + 1
-                    updated_streams.append(st)
-                client.pipeline_streams = updated_streams
-                flag_modified(client, "pipeline_streams")
-                db.add(client)
-                db.commit()
+            try:
+                _persist_agent_pipeline_run_stats(
+                    db=db,
+                    client=client,
+                    pipeline_id=pipeline_id,
+                    summary_payload=summary_payload,
+                    now_iso=now_iso,
+                    fallback_items=agents_list,
+                )
+            except Exception as bank_persist_err:
+                logger.warning(f"Notice persisting bank pipeline run stats: {bank_persist_err}")
+                db.rollback()
 
             return {
                 "client_id": client_id,
@@ -1043,18 +1096,16 @@ async def trigger_pipeline_stream(
         "warnings": exec_warnings,
     }
 
-    # Update pipeline run stats and persist last run summary in database
+    # Update pipeline and agent run stats and persist last run summary in database
     try:
-        current_pipes = list(client.pipelines or [])
-        for p in current_pipes:
-            if p.get("id") == pipeline_id:
-                p["last_triggered_at"] = datetime.now(timezone.utc).isoformat()
-                p["total_runs_count"] = int(p.get("total_runs_count", 0)) + 1
-                p["last_run_summary"] = last_run_summary
-        client.pipelines = current_pipes
-        client.updated_at = datetime.now(timezone.utc)
-        db.add(client)
-        db.commit()
+        _persist_agent_pipeline_run_stats(
+            db=db,
+            client=client,
+            pipeline_id=pipeline_id,
+            summary_payload=last_run_summary,
+            now_iso=datetime.now(timezone.utc).isoformat(),
+            fallback_items=agents_list,
+        )
     except Exception as db_err:
         logger.warning(f"Notice persisting pipeline run stats: {db_err}")
         db.rollback()
@@ -3025,10 +3076,31 @@ async def save_client_knowledge_entry(
         confidence=payload.confidence,
         entry_id=payload.id,
     )
+
+    reactive_result = None
+    try:
+        from app.services.agentic_brain_service import AgenticBrainService
+        cat_u = str(entry.category or payload.category or "").upper()
+        inferred_sec = (
+            payload.section
+            if payload.section and str(payload.section).upper() != "ALL"
+            else ("BANK" if cat_u in ("COA_MAPPING_RULE", "BANK_RULE", "GENERAL_RULE") else "AR")
+        )
+        reactive_result = await AgenticBrainService.on_reactive_event(
+            db=db,
+            client_id=client_id,
+            event_type="KNOWLEDGE_TAUGHT",
+            event_payload={"section": inferred_sec, "entry_id": entry.id},
+            agent_id=payload.agent_id if payload.agent_id and payload.agent_id != "ALL" else None,
+        )
+    except Exception as react_err:
+        logger.warning(f"Non-fatal reactive trigger notice on knowledge save: {react_err}")
+
     return {
         "success": True,
         "entry": entry.model_dump(),
         "summary": ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id),
+        "reactive_run": (reactive_result or {}).get("run"),
     }
 
 
@@ -3049,6 +3121,26 @@ async def teach_client_knowledge_from_text(
         section=payload.section or "ALL",
         source=payload.source or "MANUAL_UI",
     )
+
+    reactive_result = None
+    if learned:
+        try:
+            from app.services.agentic_brain_service import AgenticBrainService
+            inferred_section = (
+                "BANK"
+                if any((e.category or "").upper() == "COA_MAPPING_RULE" for e in learned)
+                else (payload.section if payload.section and payload.section != "ALL" else "AR")
+            )
+            reactive_result = await AgenticBrainService.on_reactive_event(
+                db=db,
+                client_id=client_id,
+                event_type="KNOWLEDGE_TAUGHT",
+                event_payload={"section": inferred_section, "learned_count": len(learned)},
+                agent_id=payload.agent_id if payload.agent_id and payload.agent_id != "ALL" else None,
+            )
+        except Exception as react_err:
+            logger.warning(f"Non-fatal reactive trigger notice on knowledge teach: {react_err}")
+
     dumped = [e.model_dump() for e in learned]
     return {
         "success": True,
@@ -3056,6 +3148,7 @@ async def teach_client_knowledge_from_text(
         "learned_entries": dumped,
         "learned_rules": dumped,
         "summary": ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id),
+        "reactive_run": (reactive_result or {}).get("run"),
     }
 
 

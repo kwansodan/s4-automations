@@ -538,7 +538,7 @@ class IngestionPipelineConfig(BaseModel):
     """Configuration for a specific accounting ingestion pipeline."""
     id: str
     name: str
-    section: str = "AR"  # AR, AP, BANK, GL
+    section: str = "AR"  # AR, AP, BANK, GL, FR
     entity_type: str = "ar_sales_invoice"  # AccountingEntityType value
     source_type: str = "google_drive"  # google_drive, onedrive, email, manual, webhook
     source_identifier: str = ""  # Folder ID, email address, drive ID

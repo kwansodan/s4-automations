@@ -27,17 +27,18 @@ import { LandingManagerSection } from './components/landing/LandingManagerSectio
 import { AdminBillingSection } from './components/billing/AdminBillingSection';
 import { MaintenanceView } from './components/landing/MaintenanceView';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
+import { PlatformAdminConsole } from './components/admin/PlatformAdminConsole';
 import {
   LandingPageConfig,
   DEFAULT_LANDING_CONFIG,
   fetchLandingPageConfig,
 } from './lib/api';
-import { ShieldAlert } from 'lucide-react';
+import { Eye, LogOut, ShieldAlert } from 'lucide-react';
 import { PipelineFloatingWidget } from './components/common/PipelineFloatingWidget';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, user } = useAuth();
-  const { activeTab, setActiveTab, pipelineProgress, isInvoiceModalOpen, isSidebarCollapsed } = useAutomation();
+  const { isAuthenticated, isPlatformAdmin, impersonatingOrg, exitImpersonation } = useAuth();
+  const { activeTab, setActiveTab, setAdminSubTab, pipelineProgress, isInvoiceModalOpen, isSidebarCollapsed } = useAutomation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -150,6 +151,14 @@ const MainLayout: React.FC = () => {
     );
   }
 
+  const isAdminSurface =
+    activeTab === 'admin' ||
+    activeTab === 'config' ||
+    activeTab === 'landing-manager' ||
+    activeTab === 'billing' ||
+    activeTab === 'logs' ||
+    activeTab === 'social';
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex font-sans selection:bg-[#0EA5E9]/20 selection:text-[#0284C7]">
       {/* Collapsible / Responsive Sidebar */}
@@ -160,6 +169,29 @@ const MainLayout: React.FC = () => {
 
       {/* Main Content Area (Offset by dynamic sidebar width on desktop) */}
       <div className={`flex-1 flex flex-col min-w-0 ${isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'} transition-all duration-300`}>
+        {impersonatingOrg && (
+          <div className="bg-amber-50 border-b border-amber-300 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 z-40">
+            <div className="flex items-center gap-2 font-medium">
+              <Eye className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>Impersonation Mode:</strong> Viewing workspace as{' '}
+                <strong className="underline">{impersonatingOrg.name}</strong> ({impersonatingOrg.id})
+              </span>
+            </div>
+            <button
+              onClick={async () => {
+                await exitImpersonation();
+                setAdminSubTab('tenants');
+                setActiveTab('admin');
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] cursor-pointer transition"
+            >
+              <LogOut className="w-3 h-3" />
+              Exit Tenant View
+            </button>
+          </div>
+        )}
+
         <Header onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
 
         <main className="flex-1 w-full max-w-[2160px] mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 py-4 sm:py-6">
@@ -171,76 +203,28 @@ const MainLayout: React.FC = () => {
               <ContactManagementSection />
             ) : activeTab === 'catalog' ? (
               <CatalogSection />
-            ) : activeTab === 'config' ? (
-              user?.role === 'admin' ? (
-                <ConfigSection />
+            ) : isAdminSurface ? (
+              isPlatformAdmin ? (
+                <PlatformAdminConsole />
               ) : (
-                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+                <div className="bg-white rounded-2xl p-8 border border-rose-200 shadow-sm text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto text-rose-600">
                     <ShieldAlert className="w-6 h-6" />
                   </div>
-                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Platform Settings contains sensitive global infrastructure credentials (AI OCR models, SMTP gateways, database connections, and server keys). Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to view or modify these parameters.
+                  <h3 className="text-lg font-bold text-[#0F172A]">Platform Super-Admin Required</h3>
+                  <p className="text-xs text-[#64748B] leading-relaxed">
+                    The Platform Admin Console controls multi-tenant provisioning, global secrets, billing ledgers, and cross-tenant audit telemetry. Only authorized Platform Super-Admins can access this surface.
                   </p>
                   <div className="pt-2">
                     <button
                       onClick={() => setActiveTab('workspace')}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-semibold transition cursor-pointer"
                     >
                       Return to Client Workspace
                     </button>
                   </div>
                 </div>
               )
-            ) : activeTab === 'landing-manager' ? (
-              user?.role === 'admin' ? (
-                <LandingManagerSection />
-              ) : (
-                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
-                    <ShieldAlert className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    The Landing Page Manager controls public-facing messaging, sales lead pipelines, and conversion switches. Only users with the <strong className="text-rose-400">Platform Administrator</strong> role are authorized to manage landing page settings.
-                  </p>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setActiveTab('workspace')}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
-                    >
-                      Return to Client Workspace
-                    </button>
-                  </div>
-                </div>
-              )
-            ) : activeTab === 'billing' ? (
-              user?.role === 'admin' ? (
-                <AdminBillingSection />
-              ) : (
-                <div className="glass-panel rounded-2xl p-8 border border-rose-500/30 text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
-                    <ShieldAlert className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-white">Access Restricted</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Platform billing, customer subscriptions, and 3rd-party cost monitor are strictly restricted to administrators.
-                  </p>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setActiveTab('workspace')}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
-                    >
-                      Return to Client Workspace
-                    </button>
-                  </div>
-                </div>
-              )
-            ) : activeTab === 'logs' ? (
-              <LiveConsole />
-            ) : activeTab === 'social' ? (
-              <MultiChannelLaunchpad />
             ) : activeTab === 'changelog' ? (
               <ChangelogSection />
             ) : (

@@ -1,8 +1,10 @@
 import type { ActiveTab, WorkspaceSubTab } from '../context/AutomationContext';
+import type { AdminTab } from '../types/admin';
 
 export interface RouteState {
   tab: ActiveTab;
   subTab?: WorkspaceSubTab;
+  adminSubTab?: AdminTab;
   path: string;
 }
 
@@ -11,6 +13,7 @@ export const ROUTE_MAP: Array<{
   path: string;
   tab: ActiveTab;
   subTab?: WorkspaceSubTab;
+  adminSubTab?: AdminTab;
   aliases?: string[];
 }> = [
   // Watched Accounts / Information Requests (Top Priority)
@@ -25,7 +28,7 @@ export const ROUTE_MAP: Array<{
     path: '/overview',
     tab: 'workspace',
     subTab: 'overview',
-    aliases: ['/workspace', '/workspace/overview', '/dashboard'],
+    aliases: ['/workspace', '/workspace/overview', '/dashboard', '/clients'],
   },
   {
     path: '/ar',
@@ -46,6 +49,18 @@ export const ROUTE_MAP: Array<{
     aliases: ['/workspace/bank', '/statements'],
   },
   {
+    path: '/gl',
+    tab: 'workspace',
+    subTab: 'gl',
+    aliases: ['/workspace/gl', '/closing', '/journals', '/general-ledger'],
+  },
+  {
+    path: '/fr',
+    tab: 'workspace',
+    subTab: 'fr',
+    aliases: ['/workspace/fr', '/reporting', '/financial-statements', '/financial-reports'],
+  },
+  {
     path: '/agents',
     tab: 'workspace',
     subTab: 'pipelines',
@@ -58,7 +73,51 @@ export const ROUTE_MAP: Array<{
     aliases: ['/workspace/settings', '/company-settings'],
   },
 
-  // Accounting Suite & Platform Sections
+  // Platform Admin Console (/admin/* + backwards-compatible redirects)
+  {
+    path: '/admin/overview',
+    tab: 'admin',
+    adminSubTab: 'overview',
+    aliases: ['/admin', '/admin/'],
+  },
+  {
+    path: '/admin/tenants',
+    tab: 'admin',
+    adminSubTab: 'tenants',
+    aliases: ['/billing', '/subscriptions', '/payments', '/cost-monitor'],
+  },
+  {
+    path: '/admin/users',
+    tab: 'admin',
+    adminSubTab: 'users',
+    aliases: ['/admin/rbac', '/admin/super-admins'],
+  },
+  {
+    path: '/admin/agents',
+    tab: 'admin',
+    adminSubTab: 'agents',
+    aliases: ['/admin/fleet'],
+  },
+  {
+    path: '/admin/config',
+    tab: 'admin',
+    adminSubTab: 'config',
+    aliases: ['/platform-settings', '/config', '/system-settings', '/logs', '/telemetry', '/console'],
+  },
+  {
+    path: '/admin/audit',
+    tab: 'admin',
+    adminSubTab: 'audit',
+    aliases: ['/admin/telemetry'],
+  },
+  {
+    path: '/admin/growth',
+    tab: 'admin',
+    adminSubTab: 'growth',
+    aliases: ['/broadcaster', '/social', '/release-broadcaster', '/landing-manager', '/landing-page', '/visitor-settings', '/landing'],
+  },
+
+  // Accounting Suite & Shared Sections
   {
     path: '/contacts',
     tab: 'contacts',
@@ -73,31 +132,6 @@ export const ROUTE_MAP: Array<{
     path: '/whats-new',
     tab: 'changelog',
     aliases: ['/changelog', '/updates'],
-  },
-  {
-    path: '/broadcaster',
-    tab: 'social',
-    aliases: ['/social', '/release-broadcaster'],
-  },
-  {
-    path: '/landing-manager',
-    tab: 'landing-manager',
-    aliases: ['/landing-page', '/visitor-settings', '/landing'],
-  },
-  {
-    path: '/billing',
-    tab: 'billing',
-    aliases: ['/subscriptions', '/payments', '/cost-monitor'],
-  },
-  {
-    path: '/platform-settings',
-    tab: 'config',
-    aliases: ['/config', '/system-settings'],
-  },
-  {
-    path: '/logs',
-    tab: 'logs',
-    aliases: ['/telemetry', '/console'],
   },
 
   // Public & External Views
@@ -140,7 +174,7 @@ export function parseCurrentRoute(): RouteState {
       (r) => r.path === hashAsPath || (r.aliases && r.aliases.includes(hashAsPath))
     );
     if (hashMatch) {
-      return { tab: hashMatch.tab, subTab: hashMatch.subTab, path: hashMatch.path };
+      return { tab: hashMatch.tab, subTab: hashMatch.subTab, adminSubTab: hashMatch.adminSubTab, path: hashMatch.path };
     }
   }
 
@@ -149,7 +183,7 @@ export function parseCurrentRoute(): RouteState {
     (r) => r.path === pathname || (r.aliases && r.aliases.includes(pathname))
   );
   if (exactMatch) {
-    return { tab: exactMatch.tab, subTab: exactMatch.subTab, path: exactMatch.path };
+    return { tab: exactMatch.tab, subTab: exactMatch.subTab, adminSubTab: exactMatch.adminSubTab, path: exactMatch.path };
   }
 
   // 3. Fallbacks for query parameters
@@ -175,12 +209,16 @@ export function parseCurrentRoute(): RouteState {
 }
 
 /**
- * Generates the canonical URL for a given tab and workspace sub-tab.
+ * Generates the canonical URL for a given tab, workspace sub-tab, or admin module.
  */
-export function getCanonicalPath(tab: ActiveTab, subTab?: WorkspaceSubTab): string {
+export function getCanonicalPath(tab: ActiveTab, subTab?: WorkspaceSubTab, adminSubTab?: AdminTab): string {
   if (tab === 'workspace') {
     const match = ROUTE_MAP.find((r) => r.tab === 'workspace' && r.subTab === (subTab || 'requests'));
     return match ? match.path : '/requests';
+  }
+  if (tab === 'admin') {
+    const match = ROUTE_MAP.find((r) => r.tab === 'admin' && r.adminSubTab === (adminSubTab || 'overview'));
+    return match ? match.path : '/admin/overview';
   }
 
   const match = ROUTE_MAP.find((r) => r.tab === tab);
@@ -191,10 +229,15 @@ export function getCanonicalPath(tab: ActiveTab, subTab?: WorkspaceSubTab): stri
  * Synchronizes the browser address bar with the active view.
  * Uses window.history.pushState or replaceState.
  */
-export function syncUrlWithRoute(tab: ActiveTab, subTab?: WorkspaceSubTab, replace: boolean = false): void {
+export function syncUrlWithRoute(
+  tab: ActiveTab,
+  subTab?: WorkspaceSubTab,
+  replace: boolean = false,
+  adminSubTab?: AdminTab
+): void {
   if (typeof window === 'undefined') return;
 
-  const targetPath = getCanonicalPath(tab, subTab);
+  const targetPath = getCanonicalPath(tab, subTab, adminSubTab);
   const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
   const currentHash = window.location.hash;
 

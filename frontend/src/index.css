@@ -173,7 +173,8 @@
   color: #64748B !important;
 }
 
-/* Primary Cyan Action Buttons */
+/* Primary Cyan & Colored Solid Action Buttons */
+button[class*="bg-[#0284C7]"],
 button[class*="bg-sky-600"],
 button[class*="bg-sky-500"],
 button[class*="bg-gradient-to-r from-sky-600"],
@@ -187,14 +188,55 @@ a[class*="bg-sky-500"],
   box-shadow: 0 1px 2px 0 rgba(2, 132, 199, 0.25) !important;
 }
 
+button[class*="bg-[#0284C7]"]:hover,
 button[class*="bg-sky-600"]:hover,
 button[class*="bg-sky-500"]:hover,
 a[class*="bg-sky-600"]:hover,
 .bg-sky-600:hover,
 .bg-sky-500:hover {
-  background-color: #0EA5E9 !important;
+  background-color: #0369A1 !important;
   color: #FFFFFF !important;
-  border-color: #0EA5E9 !important;
+  border-color: #0369A1 !important;
+}
+
+[class*="bg-slate-9"].text-white,
+[class*="bg-slate-9"] .text-white,
+[class*="bg-slate-8"].text-white,
+[class*="bg-slate-8"] .text-white,
+[class*="bg-[#0F172A]"].text-white,
+[class*="bg-[#0F172A]"] .text-white,
+[class*="bg-gradient-to-"].text-white,
+[class*="bg-gradient-to-"] .text-white,
+button[class*="bg-emerald-6"],
+button[class*="bg-amber-6"],
+button[class*="bg-rose-6"],
+button[class*="bg-indigo-6"],
+button[class*="bg-blue-6"],
+button[class*="bg-sky-6"],
+button[class*="bg-teal-6"],
+button[class*="bg-slate-8"],
+button[class*="bg-slate-9"],
+a[class*="bg-emerald-6"],
+a[class*="bg-indigo-6"],
+a[class*="bg-blue-6"],
+div[class*="bg-gradient-to-tr"].text-white,
+span[class*="bg-[#0284C7]"].text-white {
+  color: #FFFFFF !important;
+}
+
+[class*="bg-slate-9"] [class*="text-slate-100"],
+[class*="bg-slate-9"] [class*="text-slate-200"],
+[class*="bg-slate-8"] [class*="text-slate-100"],
+[class*="bg-slate-8"] [class*="text-slate-200"],
+[class*="bg-[#0F172A]"] [class*="text-slate-100"],
+[class*="bg-[#0F172A]"] [class*="text-slate-200"] {
+  color: #F1F5F9 !important;
+}
+
+[class*="bg-slate-9"] [class*="text-slate-300"],
+[class*="bg-slate-8"] [class*="text-slate-300"],
+[class*="bg-[#0F172A]"] [class*="text-slate-300"] {
+  color: #CBD5E1 !important;
 }
 
 /* Badges & Chips */

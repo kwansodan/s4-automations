@@ -27,7 +27,10 @@ from app.services.audit_service import AuditService
 from app.services.mailjet_service import MailjetService
 from app.workflows.bank_statement_pipeline import run_bank_pipeline_core
 from app.api.deps import (
+    enforce_tenant_request_scope,
+    get_accessible_client_ids,
     require_admin_user,
+    verify_client_access,
     enforce_otp_request_rate_limit,
     enforce_otp_verify_rate_limit,
 )
@@ -38,7 +41,7 @@ router = APIRouter(tags=["Bank Reconciliation & Portal"])
 bank_accountant_router = APIRouter(
     prefix="/bank",
     tags=["Accountant Bank Management"],
-    dependencies=[Depends(require_admin_user)],
+    dependencies=[Depends(require_admin_user), Depends(enforce_tenant_request_scope)],
 )
 
 PORTAL_TOKEN_SECRET = settings.AUTH_SECRET_KEY + "_portal"
@@ -438,6 +441,7 @@ async def _handle_portal_explanation_submission(
             .where(BankTransaction.client_id.in_(aliases))
         ).first()
 
+    resolved_section = "BANK"
     if tx:
         tx.client_explanation = payload.client_explanation
         if payload.client_attachments:
@@ -477,6 +481,7 @@ async def _handle_portal_explanation_submission(
         ).first()
         if not st:
             raise HTTPException(status_code=404, detail="Transaction or request not found.")
+        resolved_section = (st.pipeline_type or "AR").upper()
 
         st_meta = dict(st.metadata_json or {})
         batch_id = st_meta.get("query_batch_id")
@@ -575,6 +580,20 @@ async def _handle_portal_explanation_submission(
         action="CLIENT_EXPLANATION_SUBMITTED",
         details={"item_key": item_key, "amount": amt_val, "explanation": payload.client_explanation},
     )
+
+    try:
+        from sqlmodel import Session as SqlSession
+        from app.db.session import get_engine
+        from app.services.agentic_brain_service import AgenticBrainService
+        with SqlSession(get_engine()) as reactive_db:
+            await AgenticBrainService.on_reactive_event(
+                db=reactive_db,
+                client_id=client_id,
+                event_type="PORTAL_CLARIFICATION_SUBMITTED",
+                event_payload={"item_key": item_key, "explanation": payload.client_explanation, "section": resolved_section},
+            )
+    except Exception as react_err:
+        logger.warning(f"Non-fatal reactive trigger notice on portal clarification: {react_err}")
 
     return {"success": True, "transaction": out_record}
 
@@ -1094,13 +1113,50 @@ async def accountant_list_bank_transactions(
         }
 
 
+def _verify_client_ids_access(
+    session: Session,
+    current_user: Dict[str, Any],
+    client_ids: List[Optional[str]],
+) -> None:
+    """Verifies tenant ownership across a collection of client IDs."""
+    for cid in {c for c in client_ids if c}:
+        verify_client_access(
+            session,
+            current_user,
+            str(cid),
+            allow_missing_for_platform_admin=True,
+        )
+
+
+def _verify_bank_tx_access(
+    session: Session,
+    current_user: Dict[str, Any],
+    tx_id: int,
+    missing_detail: str = "Transaction not found.",
+) -> BankTransaction:
+    """Loads a BankTransaction by ID and verifies caller access to its owning client."""
+    tx = session.get(BankTransaction, tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail=missing_detail)
+    if tx.client_id:
+        verify_client_access(
+            session,
+            current_user,
+            tx.client_id,
+            allow_missing_for_platform_admin=True,
+        )
+    return tx
+
+
 @bank_accountant_router.post("/transactions/{tx_id}/categorize", summary="Accountant: Classify & Categorize Bank Transaction")
-async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransactionCategorizeRequest) -> Dict[str, Any]:
+async def accountant_categorize_bank_transaction(
+    tx_id: int,
+    payload: BankTransactionCategorizeRequest,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Assigns Chart of Accounts category and syncs to accounting platform."""
     with Session(get_engine()) as session:
-        tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
-        if not tx:
-            raise HTTPException(status_code=404, detail="Transaction not found.")
+        tx = _verify_bank_tx_access(session, current_user, tx_id)
 
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == tx.client_id)).first()
 
@@ -1188,12 +1244,13 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
 
 
 @bank_accountant_router.get("/transactions/{tx_id}/matches", summary="Accountant: Get Platform Matches for Bank Transaction")
-async def accountant_get_bank_transaction_matches(tx_id: int) -> Dict[str, Any]:
+async def accountant_get_bank_transaction_matches(
+    tx_id: int,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Fetches potential matching open invoices, bills, and payments from connected accounting platform."""
     with Session(get_engine()) as session:
-        tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
-        if not tx:
-            raise HTTPException(status_code=404, detail="Transaction not found.")
+        tx = _verify_bank_tx_access(session, current_user, tx_id)
 
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == tx.client_id)).first()
         if not client:
@@ -1230,12 +1287,13 @@ async def accountant_get_bank_transaction_matches(tx_id: int) -> Dict[str, Any]:
 
 
 @bank_accountant_router.post("/transactions/{tx_id}/toggle-direction", summary="Accountant: Toggle Transfer In / Transfer Out")
-async def accountant_toggle_transaction_direction(tx_id: int) -> Dict[str, Any]:
+async def accountant_toggle_transaction_direction(
+    tx_id: int,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Allows an operator to quickly flip between Transfer In (CREDIT) and Transfer Out (DEBIT)."""
     with Session(get_engine()) as session:
-        tx = session.get(BankTransaction, tx_id)
-        if not tx:
-            raise HTTPException(status_code=404, detail="Bank transaction not found.")
+        tx = _verify_bank_tx_access(session, current_user, tx_id, missing_detail="Bank transaction not found.")
         tx.transaction_type = "DEBIT" if tx.transaction_type == "CREDIT" else "CREDIT"
         session.add(tx)
         session.commit()
@@ -1249,12 +1307,14 @@ async def accountant_toggle_transaction_direction(tx_id: int) -> Dict[str, Any]:
 
 
 @bank_accountant_router.post("/transactions/{tx_id}/query", summary="Accountant: Draw Client Attention (Send Query)")
-async def accountant_query_transaction(tx_id: int, payload: BankTransactionQueryRequest) -> Dict[str, Any]:
+async def accountant_query_transaction(
+    tx_id: int,
+    payload: BankTransactionQueryRequest,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Draws client attention, sets status to CLARIFICATION_REQUESTED, and dispatches Magic Link notification."""
     with Session(get_engine()) as session:
-        tx = session.exec(select(BankTransaction).where(BankTransaction.id == tx_id)).first()
-        if not tx:
-            raise HTTPException(status_code=404, detail="Transaction not found.")
+        tx = _verify_bank_tx_access(session, current_user, tx_id)
 
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == tx.client_id)).first()
         client_name = client.name if client else tx.client_id
@@ -1364,10 +1424,14 @@ async def accountant_query_transaction(tx_id: int, payload: BankTransactionQuery
 
 
 @bank_accountant_router.post("/transactions/bulk-categorize", summary="Accountant: Bulk Categorize Multiple Transactions")
-async def accountant_bulk_categorize(payload: BankTransactionBulkCategorizeRequest) -> Dict[str, Any]:
+async def accountant_bulk_categorize(
+    payload: BankTransactionBulkCategorizeRequest,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Applies the same Chart of Accounts category to a list of selected transactions."""
     with Session(get_engine()) as session:
         txs = session.exec(select(BankTransaction).where(BankTransaction.id.in_(payload.transaction_ids))).all()
+        _verify_client_ids_access(session, current_user, [t.client_id for t in txs])
         for t in txs:
             t.mapped_account_id = payload.mapped_account_id
             t.mapped_account_name = payload.mapped_account_name or payload.mapped_account_id
@@ -1389,12 +1453,16 @@ async def accountant_bulk_categorize(payload: BankTransactionBulkCategorizeReque
 
 
 @bank_accountant_router.post("/transactions/bulk-query", summary="Accountant: Bulk Query Client on Multiple Transactions")
-async def accountant_bulk_query(payload: BankTransactionBulkQueryRequest) -> Dict[str, Any]:
+async def accountant_bulk_query(
+    payload: BankTransactionBulkQueryRequest,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Dispatches a consolidated digest email for multiple selected transactions."""
     with Session(get_engine()) as session:
         txs = session.exec(select(BankTransaction).where(BankTransaction.id.in_(payload.transaction_ids))).all()
         if not txs:
             raise HTTPException(status_code=404, detail="No matching transactions found.")
+        _verify_client_ids_access(session, current_user, [t.client_id for t in txs])
 
         client_id = txs[0].client_id
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
@@ -1663,6 +1731,22 @@ async def accountant_sync_bank_feeds(
 
         session.commit()
 
+        reactive_sync_run = None
+        if synced_count > 0:
+            try:
+                from app.services.agentic_brain_service import AgenticBrainService
+                in_scan_cv = getattr(AgenticBrainService, "_in_bank_scan_cv", None)
+                if not (in_scan_cv and in_scan_cv.get(False)):
+                    react_res = await AgenticBrainService.on_reactive_event(
+                        db=session,
+                        client_id=client_id,
+                        event_type="BANK_SYNC_COMPLETED",
+                        event_payload={"section": "BANK", "synced_count": synced_count},
+                    )
+                    reactive_sync_run = (react_res or {}).get("run")
+            except Exception as react_err:
+                logger.warning(f"Non-fatal reactive trigger notice on bank sync: {react_err}")
+
         msg_parts = []
         if synced_count > 0:
             msg_parts.append(f"synced {synced_count} uncategorized transactions")
@@ -1675,6 +1759,7 @@ async def accountant_sync_bank_feeds(
             "client_id": client_id,
             "synced_new_count": synced_count,
             "reconciled_count": reconciled_in_zoho_count,
+            "reactive_run": reactive_sync_run,
             "message": final_msg,
         }
 
@@ -1689,8 +1774,16 @@ async def accountant_upload_bank_statement(
     month: str = Form(default=datetime.now().strftime("%B")),
     year: int = Form(default=datetime.now().year),
     file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Ingests uploaded bank statement with file-size and extension verification."""
+    with Session(get_engine()) as session:
+        verify_client_access(
+            session,
+            current_user,
+            client_id,
+            allow_missing_for_platform_admin=True,
+        )
     import os
     if file.filename:
         _, ext = os.path.splitext(file.filename)
@@ -1715,6 +1808,32 @@ async def accountant_upload_bank_statement(
         file_name=file.filename,
         mime_type=file.content_type,
     )
+    newly_staged = int((res or {}).get("newly_staged", 0) or 0)
+    reactive_upload_run = None
+    if newly_staged > 0:
+        try:
+            from app.services.agentic_brain_service import AgenticBrainService
+
+            in_scan_cv = getattr(AgenticBrainService, "_in_bank_scan_cv", None)
+            if not (in_scan_cv and in_scan_cv.get(False)):
+                with Session(get_engine()) as session:
+                    react_res = await AgenticBrainService.on_reactive_event(
+                        db=session,
+                        client_id=client_id,
+                        event_type="BANK_SYNC_COMPLETED",
+                        event_payload={
+                            "section": "BANK",
+                            "synced_count": newly_staged,
+                            "source": "bank_upload",
+                            "file_name": file.filename,
+                        },
+                    )
+                    reactive_upload_run = (react_res or {}).get("run")
+        except Exception as react_err:
+            logger.warning(f"Non-fatal reactive trigger notice on bank statement upload: {react_err}")
+
+    if isinstance(res, dict):
+        res["reactive_run"] = reactive_upload_run
     return res
 
 
@@ -1818,6 +1937,8 @@ async def accountant_list_information_requests(
     search: Optional[str] = Query(None, description="Search query, explanation, party, bank account, or email"),
     month: Optional[str] = Query("ALL", description="Filter by month or ALL"),
     year: Optional[str] = Query("ALL", description="Filter by year or ALL"),
+    organization_id: Optional[str] = Query(None, description="Optional organization scope"),
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Unified control center endpoint returning all client information requests across AR, AP, Banking, and General."""
     from app.api.v1.clients import get_client_id_aliases
@@ -1832,7 +1953,23 @@ async def accountant_list_information_requests(
         canonical_target_client_id: Optional[str] = None
         if client_id and client_id.strip().upper() != "ALL":
             canonical_target_client_id = client_id.strip()
+            verify_client_access(
+                session,
+                current_user,
+                canonical_target_client_id,
+                allow_missing_for_platform_admin=True,
+            )
             target_aliases = get_client_id_aliases(canonical_target_client_id) or [canonical_target_client_id]
+        else:
+            allowed_clients = get_accessible_client_ids(session, current_user, organization_id)
+            if allowed_clients is not None:
+                expanded: List[str] = []
+                for allowed_cid in sorted(allowed_clients):
+                    for alias in (get_client_id_aliases(allowed_cid) or [allowed_cid]):
+                        if alias not in expanded:
+                            expanded.append(alias)
+                # Use an impossible sentinel so empty tenants return no rows instead of everything
+                target_aliases = expanded or ["__no_accessible_clients__"]
 
         # 1. Gather BankTransaction requests
         bank_query = select(BankTransaction)
@@ -2263,7 +2400,10 @@ async def accountant_list_information_requests(
 
 
 @bank_accountant_router.post("/requests/create", summary="Accountant: Create & Dispatch Information Request (AR, AP, BANK, or GENERAL)")
-async def accountant_create_information_request(payload: CreateInformationRequestPayload) -> Dict[str, Any]:
+async def accountant_create_information_request(
+    payload: CreateInformationRequestPayload,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Creates an information request across AR, AP, Banking, or General and emails a 1-click Magic Link to the client."""
     from app.workflows.zoho_invoice_generator import extract_slip_customer_name
 
@@ -2272,6 +2412,22 @@ async def accountant_create_information_request(payload: CreateInformationReques
     now_iso = now_utc.isoformat()
 
     with Session(get_engine()) as session:
+        verify_client_access(
+            session,
+            current_user,
+            payload.client_id,
+            allow_missing_for_platform_admin=True,
+        )
+        if payload.bank_transaction_ids:
+            ref_btxs = session.exec(
+                select(BankTransaction).where(BankTransaction.id.in_(payload.bank_transaction_ids))
+            ).all()
+            _verify_client_ids_access(session, current_user, [b.client_id for b in ref_btxs])
+        if payload.staged_transaction_ids:
+            ref_stxs = session.exec(
+                select(StagedTransaction).where(StagedTransaction.id.in_(payload.staged_transaction_ids))
+            ).all()
+            _verify_client_ids_access(session, current_user, [s.client_id for s in ref_stxs])
         client = session.exec(select(ClientOrganization).where(ClientOrganization.id == payload.client_id)).first()
         client_name = client.name if client else payload.client_id.replace("_", " ").title()
 
@@ -2512,14 +2668,41 @@ async def accountant_create_information_request(payload: CreateInformationReques
         }
 
 
+def _verify_request_keys_access(
+    session: Session,
+    current_user: Dict[str, Any],
+    request_keys: List[str],
+) -> None:
+    """Resolves BANK:/STAGED: request keys to owning clients and verifies tenant access."""
+    owner_ids: List[Optional[str]] = []
+    for raw_key in request_keys or []:
+        key_low = str(raw_key or "").lower()
+        try:
+            if key_low.startswith("bank:"):
+                row = session.get(BankTransaction, int(key_low.split(":", 1)[1]))
+                if row:
+                    owner_ids.append(row.client_id)
+            elif key_low.startswith("staged:"):
+                row = session.get(StagedTransaction, int(key_low.split(":", 1)[1]))
+                if row:
+                    owner_ids.append(row.client_id)
+        except (ValueError, IndexError):
+            continue
+    _verify_client_ids_access(session, current_user, owner_ids)
+
+
 @bank_accountant_router.post("/requests/remind", summary="Accountant: Send Consolidated Reminder Digest for Pending Requests")
-async def accountant_remind_information_requests(payload: RemindInformationRequestsPayload) -> Dict[str, Any]:
+async def accountant_remind_information_requests(
+    payload: RemindInformationRequestsPayload,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Sends a 1-click reminder digest email for one or more pending information requests across AR, AP, and Banking."""
     now_utc = datetime.now(timezone.utc)
     now_iso = now_utc.isoformat()
     target_keys = payload.item_keys or payload.request_ids or []
 
     with Session(get_engine()) as session:
+        _verify_request_keys_access(session, current_user, target_keys)
         reminded_items: List[str] = []
         client_id_val: Optional[str] = None
         target_email = payload.recipient_email
@@ -2631,7 +2814,10 @@ async def accountant_remind_information_requests(payload: RemindInformationReque
 
 
 @bank_accountant_router.post("/requests/resolve", summary="Accountant: Resolve Information Requests & Apply Ledger Action")
-async def accountant_resolve_information_requests(payload: ResolveInformationRequestsPayload) -> Dict[str, Any]:
+async def accountant_resolve_information_requests(
+    payload: ResolveInformationRequestsPayload,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Marks information requests as RESOLVED and optionally approves AR/AP ledger items or categorizes Bank transactions."""
     now_utc = datetime.now(timezone.utc)
     now_iso = now_utc.isoformat()
@@ -2641,6 +2827,7 @@ async def accountant_resolve_information_requests(payload: ResolveInformationReq
     note_val = payload.notes or payload.resolution_note
 
     with Session(get_engine()) as session:
+        _verify_request_keys_access(session, current_user, target_keys)
         for req_id in target_keys:
             r_low = req_id.lower()
             if r_low.startswith("bank:"):
@@ -2761,7 +2948,10 @@ async def accountant_resolve_information_requests(payload: ResolveInformationReq
 
 
 @bank_accountant_router.post("/requests/followup", summary="Accountant: Send Follow-Up Question in Request Thread")
-async def accountant_followup_information_request(payload: FollowupInformationRequestPayload) -> Dict[str, Any]:
+async def accountant_followup_information_request(
+    payload: FollowupInformationRequestPayload,
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Appends a follow-up question from the accountant to an existing request thread and re-notifies the client."""
     now_utc = datetime.now(timezone.utc)
     now_iso = now_utc.isoformat()
@@ -2772,6 +2962,7 @@ async def accountant_followup_information_request(payload: FollowupInformationRe
         raise HTTPException(status_code=400, detail="item_key/request_id and follow-up message are required.")
 
     with Session(get_engine()) as session:
+        _verify_request_keys_access(session, current_user, [req_id])
         r_low = req_id.lower()
         if r_low.startswith("bank:"):
             b_id = int(req_id.split(":", 1)[1])

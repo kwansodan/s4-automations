@@ -160,18 +160,18 @@ export const ContactManagementSection: React.FC = () => {
     <div className="space-y-6 animate-in fade-in">
       
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-sky-950/80 via-slate-900 to-indigo-950/80 border border-sky-500/30 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
+      <div className="bg-gradient-to-r from-[#F0F9FF] via-white to-indigo-50/70 border border-sky-500/30 rounded-2xl p-6 shadow-xl backdrop-blur-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+              <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-[#0284C7]">
                 <Users className="w-5 h-5" />
               </div>
               <div>
                 <h1 className="text-xl font-extrabold text-white tracking-tight">
                   Contacts &amp; Practice Team Management
                 </h1>
-                <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+                <p className="text-xs text-[#64748B] mt-0.5 max-w-2xl">
                   Invite client executives to clarify bank queries via 1-click magic links, and invite accounting firm team members to manage client portfolios.
                 </p>
               </div>
@@ -190,16 +190,16 @@ export const ContactManagementSection: React.FC = () => {
 
             <button
               onClick={() => setIsTeamModalOpen(true)}
-              className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-slate-800 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-100 text-[#0F172A] hover:text-white text-xs font-bold py-2.5 px-3.5 rounded-xl border border-[#E2E8F0] transition cursor-pointer"
             >
-              <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
               <span>Invite Team Member</span>
             </button>
 
             <button
               onClick={loadData}
               disabled={isLoading}
-              className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition cursor-pointer"
+              className="p-2.5 bg-white hover:bg-slate-100 text-[#64748B] hover:text-white rounded-xl border border-[#E2E8F0] transition cursor-pointer"
               title="Refresh contact records"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -211,62 +211,62 @@ export const ContactManagementSection: React.FC = () => {
       {/* Top KPI Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-400">Total Client Contacts</span>
-            <Building2 className="w-4 h-4 text-sky-400" />
+            <span className="text-xs font-bold text-[#64748B]">Total Client Contacts</span>
+            <Building2 className="w-4 h-4 text-[#0284C7]" />
           </div>
           <div className="text-2xl font-black text-white">{stats.total_client_contacts}</div>
-          <span className="text-[10px] text-sky-400/80 font-medium mt-1 block">Registered client stakeholders</span>
+          <span className="text-[10px] text-[#0284C7]/80 font-medium mt-1 block">Registered client stakeholders</span>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-emerald-400">Active Portal Users</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-bold text-emerald-600">Active Portal Users</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-200">{stats.active_portal_contacts}</div>
-          <span className="text-[10px] text-emerald-400/80 font-medium mt-1 block">Live portal participants</span>
+          <span className="text-[10px] text-emerald-600/80 font-medium mt-1 block">Live portal participants</span>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-amber-300">Pending Invitations</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold text-amber-700">Pending Invitations</span>
+            <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl font-black text-amber-200">{stats.pending_invites}</div>
-          <span className="text-[10px] text-amber-400/80 font-medium mt-1 block">Awaiting magic link response</span>
+          <span className="text-[10px] text-amber-600/80 font-medium mt-1 block">Awaiting magic link response</span>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-indigo-300">Practice Team</span>
-            <UserCheck className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold text-indigo-700">Practice Team</span>
+            <UserCheck className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="text-2xl font-black text-indigo-200">{stats.total_firm_members}</div>
-          <span className="text-[10px] text-indigo-400/80 font-medium mt-1 block">Accountants managing clients</span>
+          <span className="text-[10px] text-indigo-600/80 font-medium mt-1 block">Accountants managing clients</span>
         </div>
 
       </div>
 
       {/* Main Tab Navigation */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl space-y-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xl backdrop-blur-xl space-y-4">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
           
           {/* Sub Tab Switcher */}
-          <div className="flex items-center gap-2 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center gap-2 bg-[#F8FAFC] p-1 rounded-xl border border-[#E2E8F0]">
             <button
               onClick={() => setActiveContactTab('clients')}
               className={`flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'clients'
                   ? 'bg-sky-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  : 'text-[#64748B] hover:text-white hover:bg-white'
               }`}
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>Client Contacts (Info Requests)</span>
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/40 font-mono">
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[#F0F9FF] text-[#0284C7] border border-sky-500/40 font-mono">
                 {clientContacts.length}
               </span>
             </button>
@@ -276,12 +276,12 @@ export const ContactManagementSection: React.FC = () => {
               className={`flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'firm'
                   ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  : 'text-[#64748B] hover:text-white hover:bg-white'
               }`}
             >
               <UserCheck className="w-3.5 h-3.5" />
               <span>Firm Team Members (Client Management)</span>
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/40 font-mono">
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-500/40 font-mono">
                 {firmMembers.length}
               </span>
             </button>
@@ -295,7 +295,7 @@ export const ContactManagementSection: React.FC = () => {
                   setActiveTab('workspace');
                   setWorkspaceSubTab('requests');
                 }}
-                className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 hover:underline cursor-pointer font-bold"
+                className="flex items-center gap-1.5 text-xs text-[#0284C7] hover:text-[#0284C7] hover:underline cursor-pointer font-bold"
               >
                 <span>Go to Information Requests Queue</span>
                 <span>→</span>
@@ -315,16 +315,16 @@ export const ContactManagementSection: React.FC = () => {
               
               <div className="flex items-center gap-2.5 flex-wrap">
                 {/* Client Selector Filter */}
-                <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Client:</span>
+                <div className="flex items-center gap-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5">
+                  <span className="text-[10px] uppercase font-bold text-[#64748B]">Client:</span>
                   <select
                     value={selectedClientFilter}
                     onChange={(e) => setSelectedClientFilter(e.target.value)}
                     className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
                   >
-                    <option value="ALL" className="bg-slate-900 text-white">All Clients</option>
+                    <option value="ALL" className="bg-white text-white">All Clients</option>
                     {clients.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                      <option key={c.id} value={c.id} className="bg-white text-white">
                         {c.name}
                       </option>
                     ))}
@@ -332,15 +332,15 @@ export const ContactManagementSection: React.FC = () => {
                 </div>
 
                 {/* Status Tabs */}
-                <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
+                <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-xl border border-[#E2E8F0] text-xs">
                   {['ALL', 'ACTIVE', 'INVITED'].map((st) => (
                     <button
                       key={st}
                       onClick={() => setClientStatusFilter(st)}
                       className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
                         clientStatusFilter === st
-                          ? 'bg-slate-800 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
+                          ? 'bg-slate-100 text-white'
+                          : 'text-[#64748B] hover:text-[#0F172A]'
                       }`}
                     >
                       {st === 'ALL' ? 'All' : st}
@@ -357,19 +357,19 @@ export const ContactManagementSection: React.FC = () => {
                   placeholder="Search contact, client, email..."
                   value={clientSearchQuery}
                   onChange={(e) => setClientSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                 />
               </div>
             </div>
 
             {/* Client Contacts List / Cards */}
             {clientContacts.length === 0 ? (
-              <div className="p-8 bg-slate-950/40 rounded-2xl border border-slate-800 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-sky-950/60 border border-sky-500/30 flex items-center justify-center mx-auto text-sky-400">
+              <div className="p-8 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#F0F9FF] border border-sky-500/30 flex items-center justify-center mx-auto text-[#0284C7]">
                   <Building2 className="w-6 h-6" />
                 </div>
                 <h3 className="text-sm font-bold text-white">No Client Contacts Found</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                <p className="text-xs text-[#64748B] max-w-md mx-auto">
                   Invite client owners, CFOs, or bookkeepers so they can receive 1-click magic link notifications to answer bank queries.
                 </p>
                 <button
@@ -385,7 +385,7 @@ export const ContactManagementSection: React.FC = () => {
                 {clientContacts.map((contact) => (
                   <div
                     key={contact.id}
-                    className="bg-slate-950/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-4 shadow-lg transition space-y-3 flex flex-col justify-between"
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] hover:border-sky-500/50 rounded-2xl p-4 shadow-lg transition space-y-3 flex flex-col justify-between"
                   >
                     <div>
                       {/* Top Row: Name + Status Badge */}
@@ -398,7 +398,7 @@ export const ContactManagementSection: React.FC = () => {
                             <h4 className="text-sm font-bold text-white leading-tight">
                               {contact.name}
                             </h4>
-                            <span className="text-[11px] font-medium text-sky-400">
+                            <span className="text-[11px] font-medium text-[#0284C7]">
                               {contact.role.replace('_', ' ')}
                             </span>
                           </div>
@@ -408,8 +408,8 @@ export const ContactManagementSection: React.FC = () => {
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                             contact.portal_status === 'ACTIVE'
-                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                              : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-500/40'
+                              : 'bg-amber-50 text-amber-700 border-amber-500/40'
                           }`}
                         >
                           <span
@@ -423,22 +423,22 @@ export const ContactManagementSection: React.FC = () => {
 
                       {/* Client Company Pill */}
                       <div className="mt-2.5">
-                        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 font-medium">
-                          <Building2 className="w-3 h-3 text-sky-400" />
+                        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-lg bg-white border border-[#E2E8F0] text-slate-700 font-medium">
+                          <Building2 className="w-3 h-3 text-[#0284C7]" />
                           <span>{contact.client_name || contact.client_id}</span>
                         </span>
                       </div>
 
                       {/* Contact Info */}
-                      <div className="mt-3 space-y-1.5 text-xs text-slate-400">
+                      <div className="mt-3 space-y-1.5 text-xs text-[#64748B]">
                         <div className="flex items-center gap-2 truncate">
                           <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span className="truncate text-slate-200">{contact.email}</span>
+                          <span className="truncate text-[#0F172A]">{contact.email}</span>
                         </div>
                         {contact.phone && (
                           <div className="flex items-center gap-2">
                             <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span className="font-mono text-slate-300">{contact.phone}</span>
+                            <span className="font-mono text-slate-700">{contact.phone}</span>
                           </div>
                         )}
                         {contact.notes && (
@@ -450,16 +450,16 @@ export const ContactManagementSection: React.FC = () => {
                     </div>
 
                     {/* Card Actions */}
-                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between gap-2">
                       <button
                         onClick={() => handleCopyMagicLink(contact)}
-                        className="flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-950/60 border border-sky-500/30 px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                        className="flex items-center gap-1 text-[11px] font-bold text-[#0284C7] hover:text-[#0284C7] bg-[#F0F9FF] border border-sky-500/30 px-2.5 py-1.5 rounded-xl transition cursor-pointer"
                         title="Copy 72-hour 1-click magic link to clipboard"
                       >
                         {copiedId === contact.id ? (
                           <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-300">Copied!</span>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-700">Copied!</span>
                           </>
                         ) : (
                           <>
@@ -473,7 +473,7 @@ export const ContactManagementSection: React.FC = () => {
                         <button
                           onClick={() => handleResendClientInvite(contact)}
                           disabled={actionLoadingId === `resend_client_${contact.id}`}
-                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                          className="p-1.5 text-[#64748B] hover:text-white hover:bg-slate-100 rounded-lg transition cursor-pointer"
                           title="Resend invitation email"
                         >
                           <Send className={`w-3.5 h-3.5 ${actionLoadingId === `resend_client_${contact.id}` ? 'animate-spin' : ''}`} />
@@ -483,7 +483,7 @@ export const ContactManagementSection: React.FC = () => {
                           href={contact.magic_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                          className="p-1.5 text-[#64748B] hover:text-[#0284C7] hover:bg-slate-100 rounded-lg transition cursor-pointer"
                           title="Launch portal as this contact (Preview)"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -492,7 +492,7 @@ export const ContactManagementSection: React.FC = () => {
                         <button
                           onClick={() => handleDeleteClientContact(contact)}
                           disabled={actionLoadingId === `delete_client_${contact.id}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                          className="p-1.5 text-[#64748B] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                           title="Revoke access and remove contact"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -516,8 +516,8 @@ export const ContactManagementSection: React.FC = () => {
             
             {/* Search Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Shield className="w-4 h-4 text-indigo-400" />
+              <div className="flex items-center gap-2 text-xs text-[#64748B]">
+                <Shield className="w-4 h-4 text-indigo-600" />
                 <span>Accounting practice staff participating in portfolio management and bank reconciliations</span>
               </div>
 
@@ -528,19 +528,19 @@ export const ContactManagementSection: React.FC = () => {
                   placeholder="Search staff, role, email..."
                   value={firmSearchQuery}
                   onChange={(e) => setFirmSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
             {/* Team Members Grid */}
             {firmMembers.length === 0 ? (
-              <div className="p-8 bg-slate-950/40 rounded-2xl border border-slate-800 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400">
+              <div className="p-8 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-600">
                   <UserCheck className="w-6 h-6" />
                 </div>
                 <h3 className="text-sm font-bold text-white">No Team Members Found</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                <p className="text-xs text-[#64748B] max-w-md mx-auto">
                   Invite your accounting firm partners, senior accountants, and bookkeepers to manage client portfolios together.
                 </p>
                 <button
@@ -558,20 +558,20 @@ export const ContactManagementSection: React.FC = () => {
                   return (
                     <div
                       key={member.id}
-                      className="bg-slate-950/80 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-4 shadow-lg transition space-y-3 flex flex-col justify-between"
+                      className="bg-[#F8FAFC] border border-[#E2E8F0] hover:border-indigo-500/50 rounded-2xl p-4 shadow-lg transition space-y-3 flex flex-col justify-between"
                     >
                       <div>
                         {/* Top: Name + Role Badge */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-black text-xs">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-500/40 flex items-center justify-center text-indigo-700 font-black text-xs">
                               {member.name.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
                               <h4 className="text-sm font-bold text-white leading-tight">
                                 {member.name}
                               </h4>
-                              <span className="text-[11px] font-bold text-indigo-300">
+                              <span className="text-[11px] font-bold text-indigo-700">
                                 {member.role.replace('_', ' ')}
                               </span>
                             </div>
@@ -580,8 +580,8 @@ export const ContactManagementSection: React.FC = () => {
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                               member.status === 'ACTIVE'
-                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                                : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-500/40'
+                                : 'bg-amber-50 text-amber-700 border-amber-500/40'
                             }`}
                           >
                             {member.status}
@@ -589,27 +589,27 @@ export const ContactManagementSection: React.FC = () => {
                         </div>
 
                         {/* Email & Phone */}
-                        <div className="mt-3 space-y-1 text-xs text-slate-400">
+                        <div className="mt-3 space-y-1 text-xs text-[#64748B]">
                           <div className="flex items-center gap-2 truncate">
                             <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span className="truncate text-slate-200">{member.email}</span>
+                            <span className="truncate text-[#0F172A]">{member.email}</span>
                           </div>
                           {member.phone && (
                             <div className="flex items-center gap-2">
                               <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <span className="font-mono text-slate-300">{member.phone}</span>
+                              <span className="font-mono text-slate-700">{member.phone}</span>
                             </div>
                           )}
                         </div>
 
                         {/* Assigned Client Portfolio */}
                         <div className="mt-3 space-y-1">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          <span className="text-[10px] uppercase font-bold text-[#64748B] block">
                             Assigned Clients:
                           </span>
                           {isGlobal ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
-                              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-200 border border-indigo-500/30">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
                               <span>All Clients (Global Practice Access)</span>
                             </span>
                           ) : (
@@ -617,7 +617,7 @@ export const ContactManagementSection: React.FC = () => {
                               {member.assigned_client_ids.map((cid) => (
                                 <span
                                   key={cid}
-                                  className="text-[10px] font-medium px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300"
+                                  className="text-[10px] font-medium px-2 py-0.5 rounded-lg bg-white border border-[#E2E8F0] text-slate-700"
                                 >
                                   {cid}
                                 </span>
@@ -629,22 +629,22 @@ export const ContactManagementSection: React.FC = () => {
                         {/* Permissions Badges */}
                         <div className="mt-3 flex flex-wrap gap-1">
                           {member.permissions?.can_query_clients && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-500/30">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#F0F9FF] text-[#0284C7] border border-sky-500/30">
                               Queries
                             </span>
                           )}
                           {member.permissions?.can_categorize && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-500/30">
                               Categorization
                             </span>
                           )}
                           {member.permissions?.can_sync_accounting && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-500/30">
                               Sync
                             </span>
                           )}
                           {member.permissions?.can_manage_clients && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500/30">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-300 border border-purple-500/30">
                               Admin
                             </span>
                           )}
@@ -652,7 +652,7 @@ export const ContactManagementSection: React.FC = () => {
                       </div>
 
                       {/* Card Actions */}
-                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                      <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between">
                         <span className="text-[10px] text-slate-500">
                           Joined {new Date(member.created_at).toLocaleDateString()}
                         </span>
@@ -661,7 +661,7 @@ export const ContactManagementSection: React.FC = () => {
                           <button
                             onClick={() => handleResendTeamInvite(member)}
                             disabled={actionLoadingId === `resend_firm_${member.id}`}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-[#64748B] hover:text-white hover:bg-slate-100 rounded-lg transition cursor-pointer"
                             title="Resend welcome email"
                           >
                             <Send className={`w-3.5 h-3.5 ${actionLoadingId === `resend_firm_${member.id}` ? 'animate-spin' : ''}`} />
@@ -670,7 +670,7 @@ export const ContactManagementSection: React.FC = () => {
                           <button
                             onClick={() => handleDeleteTeamMember(member)}
                             disabled={actionLoadingId === `delete_firm_${member.id}`}
-                            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-[#64748B] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                             title="Remove staff member"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

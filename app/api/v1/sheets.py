@@ -2,7 +2,10 @@
 
 from typing import Dict, Any, Optional
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import Session
+from app.api.deps import require_admin_user, verify_client_access
+from app.db.session import get_engine
 
 from app.services.google_drive_service import GoogleDriveService
 from app.services.google_sheets_service import GoogleSheetsService
@@ -103,14 +106,28 @@ async def get_sheets_review_data(
     return await get_sheets_data(month=month, year=year, pipeline_type=pipeline_type, client_id=client_id)
 
 
+def _verify_payload_client_access(payload: Dict[str, Any], current_user: Dict[str, Any]) -> None:
+    """Validates optional body client_id against the caller's organization scope."""
+    raw_cid = payload.get("client_id")
+    if not raw_cid:
+        return
+    with Session(get_engine()) as session:
+        verify_client_access(
+            session,
+            current_user,
+            str(raw_cid),
+            allow_missing_for_platform_admin=True,
+        )
+
+
 @router.patch("/transactions/{transaction_id}/status", summary="Update Staged Transaction Status")
 async def update_sheet_transaction_status(
     transaction_id: str,
     payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Updates a single staged transaction's status in PostgreSQL."""
-    from app.db.session import get_engine
-    from sqlmodel import Session, select
+    from sqlmodel import select
     from app.models.db_models import StagedTransaction
 
     status = payload.get("status", "PENDING")
@@ -120,6 +137,13 @@ async def update_sheet_transaction_status(
             tx_id_int = int(transaction_id)
             tx = session.exec(select(StagedTransaction).where(StagedTransaction.id == tx_id_int)).first()
             if tx:
+                if tx.client_id:
+                    verify_client_access(
+                        session,
+                        current_user,
+                        tx.client_id,
+                        allow_missing_for_platform_admin=True,
+                    )
                 tx.status = status
                 if status == "APPROVED":
                     tx.approved = True
@@ -136,8 +160,12 @@ async def update_sheet_transaction_status(
 
 
 @router.post("/toggle-approval", summary="Toggle Row Approval in Review Sheet")
-async def toggle_sheet_approval(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def toggle_sheet_approval(
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Toggles Reviewed or Approved checkbox for a row in Tab 2."""
+    _verify_payload_client_access(payload, current_user)
     sheets = GoogleSheetsService()
 
     sheet_id = payload.get("spreadsheet_id", "").strip()
@@ -159,8 +187,12 @@ async def toggle_sheet_approval(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.patch("/daily-detail", summary="Update Cell in Daily Details")
-async def update_daily_detail_cell(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def update_daily_detail_cell(
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Updates a cell in Daily_Details with USER_ENTERED so dynamic formulas in Monthly_Summary recalculate."""
+    _verify_payload_client_access(payload, current_user)
     sheets = GoogleSheetsService()
     sheet_id = payload.get("spreadsheet_id")
     row_idx = int(payload.get("row_index", 2))
@@ -183,8 +215,12 @@ async def update_daily_detail_cell(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.post("/retrofit", summary="Retroactively Upgrade Existing Workbook with Dynamic Formulas")
-async def retrofit_existing_workbook(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def retrofit_existing_workbook(
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_admin_user),
+) -> Dict[str, Any]:
     """Retroactively updates any existing spreadsheet to use dynamic live formulas."""
+    _verify_payload_client_access(payload, current_user)
     sheets = GoogleSheetsService()
     sheet_id = payload.get("spreadsheet_id")
     is_ap = bool(payload.get("is_ap", False))
@@ -200,11 +236,14 @@ async def retrofit_existing_workbook(payload: Dict[str, Any]) -> Dict[str, Any]:
         explicit_sheet_id = None
 
         if client_id:
-            from app.db.session import get_engine
-            from sqlmodel import Session, select
             from app.models.db_models import ClientOrganization
             with Session(get_engine()) as session:
-                c = session.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+                c = verify_client_access(
+                    session,
+                    current_user,
+                    str(client_id),
+                    allow_missing_for_platform_admin=True,
+                )
                 if c:
                     client_name = c.name
                     client_folder_id = c.folder_id

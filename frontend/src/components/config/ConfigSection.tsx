@@ -138,10 +138,10 @@ export const ConfigSection: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Header Panel */}
-      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400">
+            <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-[#0284C7]">
               <SlidersHorizontal className="w-5 h-5" />
             </div>
             <div>
@@ -153,11 +153,11 @@ export const ConfigSection: React.FC = () => {
                   <Lock className="w-2.5 h-2.5" />
                   Admin Only
                 </span>
-                <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
+                <span className="text-[10px] font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-sky-500/30 px-2 py-0.5 rounded-full">
                   System Scope
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[#64748B] mt-0.5">
                 Configure platform-wide AI Vision models, Mailjet &amp; SMTP email gateways, Inngest orchestration, and database parameters.
               </p>
             </div>
@@ -168,7 +168,7 @@ export const ConfigSection: React.FC = () => {
           <button
             onClick={handleRunAudit}
             disabled={isAuditing}
-            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-700/80 text-sky-300 text-xs font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50 shrink-0"
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-[#0284C7] text-xs font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50 shrink-0"
             title="Scan database for invalid dummy placeholders or missing configurations"
           >
             <Wrench className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
@@ -188,14 +188,14 @@ export const ConfigSection: React.FC = () => {
 
       {/* Diagnostics Results Banner */}
       {diagnostics && (
-        <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 animate-in fade-in space-y-3">
+        <div className="glass-panel rounded-2xl p-5 shadow-xl border border-[#E2E8F0] animate-in fade-in space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-wider font-mono">
-              <ShieldCheck className="w-4 h-4 text-sky-400" />
+              <ShieldCheck className="w-4 h-4 text-[#0284C7]" />
               <span>Platform Subsystems Live Diagnostic Report</span>
             </h3>
             <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-              diagnostics.all_healthy ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40' : 'bg-amber-950 text-amber-400 border border-amber-500/40'
+              diagnostics.all_healthy ? 'bg-emerald-50 text-emerald-600 border border-emerald-500/40' : 'bg-amber-50 text-amber-600 border border-amber-500/40'
             }`}>
               {diagnostics.all_healthy ? 'All Systems Operational' : 'Action Required'}
             </span>
@@ -203,83 +203,83 @@ export const ConfigSection: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Gemini Vision */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-[#0284C7]" />
                   <span>Gemini OCR</span>
                 </span>
                 {diagnostics.gemini_status === 'CONNECTED' || diagnostics.gemini_status === 'MOCK_OK' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.gemini_message}</p>
+              <p className="text-[11px] text-[#64748B] line-clamp-2">{diagnostics.gemini_message}</p>
             </div>
 
             {/* Zoho Books Gateway */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                  <Globe className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Zoho API</span>
                 </span>
                 {diagnostics.zoho_status === 'CONNECTED' || diagnostics.zoho_status === 'MOCK_OK' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.zoho_message}</p>
+              <p className="text-[11px] text-[#64748B] line-clamp-2">{diagnostics.zoho_message}</p>
             </div>
 
             {/* Google Drive / Sheets */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Cloud className="w-3.5 h-3.5 text-sky-400" />
+                  <Cloud className="w-3.5 h-3.5 text-[#0284C7]" />
                   <span>Master Drive</span>
                 </span>
                 {diagnostics.google_status === 'CONNECTED' || diagnostics.google_status === 'MOCK_OK' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.google_message}</p>
+              <p className="text-[11px] text-[#64748B] line-clamp-2">{diagnostics.google_message}</p>
             </div>
 
             {/* Inngest */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <Zap className="w-3.5 h-3.5 text-amber-600" />
                   <span>Inngest</span>
                 </span>
                 {diagnostics.inngest_status === 'CONFIGURED' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.inngest_message}</p>
+              <p className="text-[11px] text-[#64748B] line-clamp-2">{diagnostics.inngest_message}</p>
             </div>
 
             {/* Primary Database */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1">
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-indigo-400" />
+                  <Database className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Database</span>
                 </span>
                 {diagnostics.database_status === 'CONNECTED' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{diagnostics.database_message || 'Online'}</p>
+              <p className="text-[11px] text-[#64748B] line-clamp-2">{diagnostics.database_message || 'Online'}</p>
             </div>
           </div>
         </div>
@@ -287,22 +287,22 @@ export const ConfigSection: React.FC = () => {
 
       {/* System Configuration & Placeholder Audit Report */}
       {auditData && (
-        <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 animate-in fade-in space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="glass-panel rounded-2xl p-5 shadow-xl border border-[#E2E8F0] animate-in fade-in space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
             <div>
               <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-wider font-mono">
-                <Wrench className="w-4 h-4 text-amber-400" />
+                <Wrench className="w-4 h-4 text-amber-600" />
                 <span>Deep Database &amp; Placeholder Audit Report</span>
               </h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="text-[11px] text-[#64748B] mt-0.5">
                 Evaluates client configurations, pipelines, and environment variables for legacy dummy identifiers.
               </p>
             </div>
             <div className="flex items-center gap-2.5">
               <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
                 auditData.placeholders_found === 0
-                  ? 'bg-emerald-950 text-emerald-400 border-emerald-500/40'
-                  : 'bg-rose-950 text-rose-400 border-rose-500/40'
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-500/40'
+                  : 'bg-rose-50 text-rose-600 border-rose-500/40'
               }`}>
                 {auditData.placeholders_found === 0 ? 'Zero Placeholders' : `${auditData.placeholders_found} Placeholder(s) Found`}
               </span>
@@ -322,63 +322,63 @@ export const ConfigSection: React.FC = () => {
           </div>
 
           {repairNotice && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-medium flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="p-3 bg-emerald-50 border border-emerald-500/40 rounded-xl text-emerald-700 text-xs font-medium flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{repairNotice}</span>
             </div>
           )}
 
           {/* Environment Checks Overview */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
-              <div className="text-[11px] text-slate-400 font-medium">Master Drive Folder</div>
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3">
+              <div className="text-[11px] text-[#64748B] font-medium">Master Drive Folder</div>
               <div className="font-mono text-xs font-bold text-white mt-1">
                 {auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.value || 'Missing'}
               </div>
               <div className={`text-[10px] font-mono mt-1 ${
-                auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.status === 'VALID' ? 'text-emerald-400' : 'text-amber-400'
+                auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.status === 'VALID' ? 'text-emerald-600' : 'text-amber-600'
               }`}>
                 {auditData.environment_checks?.CONTROL_SHEETS_FOLDER_ID?.status}
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
-              <div className="text-[11px] text-slate-400 font-medium">AI Vision Engine</div>
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3">
+              <div className="text-[11px] text-[#64748B] font-medium">AI Vision Engine</div>
               <div className="font-mono text-xs font-bold text-white mt-1">
                 {auditData.environment_checks?.GEMINI_API_KEY?.model || 'Gemini'}
               </div>
               <div className={`text-[10px] font-mono mt-1 ${
-                auditData.environment_checks?.GEMINI_API_KEY?.status === 'CONFIGURED' ? 'text-emerald-400' : 'text-rose-400'
+                auditData.environment_checks?.GEMINI_API_KEY?.status === 'CONFIGURED' ? 'text-emerald-600' : 'text-rose-600'
               }`}>
                 {auditData.environment_checks?.GEMINI_API_KEY?.status}
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
-              <div className="text-[11px] text-slate-400 font-medium">Accounting Gateway</div>
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3">
+              <div className="text-[11px] text-[#64748B] font-medium">Accounting Gateway</div>
               <div className="font-mono text-xs font-bold text-white mt-1">
                 Org: {auditData.environment_checks?.ZOHO_BOOKS?.org_id || 'Not Set'}
               </div>
               <div className={`text-[10px] font-mono mt-1 ${
-                auditData.environment_checks?.ZOHO_BOOKS?.status === 'CONFIGURED' ? 'text-emerald-400' : 'text-amber-400'
+                auditData.environment_checks?.ZOHO_BOOKS?.status === 'CONFIGURED' ? 'text-emerald-600' : 'text-amber-600'
               }`}>
                 {auditData.environment_checks?.ZOHO_BOOKS?.status}
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
-              <div className="text-[11px] text-slate-400 font-medium">Database Ledger</div>
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3">
+              <div className="text-[11px] text-[#64748B] font-medium">Database Ledger</div>
               <div className="font-mono text-xs font-bold text-white mt-1">
                 {auditData.database_stats?.total_clients ?? 0} Clients / {auditData.database_stats?.total_staged_transactions ?? 0} Slips
               </div>
-              <div className="text-[10px] font-mono text-emerald-400 mt-1">ONLINE</div>
+              <div className="text-[10px] font-mono text-emerald-600 mt-1">ONLINE</div>
             </div>
           </div>
 
           {/* Client & Pipeline Details if Issues Exist */}
           {auditData.client_audits?.some((c: any) => c.issues?.length > 0) && (
             <div className="space-y-2 pt-2">
-              <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+              <div className="text-xs font-bold text-amber-600 flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Client Organizations with Potential Configuration Notices:</span>
               </div>
@@ -386,12 +386,12 @@ export const ConfigSection: React.FC = () => {
                 {auditData.client_audits
                   .filter((c: any) => c.issues?.length > 0)
                   .map((c: any) => (
-                    <div key={c.id} className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 text-xs space-y-1.5">
+                    <div key={c.id} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 text-xs space-y-1.5">
                       <div className="flex items-center justify-between font-bold text-white">
                         <span>{c.name} <span className="font-mono text-[11px] text-slate-500">({c.id})</span></span>
-                        <span className="text-[10px] font-mono text-amber-400">{c.folder_status}</span>
+                        <span className="text-[10px] font-mono text-amber-600">{c.folder_status}</span>
                       </div>
-                      <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
+                      <ul className="text-[11px] text-[#64748B] list-disc list-inside space-y-0.5">
                         {c.issues.map((issue: string, idx: number) => (
                           <li key={idx}>{issue}</li>
                         ))}
@@ -405,28 +405,28 @@ export const ConfigSection: React.FC = () => {
       )}
 
       {/* Multi-Tenant Privacy & Credential Segregation Callout */}
-      <div className="bg-sky-950/30 border border-sky-500/20 rounded-2xl p-4 text-xs text-sky-300 space-y-1.5">
+      <div className="bg-[#F0F9FF] border border-sky-500/20 rounded-2xl p-4 text-xs text-[#0284C7] space-y-1.5">
         <div className="font-bold flex items-center gap-2 text-white text-xs">
-          <Key className="w-4 h-4 text-sky-400" />
+          <Key className="w-4 h-4 text-[#0284C7]" />
           <span>Tenant Isolation Architecture: Client Credentials vs Platform Infrastructure</span>
         </div>
-        <p className="text-slate-300 text-[11px] leading-relaxed">
+        <p className="text-slate-700 text-[11px] leading-relaxed">
           S4 Automations enforces zero tenant credential leakage. Tenant accounting credentials (Zoho Books / QuickBooks / Xero OAuth tokens, dedicated Organization IDs) and client folder IDs are <strong>never stored in global platform settings</strong>. Each client organization manages its own isolated credentials under <strong>Client Workspace &gt; Client Settings</strong>. Platform Settings below exclusively configure system-wide infrastructure.
         </p>
       </div>
 
       {/* Main Settings Card with Category Tabs */}
-      <div className="glass-panel rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
+      <div className="glass-panel rounded-2xl shadow-xl border border-[#E2E8F0] overflow-hidden">
         
         {/* Category Tab Bar */}
-        <div className="flex border-b border-slate-800 bg-slate-950/60 overflow-x-auto custom-scrollbar">
+        <div className="flex border-b border-[#E2E8F0] bg-[#F8FAFC] overflow-x-auto custom-scrollbar">
           <button
             type="button"
             onClick={() => setActiveCategory('ai')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition cursor-pointer shrink-0 ${
               activeCategory === 'ai'
-                ? 'border-sky-500 text-sky-400 bg-sky-950/20'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'border-sky-500 text-[#0284C7] bg-[#F0F9FF]'
+                : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/50'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -438,8 +438,8 @@ export const ConfigSection: React.FC = () => {
             onClick={() => setActiveCategory('notifications')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition cursor-pointer shrink-0 ${
               activeCategory === 'notifications'
-                ? 'border-sky-500 text-sky-400 bg-sky-950/20'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'border-sky-500 text-[#0284C7] bg-[#F0F9FF]'
+                : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/50'
             }`}
           >
             <Mail className="w-3.5 h-3.5" />
@@ -451,8 +451,8 @@ export const ConfigSection: React.FC = () => {
             onClick={() => setActiveCategory('runtime')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition cursor-pointer shrink-0 ${
               activeCategory === 'runtime'
-                ? 'border-sky-500 text-sky-400 bg-sky-950/20'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'border-sky-500 text-[#0284C7] bg-[#F0F9FF]'
+                : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/50'
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
@@ -464,8 +464,8 @@ export const ConfigSection: React.FC = () => {
             onClick={() => setActiveCategory('database')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition cursor-pointer shrink-0 ${
               activeCategory === 'database'
-                ? 'border-sky-500 text-sky-400 bg-sky-950/20'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'border-sky-500 text-[#0284C7] bg-[#F0F9FF]'
+                : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/50'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
@@ -479,25 +479,25 @@ export const ConfigSection: React.FC = () => {
           {/* TAB 1: AI & VISION OCR ENGINE */}
           {activeCategory === 'ai' && (
             <div className="space-y-4 animate-in fade-in">
-              <div className="border-b border-slate-850 pb-3">
+              <div className="border-b border-[#E2E8F0] pb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-sky-400" />
+                  <Sparkles className="w-4 h-4 text-[#0284C7]" />
                   <span>Google Gemini Vision OCR Parameters</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-[#64748B] mt-0.5">
                   Platform-wide multimodal model configuration for handwritten invoice, delivery slip, and receipt extraction.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Default Gemini Model Identifier
                   </label>
                   <select
                     value={formData.GEMINI_MODEL || 'gemini-3.6-flash'}
                     onChange={(e) => handleChange('GEMINI_MODEL', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   >
                     <option value="gemini-3.6-flash">gemini-3.6-flash (Recommended: High-Speed Multimodal)</option>
                     <option value="gemini-2.5-flash">gemini-2.5-flash (Standard OCR &amp; Vision)</option>
@@ -509,7 +509,7 @@ export const ConfigSection: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Google Gemini Developer API Key
                   </label>
                   <div className="relative">
@@ -518,12 +518,12 @@ export const ConfigSection: React.FC = () => {
                       placeholder="AIzaSy..."
                       value={formData.GEMINI_API_KEY || ''}
                       onChange={(e) => handleChange('GEMINI_API_KEY', e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-10 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 pr-10 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowGeminiKey(!showGeminiKey)}
-                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition"
+                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-700 transition"
                     >
                       {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -539,12 +539,12 @@ export const ConfigSection: React.FC = () => {
           {/* TAB 2: MAILJET & SMTP GATEWAYS */}
           {activeCategory === 'notifications' && (
             <div className="space-y-5 animate-in fade-in">
-              <div className="border-b border-slate-850 pb-3">
+              <div className="border-b border-[#E2E8F0] pb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-sky-400" />
+                  <Mail className="w-4 h-4 text-[#0284C7]" />
                   <span>Email Dispatch &amp; Notification Infrastructure</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-[#64748B] mt-0.5">
                   Platform gateways for login OTPs, discrepancy escalation alerts, and automated stakeholder reports.
                 </p>
               </div>
@@ -552,7 +552,7 @@ export const ConfigSection: React.FC = () => {
               {/* Top Row: General Notification & Mailjet From */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Platform Security Alert Recipient
                   </label>
                   <input
@@ -560,7 +560,7 @@ export const ConfigSection: React.FC = () => {
                     value={formData.NOTIFICATION_EMAIL || ''}
                     onChange={(e) => handleChange('NOTIFICATION_EMAIL', e.target.value)}
                     placeholder="cdanso@service4gh.com"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     Receives pipeline crash alerts and unhandled error summaries.
@@ -568,7 +568,7 @@ export const ConfigSection: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Mailjet Verified Sender Email
                   </label>
                   <input
@@ -576,7 +576,7 @@ export const ConfigSection: React.FC = () => {
                     value={formData.MAILJET_FROM_EMAIL || ''}
                     onChange={(e) => handleChange('MAILJET_FROM_EMAIL', e.target.value)}
                     placeholder="cdanso@service4gh.com"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     Must match a verified domain/address in your Mailjet account.
@@ -584,14 +584,14 @@ export const ConfigSection: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Sender Display Name
                   </label>
                   <input
                     type="text"
                     value={formData.MAILJET_FROM_NAME || 'S4 Automations Security'}
                     onChange={(e) => handleChange('MAILJET_FROM_NAME', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     Appears in email client inbox headers.
@@ -600,36 +600,36 @@ export const ConfigSection: React.FC = () => {
               </div>
 
               {/* Mailjet API Keys Sub-Section */}
-              <div className="bg-slate-950/60 border border-slate-850 rounded-xl p-4 space-y-3">
-                <span className="text-xs font-bold text-sky-400 block uppercase tracking-wider font-mono">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3">
+                <span className="text-xs font-bold text-[#0284C7] block uppercase tracking-wider font-mono">
                   Mailjet REST API Credentials
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Mailjet Public API Key</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Mailjet Public API Key</label>
                     <input
                       type="text"
                       value={formData.MAILJET_API_KEY || ''}
                       onChange={(e) => handleChange('MAILJET_API_KEY', e.target.value)}
                       placeholder="e.g. 78a9c..."
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Mailjet Secret Key</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Mailjet Secret Key</label>
                     <div className="relative">
                       <input
                         type={showMailjetSecret ? 'text' : 'password'}
                         value={formData.MAILJET_SECRET_KEY || ''}
                         onChange={(e) => handleChange('MAILJET_SECRET_KEY', e.target.value)}
                         placeholder="••••••••••••"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                       />
                       <button
                         type="button"
                         onClick={() => setShowMailjetSecret(!showMailjetSecret)}
-                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300"
+                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-700"
                       >
                         {showMailjetSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
@@ -639,60 +639,134 @@ export const ConfigSection: React.FC = () => {
               </div>
 
               {/* SMTP Server Configuration */}
-              <div className="bg-slate-950/60 border border-slate-850 rounded-xl p-4 space-y-3">
-                <span className="text-xs font-bold text-sky-400 block uppercase tracking-wider font-mono">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3">
+                <span className="text-xs font-bold text-[#0284C7] block uppercase tracking-wider font-mono">
                   SMTP Transport Settings (Mailjet or Dedicated Relay)
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">SMTP Host</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">SMTP Host</label>
                     <input
                       type="text"
                       value={formData.SMTP_HOST || 'in-v3.mailjet.com'}
                       onChange={(e) => handleChange('SMTP_HOST', e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">SMTP Port</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">SMTP Port</label>
                     <input
                       type="number"
                       value={formData.SMTP_PORT || 587}
                       onChange={(e) => handleChange('SMTP_PORT', parseInt(e.target.value) || 587)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">SMTP Username</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">SMTP Username</label>
                     <input
                       type="text"
                       value={formData.SMTP_USER || ''}
                       onChange={(e) => handleChange('SMTP_USER', e.target.value)}
                       placeholder="API Key / Username"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">SMTP Password</label>
+                    <label className="block text-[11px] font-semibold text-[#64748B] mb-1">SMTP Password</label>
                     <div className="relative">
                       <input
                         type={showSmtpPassword ? 'text' : 'password'}
                         value={formData.SMTP_PASSWORD || ''}
                         onChange={(e) => handleChange('SMTP_PASSWORD', e.target.value)}
                         placeholder="••••••••••••"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                       />
                       <button
                         type="button"
                         onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300"
+                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-700"
                       >
                         {showSmtpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Autonomous Agent Domain & WhatsApp Business Gateway */}
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3">
+                <span className="text-xs font-bold text-[#0284C7] block uppercase tracking-wider font-mono">
+                  Autonomous Agent Email Domain &amp; WhatsApp Cloud Gateway
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Agent Email Domain</label>
+                    <input
+                      type="text"
+                      value={formData.AGENT_EMAIL_DOMAIN || 'agents.service4gh.com'}
+                      onChange={(e) => handleChange('AGENT_EMAIL_DOMAIN', e.target.value)}
+                      placeholder="agents.service4gh.com"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">App Base URL (Webhooks &amp; Portal)</label>
+                    <input
+                      type="url"
+                      value={formData.APP_BASE_URL || ''}
+                      onChange={(e) => handleChange('APP_BASE_URL', e.target.value)}
+                      placeholder="https://app.service4gh.com"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">WhatsApp Platform Number</label>
+                    <input
+                      type="text"
+                      value={formData.WHATSAPP_PLATFORM_NUMBER || ''}
+                      onChange={(e) => handleChange('WHATSAPP_PLATFORM_NUMBER', e.target.value)}
+                      placeholder="+233..."
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Meta Phone Number ID</label>
+                    <input
+                      type="text"
+                      value={formData.WHATSAPP_PHONE_NUMBER_ID || ''}
+                      onChange={(e) => handleChange('WHATSAPP_PHONE_NUMBER_ID', e.target.value)}
+                      placeholder="Phone Number ID"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">WhatsApp Cloud Access Token</label>
+                    <input
+                      type="password"
+                      value={formData.WHATSAPP_ACCESS_TOKEN || ''}
+                      onChange={(e) => handleChange('WHATSAPP_ACCESS_TOKEN', e.target.value)}
+                      placeholder="EAAG..."
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Webhook Verify Token</label>
+                    <input
+                      type="text"
+                      value={formData.WHATSAPP_VERIFY_TOKEN || ''}
+                      onChange={(e) => handleChange('WHATSAPP_VERIFY_TOKEN', e.target.value)}
+                      placeholder="s4_wa_verify_token"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#0284C7]"
+                    />
                   </div>
                 </div>
               </div>
@@ -703,44 +777,44 @@ export const ConfigSection: React.FC = () => {
           {/* TAB 3: RUNTIME & ORCHESTRATION */}
           {activeCategory === 'runtime' && (
             <div className="space-y-4 animate-in fade-in">
-              <div className="border-b border-slate-850 pb-3">
+              <div className="border-b border-[#E2E8F0] pb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-sky-400" />
+                  <Zap className="w-4 h-4 text-[#0284C7]" />
                   <span>Inngest Workflow Engine &amp; Runtime Environment</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-[#64748B] mt-0.5">
                   Background job execution parameters, telemetry log levels, and dry-run simulation mode.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Inngest App Identifier</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Inngest App Identifier</label>
                   <input
                     type="text"
                     value={formData.INNGEST_APP_ID || 's4-automations'}
                     onChange={(e) => handleChange('INNGEST_APP_ID', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Inngest Dev Server URL</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Inngest Dev Server URL</label>
                   <input
                     type="text"
                     placeholder="http://127.0.0.1:8288"
                     value={formData.INNGEST_DEV_SERVER_URL || ''}
                     onChange={(e) => handleChange('INNGEST_DEV_SERVER_URL', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">System Environment</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">System Environment</label>
                   <select
                     value={formData.ENVIRONMENT || 'development'}
                     onChange={(e) => handleChange('ENVIRONMENT', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   >
                     <option value="development">Development (Local)</option>
                     <option value="staging">Staging (Preview)</option>
@@ -751,21 +825,21 @@ export const ConfigSection: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Server Port</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Server Port</label>
                   <input
                     type="number"
                     value={formData.PORT || 8000}
                     onChange={(e) => handleChange('PORT', parseInt(e.target.value) || 8000)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Telemetry Log Level</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Telemetry Log Level</label>
                   <select
                     value={formData.LOG_LEVEL || 'INFO'}
                     onChange={(e) => handleChange('LOG_LEVEL', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   >
                     <option value="DEBUG">DEBUG (Extensive Traceability)</option>
                     <option value="INFO">INFO (Standard Production)</option>
@@ -776,12 +850,12 @@ export const ConfigSection: React.FC = () => {
               </div>
 
               {/* Global Mock Mode Toggle */}
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-4">
+              <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-white block">
                     Zero-Cost Mock Simulation Mode
                   </span>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-[#64748B]">
                     When enabled, the system uses synthesized Gemini Vision OCR payloads and sandbox Google Drive folders to test workflows without incurring billable API costs.
                   </p>
                 </div>
@@ -793,7 +867,7 @@ export const ConfigSection: React.FC = () => {
                     onChange={(e) => handleChange('MOCK_MODE', e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  <div className="w-11 h-6 bg-slate-100 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                 </label>
               </div>
             </div>
@@ -802,34 +876,50 @@ export const ConfigSection: React.FC = () => {
           {/* TAB 4: DATABASE & MASTER STORAGE */}
           {activeCategory === 'database' && (
             <div className="space-y-4 animate-in fade-in">
-              <div className="border-b border-slate-850 pb-3">
+              <div className="border-b border-[#E2E8F0] pb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Database className="w-4 h-4 text-sky-400" />
+                  <Database className="w-4 h-4 text-[#0284C7]" />
                   <span>Database Connection &amp; Master Cloud Storage</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-[#64748B] mt-0.5">
                   Primary relational database connection string, platform admin email, and master Google service account keys.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Authorized Master Admin Email
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Authorized Root Admin Email
                   </label>
                   <input
                     type="email"
                     value={formData.AUTH_EMAIL || 's4bookkeeping@service4gh.com'}
                     onChange={(e) => handleChange('AUTH_EMAIL', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7] font-mono"
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">
+                  <span className="text-[11px] text-[#64748B] mt-1 block">
                     The root administrative account allowed to receive login OTPs for platform settings.
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Platform Super-Admin Emails (Comma-Separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.PLATFORM_ADMIN_EMAILS || ''}
+                    onChange={(e) => handleChange('PLATFORM_ADMIN_EMAILS', e.target.value)}
+                    placeholder="ops@service4gh.com, cto@service4gh.com"
+                    className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7] font-mono"
+                  />
+                  <span className="text-[11px] text-[#64748B] mt-1 block">
+                    Fallback Super-Admin allowlist synced alongside the Users &amp; RBAC database allowlist.
+                  </span>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Default Master Control Sheets Root Folder ID
                   </label>
                   <input
@@ -837,48 +927,48 @@ export const ConfigSection: React.FC = () => {
                     value={formData.CONTROL_SHEETS_FOLDER_ID || ''}
                     onChange={(e) => handleChange('CONTROL_SHEETS_FOLDER_ID', e.target.value)}
                     placeholder="Enter Google Drive Root Folder ID..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:border-[#0284C7] font-mono"
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">
+                  <span className="text-[11px] text-[#64748B] mt-1 block">
                     Default Google Drive folder if an onboarded client doesn't specify a custom folder.
                   </span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Primary Relational Database Connection (PostgreSQL / SQLite)
                 </label>
                 <input
                   type="text"
                   value={formData.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/s4_automations'}
                   onChange={(e) => handleChange('DATABASE_URL', e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Supports PostgreSQL URL (e.g. <code className="text-sky-300">postgresql://user:pass@host:5432/db</code>) or local SQLite fallback.
+                  Supports PostgreSQL URL (e.g. <code className="text-[#0284C7]">postgresql://user:pass@host:5432/db</code>) or local SQLite fallback.
                 </span>
               </div>
 
               {/* Google Workspace & Cloud Service Account */}
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3 mt-4">
-                <div className="border-b border-slate-850 pb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3 mt-4">
+                <div className="border-b border-[#E2E8F0] pb-2.5 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-sky-400" />
+                    <Cloud className="w-4 h-4 text-[#0284C7]" />
                     <span className="text-xs font-bold text-white">Google Cloud Platform Service Account (Drive &amp; Sheets)</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-semibold">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F0F9FF] text-[#0284C7] border border-sky-500/30 font-semibold">
                     Centralized Platform Identity
                   </span>
                 </div>
 
-                <p className="text-[11px] text-slate-400 leading-relaxed">
+                <p className="text-[11px] text-[#64748B] leading-relaxed">
                   All onboarded clients share their Google Drive folders with this central Service Account email as <strong>Viewer</strong> or <strong>Editor</strong>. Clients do <em>not</em> receive or require separate GCP service accounts.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                       Service Account Email (Shared with Client Folders)
                     </label>
                     <input
@@ -886,7 +976,7 @@ export const ConfigSection: React.FC = () => {
                       value={formData.GOOGLE_SERVICE_ACCOUNT_EMAIL || 's4-vision-ingest@s4-automations.iam.gserviceaccount.com'}
                       onChange={(e) => handleChange('GOOGLE_SERVICE_ACCOUNT_EMAIL', e.target.value)}
                       placeholder="s4-vision-ingest@s4-automations.iam.gserviceaccount.com"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       The IAM service account email provided to clients during onboarding and stream configuration.
@@ -894,7 +984,7 @@ export const ConfigSection: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                       Service Account Private Key (JSON / Base64)
                     </label>
                     <div className="relative">
@@ -903,12 +993,12 @@ export const ConfigSection: React.FC = () => {
                         value={formData.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || ''}
                         onChange={(e) => handleChange('GOOGLE_SERVICE_ACCOUNT_JSON_BASE64', e.target.value)}
                         placeholder="Paste GCP Service Account JSON or Base64"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 pr-9 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
                       />
                       <button
                         type="button"
                         onClick={() => setShowSaKey(!showSaKey)}
-                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                        className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-700 cursor-pointer"
                         title={showSaKey ? 'Hide key' : 'Show key'}
                       >
                         {showSaKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -924,8 +1014,8 @@ export const ConfigSection: React.FC = () => {
           )}
 
           {/* Form Action Footer */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-800">
-            <span className="text-xs font-semibold text-emerald-400">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-[#E2E8F0]">
+            <span className="text-xs font-semibold text-emerald-600">
               {saveStatus}
             </span>
 

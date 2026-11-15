@@ -118,6 +118,14 @@ class AgentCommsService:
         if not enriched.get("whatsapp_routing_tag"):
             enriched["whatsapp_routing_tag"] = cls.format_whatsapp_routing_tag(client_id, agent_id, section)
 
+        enriched.setdefault("autonomy_level", "semi_autonomous")
+        enriched.setdefault("schedule_frequency", "daily_morning")
+        if enriched.get("auto_approve_threshold") is None:
+            enriched["auto_approve_threshold"] = 0.92
+        enriched.setdefault("auto_apply_knowledge", True)
+        enriched.setdefault("auto_query_anomalies", False)
+        enriched.setdefault("proactive_SLA_reminders", True)
+
         base_url = (settings.APP_BASE_URL or "https://aut.service4gh.com").rstrip("/")
         enriched["whatsapp_webhook_url"] = f"{base_url}/api/v1/agents/webhooks/whatsapp/{client_id}"
         enriched["email_webhook_url"] = f"{base_url}/api/v1/agents/webhooks/email"
@@ -380,7 +388,22 @@ class AgentCommsService:
         if not clean_body:
             clean_body = (body_text or "Status inquiry").strip()
 
-        # 1. Persist Inbound Message
+        # 1. Persist Inbound Message (strip raw binary bytes from DB JSON column while preserving in-memory bytes for tool ingestion)
+        safe_db_attachments: List[Dict[str, Any]] = []
+        for att in (attachments or []):
+            if not isinstance(att, dict):
+                continue
+            safe_att = {}
+            for ak, av in att.items():
+                if isinstance(av, (bytes, bytearray)):
+                    safe_att["size_bytes"] = len(av)
+                elif ak in ("content_base64", "data_base64", "base64") and isinstance(av, str) and len(av) > 4096:
+                    safe_att["has_base64"] = True
+                    safe_att["size_bytes"] = len(av)
+                else:
+                    safe_att[ak] = av
+            safe_db_attachments.append(safe_att)
+
         inbound_msg = AgentMessage(
             client_id=client.id,
             agent_id=agent_id,
@@ -391,7 +414,7 @@ class AgentCommsService:
             recipient_address=recipient_address,
             subject=subject,
             body_text=body_text or clean_body,
-            attachments=attachments or [],
+            attachments=safe_db_attachments,
             ai_metadata={"section": section},
         )
         session.add(inbound_msg)
@@ -427,6 +450,59 @@ class AgentCommsService:
             attachments=attachments or [],
         )
 
+        # 3b. True Agentic Action & Attachment Auto-Ingestion Execution
+        from app.services.agentic_brain_service import AgenticBrainService, sanitize_no_em_dash
+
+        has_attachments = bool(attachments)
+        is_action_cmd = AgenticBrainService.looks_like_actionable_command(
+            clean_body, has_attachments=has_attachments
+        )
+        agent_run: Optional[Dict[str, Any]] = None
+
+        if has_attachments or is_action_cmd:
+            trigger_type = (
+                "ATTACHMENT_INGEST"
+                if (has_attachments and not AgenticBrainService.looks_like_actionable_command(clean_body, has_attachments=False))
+                else (
+                    "EMAIL_COMMAND"
+                    if norm_channel == "EMAIL"
+                    else "WHATSAPP_COMMAND"
+                    if norm_channel == "WHATSAPP"
+                    else "MANUAL_UI"
+                )
+            )
+            try:
+                agent_run = await AgenticBrainService.plan_and_execute_goal(
+                    db=session,
+                    client=client,
+                    agent=agent,
+                    goal=clean_body or f"Process {len(attachments or [])} inbound attachment(s)",
+                    trigger_type=trigger_type,
+                    trigger_source=sender_address,
+                    attachments=attachments or [],
+                    explicit_human_command=True,
+                )
+            except Exception as brain_err:
+                logger.warning(f"Agentic command execution notice on {norm_channel}: {brain_err}")
+        elif learned_entries:
+            # Pure teaching instruction: reactively apply newly taught rules across existing unmapped items
+            try:
+                inferred_sec = (
+                    "BANK"
+                    if any((e.category or "").upper() == "COA_MAPPING_RULE" for e in learned_entries)
+                    else section
+                )
+                react_res = await AgenticBrainService.on_reactive_event(
+                    db=session,
+                    client_id=client.id,
+                    event_type="KNOWLEDGE_TAUGHT",
+                    event_payload={"section": inferred_sec, "learned_count": len(learned_entries)},
+                    agent_id=agent_id,
+                )
+                agent_run = (react_res or {}).get("run")
+            except Exception as react_err:
+                logger.warning(f"Reactive knowledge application notice: {react_err}")
+
         # 4. Assemble Live Ledger Context + Client Knowledge Prompt
         ledger_context = cls._gather_live_agent_context(session, client, agent)
         knowledge_prompt = ClientKnowledgeService.build_agent_knowledge_prompt(
@@ -450,6 +526,20 @@ class AgentCommsService:
             learned_entries=learned_entries,
             clarification_updated=clarification_updated,
         )
+
+        if agent_run and (agent_run.get("actions_taken_count", 0) > 0 or agent_run.get("reasoning_steps")):
+            step_lines = []
+            for st in (agent_run.get("reasoning_steps") or []):
+                t_name = st.get("tool_name", "tool")
+                out_sum = st.get("tool_output_summary", "")
+                st_flag = st.get("status", "SUCCESS")
+                if st_flag in ("SUCCESS", "AWAITING_HUMAN") and out_sum:
+                    step_lines.append(f"- [{t_name}] ({st_flag}): {out_sum}")
+            if step_lines and (has_attachments or is_action_cmd or agent_run.get("items_categorized", 0) > 0 or agent_run.get("items_auto_approved", 0) > 0):
+                receipt_block = "\n\nAutonomous Execution Receipt (Run ID: " + str(agent_run.get("run_id", "")) + "):\n" + "\n".join(step_lines)
+                reply_text = f"{reply_text}{receipt_block}"
+
+        reply_text = sanitize_no_em_dash(reply_text)
 
         # 6. Dispatch External Reply (Email or WhatsApp) if requested
         delivery_info: Dict[str, Any] = {"dispatched": False, "channel": norm_channel}
@@ -490,6 +580,24 @@ class AgentCommsService:
                 delivery_info = {"dispatched": wa_res.get("delivered", True), "channel": "WHATSAPP", **wa_res}
 
         # 7. Persist Outbound AI Message
+        outbound_meta: Dict[str, Any] = {
+            "section": section,
+            "learned_knowledge_ids": [e.id for e in learned_entries if e.id is not None],
+            "learned_knowledge_titles": [e.title for e in learned_entries],
+            "clarification_updated": clarification_updated,
+            "delivery": delivery_info,
+            "ledger_snapshot": {
+                "total_items": ledger_context.get("total_items", 0),
+                "pending_count": ledger_context.get("pending_count", 0),
+                "total_amount_ghs": ledger_context.get("total_amount_ghs", 0.0),
+            },
+        }
+        if agent_run is not None:
+            outbound_meta["agent_run"] = agent_run
+
+        import json as _json_mod
+        outbound_meta = _json_mod.loads(_json_mod.dumps(outbound_meta, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)))
+
         outbound_msg = AgentMessage(
             client_id=client.id,
             agent_id=agent_id,
@@ -501,24 +609,13 @@ class AgentCommsService:
             subject=reply_subject if norm_channel == "EMAIL" else None,
             body_text=reply_text,
             attachments=[],
-            ai_metadata={
-                "section": section,
-                "learned_knowledge_ids": [e.id for e in learned_entries if e.id is not None],
-                "learned_knowledge_titles": [e.title for e in learned_entries],
-                "clarification_updated": clarification_updated,
-                "delivery": delivery_info,
-                "ledger_snapshot": {
-                    "total_items": ledger_context.get("total_items", 0),
-                    "pending_count": ledger_context.get("pending_count", 0),
-                    "total_amount_ghs": ledger_context.get("total_amount_ghs", 0.0),
-                },
-            },
+            ai_metadata=outbound_meta,
         )
         session.add(outbound_msg)
         session.commit()
         session.refresh(outbound_msg)
 
-        learned_dumped = [e.model_dump() for e in learned_entries]
+        learned_dumped = [e.model_dump(mode="json") for e in learned_entries]
         return {
             "client_id": client.id,
             "client_name": client.name,
@@ -526,13 +623,14 @@ class AgentCommsService:
             "agent_name": agent_name,
             "agent_email": agent.get("agent_email"),
             "channel": norm_channel,
-            "inbound_message": inbound_msg.model_dump(),
-            "outbound_message": outbound_msg.model_dump(),
+            "inbound_message": inbound_msg.model_dump(mode="json"),
+            "outbound_message": outbound_msg.model_dump(mode="json"),
             "reply_text": reply_text,
             "learned_knowledge": learned_dumped,
             "learned_rules": learned_dumped,
             "clarification_updated": clarification_updated,
             "delivery": delivery_info,
+            "agent_run": agent_run,
         }
 
     @staticmethod

@@ -13,6 +13,10 @@ import {
   sendAgentMessage,
   fetchTenantWhatsAppConfig,
   saveTenantWhatsAppConfig,
+  executeAgentGoal,
+  fetchAgentRuns,
+  updateAgentAutonomyPolicy,
+  triggerAgentHeartbeat,
 } from '../../../lib/api';
 import type {
   IngestionPipeline,
@@ -22,6 +26,8 @@ import type {
   ClientKnowledgeSummary,
   AgentMessageItem,
   TenantWhatsAppConfig,
+  AgentAutonomyLevel,
+  AgentExecutionRun,
 } from '../../../types/client';
 import { PipelineSetupWizardModal } from '../../modals/PipelineSetupWizardModal';
 import { StreamExecutionResultModal } from '../../modals/StreamExecutionResultModal';
@@ -51,9 +57,14 @@ import {
   ToggleLeft,
   ToggleRight,
   SlidersHorizontal,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Terminal,
+  Shield,
 } from 'lucide-react';
 
-type AgentHubSubView = 'agents' | 'comms' | 'knowledge';
+type AgentHubSubView = 'agents' | 'comms' | 'runs' | 'knowledge';
 
 const KNOWLEDGE_CATEGORIES = [
   { id: 'ALL', label: 'All Categories' },
@@ -142,6 +153,17 @@ export const ClientPipelinesTab: React.FC = () => {
   const [newRuleNatural, setNewRuleNatural] = useState<string>('');
   const [isSavingRule, setIsSavingRule] = useState<boolean>(false);
 
+  // ---------------------------------------------------------------------------
+  // True Agentic Control Center State (Reasoning Runs, Goals, Autonomy Policy)
+  // ---------------------------------------------------------------------------
+  const [agentRuns, setAgentRuns] = useState<AgentExecutionRun[]>([]);
+  const [isLoadingRuns, setIsLoadingRuns] = useState<boolean>(false);
+  const [goalInput, setGoalInput] = useState<string>('');
+  const [isExecutingGoal, setIsExecutingGoal] = useState<boolean>(false);
+  const [isRunningHeartbeat, setIsRunningHeartbeat] = useState<boolean>(false);
+  const [updatingAutonomyId, setUpdatingAutonomyId] = useState<string | null>(null);
+  const [expandedReceipts, setExpandedReceipts] = useState<Record<string | number, boolean>>({});
+
   useEffect(() => {
     if (agents.length > 0 && (!selectedAgentId || !agents.some((a) => a.id === selectedAgentId))) {
       setSelectedAgentId(agents[0].id);
@@ -187,6 +209,21 @@ export const ClientPipelinesTab: React.FC = () => {
     }
   }, [currentClient?.id, selectedAgentId, channelFilter]);
 
+  // Load Agent ReAct Runs
+  const loadAgentRuns = useCallback(async (overrideAgentId?: string) => {
+    const targetAgentId = overrideAgentId || selectedAgentId;
+    if (!currentClient?.id || !targetAgentId) return;
+    setIsLoadingRuns(true);
+    try {
+      const res = await fetchAgentRuns(currentClient.id, targetAgentId, 30);
+      setAgentRuns(res.runs || []);
+    } catch (err) {
+      console.warn('Could not load agent reasoning runs:', err);
+    } finally {
+      setIsLoadingRuns(false);
+    }
+  }, [currentClient?.id, selectedAgentId]);
+
   // Load Client Knowledge Base
   const loadKnowledge = useCallback(async () => {
     if (!currentClient?.id) return;
@@ -206,15 +243,93 @@ export const ClientPipelinesTab: React.FC = () => {
   }, [currentClient?.id, knowledgeCategoryFilter, knowledgeSearch]);
 
   useEffect(() => {
+    setAgentRuns([]);
+  }, [currentClient?.id]);
+
+  useEffect(() => {
     loadWhatsAppConfig();
     loadKnowledge();
   }, [loadWhatsAppConfig, loadKnowledge]);
 
   useEffect(() => {
+    if (selectedAgentId) {
+      loadAgentRuns();
+    }
+  }, [selectedAgentId, loadAgentRuns]);
+
+  useEffect(() => {
     if (subView === 'comms' && selectedAgentId) {
       loadAgentMessages();
     }
-  }, [subView, selectedAgentId, channelFilter, loadAgentMessages]);
+    if (subView === 'runs' && selectedAgentId) {
+      loadAgentRuns();
+    }
+  }, [subView, selectedAgentId, channelFilter, loadAgentMessages, loadAgentRuns]);
+
+  const handleExecuteGoal = async (overrideGoal?: string) => {
+    const effGoal = (overrideGoal !== undefined ? overrideGoal : goalInput).trim();
+    if (!currentClient?.id || !selectedAgentId || !effGoal) return;
+    setIsExecutingGoal(true);
+    try {
+      const res = await executeAgentGoal(currentClient.id, selectedAgentId, {
+        goal: effGoal,
+        month: selectedMonth,
+        year: selectedYear,
+        explicit_human_command: true,
+      });
+      if (overrideGoal === undefined) {
+        setGoalInput('');
+      }
+      addLog(
+        res.run?.status === 'FAILED' ? 'error' : 'success',
+        `[AGENT RUN ${res.run?.run_id}] ${res.run?.status}: ${res.run?.actions_taken_count || 0} tool action(s) executed.`
+      );
+      await loadAgentRuns();
+      await loadKnowledge();
+      await refreshClients();
+    } catch (err: any) {
+      addLog('error', `Failed to execute agent goal: ${err.message}`);
+    } finally {
+      setIsExecutingGoal(false);
+    }
+  };
+
+  const handleRunHeartbeatSweep = async () => {
+    if (!currentClient?.id) return;
+    setIsRunningHeartbeat(true);
+    try {
+      const res = await triggerAgentHeartbeat({
+        client_id: currentClient.id,
+        force: true,
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      addLog(
+        'success',
+        `[HEARTBEAT SWEEP] Evaluated ${res.agents_evaluated} agent(s), executed ${res.runs_executed} autonomous cycle(s).`
+      );
+      await loadAgentRuns();
+      await refreshClients();
+    } catch (err: any) {
+      addLog('error', `Failed heartbeat sweep: ${err.message}`);
+    } finally {
+      setIsRunningHeartbeat(false);
+    }
+  };
+
+  const handleUpdateQuickAutonomy = async (agentId: string, level: AgentAutonomyLevel) => {
+    if (!currentClient?.id) return;
+    setUpdatingAutonomyId(agentId);
+    try {
+      await updateAgentAutonomyPolicy(currentClient.id, agentId, { autonomy_level: level });
+      addLog('success', `Updated autonomy policy for agent "${agentId}" to ${level}.`);
+      await refreshClients();
+    } catch (err: any) {
+      addLog('error', `Failed updating autonomy policy: ${err.message}`);
+    } finally {
+      setUpdatingAutonomyId(null);
+    }
+  };
 
   const handleOpenNewPipeline = (sec: AccountingSection | React.MouseEvent = 'AR') => {
     setEditingPipeline(null);
@@ -343,6 +458,7 @@ export const ClientPipelinesTab: React.FC = () => {
         }.`
       );
       await loadAgentMessages();
+      await loadAgentRuns();
       if (res.learned_rules && res.learned_rules.length > 0) {
         await loadKnowledge();
       }
@@ -394,7 +510,7 @@ export const ClientPipelinesTab: React.FC = () => {
       });
       setTeachText('');
       addLog('success', `AI extracted and saved ${res.learned_count} client knowledge rule(s).`);
-      await loadKnowledge();
+      await Promise.all([loadKnowledge(), loadAgentRuns()]);
     } catch (err: any) {
       addLog('error', `Failed to teach knowledge: ${err.message}`);
     } finally {
@@ -422,7 +538,7 @@ export const ClientPipelinesTab: React.FC = () => {
       setNewRuleNatural('');
       setShowAddRuleForm(false);
       addLog('success', `Saved client knowledge rule: ${newRuleKey.trim()}`);
-      await loadKnowledge();
+      await Promise.all([loadKnowledge(), loadAgentRuns()]);
     } catch (err: any) {
       addLog('error', `Failed to save rule: ${err.message}`);
     } finally {
@@ -498,6 +614,21 @@ export const ClientPipelinesTab: React.FC = () => {
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span>Email &amp; WhatsApp Comms</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSubView('runs');
+                loadAgentRuns();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                subView === 'runs'
+                  ? 'bg-sky-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Reasoning &amp; Runs ({agentRuns.length})</span>
             </button>
             <button
               type="button"
@@ -663,22 +794,100 @@ export const ClientPipelinesTab: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Trigger Details */}
-                      <div className="flex items-center gap-2 mt-2.5">
-                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 text-sky-300 border border-slate-800 flex items-center gap-1">
-                          {pipe.trigger_type === 'realtime_webhook' ? (
-                            <>Webhook</>
-                          ) : pipe.trigger_type === 'manual_only' ? (
-                            <>Manual</>
-                          ) : (
-                            <>{pipe.cron_schedule_human || pipe.schedule || 'Daily @ 18:00 UTC'}</>
-                          )}
-                        </span>
-                        {pipe.total_runs_count ? (
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            {pipe.total_runs_count} runs
+                      {/* Trigger Details, Autonomy Mode & Active Triggers */}
+                      <div className="space-y-2 mt-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {(() => {
+                              const mode: AgentAutonomyLevel = pipe.autonomy_level || 'semi_autonomous';
+                              const badgeCls =
+                                mode === 'full_autonomous'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                  : mode === 'semi_autonomous'
+                                  ? 'bg-sky-500/15 text-sky-300 border-sky-500/40'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40';
+                              const modeLabel =
+                                mode === 'full_autonomous'
+                                  ? 'Full Autopilot'
+                                  : mode === 'semi_autonomous'
+                                  ? 'Semi-Autonomous'
+                                  : 'Copilot';
+                              return (
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded border inline-flex items-center gap-1 ${badgeCls}`}
+                                  title="Agent Autonomy Level"
+                                >
+                                  <Shield className="w-2.5 h-2.5" />
+                                  {modeLabel}
+                                </span>
+                              );
+                            })()}
+                            <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 text-sky-300 border border-slate-800 flex items-center gap-1">
+                              {pipe.trigger_type === 'realtime_webhook' ? (
+                                <>Webhook</>
+                              ) : pipe.trigger_type === 'manual_only' ? (
+                                <>Manual</>
+                              ) : (
+                                <>
+                                  {pipe.schedule_frequency
+                                    ? `${pipe.schedule_frequency.toUpperCase()} (${pipe.cron_schedule_human || pipe.schedule || 'Auto'})`
+                                    : pipe.cron_schedule_human || pipe.schedule || 'Daily @ 18:00 UTC'}
+                                </>
+                              )}
+                            </span>
+                            {pipe.total_runs_count ? (
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {pipe.total_runs_count} runs
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <select
+                            aria-label={`Autonomy level for ${pipe.name}`}
+                            value={pipe.autonomy_level || 'semi_autonomous'}
+                            disabled={updatingAutonomyId === pipe.id}
+                            onChange={(e) =>
+                              handleUpdateQuickAutonomy(pipe.id, e.target.value as AgentAutonomyLevel)
+                            }
+                            className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-lg px-1.5 py-0.5 text-[10px] font-semibold text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer disabled:opacity-50"
+                            title="Quick change agent autonomy level"
+                          >
+                            <option value="copilot">Copilot</option>
+                            <option value="semi_autonomous">Semi-Autonomous</option>
+                            <option value="full_autonomous">Full Autopilot</option>
+                          </select>
+                        </div>
+
+                        {/* Active Triggers */}
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-900/90 text-slate-300 border border-slate-800">
+                            Schedule: {pipe.schedule_frequency === 'daily' ? 'daily_morning' : pipe.schedule_frequency || 'daily_morning'}
                           </span>
-                        ) : null}
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/30">
+                            Email Cmds
+                          </span>
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
+                            WhatsApp Cmds
+                          </span>
+                          {pipe.auto_apply_knowledge !== false && (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-500/30">
+                              Reactive Knowledge
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAgentId(pipe.id);
+                              setSubView('runs');
+                              loadAgentRuns(pipe.id);
+                            }}
+                            className="ml-auto text-[9px] font-bold px-2 py-0.5 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 transition cursor-pointer inline-flex items-center gap-1"
+                            title="Inspect reasoning traces and run goals for this agent"
+                          >
+                            <Activity className="w-2.5 h-2.5" />
+                            <span>View Runs</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Target Details */}
@@ -1033,6 +1242,70 @@ export const ClientPipelinesTab: React.FC = () => {
 
                         <div className="whitespace-pre-wrap leading-relaxed">{msg.body_text}</div>
 
+                        {isOutbound && msg.ai_metadata?.agent_run && (() => {
+                          const receipt = msg.ai_metadata.agent_run;
+                          const isExpanded = !!expandedReceipts[msg.id];
+                          const steps = receipt.reasoning_steps || [];
+                          return (
+                            <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedReceipts((prev) => ({
+                                    ...prev,
+                                    [msg.id]: !prev[msg.id],
+                                  }))
+                                }
+                                className="w-full flex items-center justify-between text-[10px] font-bold text-sky-300 bg-slate-950/70 hover:bg-slate-950 border border-sky-500/30 rounded-lg px-2.5 py-1.5 cursor-pointer transition"
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <Terminal className="w-3 h-3 text-sky-400" />
+                                  <span>
+                                    Tool Execution Receipt ({receipt.actions_taken_count || steps.length} action(s), status: {receipt.status})
+                                  </span>
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                )}
+                              </button>
+                              {isExpanded && (
+                                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
+                                  <div className="flex flex-wrap gap-2 text-[10px] text-slate-400 font-mono">
+                                    <span>Run: {receipt.run_id}</span>
+                                    <span>Processed: {receipt.items_processed ?? 0}</span>
+                                    <span>Categorized: {receipt.items_categorized ?? 0}</span>
+                                    <span>Approved: {receipt.items_auto_approved ?? 0}</span>
+                                  </div>
+                                  {steps.map((st, sIdx) => (
+                                    <div
+                                      key={sIdx}
+                                      className="text-[10px] bg-slate-900/90 border border-slate-800 rounded-lg p-2 space-y-0.5"
+                                    >
+                                      <div className="flex items-center justify-between font-bold">
+                                        <span className="text-sky-300 font-mono">{st.tool_name}</span>
+                                        <span
+                                          className={
+                                            st.status === 'FAILED'
+                                              ? 'text-red-400'
+                                              : st.status === 'AWAITING_HUMAN'
+                                              ? 'text-amber-300'
+                                              : 'text-emerald-400'
+                                          }
+                                        >
+                                          {st.status}
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-300">{st.tool_output_summary}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {msg.knowledge_extracted && msg.knowledge_extracted.length > 0 && (
                           <div className="pt-2 border-t border-slate-800/80 space-y-1">
                             <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
@@ -1330,6 +1603,264 @@ export const ClientPipelinesTab: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          SUB-VIEW 3: AGENT REASONING & RUNS (ReAct CONTROL CENTER)
+          ===================================================================== */}
+      {subView === 'runs' && (
+        <div className="space-y-4">
+          {/* Control Bar */}
+          <div className="glass-panel rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-sky-400" />
+                  <span>Autonomous Reasoning Traces &amp; Goal Execution</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Assign ad-hoc accounting goals, sweep due agents across their schedule frequency, and audit step-by-step Thought, Tool Call, and Observation traces.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Select agent for reasoning runs"
+                  value={selectedAgentId}
+                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                >
+                  {agents.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.name} ({ag.section})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => loadAgentRuns()}
+                  disabled={isLoadingRuns}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRuns ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRunHeartbeatSweep}
+                  disabled={isRunningHeartbeat}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Zap className={`w-3.5 h-3.5 ${isRunningHeartbeat ? 'animate-pulse' : ''}`} />
+                  <span>
+                    {isRunningHeartbeat ? 'Sweeping Heartbeat...' : 'Run Due Agents Heartbeat'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Assign Goal Input Bar */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleExecuteGoal();
+              }}
+              className="flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                type="text"
+                value={goalInput}
+                onChange={(e) => setGoalInput(e.target.value)}
+                placeholder={`Assign a goal to ${activeAgentObj?.name || 'this agent'} (e.g. "Reconcile bank, apply taught rules, approve >85% confidence entries")`}
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
+              />
+              <button
+                type="submit"
+                disabled={isExecutingGoal || !goalInput.trim() || !selectedAgentId}
+                className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition cursor-pointer inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isExecutingGoal ? 'animate-spin' : ''}`} />
+                <span>{isExecutingGoal ? 'Executing Goal...' : 'Run Autonomous Cycle'}</span>
+              </button>
+            </form>
+
+            {/* Quick Goal Chips */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase text-slate-500 mr-1">Quick Goals:</span>
+              {[
+                {
+                  label: 'Reconcile & Categorize All',
+                  goal: 'Scan storage, apply learned knowledge retroactively, and categorize unmapped bank transactions',
+                },
+                {
+                  label: 'Auto-Approve >=85% Confidence',
+                  goal: 'Apply learned knowledge rules and auto-approve verified ledger entries meeting threshold',
+                },
+                {
+                  label: 'Chase Overdue Clarifications (>72h)',
+                  goal: 'Raise anomaly clarification requests for unresolved transactions and follow up overdue clarification requests',
+                },
+                {
+                  label: 'Draft Customer AR Invoices / Vendor AP Bills',
+                  goal: 'Reconcile storage versus ledger and generate draft Customer invoices or Vendor bills',
+                },
+              ].map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  disabled={isExecutingGoal || !selectedAgentId}
+                  onClick={() => handleExecuteGoal(chip.goal)}
+                  className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-sky-300 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer disabled:opacity-50"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Execution Run Timeline Cards */}
+          {isLoadingRuns ? (
+            <div className="glass-panel rounded-2xl p-10 border border-slate-800 text-center text-xs text-slate-400">
+              Loading agent reasoning traces...
+            </div>
+          ) : agentRuns.length === 0 ? (
+            <div className="glass-panel rounded-2xl p-10 border border-slate-800 text-center space-y-2">
+              <Activity className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="text-xs font-bold text-white">No ReAct Execution Runs Recorded Yet</p>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Assign a goal above, send an actionable Email/WhatsApp command, or click Run Due Agents Heartbeat to trigger your first autonomous cycle.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agentRuns.map((run) => {
+                const statusBadge =
+                  run.status === 'COMPLETED'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                    : run.status === 'AWAITING_HUMAN'
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                    : run.status === 'FAILED'
+                    ? 'bg-red-500/15 text-red-300 border-red-500/40'
+                    : 'bg-sky-500/15 text-sky-300 border-sky-500/40';
+                return (
+                  <div
+                    key={run.run_id}
+                    className="glass-panel rounded-2xl p-5 border border-slate-800 space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${statusBadge}`}>
+                            {run.status}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-indigo-300 border border-slate-800">
+                            Trigger: {run.trigger_type}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800">
+                            Autonomy: {run.autonomy_level}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            Run {run.run_id}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-white">{run.goal}</p>
+                      </div>
+
+                      <div className="text-[11px] text-slate-400 font-mono text-right shrink-0">
+                        <div>{new Date(run.started_at).toLocaleString()}</div>
+                        {run.trigger_source && (
+                          <div className="text-[10px] text-slate-500">Source: {run.trigger_source}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Metrics Pill Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-[11px]">
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Tools Executed</span>
+                        <span className="font-mono font-bold text-white">{run.actions_taken_count}</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Items Processed</span>
+                        <span className="font-mono font-bold text-white">{run.items_processed}</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Categorized</span>
+                        <span className="font-mono font-bold text-sky-300">{run.items_categorized}</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Auto-Approved</span>
+                        <span className="font-mono font-bold text-emerald-300">{run.items_auto_approved}</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Anomaly Queries</span>
+                        <span className="font-mono font-bold text-amber-300">{run.queries_dispatched}</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <span className="text-slate-500 block text-[9px] uppercase">Drafts Created</span>
+                        <span className="font-mono font-bold text-purple-300">{run.invoices_drafted}</span>
+                      </div>
+                    </div>
+
+                    {/* Step-by-Step ReAct Chain */}
+                    {run.reasoning_steps && run.reasoning_steps.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <div className="text-[10px] font-bold uppercase text-slate-400">
+                          Step-by-Step ReAct Reasoning Chain
+                        </div>
+                        <div className="space-y-2">
+                          {run.reasoning_steps.map((step) => (
+                            <div
+                              key={step.step_index}
+                              className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono text-[10px] font-bold inline-flex items-center justify-center">
+                                    {step.step_index}
+                                  </span>
+                                  <code className="text-[11px] font-bold text-sky-300 font-mono">
+                                    {step.tool_name}
+                                  </code>
+                                </div>
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                    step.status === 'FAILED'
+                                      ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                                      : step.status === 'AWAITING_HUMAN'
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  }`}
+                                >
+                                  {step.status}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                <strong className="text-slate-300">Thought:</strong> {step.thought}
+                              </p>
+                              <p className="text-[11px] text-slate-200">
+                                <strong className="text-emerald-300">Observation:</strong> {step.tool_output_summary}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Final Report Summary */}
+                    {run.summary_report && (
+                      <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 whitespace-pre-wrap">
+                        {run.summary_report}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

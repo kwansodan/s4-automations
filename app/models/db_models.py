@@ -16,7 +16,8 @@ class AccountingSection(str, Enum):
     AR = "AR"       # Accounts Receivable (Revenue, Customer Invoices, Payments, Credits)
     AP = "AP"       # Accounts Payable (Vendor Bills, Disbursements, Expenses, POs)
     BANK = "BANK"   # Banking & Treasury (Bank Statements, Feeds, MoMo, Reconciliation)
-    GL = "GL"       # General Ledger (Manual Journals, Chart of Accounts)
+    GL = "GL"       # General Ledger (Manual Journals, Chart of Accounts, Closing Adjustments)
+    FR = "FR"       # Financial Reporting (P&L, Balance Sheet, Cash Flow, Disclosures)
 
 
 class AccountingEntityType(str, Enum):
@@ -41,8 +42,9 @@ class AccountingEntityType(str, Enum):
     MOMO_STATEMENT = "momo_statement"             # Zoho /banktransactions (MoMo)
     BANK_FEED = "bank_feed"                       # Live Accounting Bank Feed & Suspense Sync
     
-    # General Ledger
+    # General Ledger & Reporting
     GL_JOURNAL = "gl_journal"                     # Zoho /journalentries
+    FR_STATEMENT_PACK = "fr_statement_pack"       # Multi-statement reporting pack
 
 
 class AccountingSoftware(str, Enum):
@@ -723,3 +725,117 @@ class AgentMessage(SQLModel, table=True):
     attachments: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     ai_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=get_utc_now, index=True)
+
+
+class AgentExecutionRun(SQLModel, table=True):
+    """Persists every autonomous, reactive, or command-triggered agent run with full ReAct reasoning steps and tool call telemetry."""
+    __tablename__ = "agent_execution_runs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: str = Field(index=True, unique=True, description="Unique execution run identifier")
+    client_id: str = Field(index=True, description="Client organization ID")
+    agent_id: str = Field(index=True, description="Agent instance ID")
+    agent_name: str = Field(default="Accounting Agent")
+    section: str = Field(default="AR", index=True, description="AR, AP, BANK, GL")
+    trigger_type: str = Field(
+        default="MANUAL_UI",
+        index=True,
+        description="SCHEDULED_HEARTBEAT, EMAIL_COMMAND, WHATSAPP_COMMAND, ATTACHMENT_INGEST, REACTIVE_EVENT, WATCHDOG_SLA, MANUAL_UI",
+    )
+    trigger_source: Optional[str] = Field(default=None, description="Sender email/phone, event name, or cron schedule")
+    goal: str = Field(default="", description="Natural-language objective for the run")
+    autonomy_level: str = Field(default="semi_autonomous", description="copilot, semi_autonomous, full_autonomous")
+    status: str = Field(default="RUNNING", index=True, description="RUNNING, COMPLETED, PARTIAL, AWAITING_HUMAN, FAILED")
+    reasoning_steps: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    actions_taken_count: int = Field(default=0)
+    items_processed: int = Field(default=0)
+    items_auto_approved: int = Field(default=0)
+    items_categorized: int = Field(default=0)
+    queries_dispatched: int = Field(default=0)
+    invoices_drafted: int = Field(default=0)
+    summary_report: str = Field(default="", description="Human-readable outcome narrative")
+    started_at: datetime = Field(default_factory=get_utc_now, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+
+
+class PlatformAdminUser(SQLModel, table=True):
+    """Explicit database allowlist for SaaS Platform Super-Admins."""
+    __tablename__ = "platform_admin_users"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True, description="Normalized lowercase operator email")
+    name: str = Field(default="Platform Operator")
+    is_active: bool = Field(default=True, index=True)
+    is_root: bool = Field(default=False, description="True for root AUTH_EMAIL account")
+    notes: Optional[str] = Field(default=None)
+    added_by: str = Field(default="system")
+    last_login_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class ManualJournalWorkingPaper(SQLModel, table=True):
+    """Auditable working papers and technical accounting memos for manual journals."""
+    __tablename__ = "manual_journal_working_papers"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    paper_id: str = Field(index=True, unique=True, description="Unique working paper identifier, e.g. wp_202610_001")
+    client_id: str = Field(index=True, description="Client organization ID")
+    journal_id: Optional[str] = Field(default=None, index=True, description="ERP journal entry ID (e.g. Zoho Books journal_id)")
+    journal_reference: Optional[str] = Field(default=None, index=True, description="Journal number or reference code")
+    title: str = Field(description="Descriptive title of the closing adjustment")
+    adjustment_type: str = Field(
+        default="ACCRUAL",
+        index=True,
+        description="PREPAYMENT, ACCRUAL, DEPRECIATION, FX_REVALUATION, TAX_PROVISION, LEASE_IFRS16, REVENUE_IFRS15, GENERAL_CLOSING",
+    )
+    standard_reference: Optional[str] = Field(default="IFRS", description="Applicable standard section (e.g. IAS 16, IFRS 16, IAS 37)")
+    entity_policy_applied: Optional[str] = Field(default=None, description="Summary of client-specific policy evaluated")
+    period_month: str = Field(description="Billing or closing month, e.g. October")
+    period_year: int = Field(description="Closing fiscal year, e.g. 2026")
+    currency: str = Field(default="GHS", description="Presentation currency")
+    total_debit: float = Field(default=0.0)
+    total_credit: float = Field(default=0.0)
+    is_balanced: bool = Field(default=True)
+    status: str = Field(default="DRAFT", index=True, description="DRAFT, SUGGESTED, APPROVED, POSTED_TO_ERP, REJECTED")
+    journal_payload: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON), description="Double entry journal line items")
+    math_schedules: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON), description="Tabular calculation schedules")
+    memo_markdown: str = Field(default="", description="Technical white paper narrative memo")
+    attachment_urls: List[str] = Field(default_factory=list, sa_column=Column(JSON), description="Cloud storage URLs for supporting schedules")
+    prepared_by: str = Field(default="gl_accountant_agent", description="Agent or user identifier")
+    approved_by: Optional[str] = Field(default=None)
+    posted_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+class FinancialStatementReport(SQLModel, table=True):
+    """Formal financial statement packs synthesized by the Financial Reporting Agent."""
+    __tablename__ = "financial_statement_reports"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    report_id: str = Field(index=True, unique=True, description="Unique report identifier, e.g. fs_2026_q3_anr")
+    client_id: str = Field(index=True, description="Client organization ID")
+    report_title: str = Field(description="Title of reporting pack")
+    reporting_framework: str = Field(default="IFRS", description="IFRS, IFRS_FOR_SMES, GHANA_GAAP, US_GAAP")
+    period_type: str = Field(default="MONTHLY", description="MONTHLY, QUARTERLY, ANNUAL")
+    period_month: Optional[str] = Field(default=None)
+    period_quarter: Optional[str] = Field(default=None)
+    period_year: int = Field(index=True)
+    currency: str = Field(default="GHS")
+    is_audited: bool = Field(default=False)
+    status: str = Field(default="DRAFT", index=True, description="DRAFT, CONTROLLER_REVIEWED, BOARD_READY, PUBLISHED")
+    income_statement: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    balance_sheet: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    cash_flow_statement: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    equity_statement: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    notes_to_accounts: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    financial_ratios: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    executive_commentary: str = Field(default="")
+    prepared_by: str = Field(default="financial_reporting_agent")
+    published_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
+    updated_at: datetime = Field(default_factory=get_utc_now)
+
+
+

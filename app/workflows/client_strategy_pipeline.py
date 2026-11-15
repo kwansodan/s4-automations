@@ -177,3 +177,47 @@ async def client_strategy_pipeline(ctx: inngest.Context, step: Optional[inngest.
 
     return results.get(requested_client_id, results) if requested_client_id else results
 
+
+@inngest_client.create_function(
+    fn_id="s4-agent-heartbeat-scheduler",
+    name="S4 Multi-Frequency Agentic Heartbeat & SLA Watchdog",
+    trigger=[
+        inngest.TriggerCron(cron="0 * * * *"),
+        inngest.TriggerEvent(event="s4/agent.heartbeat.execute"),
+    ],
+    retries=2,
+)
+async def inngest_agent_heartbeat_fn(ctx: inngest.Context, step: Optional[inngest.Step] = None) -> Dict[str, Any]:
+    """
+    Hourly agentic heartbeat & SLA watchdog.
+    Evaluates each active agent's individual schedule_frequency (hourly, every_6_hours,
+    daily_morning, daily_evening, weekly, monthly_cutoff) and runs full autonomous ReAct
+    cycles (storage scan, retroactive knowledge application, auto-approval within autonomy policy,
+    anomaly queries, overdue SLA reminders, and optional invoice/bill drafting).
+    """
+    from sqlmodel import Session
+    from app.db.session import get_engine
+    from app.services.agentic_brain_service import AgenticBrainService
+
+    step = getattr(ctx, "step", None) or step
+    event_data = getattr(ctx, "event", None)
+    data = getattr(event_data, "data", {}) or {}
+    target_client_id = data.get("client_id")
+    force = bool(data.get("force", False))
+    month = data.get("month")
+    year = int(data["year"]) if data.get("year") else None
+
+    async def _run_sweep():
+        with Session(get_engine()) as session:
+            return await AgenticBrainService.run_due_agents_heartbeat(
+                db=session,
+                client_id=target_client_id,
+                force=force,
+                month=month,
+                year=year,
+            )
+
+    if step:
+        return await step.run("agentic-heartbeat-sweep", _run_sweep)
+    return await _run_sweep()
+

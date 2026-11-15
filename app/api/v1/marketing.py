@@ -21,6 +21,7 @@ _LANDING_CACHE: Optional[Dict[str, Any]] = None
 _LANDING_LOCK = threading.Lock()
 
 router = APIRouter(prefix="/marketing", tags=["Marketing & Audience CRM"])
+public_router = APIRouter(prefix="/marketing", tags=["Marketing Public"])
 
 
 # -------------------------------------------------------------------------
@@ -364,7 +365,7 @@ async def sync_client_contacts_to_audience(
 # Public Inbound Lead Capture Endpoints (Landing Page Funnel)
 # -------------------------------------------------------------------------
 
-@router.post("/lead-capture")
+@public_router.post("/lead-capture")
 async def capture_public_lead(
     payload: LeadCaptureRequest,
     db: Session = Depends(get_db_session),
@@ -584,7 +585,7 @@ async def update_lead_status(
 # Public Landing Page & Visitor Visibility Management Endpoints
 # -------------------------------------------------------------------------
 
-@router.get("/landing-config", summary="Get Public Landing Page Configuration")
+@public_router.get("/landing-config", summary="Get Public Landing Page Configuration")
 async def get_landing_config(
     response: Response,
     db: Session = Depends(get_db_session),

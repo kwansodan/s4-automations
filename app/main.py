@@ -15,7 +15,10 @@ from app.config import settings
 from app.inngest_client import inngest_client
 from app.workflows.daily_billing_pipeline import daily_slip_billing_pipeline
 from app.workflows.zoho_invoice_generator import s4_generate_zoho_invoices
-from app.workflows.client_strategy_pipeline import client_strategy_pipeline
+from app.workflows.client_strategy_pipeline import (
+    client_strategy_pipeline,
+    inngest_agent_heartbeat_fn,
+)
 from app.workflows.ap_billing_pipeline import inngest_ap_pipeline_fn
 from app.workflows.bank_statement_pipeline import inngest_bank_statement_fn
 from app.api.v1 import api_v1_router, api_legacy_router
@@ -120,6 +123,7 @@ inngest.fast_api.serve(
         daily_slip_billing_pipeline,
         s4_generate_zoho_invoices,
         client_strategy_pipeline,
+        inngest_agent_heartbeat_fn,
         inngest_ap_pipeline_fn,
         inngest_bank_statement_fn,
     ],
@@ -291,13 +295,19 @@ async def favicon():
     return HTMLResponse("")
 
 
-@app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
-async def dashboard_ui() -> Any:
-    """Serves the frontend control dashboard."""
-    # In development mode or when testing without rebuild, prioritize dev_index
+_NON_SPA_PREFIXES = ("api/", "assets/", "public/", "src/", "docs", "redoc")
+_NON_SPA_EXTENSIONS = (
+    ".js", ".mjs", ".css", ".map", ".json", ".svg", ".png",
+    ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".woff", ".woff2",
+    ".ttf", ".txt", ".xml", ".pdf",
+)
+
+
+def _render_spa_index() -> HTMLResponse:
+    """Renders the built frontend index.html (or dev index) with no-cache headers."""
     prod_index = os.path.join(dist_dir, "index.html")
     dev_index = os.path.join(frontend_dir, "index.html")
-    
+
     if (settings.ENVIRONMENT == "development" or os.environ.get("VITE_DEV")) and os.path.exists(dev_index):
         target_index = dev_index
     else:
@@ -313,3 +323,24 @@ async def dashboard_ui() -> Any:
                 },
             )
     return HTMLResponse("<h1>S4 Automations API</h1><p>Visit /docs for API schema.</p>")
+
+
+@app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
+async def dashboard_ui() -> Any:
+    """Serves the frontend control dashboard."""
+    return _render_spa_index()
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def spa_history_fallback(full_path: str) -> Any:
+    """SPA History API fallback for deep links like /admin/overview, /requests, /ar, /login."""
+    normalized = (full_path or "").lstrip("/").lower()
+    if (
+        normalized == "api"
+        or normalized == "openapi.json"
+        or any(normalized.startswith(prefix) for prefix in _NON_SPA_PREFIXES)
+        or any(normalized.endswith(ext) for ext in _NON_SPA_EXTENSIONS)
+    ):
+        raise HTTPException(status_code=404, detail="Not Found")
+    return _render_spa_index()
+

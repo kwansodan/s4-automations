@@ -128,18 +128,52 @@ setattr(ZohoBooksService, "create_or_append_draft_invoice", _test_create_or_appe
 
 @pytest.fixture(autouse=True)
 def override_admin_auth():
-    """Overrides require_admin_user dependency during tests so standard client requests are authorized."""
+    """Overrides RBAC auth dependencies when no Authorization header is sent; delegates to real checks when Bearer token is present."""
+    from fastapi import Request
     from app.main import app
-    from app.api.deps import require_admin_user
+    from app.api.deps import (
+        require_admin_user,
+        require_authenticated_user,
+        require_org_admin,
+        require_platform_admin,
+    )
 
-    app.dependency_overrides[require_admin_user] = lambda: {
+    fallback_user = {
         "id": "admin_test",
         "email": "admin@service4gh.com",
         "role": "admin",
+        "is_platform_admin": True,
+        "is_org_admin": True,
         "name": "Test Platform Administrator",
+        "organization": {"id": "s4_advisory", "name": "S4 Advisory"},
+        "organizations": [{"id": "s4_advisory", "name": "S4 Advisory"}],
     }
+
+    async def _auth_or_fallback(request: Request):
+        if request.headers.get("authorization", "").startswith("Bearer "):
+            return await require_authenticated_user(request)
+        request.state.user = fallback_user
+        return fallback_user
+
+    async def _org_admin_or_fallback(request: Request):
+        if request.headers.get("authorization", "").startswith("Bearer "):
+            return await require_org_admin(request)
+        request.state.user = fallback_user
+        return fallback_user
+
+    async def _platform_admin_or_fallback(request: Request):
+        if request.headers.get("authorization", "").startswith("Bearer "):
+            return await require_platform_admin(request)
+        request.state.user = fallback_user
+        return fallback_user
+
+    app.dependency_overrides[require_authenticated_user] = _auth_or_fallback
+    app.dependency_overrides[require_org_admin] = _org_admin_or_fallback
+    app.dependency_overrides[require_platform_admin] = _platform_admin_or_fallback
+    app.dependency_overrides[require_admin_user] = _org_admin_or_fallback
     yield
-    app.dependency_overrides.pop(require_admin_user, None)
+    for dep in (require_authenticated_user, require_org_admin, require_platform_admin, require_admin_user):
+        app.dependency_overrides.pop(dep, None)
 
 
 @pytest.fixture

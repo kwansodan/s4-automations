@@ -4,6 +4,9 @@ export interface AuthUser {
   email: string;
   name: string;
   role: 'admin' | 'bookkeeper' | 'auditor' | string;
+  is_platform_admin?: boolean;
+  is_org_admin?: boolean;
+  impersonating_org_id?: string | null;
   organization?: Organization;
   organizations?: Organization[];
 }

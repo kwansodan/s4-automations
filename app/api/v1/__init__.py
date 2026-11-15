@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import require_admin_user
+from app.api.deps import enforce_tenant_request_scope, require_org_admin, require_platform_admin
+from app.api.v1.admin import router as admin_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.pipeline import router as pipeline_router
 from app.api.v1.invoices import router as invoices_router
@@ -14,11 +15,13 @@ from app.api.v1.audit import router as audit_router
 from app.api.v1.bank_portal import router as bank_portal_router
 from app.api.v1.oauth import router as oauth_router
 from app.api.v1.system import router as system_router
-from app.api.v1.social import router as social_router
-from app.api.v1.marketing import router as marketing_router
+from app.api.v1.social import router as social_router, public_router as public_social_router
+from app.api.v1.marketing import router as marketing_router, public_router as public_marketing_router
 from app.api.v1.contacts import router as contacts_router
 from app.api.v1.billing import router as billing_router
 from app.api.v1.agents import router as agents_router
+from app.api.v1.gl_closing import router as gl_closing_router
+from app.api.v1.financial_reporting import router as financial_reporting_router
 
 api_sub_router = APIRouter()
 
@@ -27,22 +30,31 @@ api_sub_router.include_router(auth_router)
 api_sub_router.include_router(bank_portal_router)
 api_sub_router.include_router(oauth_router)
 api_sub_router.include_router(agents_router)
+api_sub_router.include_router(public_marketing_router)
+api_sub_router.include_router(public_social_router)
 
-# 2. Strict Admin-Only Routers (All endpoints globally guarded by require_admin_user)
-admin_deps = [Depends(require_admin_user)]
+# 2. Organization / Workspace Admin Routers (Partner, Org Admin, or Platform Super-Admin)
+org_admin_deps = [Depends(require_org_admin), Depends(enforce_tenant_request_scope)]
 
-api_sub_router.include_router(pipeline_router, dependencies=admin_deps)
-api_sub_router.include_router(invoices_router, dependencies=admin_deps)
-api_sub_router.include_router(sheets_router, dependencies=admin_deps)
-api_sub_router.include_router(catalog_router, dependencies=admin_deps)
-api_sub_router.include_router(config_router, dependencies=admin_deps)
-api_sub_router.include_router(clients_router, dependencies=admin_deps)
-api_sub_router.include_router(audit_router, dependencies=admin_deps)
-api_sub_router.include_router(system_router, dependencies=admin_deps)
-api_sub_router.include_router(social_router, dependencies=admin_deps)
-api_sub_router.include_router(marketing_router, dependencies=admin_deps)
-api_sub_router.include_router(contacts_router, dependencies=admin_deps)
-api_sub_router.include_router(billing_router, dependencies=admin_deps)
+api_sub_router.include_router(pipeline_router, dependencies=org_admin_deps)
+api_sub_router.include_router(invoices_router, dependencies=org_admin_deps)
+api_sub_router.include_router(sheets_router, dependencies=org_admin_deps)
+api_sub_router.include_router(catalog_router, dependencies=org_admin_deps)
+api_sub_router.include_router(clients_router, dependencies=org_admin_deps)
+api_sub_router.include_router(audit_router, dependencies=org_admin_deps)
+api_sub_router.include_router(contacts_router, dependencies=org_admin_deps)
+api_sub_router.include_router(gl_closing_router, dependencies=org_admin_deps)
+api_sub_router.include_router(financial_reporting_router, dependencies=org_admin_deps)
+
+# 3. SaaS Platform Super-Admin Routers
+platform_deps = [Depends(require_platform_admin)]
+
+api_sub_router.include_router(admin_router, dependencies=platform_deps)
+api_sub_router.include_router(billing_router, dependencies=platform_deps)
+api_sub_router.include_router(config_router, dependencies=platform_deps)
+api_sub_router.include_router(system_router, dependencies=platform_deps)
+api_sub_router.include_router(social_router, dependencies=platform_deps)
+api_sub_router.include_router(marketing_router, dependencies=platform_deps)
 
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(api_sub_router)

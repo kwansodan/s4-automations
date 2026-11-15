@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.api.deps import require_admin_user
+from app.api.deps import (
+    get_accessible_client_ids,
+    require_admin_user,
+    verify_client_access,
+)
 from app.config import settings
 from app.db.session import get_db_session
 from app.models.db_models import AgentMessage, ClientKnowledgeEntry, ClientOrganization
@@ -80,6 +84,46 @@ class TenantWhatsAppConfigPayload(BaseModel):
     )
 
 
+class ExecuteAgentGoalPayload(BaseModel):
+    goal: str = Field(
+        default="Run autonomous cycle: scan storage, apply learned knowledge rules, approve verified items, and check anomalies.",
+        description="Natural-language objective or autonomous close directive",
+    )
+    month: Optional[str] = Field(default=None)
+    year: Optional[int] = Field(default=None)
+    autonomy_override: Optional[str] = Field(
+        default=None,
+        description="Optional override: copilot, semi_autonomous, full_autonomous",
+    )
+    explicit_human_command: bool = Field(
+        default=True,
+        description="Whether this goal represents an authorized accountant directive",
+    )
+
+
+class UpdateAgentAutonomyPayload(BaseModel):
+    autonomy_level: Optional[str] = Field(
+        default=None,
+        description="copilot, semi_autonomous, or full_autonomous",
+    )
+    schedule_frequency: Optional[str] = Field(
+        default=None,
+        description="hourly, every_6_hours, daily_morning, daily_evening, weekly, monthly_cutoff, manual",
+    )
+    auto_approve_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    auto_apply_knowledge: Optional[bool] = Field(default=None)
+    auto_query_anomalies: Optional[bool] = Field(default=None)
+    proactive_SLA_reminders: Optional[bool] = Field(default=None)
+
+
+class HeartbeatTriggerPayload(BaseModel):
+    client_id: Optional[str] = Field(default=None)
+    force: bool = Field(default=False)
+    month: Optional[str] = Field(default=None)
+    year: Optional[int] = Field(default=None)
+
+
+
 # -------------------------------------------------------------------------
 # 1. Public Inbound Email & WhatsApp Webhooks (Multi-Tenant SaaS)
 # -------------------------------------------------------------------------
@@ -97,9 +141,22 @@ async def inbound_agent_email_webhook(
     """
     ct = (request.headers.get("content-type") or "").lower()
     raw_data: Dict[str, Any] = {}
+    multipart_attachments: List[Dict[str, Any]] = []
     if "multipart" in ct or "form" in ct:
         form = await request.form()
-        raw_data = {k: v for k, v in form.items() if isinstance(v, (str, int, float))}
+        for k, v in form.items():
+            if isinstance(v, (str, int, float)):
+                raw_data[k] = v
+            elif hasattr(v, "read"):
+                try:
+                    file_bytes = await v.read()
+                    multipart_attachments.append({
+                        "filename": getattr(v, "filename", None) or f"{k}.bin",
+                        "content_type": getattr(v, "content_type", None) or "application/octet-stream",
+                        "content_bytes": file_bytes,
+                    })
+                except Exception as att_err:
+                    logger.warning(f"Failed reading multipart email attachment '{k}': {att_err}")
     else:
         try:
             raw_data = await request.json()
@@ -131,7 +188,8 @@ async def inbound_agent_email_webhook(
         or raw_data.get("html")
         or subject
     ).strip()
-    attachments = raw_data.get("attachments") if isinstance(raw_data.get("attachments"), list) else []
+    attachments = list(raw_data.get("attachments")) if isinstance(raw_data.get("attachments"), list) else []
+    attachments.extend(multipart_attachments)
 
     try:
         client, agent = AgentCommsService.resolve_agent_by_email(
@@ -255,9 +313,22 @@ async def _handle_whatsapp_inbound(
 ) -> Dict[str, Any]:
     ct = (request.headers.get("content-type") or "").lower()
     raw_payload: Dict[str, Any] = {}
+    multipart_attachments: List[Dict[str, Any]] = []
     if "multipart" in ct or "form" in ct:
         form = await request.form()
-        raw_payload = {k: v for k, v in form.items() if isinstance(v, (str, int, float))}
+        for k, v in form.items():
+            if isinstance(v, (str, int, float)):
+                raw_payload[k] = v
+            elif hasattr(v, "read"):
+                try:
+                    file_bytes = await v.read()
+                    multipart_attachments.append({
+                        "filename": getattr(v, "filename", None) or f"{k}.bin",
+                        "content_type": getattr(v, "content_type", None) or "application/octet-stream",
+                        "content_bytes": file_bytes,
+                    })
+                except Exception as att_err:
+                    logger.warning(f"Failed reading multipart WhatsApp attachment '{k}': {att_err}")
     else:
         try:
             raw_payload = await request.json()
@@ -265,11 +336,20 @@ async def _handle_whatsapp_inbound(
             raw_payload = {}
 
     parsed_messages = WhatsAppService.parse_inbound_webhook_payload(raw_payload)
+    if not parsed_messages and multipart_attachments:
+        parsed_messages = [{
+            "from_phone": raw_payload.get("from_phone") or raw_payload.get("From") or "+233240000000",
+            "to_phone": raw_payload.get("to_phone") or raw_payload.get("To"),
+            "text": str(raw_payload.get("text") or raw_payload.get("Body") or ""),
+            "client_id": client_id_hint or raw_payload.get("client_id"),
+            "agent_id": raw_payload.get("agent_id"),
+            "attachments": [],
+        }]
     if not parsed_messages:
         return {"status": "IGNORED", "reason": "No actionable message events in webhook payload", "results": []}
 
     results: List[Dict[str, Any]] = []
-    for item in parsed_messages:
+    for idx_msg, item in enumerate(parsed_messages):
         eff_client_hint = client_id_hint or item.get("client_id")
         eff_agent_hint = item.get("agent_id")
         recipient_id_or_phone = item.get("phone_number_id") or item.get("to_phone")
@@ -285,6 +365,10 @@ async def _handle_whatsapp_inbound(
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
+        msg_attachments = list(item.get("attachments") or [])
+        if idx_msg == 0 and multipart_attachments:
+            msg_attachments.extend(multipart_attachments)
+
         processed = await AgentCommsService.process_inbound_agent_message(
             session=db,
             client=client,
@@ -294,7 +378,7 @@ async def _handle_whatsapp_inbound(
             recipient_address=normalize_phone(item.get("to_phone")) or str(agent.get("whatsapp_phone_number") or settings.WHATSAPP_PLATFORM_NUMBER),
             body_text=item.get("text") or "",
             subject=None,
-            attachments=item.get("attachments") or [],
+            attachments=msg_attachments,
             send_external_reply=True,
         )
         results.append(processed)
@@ -316,6 +400,7 @@ async def _handle_whatsapp_inbound(
 @router.get("", summary="List All Autonomous Accounting Agents Across Clients")
 async def list_all_agents(
     client_id: Optional[str] = Query(default=None),
+    organization_id: Optional[str] = Query(default=None),
     db: Session = Depends(get_db_session),
     _admin: dict = Depends(require_admin_user),
 ) -> Dict[str, Any]:
@@ -325,7 +410,14 @@ async def list_all_agents(
 
     stmt = select(ClientOrganization)
     if client_id and client_id.upper() != "ALL":
+        verify_client_access(db, _admin, client_id, allow_missing_for_platform_admin=True)
         stmt = stmt.where(ClientOrganization.id == client_id)
+    else:
+        allowed_clients = get_accessible_client_ids(db, _admin, organization_id)
+        if allowed_clients is not None:
+            if not allowed_clients:
+                return {"total_agents": 0, "agents": []}
+            stmt = stmt.where(ClientOrganization.id.in_(sorted(allowed_clients)))
     clients = db.exec(stmt).all()
 
     agents_out: List[Dict[str, Any]] = []
@@ -352,6 +444,42 @@ async def list_all_agents(
     }
 
 
+@router.post("/heartbeat", summary="Trigger Autonomous Multi-Frequency Agent Heartbeat & Watchdog Sweep")
+async def trigger_agents_heartbeat(
+    payload: Optional[HeartbeatTriggerPayload] = None,
+    client_id: Optional[str] = Query(default=None),
+    force: Optional[bool] = Query(default=None),
+    db: Session = Depends(get_db_session),
+    _admin: dict = Depends(require_admin_user),
+) -> Dict[str, Any]:
+    """
+    Evaluates all active autonomous agents across clients (or for a single client)
+    against their configured schedule_frequency, executes due ReAct autonomous cycles,
+    and checks SLA clarification timeouts.
+    """
+    from app.services.agentic_brain_service import AgenticBrainService
+
+    eff_client = client_id or (payload.client_id if payload else None)
+    allowed_clients = None
+    if eff_client:
+        verify_client_access(db, _admin, eff_client, allow_missing_for_platform_admin=True)
+    else:
+        allowed_clients = get_accessible_client_ids(db, _admin)
+
+    eff_force = bool(force if force is not None else (payload.force if payload else False))
+    eff_month = payload.month if payload else None
+    eff_year = payload.year if payload else None
+
+    return await AgenticBrainService.run_due_agents_heartbeat(
+        db=db,
+        client_id=eff_client,
+        force=eff_force,
+        month=eff_month,
+        year=eff_year,
+        allowed_client_ids=allowed_clients,
+    )
+
+
 @router.get("/{client_id}/whatsapp-config", summary="Get Tenant WhatsApp Business Number Configuration")
 async def get_tenant_whatsapp_config(
     client_id: str,
@@ -359,9 +487,7 @@ async def get_tenant_whatsapp_config(
     _admin: dict = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Returns the client's WhatsApp Business communication configuration and copyable webhook URLs."""
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    client = verify_client_access(db, _admin, client_id)
 
     custom_cfg = client.custom_config or {}
     wa_cfg = dict(custom_cfg.get("whatsapp_config") or {})
@@ -401,9 +527,7 @@ async def save_tenant_whatsapp_config(
     Allows a SaaS user/client to configure their own dedicated WhatsApp Business number
     (Meta Cloud API or Twilio) or switch back to the Platform Shared Gateway.
     """
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    client = verify_client_access(db, _admin, client_id)
 
     custom_cfg = dict(client.custom_config or {})
     existing_wa = dict(custom_cfg.get("whatsapp_config") or {})
@@ -470,6 +594,7 @@ async def list_agent_messages(
     _admin: dict = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Returns chronological Email, WhatsApp, and In-App messages for a specific Agent (or ALL agents on a client)."""
+    verify_client_access(db, _admin, client_id, allow_missing_for_platform_admin=True)
     AgentCommsService.ensure_table(db)
     from app.api.v1.clients import get_client_id_aliases
     aliases = get_client_id_aliases(client_id) or [client_id]
@@ -502,9 +627,7 @@ async def send_message_to_agent(
     Allows an accountant or user to communicate with a specific Agent via IN_APP, EMAIL, or WHATSAPP,
     triggering the Gemini AI Engine, learning any taught rules, and returning the AI response.
     """
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    client = verify_client_access(db, admin, client_id)
 
     agents = AgentCommsService.sync_client_agents_list(client)
     target_agent = next((a for a in agents if a.get("id") == agent_id), None)
@@ -545,3 +668,136 @@ async def send_message_to_agent(
         send_external_reply=payload.send_external_reply,
     )
     return result
+
+
+@router.post("/{client_id}/{agent_id}/execute-goal", summary="Execute Natural-Language Goal or Autonomous ReAct Cycle")
+async def execute_agent_goal(
+    client_id: str,
+    agent_id: str,
+    payload: ExecuteAgentGoalPayload,
+    db: Session = Depends(get_db_session),
+    admin: dict = Depends(require_admin_user),
+) -> Dict[str, Any]:
+    """
+    Runs the true agentic ReAct loop (Perceive -> Plan -> Act -> Verify -> Learn)
+    for any natural-language goal or autonomous close cycle on the specified agent.
+    """
+    from app.services.agentic_brain_service import AUTONOMY_LEVELS, AgenticBrainService
+
+    if payload.autonomy_override and payload.autonomy_override not in AUTONOMY_LEVELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid autonomy_override '{payload.autonomy_override}'. Allowed: {', '.join(AUTONOMY_LEVELS)}",
+        )
+
+    verify_client_access(db, admin, client_id, allow_missing_for_platform_admin=True)
+    client, agent = AgenticBrainService.resolve_client_and_agent(db, client_id=client_id, agent_id=agent_id)
+    if not client or not agent:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' or agent '{agent_id}' not found.")
+    verify_client_access(db, admin, client.id)
+
+    run_data = await AgenticBrainService.plan_and_execute_goal(
+        db=db,
+        client=client,
+        agent=agent,
+        goal=payload.goal,
+        trigger_type="MANUAL_UI",
+        trigger_source=admin.get("email", "accountant@service4gh.com"),
+        month=payload.month,
+        year=payload.year,
+        autonomy_override=payload.autonomy_override,
+        explicit_human_command=payload.explicit_human_command,
+    )
+    return {"success": True, "run": run_data}
+
+
+@router.get("/{client_id}/{agent_id}/runs", summary="List Agent Reasoning & Autonomous Execution Runs")
+async def list_agent_runs(
+    client_id: str,
+    agent_id: str,
+    limit: int = Query(default=30, ge=1, le=200),
+    db: Session = Depends(get_db_session),
+    _admin: dict = Depends(require_admin_user),
+) -> Dict[str, Any]:
+    """Returns historical ReAct reasoning traces and tool execution telemetry for an agent."""
+    from app.services.agentic_brain_service import AgenticBrainService
+
+    verify_client_access(db, _admin, client_id, allow_missing_for_platform_admin=True)
+    runs = AgenticBrainService.list_runs(db=db, client_id=client_id, agent_id=agent_id, limit=limit)
+    return {
+        "client_id": client_id,
+        "agent_id": agent_id,
+        "count": len(runs),
+        "runs": runs,
+    }
+
+
+@router.patch("/{client_id}/{agent_id}/autonomy", summary="Update Agent Autonomy Level & Watchdog Policies")
+async def update_agent_autonomy_policy(
+    client_id: str,
+    agent_id: str,
+    payload: UpdateAgentAutonomyPayload,
+    db: Session = Depends(get_db_session),
+    admin: dict = Depends(require_admin_user),
+) -> Dict[str, Any]:
+    """Updates an autonomous agent's autonomy_level, schedule_frequency, approval thresholds, and reactive settings."""
+    from app.services.agentic_brain_service import AUTONOMY_LEVELS, AgenticBrainService
+
+    if payload.autonomy_level is not None and payload.autonomy_level not in AUTONOMY_LEVELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid autonomy_level '{payload.autonomy_level}'. Allowed: {', '.join(AUTONOMY_LEVELS)}",
+        )
+
+    verify_client_access(db, admin, client_id, allow_missing_for_platform_admin=True)
+    client, existing_agent = AgenticBrainService.resolve_client_and_agent(db, client_id=client_id, agent_id=agent_id)
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
+    verify_client_access(db, admin, client.id)
+
+    agents_list = AgentCommsService.sync_client_agents_list(client)
+    updated_agent = None
+    for idx, ag in enumerate(agents_list):
+        if str(ag.get("id")) == str(agent_id):
+            ag_copy = dict(ag)
+            if payload.autonomy_level is not None:
+                ag_copy["autonomy_level"] = payload.autonomy_level
+            if payload.schedule_frequency is not None:
+                ag_copy["schedule_frequency"] = payload.schedule_frequency
+            if payload.auto_approve_threshold is not None:
+                ag_copy["auto_approve_threshold"] = float(payload.auto_approve_threshold)
+            if payload.auto_apply_knowledge is not None:
+                ag_copy["auto_apply_knowledge"] = payload.auto_apply_knowledge
+            if payload.auto_query_anomalies is not None:
+                ag_copy["auto_query_anomalies"] = payload.auto_query_anomalies
+            if payload.proactive_SLA_reminders is not None:
+                ag_copy["proactive_SLA_reminders"] = payload.proactive_SLA_reminders
+            updated_agent = AgentCommsService.enrich_agent_metadata(client.id, ag_copy, client.custom_config)
+            agents_list[idx] = updated_agent
+            break
+
+    if updated_agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found on client '{client_id}'.")
+
+    client.agents = agents_list
+    client.pipelines = agents_list
+    client.updated_at = datetime.now(timezone.utc)
+    flag_modified(client, "agents")
+    flag_modified(client, "pipelines")
+    db.add(client)
+    db.commit()
+
+    AuditService.log(
+        client_id=client.id,
+        action="AGENT_AUTONOMY_POLICY_UPDATED",
+        actor_email=admin.get("email", "admin"),
+        details={
+            "agent_id": agent_id,
+            "autonomy_level": updated_agent.get("autonomy_level"),
+            "schedule_frequency": updated_agent.get("schedule_frequency"),
+            "auto_approve_threshold": updated_agent.get("auto_approve_threshold"),
+        },
+    )
+
+    return {"success": True, "agent": updated_agent}
+

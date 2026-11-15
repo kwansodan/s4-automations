@@ -134,16 +134,16 @@ export const LiveConsole: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Header */}
-      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="glass-panel rounded-2xl p-5 shadow-xl border border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-sky-400" />
+            <Terminal className="w-5 h-5 text-[#0284C7]" />
             <h2 className="text-base font-bold text-white tracking-tight">Real-Time Console &amp; System Telemetry</h2>
-            <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-sky-500/30 px-2 py-0.5 rounded-full">
               Live Stream
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             Monitor Gemini OCR workflows and live Python backend terminal stdout/stderr logs directly inside the browser.
           </p>
         </div>
@@ -152,7 +152,7 @@ export const LiveConsole: React.FC = () => {
           {activeConsoleTab === 'telemetry' ? (
             <button
               onClick={handleDownloadTelemetry}
-              className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] hover:border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Telemetry (.txt)</span>
@@ -161,7 +161,7 @@ export const LiveConsole: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleClearServerLogs}
-                className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-rose-700/50 text-rose-300 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
+                className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] hover:border-rose-200 text-rose-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
                 title="Clear in-memory server logs"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -169,7 +169,7 @@ export const LiveConsole: React.FC = () => {
               </button>
               <button
                 onClick={handleDownloadServerLogs}
-                className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
+                className="flex items-center gap-1.5 bg-white border border-[#E2E8F0] hover:border-[#E2E8F0] text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export Terminal Logs (.txt)</span>
@@ -180,14 +180,14 @@ export const LiveConsole: React.FC = () => {
       </div>
 
       {/* Main Mode Toggle: Ingestion Telemetry vs Backend Server Output */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveConsoleTab('telemetry')}
             className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               activeConsoleTab === 'telemetry'
                 ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                : 'bg-white text-[#64748B] hover:text-white border border-[#E2E8F0]'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ export const LiveConsole: React.FC = () => {
             className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               activeConsoleTab === 'server'
                 ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                : 'bg-white text-[#64748B] hover:text-white border border-[#E2E8F0]'
             }`}
           >
             <Server className="w-3.5 h-3.5" />
@@ -213,7 +213,7 @@ export const LiveConsole: React.FC = () => {
 
         <button
           onClick={() => openDebugDrawer(activeConsoleTab === 'server' ? 'logs' : 'errors')}
-          className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+          className="flex items-center gap-1.5 text-xs text-[#0284C7] hover:text-[#0284C7] font-semibold cursor-pointer"
         >
           <Terminal className="w-3.5 h-3.5" />
           <span>Open In-App Debug Inspector</span>
@@ -224,14 +224,14 @@ export const LiveConsole: React.FC = () => {
       {activeConsoleTab === 'telemetry' && (
         <div className="space-y-4">
           {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 overflow-x-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2">
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0] overflow-x-auto">
               {['all', 'info', 'success', 'warning', 'error'].map((type) => (
                 <button
                   key={type}
                   onClick={() => setTelemetryFilter(type)}
                   className={`px-3 py-1 text-[11px] font-bold rounded-md uppercase transition cursor-pointer whitespace-nowrap ${
-                    telemetryFilter === type ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    telemetryFilter === type ? 'bg-sky-600 text-white shadow' : 'text-[#64748B] hover:text-white'
                   }`}
                 >
                   {type}
@@ -240,19 +240,19 @@ export const LiveConsole: React.FC = () => {
             </div>
 
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Filter telemetry events..."
                 value={telemetrySearch}
                 onChange={(e) => setTelemetrySearch(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 sm:w-72"
+                className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 sm:w-72"
               />
             </div>
           </div>
 
           {/* Terminal View */}
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-xs shadow-2xl h-[560px] overflow-y-auto custom-scrollbar flex flex-col space-y-2">
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-4 font-mono text-xs shadow-2xl h-[560px] overflow-y-auto custom-scrollbar flex flex-col space-y-2">
             {filteredTelemetryLogs.length > 0 ? (
               filteredTelemetryLogs.map((log, idx) => {
                 const isError = log.type === 'error';
@@ -266,10 +266,10 @@ export const LiveConsole: React.FC = () => {
                       isError
                         ? 'bg-red-950/30 text-red-300 border border-red-500/20'
                         : isSuccess
-                        ? 'bg-emerald-950/20 text-emerald-300 border border-emerald-500/10'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-500/10'
                         : isWarn
-                        ? 'bg-amber-950/20 text-amber-300 border border-amber-500/10'
-                        : 'bg-slate-900/40 text-slate-300 border border-slate-855'
+                        ? 'bg-amber-50 text-amber-700 border border-amber-500/10'
+                        : 'bg-white text-slate-700 border border-[#E2E8F0]'
                     }`}
                   >
                     <div className="flex items-start gap-2.5 min-w-0">
@@ -279,10 +279,10 @@ export const LiveConsole: React.FC = () => {
                           isError
                             ? 'bg-red-900/80 text-red-200'
                             : isSuccess
-                            ? 'bg-emerald-900/80 text-emerald-200'
+                            ? 'bg-emerald-50 text-emerald-200'
                             : isWarn
-                            ? 'bg-amber-900/80 text-amber-200'
-                            : 'bg-sky-950 text-sky-300 border border-sky-500/20'
+                            ? 'bg-amber-50 text-amber-200'
+                            : 'bg-[#F0F9FF] text-[#0284C7] border border-sky-500/20'
                         }`}
                       >
                         {log.type}
@@ -292,10 +292,10 @@ export const LiveConsole: React.FC = () => {
 
                     <button
                       onClick={() => handleCopyLog(`[${log.time}] [${log.type.toUpperCase()}] ${log.message}`, idx)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition shrink-0 cursor-pointer"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-100 text-[#64748B] hover:text-white transition shrink-0 cursor-pointer"
                       title="Copy log entry"
                     >
-                      {copiedIdx === idx ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedIdx === idx ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 );
@@ -311,16 +311,16 @@ export const LiveConsole: React.FC = () => {
       {activeConsoleTab === 'server' && (
         <div className="space-y-4">
           {serverErrorsCount > 0 && (
-            <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-rose-200">
+            <div className="bg-rose-50 border border-rose-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-rose-200">
               <div className="flex items-center gap-2.5">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>
                   <strong className="font-semibold text-white">{serverErrorsCount} backend error{serverErrorsCount > 1 ? 's' : ''}</strong> recorded in server logs. Expand tracebacks below or inspect in the Debug Inspector.
                 </span>
               </div>
               <button
                 onClick={() => openDebugDrawer('errors')}
-                className="bg-rose-900/60 hover:bg-rose-900 border border-rose-700/50 text-rose-200 text-xs font-semibold px-3 py-1 rounded-lg transition shrink-0 cursor-pointer"
+                className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-200 text-xs font-semibold px-3 py-1 rounded-lg transition shrink-0 cursor-pointer"
               >
                 Inspect Errors
               </button>
@@ -328,14 +328,14 @@ export const LiveConsole: React.FC = () => {
           )}
 
           {/* Controls Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800/80 rounded-xl p-2">
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 overflow-x-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E2E8F0] rounded-xl p-2">
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0] overflow-x-auto">
               {['ALL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'].map((level) => (
                 <button
                   key={level}
                   onClick={() => setServerLevel(level)}
                   className={`px-3 py-1 text-[11px] font-bold rounded-md uppercase transition cursor-pointer whitespace-nowrap ${
-                    serverLevel === level ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    serverLevel === level ? 'bg-purple-600 text-white shadow' : 'text-[#64748B] hover:text-white'
                   }`}
                 >
                   {level}
@@ -345,23 +345,23 @@ export const LiveConsole: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Filter backend logs..."
                   value={serverSearch}
                   onChange={(e) => setServerSearch(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 sm:w-60"
+                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 sm:w-60"
                 />
               </div>
 
               {/* Auto Poll Toggle */}
-              <label className="flex items-center gap-1.5 text-xs text-slate-300 bg-slate-950 border border-slate-800 px-2.5 py-1.5 rounded-lg cursor-pointer select-none">
+              <label className="flex items-center gap-1.5 text-xs text-slate-700 bg-[#F8FAFC] border border-[#E2E8F0] px-2.5 py-1.5 rounded-lg cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={isAutoRefreshing}
                   onChange={(e) => setIsAutoRefreshing(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                  className="w-3.5 h-3.5 rounded border-[#E2E8F0] bg-white text-purple-600 focus:ring-purple-500"
                 />
                 <span>Auto-refresh (3s)</span>
               </label>
@@ -369,7 +369,7 @@ export const LiveConsole: React.FC = () => {
               <button
                 onClick={loadServerLogs}
                 disabled={isLoadingServerLogs}
-                className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg transition cursor-pointer"
+                className="p-1.5 bg-[#F8FAFC] border border-[#E2E8F0] hover:border-[#E2E8F0] text-slate-700 rounded-lg transition cursor-pointer"
                 title="Refresh logs now"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoadingServerLogs ? 'animate-spin text-purple-400' : ''}`} />
@@ -378,7 +378,7 @@ export const LiveConsole: React.FC = () => {
           </div>
 
           {/* Backend Terminal Output Container */}
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-xs shadow-2xl h-[560px] overflow-y-auto custom-scrollbar flex flex-col space-y-2">
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-4 font-mono text-xs shadow-2xl h-[560px] overflow-y-auto custom-scrollbar flex flex-col space-y-2">
             {serverLogs.length > 0 ? (
               serverLogs.map((log, idx) => {
                 const isError = log.level === 'ERROR' || log.level === 'CRITICAL';
@@ -391,10 +391,10 @@ export const LiveConsole: React.FC = () => {
                     key={idx}
                     className={`p-2.5 rounded-xl transition-colors group flex flex-col gap-1.5 ${
                       isError
-                        ? 'bg-rose-950/30 text-rose-300 border border-rose-500/25'
+                        ? 'bg-rose-50 text-rose-700 border border-rose-500/25'
                         : isWarn
-                        ? 'bg-amber-950/25 text-amber-300 border border-amber-500/20'
-                        : 'bg-slate-900/40 text-slate-300 border border-slate-850'
+                        ? 'bg-amber-50 text-amber-700 border border-amber-500/20'
+                        : 'bg-white text-slate-700 border border-[#E2E8F0]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -405,10 +405,10 @@ export const LiveConsole: React.FC = () => {
                         <span
                           className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded select-none shrink-0 ${
                             isError
-                              ? 'bg-rose-900/80 text-rose-200'
+                              ? 'bg-rose-50 text-rose-200'
                               : isWarn
-                              ? 'bg-amber-900/80 text-amber-200'
-                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                              ? 'bg-amber-50 text-amber-200'
+                              : 'bg-slate-100 text-slate-700 border border-[#E2E8F0]'
                           }`}
                         >
                           {log.level}
@@ -423,7 +423,7 @@ export const LiveConsole: React.FC = () => {
                         {hasTraceback && (
                           <button
                             onClick={() => toggleTraceback(idx)}
-                            className="flex items-center gap-1 text-[11px] font-sans font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/50 transition cursor-pointer"
+                            className="flex items-center gap-1 text-[11px] font-sans font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 transition cursor-pointer"
                           >
                             {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                             <span>Traceback</span>
@@ -438,11 +438,11 @@ export const LiveConsole: React.FC = () => {
                               idx
                             )
                           }
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-100 text-[#64748B] hover:text-white transition cursor-pointer"
                           title="Copy server log"
                         >
                           {copiedServerIdx === idx ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
                           ) : (
                             <Copy className="w-3.5 h-3.5" />
                           )}
@@ -452,8 +452,8 @@ export const LiveConsole: React.FC = () => {
 
                     {/* Expandable Traceback */}
                     {hasTraceback && isExpanded && (
-                      <div className="mt-2 p-3 bg-slate-950 rounded-lg border border-rose-900/50 text-rose-300 overflow-x-auto custom-scrollbar">
-                        <div className="flex items-center justify-between pb-1 mb-1 border-b border-rose-900/30 text-[10px] font-sans text-rose-400 font-bold uppercase">
+                      <div className="mt-2 p-3 bg-[#F8FAFC] rounded-lg border border-rose-200 text-rose-700 overflow-x-auto custom-scrollbar">
+                        <div className="flex items-center justify-between pb-1 mb-1 border-b border-rose-200 text-[10px] font-sans text-rose-600 font-bold uppercase">
                           <span>Python Exception Traceback</span>
                           <button
                             onClick={() => handleCopyServerLog(log.traceback!, idx)}
@@ -463,7 +463,7 @@ export const LiveConsole: React.FC = () => {
                             <span>Copy Traceback</span>
                           </button>
                         </div>
-                        <pre className="text-[11px] whitespace-pre-wrap leading-relaxed text-rose-300/90 font-mono">
+                        <pre className="text-[11px] whitespace-pre-wrap leading-relaxed text-rose-700/90 font-mono">
                           {log.traceback}
                         </pre>
                       </div>

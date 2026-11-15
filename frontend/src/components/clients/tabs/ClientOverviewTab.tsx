@@ -183,7 +183,7 @@ export const ClientOverviewTab: React.FC = () => {
           category: 'pipeline',
           title: `Probe Failed: ${currentClient.name}`,
           message: res.message,
-          endpoint: `/api/v1/clients/${currentClient.id}/test-ingestion`,
+          endpoint: `/api/v1/clients/${currentClient.id}/ingestion/test`,
           responseData: res,
           showToast: true,
         });
@@ -199,7 +199,7 @@ export const ClientOverviewTab: React.FC = () => {
         category: 'pipeline',
         title: `Probe Error: ${currentClient.name}`,
         message: err.message,
-        endpoint: `/api/v1/clients/${currentClient.id}/test-ingestion`,
+        endpoint: `/api/v1/clients/${currentClient.id}/ingestion/test`,
         showToast: true,
       });
       await syncServerIssuesNow();

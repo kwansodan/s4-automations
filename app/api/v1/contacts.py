@@ -11,6 +11,11 @@ from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select, or_
 
+from app.api.deps import (
+    require_authenticated_user,
+    verify_client_access,
+    verify_org_access,
+)
 from app.db.session import get_db_session, get_engine
 from app.models.db_models import ClientContact, FirmTeamMember, ClientOrganization, Organization
 from app.services.mailjet_service import MailjetService
@@ -211,14 +216,22 @@ async def _dispatch_firm_team_invite(
 # Summary Metrics Endpoint
 # -------------------------------------------------------------------------
 
+def _resolve_contacts_org(current_user: Dict[str, Any], organization_id: Optional[str]) -> str:
+    return verify_org_access(current_user, organization_id) or (
+        (current_user.get("organization") or {}).get("id") or "s4_advisory"
+    )
+
+
 @router.get("/stats", summary="Get Contact & Team Management Summary Statistics")
 async def get_contact_stats(
-    organization_id: str = Query("s4_advisory", description="Accounting firm slug ID"),
+    organization_id: Optional[str] = Query(None, description="Accounting firm slug ID"),
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Returns top-level metric counters for client contacts and firm team members."""
-    client_contacts = db.exec(select(ClientContact).where(ClientContact.organization_id == organization_id)).all()
-    firm_members = db.exec(select(FirmTeamMember).where(FirmTeamMember.organization_id == organization_id)).all()
+    eff_org_id = _resolve_contacts_org(current_user, organization_id)
+    client_contacts = db.exec(select(ClientContact).where(ClientContact.organization_id == eff_org_id)).all()
+    firm_members = db.exec(select(FirmTeamMember).where(FirmTeamMember.organization_id == eff_org_id)).all()
 
     total_client_contacts = len(client_contacts)
     active_portal_contacts = sum(1 for c in client_contacts if c.portal_status == "ACTIVE")
@@ -241,13 +254,18 @@ async def get_contact_stats(
 @router.get("/client-contacts", summary="List Client Contacts for Information Requests")
 async def list_client_contacts(
     client_id: Optional[str] = Query(None, description="Filter by client organization slug"),
-    organization_id: str = Query("s4_advisory", description="Managing accounting firm ID"),
+    organization_id: Optional[str] = Query(None, description="Managing accounting firm ID"),
     status: Optional[str] = Query("ALL", description="ALL, ACTIVE, INVITED, INACTIVE"),
     search: Optional[str] = Query(None, description="Search name, email, or role"),
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Lists client contacts with enriched client organization names and active magic link URLs."""
-    query = select(ClientContact).where(ClientContact.organization_id == organization_id)
+    eff_org_id = _resolve_contacts_org(current_user, organization_id)
+    if client_id and client_id != "ALL":
+        verify_client_access(db, current_user, client_id, allow_missing_for_platform_admin=True)
+
+    query = select(ClientContact).where(ClientContact.organization_id == eff_org_id)
     if client_id and client_id != "ALL":
         query = query.where(ClientContact.client_id == client_id)
     if status and status != "ALL":
@@ -291,18 +309,20 @@ async def list_client_contacts(
 @router.post("/client-contacts", summary="Invite Client Contact for Information Requests")
 async def invite_client_contact(
     payload: ClientContactCreateRequest,
-    organization_id: str = Query("s4_advisory", description="Managing accounting firm ID"),
+    organization_id: Optional[str] = Query(None, description="Managing accounting firm ID"),
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """
     Invites a client contact to the Information Requests Portal.
     Generates a 72-hour 1-click magic link, saves the contact, and sends an invitation email.
     """
-    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == payload.client_id)).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client organization '{payload.client_id}' not found.")
+    client = verify_client_access(db, current_user, payload.client_id)
+    eff_org_id = verify_org_access(current_user, organization_id) or (
+        client.organization_id or "s4_advisory"
+    )
 
-    firm_org = db.exec(select(Organization).where(Organization.id == organization_id)).first()
+    firm_org = db.exec(select(Organization).where(Organization.id == eff_org_id)).first()
     firm_name = firm_org.name if firm_org else "S4 Accounting & Advisory Partners"
 
     # Check if contact email already exists for this client
@@ -331,7 +351,7 @@ async def invite_client_contact(
     else:
         target_contact = ClientContact(
             client_id=client.id,
-            organization_id=organization_id,
+            organization_id=eff_org_id,
             name=payload.name.strip(),
             email=payload.email.strip().lower(),
             phone=payload.phone.strip() if payload.phone else None,
@@ -389,12 +409,14 @@ async def invite_client_contact(
 @router.post("/client-contacts/{contact_id}/resend-invite", summary="Resend Portal Invite Email to Client Contact")
 async def resend_client_contact_invite(
     contact_id: int,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Generates a fresh 72-hour magic link and dispatches an invitation email."""
     contact = db.exec(select(ClientContact).where(ClientContact.id == contact_id)).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Client contact not found.")
+    verify_org_access(current_user, contact.organization_id or "s4_advisory")
 
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == contact.client_id)).first()
     client_name = client.name if client else contact.client_id
@@ -429,12 +451,14 @@ async def resend_client_contact_invite(
 async def update_client_contact(
     contact_id: int,
     payload: ClientContactUpdateRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Updates contact properties and synchronizes client profile."""
     contact = db.exec(select(ClientContact).where(ClientContact.id == contact_id)).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Client contact not found.")
+    verify_org_access(current_user, contact.organization_id or "s4_advisory")
 
     if payload.name is not None:
         contact.name = payload.name.strip()
@@ -469,12 +493,14 @@ async def update_client_contact(
 @router.delete("/client-contacts/{contact_id}", summary="Delete or Revoke Client Contact")
 async def delete_client_contact(
     contact_id: int,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Revokes client contact portal access and removes contact record."""
     contact = db.exec(select(ClientContact).where(ClientContact.id == contact_id)).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Client contact not found.")
+    verify_org_access(current_user, contact.organization_id or "s4_advisory")
 
     client_id = contact.client_id
     db.delete(contact)
@@ -495,12 +521,14 @@ async def delete_client_contact(
 
 @router.get("/team-members", summary="List Accounting Firm Team Members")
 async def list_firm_team_members(
-    organization_id: str = Query("s4_advisory", description="Accounting firm slug ID"),
+    organization_id: Optional[str] = Query(None, description="Accounting firm slug ID"),
     search: Optional[str] = Query(None, description="Search staff name, email, or role"),
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Lists accounting firm team members participating in client management."""
-    query = select(FirmTeamMember).where(FirmTeamMember.organization_id == organization_id)
+    eff_org_id = _resolve_contacts_org(current_user, organization_id)
+    query = select(FirmTeamMember).where(FirmTeamMember.organization_id == eff_org_id)
     members = db.exec(query.order_by(FirmTeamMember.created_at.asc())).all()
 
     search_clean = search.strip().lower() if search else None
@@ -524,13 +552,15 @@ async def list_firm_team_members(
 @router.post("/team-members", summary="Invite Firm Team Member to Manage Clients")
 async def invite_firm_team_member(
     payload: FirmTeamMemberCreateRequest,
-    organization_id: str = Query("s4_advisory", description="Accounting firm slug ID"),
+    organization_id: Optional[str] = Query(None, description="Accounting firm slug ID"),
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Invites an internal staff member to participate in client management."""
+    eff_org_id = _resolve_contacts_org(current_user, organization_id)
     existing = db.exec(
         select(FirmTeamMember).where(
-            FirmTeamMember.organization_id == organization_id,
+            FirmTeamMember.organization_id == eff_org_id,
             FirmTeamMember.email == payload.email.strip().lower(),
         )
     ).first()
@@ -556,7 +586,7 @@ async def invite_firm_team_member(
         target_member = existing
     else:
         target_member = FirmTeamMember(
-            organization_id=organization_id,
+            organization_id=eff_org_id,
             name=payload.name.strip(),
             email=payload.email.strip().lower(),
             phone=payload.phone.strip() if payload.phone else None,
@@ -590,12 +620,14 @@ async def invite_firm_team_member(
 @router.post("/team-members/{member_id}/resend-invite", summary="Resend Welcome Email to Firm Team Member")
 async def resend_firm_team_member_invite(
     member_id: int,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Resends a welcome email to a firm team member."""
     member = db.exec(select(FirmTeamMember).where(FirmTeamMember.id == member_id)).first()
     if not member:
         raise HTTPException(status_code=404, detail="Firm team member not found.")
+    verify_org_access(current_user, member.organization_id or "s4_advisory")
 
     member.invite_sent_at = datetime.now(timezone.utc)
     member.updated_at = datetime.now(timezone.utc)
@@ -616,12 +648,14 @@ async def resend_firm_team_member_invite(
 async def update_firm_team_member(
     member_id: int,
     payload: FirmTeamMemberUpdateRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Updates role, assigned clients, and feature permissions for a staff member."""
     member = db.exec(select(FirmTeamMember).where(FirmTeamMember.id == member_id)).first()
     if not member:
         raise HTTPException(status_code=404, detail="Firm team member not found.")
+    verify_org_access(current_user, member.organization_id or "s4_advisory")
 
     if payload.name is not None:
         member.name = payload.name.strip()
@@ -653,12 +687,14 @@ async def update_firm_team_member(
 @router.delete("/team-members/{member_id}", summary="Remove Firm Team Member")
 async def delete_firm_team_member(
     member_id: int,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """Removes a team member from the accounting practice."""
     member = db.exec(select(FirmTeamMember).where(FirmTeamMember.id == member_id)).first()
     if not member:
         raise HTTPException(status_code=404, detail="Firm team member not found.")
+    verify_org_access(current_user, member.organization_id or "s4_advisory")
 
     db.delete(member)
     db.commit()
