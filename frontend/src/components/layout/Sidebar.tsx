@@ -82,12 +82,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
       items.push({ sub: 'ap', label: 'Accounts Payable', icon: DollarSign });
     }
     
-    // Unified Bank & Reconciliations
-    items.push({
-      sub: 'requests',
-      label: 'Bank & Reconciliations',
-      icon: Landmark,
-    });
+    // Unified Bank & Reconciliations (Active only when a BANK pipeline stream is configured)
+    if (activeSections.hasBank) {
+      items.push({
+        sub: 'requests',
+        label: 'Bank & Reconciliations',
+        icon: Landmark,
+      });
+    }
 
     return items;
   }, [activeSections, isIndividualBusiness]);

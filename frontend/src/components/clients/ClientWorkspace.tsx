@@ -19,7 +19,7 @@ export const ClientWorkspace: React.FC = () => {
       setWorkspaceSubTab('overview');
     } else if (workspaceSubTab === 'ap' && !activeSections.hasAp) {
       setWorkspaceSubTab('overview');
-    } else if (workspaceSubTab === 'bank' && !activeSections.hasBank) {
+    } else if ((workspaceSubTab === 'bank' || workspaceSubTab === 'requests') && !activeSections.hasBank) {
       setWorkspaceSubTab('overview');
     }
   }, [workspaceSubTab, activeSections, setWorkspaceSubTab]);

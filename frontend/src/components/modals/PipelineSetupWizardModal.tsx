@@ -11,7 +11,12 @@ import type {
   PaymentTermsRule,
 } from '../../types/client';
 import { ACCOUNTING_PLATFORMS } from '../../types/client';
-import { probeExternalConnection, simulatePipelineExtraction, fetchChartOfAccounts } from '../../lib/api';
+import {
+  probeExternalConnection,
+  simulatePipelineExtraction,
+  fetchChartOfAccounts,
+  updateWatchedAccounts,
+} from '../../lib/api';
 import { useAutomation } from '../../context/AutomationContext';
 import {
   X,
@@ -46,6 +51,8 @@ import {
   Wand2,
   FileSpreadsheet,
   RotateCcw,
+  Landmark,
+  Plus,
 } from 'lucide-react';
 
 interface PipelineSetupWizardModalProps {
@@ -56,6 +63,7 @@ interface PipelineSetupWizardModalProps {
   clientName: string;
   initialPipeline?: IngestionPipeline | null;
   targetAccountingSoftware?: string;
+  defaultSection?: AccountingSection;
 }
 
 const SERVICE_ACCOUNT_EMAIL = 's4-vision-ingest@s4-automations.iam.gserviceaccount.com';
@@ -128,7 +136,7 @@ const DOMAIN_TEMPLATES: {
     id: 'bank_momo_statement',
     title: '💳 Bank & MoMo Statements',
     badge: 'Banking & Feeds',
-    entities: ['bank_statement', 'momo_statement'],
+    entities: ['bank_statement', 'momo_statement', 'bank_feed'],
     template: `[DOCUMENT IDENTITY]
 1. Document Type: Bank Account Statement / MTN / Telecel Mobile Money Statement.
 2. Account: Match to primary operating bank account or MoMo cash wallet.
@@ -304,6 +312,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   clientName,
   initialPipeline,
   targetAccountingSoftware = 'zoho_books',
+  defaultSection,
 }) => {
   const { addLog, config } = useAutomation();
   const serviceAccountEmail = config?.GOOGLE_SERVICE_ACCOUNT_EMAIL || SERVICE_ACCOUNT_EMAIL;
@@ -317,11 +326,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [name, setName] = useState<string>('');
   const [section, setSection] = useState<AccountingSection>('AR');
   const [entityType, setEntityType] = useState<AccountingEntityType>('ar_sales_invoice');
-  const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp' | 'manual'>('google_drive');
+  const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp' | 'manual' | 'bank_feed'>('google_drive');
   const [sourceIdentifier, setSourceIdentifier] = useState<string>('');
   const [defaultAccountCode, setDefaultAccountCode] = useState<string>('');
   const [autoPostToZoho, setAutoPostToZoho] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
+
+  // Watched Accounts Configuration (for BANK streams)
+  const [watchedAccounts, setWatchedAccounts] = useState<string[]>([]);
+  const [customWatchedInput, setCustomWatchedInput] = useState<string>('');
 
   // Client-specific Chart of Accounts State
   const [accounts, setAccounts] = useState<ChartOfAccountItem[]>([]);
@@ -394,6 +407,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           } else {
             setIsOauthPending(false);
             setAccounts(data.accounts);
+          }
+          if (data.watched_accounts && Array.isArray(data.watched_accounts) && data.watched_accounts.length > 0) {
+            setWatchedAccounts((prev) => (prev.length === 0 ? data.watched_accounts : prev));
           }
         }
       })
@@ -533,15 +549,32 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setPaymentTermsRule(sc.payment_terms_rule || 'NET_14');
         setCustomDueDays(sc.custom_due_days || 14);
         setCustomTermsNote(sc.custom_terms_note || '');
+        if (initialPipeline.watched_accounts && Array.isArray(initialPipeline.watched_accounts)) {
+          setWatchedAccounts(initialPipeline.watched_accounts);
+        } else {
+          setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized']);
+        }
       } else {
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
         setName('');
-        setSection('AR');
-        setEntityType('ar_sales_invoice');
-        setSourceType('google_drive');
+        const initialSec = defaultSection || 'AR';
+        setSection(initialSec);
+        if (initialSec === 'BANK') {
+          setEntityType('bank_feed');
+          setSourceType('bank_feed');
+          setDefaultAccountCode('1001 - Main Operating Bank Account');
+        } else if (initialSec === 'AP') {
+          setEntityType('ap_vendor_bill');
+          setSourceType('google_drive');
+          setDefaultAccountCode('5000 - Cost of Goods Sold (Inventory)');
+        } else {
+          setEntityType('ar_sales_invoice');
+          setSourceType('google_drive');
+          setDefaultAccountCode('4000 - Commercial Sales Revenue');
+        }
+        setWatchedAccounts(['6990', '850', 'suspense', 'uncategorized']);
         setSourceIdentifier('');
-        setDefaultAccountCode('4000 - Commercial Sales Revenue');
         setAutoPostToZoho(false);
         setIsActive(true);
         setTriggerType('scheduled_cron');
@@ -575,7 +608,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       setSimulationResult(null);
       setSimulationError(null);
     }
-  }, [isOpen, initialPipeline]);
+  }, [isOpen, initialPipeline, defaultSection]);
 
   // Detected field keys from sample document simulation
   const detectedKeys = React.useMemo(() => {
@@ -717,6 +750,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         folder_id: sourceType === 'google_drive' ? sourceIdentifier.trim() : (initialPipeline?.folder_id || undefined),
         source_email: sourceType === 'email' ? sourceIdentifier.trim() : (initialPipeline?.source_email || undefined),
         default_account_code: defaultAccountCode.trim(),
+        watched_accounts: section === 'BANK' ? watchedAccounts : undefined,
         auto_post_to_zoho: autoPostToZoho,
         auto_post_draft: autoPostToZoho,
         auto_create_missing_contacts: autoCreateMissingContacts,
@@ -763,6 +797,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       };
 
       await onSave(pipelineData);
+
+      if (section === 'BANK' && watchedAccounts.length > 0) {
+        try {
+          await updateWatchedAccounts(clientId, watchedAccounts);
+        } catch (syncErr: any) {
+          console.warn('Could not sync watched accounts to client organization:', syncErr);
+        }
+      }
+
       onClose();
     } catch (err: any) {
       addLog('error', `Failed to save pipeline: ${err.message}`);
@@ -882,7 +925,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                         const defaultAp = accounts.find((a) => (a.account_type || '').toLowerCase().includes('expense') || (a.account_type || '').toLowerCase().includes('cogs'));
                         setDefaultAccountCode(defaultAp ? formatAccountOptionValue(defaultAp) : '5000 - Cost of Goods Sold (Inventory)');
                       } else if (sec === 'BANK') {
-                        setEntityType('bank_statement');
+                        setEntityType('bank_feed');
+                        setSourceType('bank_feed');
                         const defaultBank = accounts.find((a) => (a.account_type || '').toLowerCase().includes('bank') || (a.account_type || '').toLowerCase().includes('current asset'));
                         setDefaultAccountCode(defaultBank ? formatAccountOptionValue(defaultBank) : '1001 - Main Operating Bank Account');
                       } else {
@@ -906,7 +950,15 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   </label>
                   <select
                     value={entityType}
-                    onChange={(e) => setEntityType(e.target.value as AccountingEntityType)}
+                    onChange={(e) => {
+                      const nextEntity = e.target.value as AccountingEntityType;
+                      setEntityType(nextEntity);
+                      if (nextEntity === 'bank_feed') {
+                        setSourceType('bank_feed');
+                      } else if (sourceType === 'bank_feed') {
+                        setSourceType('google_drive');
+                      }
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
                   >
                     {section === 'AR' && (
@@ -929,7 +981,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     )}
                     {section === 'BANK' && (
                       <>
-                        <option value="bank_statement">Bank Statement PDF / Feed (/banktransactions)</option>
+                        <option value="bank_feed">Live Accounting Bank Feed &amp; Suspense Sync</option>
+                        <option value="bank_statement">Bank Statement PDF / Ingestion (/banktransactions)</option>
                         <option value="momo_statement">Mobile Money (MoMo) Statement (/banktransactions)</option>
                       </>
                     )}
@@ -1046,6 +1099,127 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   Line items extracted from this stream's documents will default to this account if not explicitly overridden by AI SKU matching.
                 </span>
               </div>
+
+              {/* Watched Accounts Configuration for Banking Streams */}
+              {section === 'BANK' && (
+                <div className="p-4 bg-emerald-950/20 border border-emerald-800/40 rounded-xl space-y-3 mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-4 h-4 text-emerald-400" />
+                      <label className="text-xs font-semibold text-white">
+                        Monitored &amp; Watched Accounts (Bank Feeds &amp; Suspense)
+                      </label>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-700/50 px-2 py-0.5 rounded-full">
+                      {watchedAccounts.length} Monitored
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Transactions posting to these accounts (e.g. suspense clearing, uncategorized expenses, or unallocated funds) are automatically flagged in the Bank &amp; Reconciliations queue for operator clarification.
+                  </p>
+
+                  {/* Account Chips */}
+                  <div className="flex flex-wrap gap-1.5 min-h-[34px] p-2 bg-slate-950 border border-slate-800 rounded-xl">
+                    {watchedAccounts.length === 0 ? (
+                      <span className="text-[11px] text-slate-500 italic py-0.5">
+                        No accounts currently watched. Add codes or names below.
+                      </span>
+                    ) : (
+                      watchedAccounts.map((acc, accIdx) => (
+                        <span
+                          key={accIdx}
+                          className="inline-flex items-center gap-1.5 text-xs font-mono font-medium px-2 py-1 rounded-lg bg-emerald-900/40 text-emerald-300 border border-emerald-700/50"
+                        >
+                          <span>{acc}</span>
+                          <button
+                            type="button"
+                            onClick={() => setWatchedAccounts(watchedAccounts.filter((_, i) => i !== accIdx))}
+                            className="text-emerald-400 hover:text-red-400 transition cursor-pointer"
+                            title="Remove watched account"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Add Input and CoA Quick Selector */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customWatchedInput}
+                        onChange={(e) => setCustomWatchedInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = customWatchedInput.trim();
+                            if (val && !watchedAccounts.includes(val)) {
+                              setWatchedAccounts([...watchedAccounts, val]);
+                              setCustomWatchedInput('');
+                            }
+                          }
+                        }}
+                        placeholder="Add account code or name (e.g. 6990, 850, Suspense, Uncategorized)"
+                        className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = customWatchedInput.trim();
+                          if (val && !watchedAccounts.includes(val)) {
+                            setWatchedAccounts([...watchedAccounts, val]);
+                            setCustomWatchedInput('');
+                          }
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1 text-slate-400">
+                        <span>Quick Presets:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const standard = ['6990', '850', 'suspense', 'uncategorized'];
+                            const combined = Array.from(new Set([...watchedAccounts, ...standard]));
+                            setWatchedAccounts(combined);
+                          }}
+                          className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+                        >
+                          + Standard Suspense (6990, 850, suspense, uncategorized)
+                        </button>
+                      </div>
+                      {accounts.length > 0 && (
+                        <select
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val && !watchedAccounts.includes(val)) {
+                              setWatchedAccounts([...watchedAccounts, val]);
+                            }
+                            e.target.value = '';
+                          }}
+                          defaultValue=""
+                          className="bg-slate-900 border border-slate-800 text-[10px] text-emerald-300 rounded px-2 py-1 cursor-pointer focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="" disabled>Select from Chart of Accounts...</option>
+                          {accounts.map((acc) => (
+                            <option key={acc.account_id || acc.account_code || acc.account_name} value={acc.account_code || acc.account_name}>
+                              {acc.account_code ? `[${acc.account_code}] ` : ''}{acc.account_name} ({acc.account_type || 'Account'})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Stream-Level Invoicing Date & Payment Terms Override */}
               {section === 'AR' && (
@@ -1172,6 +1346,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
+                    ...(section === 'BANK'
+                      ? [{ id: 'bank_feed', label: 'Accounting Bank Feed', icon: Landmark, desc: 'Zoho / QBO / Xero sync' }]
+                      : []),
                     { id: 'google_drive', label: 'Google Drive', icon: Folder, desc: 'Shared folder' },
                     { id: 'onedrive', label: 'OneDrive / SharePoint', icon: Cloud, desc: 'Microsoft 365 drive' },
                     { id: 'email', label: 'Inbound Email Alias', icon: Mail, desc: 'Forwarding mailbox' },
@@ -1188,6 +1365,11 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                         onClick={() => {
                           const newType = type.id as any;
                           setSourceType(newType);
+                          if (newType === 'bank_feed') {
+                            setEntityType('bank_feed');
+                          } else if (entityType === 'bank_feed') {
+                            setEntityType('bank_statement');
+                          }
                           if (newType === 'google_drive' && sourceIdentifier.includes('@')) {
                             setSourceIdentifier('');
                           } else if (newType === 'email' && !sourceIdentifier.includes('@')) {
@@ -1210,6 +1392,25 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                   })}
                 </div>
               </div>
+
+              {/* Direct Bank Feed Notice */}
+              {(entityType === 'bank_feed' || sourceType === 'bank_feed') && (
+                <div className="bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-4 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-white">
+                      Direct {targetAccountingSoftware?.replace('_', ' ').toUpperCase() || 'ACCOUNTING'} Bank Feed Sync
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    This pipeline connects directly to your accounting platform API. Uncategorized bank transactions and monitored suspense account entries are pulled automatically into the Bank &amp; Reconciliations queue without requiring external cloud drive configuration.
+                  </p>
+                  <div className="text-[11px] text-emerald-400 flex items-center gap-1 font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>API endpoint: /api/v1/bank/clients/{clientId}/sync-accounting</span>
+                  </div>
+                </div>
+              )}
 
               {/* Channel Identifier Inputs */}
               {sourceType === 'google_drive' && (

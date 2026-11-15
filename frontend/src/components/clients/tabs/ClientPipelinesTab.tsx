@@ -7,7 +7,7 @@ import {
   deleteClientPipeline,
   triggerClientPipeline,
 } from '../../../lib/api';
-import type { IngestionPipeline, PipelineRunSummary } from '../../../types/client';
+import type { IngestionPipeline, PipelineRunSummary, AccountingSection } from '../../../types/client';
 import { PipelineSetupWizardModal } from '../../modals/PipelineSetupWizardModal';
 import { StreamExecutionResultModal } from '../../modals/StreamExecutionResultModal';
 import {
@@ -35,11 +35,13 @@ export const ClientPipelinesTab: React.FC = () => {
 
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<IngestionPipeline | null>(null);
+  const [modalDefaultSection, setModalDefaultSection] = useState<AccountingSection>('AR');
   const [triggeringPipeId, setTriggeringPipeId] = useState<string | null>(null);
   const [activeRunSummary, setActiveRunSummary] = useState<PipelineRunSummary | null>(null);
 
-  const handleOpenNewPipeline = () => {
+  const handleOpenNewPipeline = (sec: AccountingSection | React.MouseEvent = 'AR') => {
     setEditingPipeline(null);
+    setModalDefaultSection(typeof sec === 'string' ? sec : 'AR');
     setIsPipelineModalOpen(true);
   };
 
@@ -165,7 +167,7 @@ export const ClientPipelinesTab: React.FC = () => {
         </div>
 
         <button
-          onClick={handleOpenNewPipeline}
+          onClick={() => handleOpenNewPipeline('AR')}
           className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-sky-600/25 transition cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4" />
@@ -175,7 +177,8 @@ export const ClientPipelinesTab: React.FC = () => {
 
       {/* Pipelines Grid */}
       {pipelines.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {pipelines.map((pipe, idx) => {
             const sectionBadge =
               pipe.section === 'AR'
@@ -275,6 +278,31 @@ export const ClientPipelinesTab: React.FC = () => {
                         )}
                       </div>
                     )}
+                    {pipe.section === 'BANK' && (
+                      <div className="mt-2.5 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-emerald-400 font-semibold">
+                          <span className="flex items-center gap-1">
+                            <Landmark className="w-3 h-3 text-emerald-400" />
+                            <span>Watched Accounts</span>
+                          </span>
+                          <span className="text-[9px] font-mono font-bold bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-700/50">
+                            {(pipe.watched_accounts || currentClient.watched_accounts || []).length} accounts
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(pipe.watched_accounts || currentClient.watched_accounts || ['6990', '850', 'suspense', 'uncategorized']).slice(0, 4).map((acc, aIdx) => (
+                            <span key={aIdx} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-700/50">
+                              {acc}
+                            </span>
+                          ))}
+                          {(pipe.watched_accounts || currentClient.watched_accounts || []).length > 4 && (
+                            <span className="text-[9px] text-emerald-400 font-mono self-center">
+                              +{(pipe.watched_accounts || currentClient.watched_accounts || []).length - 4} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Last Run Summary Preview Card */}
@@ -352,6 +380,7 @@ export const ClientPipelinesTab: React.FC = () => {
               </div>
             );
           })}
+          </div>
         </div>
       ) : (
         <div className="glass-panel rounded-2xl p-12 text-center text-slate-400 border border-dashed border-slate-800 space-y-3">
@@ -361,7 +390,7 @@ export const ClientPipelinesTab: React.FC = () => {
             Create automated ingestion streams to parse control slips, supplier invoices, or bank statement files for {currentClient.name}.
           </p>
           <button
-            onClick={handleOpenNewPipeline}
+            onClick={() => handleOpenNewPipeline()}
             className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -379,6 +408,7 @@ export const ClientPipelinesTab: React.FC = () => {
         clientName={currentClient.name}
         initialPipeline={editingPipeline}
         targetAccountingSoftware={currentClient.accounting_software}
+        defaultSection={modalDefaultSection}
       />
 
       {/* Stream Execution Result Modal */}

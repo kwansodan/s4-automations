@@ -31,6 +31,7 @@ export type AccountingEntityType =
   | 'ap_vendor_credit'
   | 'bank_statement'
   | 'momo_statement'
+  | 'bank_feed'
   | 'gl_journal';
 
 export type AccountingSoftware =
@@ -244,6 +245,7 @@ export interface IngestionPipeline {
   sample_preview?: any;
   notes?: string;
   missing_cadence?: 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled';
+  watched_accounts?: string[];
   last_run_summary?: PipelineRunSummary;
 }
 

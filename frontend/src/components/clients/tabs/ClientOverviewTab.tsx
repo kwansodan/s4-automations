@@ -75,6 +75,7 @@ export const ClientOverviewTab: React.FC = () => {
   // Pipeline Setup Wizard Modal State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<IngestionPipeline | null>(null);
+  const [wizardDefaultSection, setWizardDefaultSection] = useState<AccountingSection>('AR');
 
   // Staged Transactions Telemetry
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -594,7 +595,7 @@ export const ClientOverviewTab: React.FC = () => {
           onClick={() => {
             if (activeSections.hasAr) navigateToClientSubTab('ar');
             else if (activeSections.hasAp) navigateToClientSubTab('ap');
-            else if (activeSections.hasBank) navigateToClientSubTab('bank');
+            else if (activeSections.hasBank) navigateToClientSubTab('requests');
           }}
           className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#A7F3D0] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
@@ -692,75 +693,159 @@ export const ClientOverviewTab: React.FC = () => {
         {/* 3 Core Action Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
           {/* Action 1: Bank & Reconciliations */}
-          <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-4 flex flex-col justify-between hover:border-[#0284C7] transition group">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[#0284C7] uppercase tracking-wider">Banking &amp; Suspense</span>
-                <Landmark className="w-4 h-4 text-[#0284C7]" />
+          {activeSections.hasBank ? (
+            <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-xl p-4 flex flex-col justify-between hover:border-[#0284C7] transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-[#0284C7] uppercase tracking-wider">Banking &amp; Suspense</span>
+                  <Landmark className="w-4 h-4 text-[#0284C7]" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">Clarifications &amp; Feeds</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Review unclassified bank transactions and query clients.
+                </p>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">Clarifications &amp; Feeds</h3>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Review unclassified bank transactions and query clients.
-              </p>
+              <div className="pt-4 mt-2 border-t border-[#BAE6FD]">
+                <button
+                  onClick={() => navigateToClientSubTab('requests')}
+                  className="w-full flex items-center justify-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold py-2 rounded-lg shadow-sm transition cursor-pointer"
+                >
+                  <span>Open Bank Queue</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#BAE6FD]">
-              <button
-                onClick={() => navigateToClientSubTab('requests')}
-                className="w-full flex items-center justify-center gap-1.5 bg-[#0284C7] hover:bg-[#0EA5E9] text-white text-xs font-semibold py-2 rounded-lg shadow-sm transition cursor-pointer"
-              >
-                <span>Open Bank Queue</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+          ) : (
+            <div className="bg-slate-50/70 border border-dashed border-slate-300 rounded-xl p-4 flex flex-col justify-between hover:border-slate-400 transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Banking &amp; Suspense</span>
+                  <Landmark className="w-4 h-4 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-700">Bank &amp; Reconciliations</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Not activated for this organization. Add a banking pipeline stream to connect statement parsing or live feeds.
+                </p>
+              </div>
+              <div className="pt-4 mt-2 border-t border-slate-200">
+                <button
+                  onClick={() => {
+                    setEditingPipeline(null);
+                    setWizardDefaultSection('BANK');
+                    setIsWizardOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
+                >
+                  <span>Add Bank Pipeline</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Action 2: Accounts Receivable */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Revenue Control</span>
-                <Receipt className="w-4 h-4 text-slate-700" />
+          {activeSections.hasAr ? (
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Revenue Control</span>
+                  <Receipt className="w-4 h-4 text-slate-700" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">Accounts Receivable</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {stagedCount > 0
+                    ? `${stagedCount} staged transactions (${currentClient.currency || 'GHS'} ${stagedAmount.toLocaleString()}) awaiting batch sign-off.`
+                    : 'All revenue slip extractions are up to date and reconciled.'}
+                </p>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">Accounts Receivable</h3>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                {stagedCount > 0
-                  ? `${stagedCount} staged transactions (${currentClient.currency || 'GHS'} ${stagedAmount.toLocaleString()}) awaiting batch sign-off.`
-                  : 'All revenue slip extractions are up to date and reconciled.'}
-              </p>
+              <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
+                <button
+                  onClick={() => navigateToClientSubTab('ar')}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
+                >
+                  <span>Review Ledger</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
-              <button
-                onClick={() => navigateToClientSubTab('ar')}
-                className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
-              >
-                <span>Review Ledger</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+          ) : (
+            <div className="bg-slate-50/70 border border-dashed border-slate-300 rounded-xl p-4 flex flex-col justify-between hover:border-slate-400 transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Revenue Control</span>
+                  <Receipt className="w-4 h-4 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-700">Accounts Receivable</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Not activated for this organization. Add an AR pipeline stream to ingest customer sales and delivery slips.
+                </p>
+              </div>
+              <div className="pt-4 mt-2 border-t border-slate-200">
+                <button
+                  onClick={() => {
+                    setEditingPipeline(null);
+                    setWizardDefaultSection('AR');
+                    setIsWizardOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
+                >
+                  <span>Add AR Pipeline</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Action 3: Accounts Payable */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Vendor Expenses</span>
-                <DollarSign className="w-4 h-4 text-slate-700" />
+          {activeSections.hasAp ? (
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col justify-between hover:border-slate-300 transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Vendor Expenses</span>
+                  <DollarSign className="w-4 h-4 text-slate-700" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">Accounts Payable</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Review vendor receipts, tax breakdowns, and draft bills.
+                </p>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">Accounts Payable</h3>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Review vendor receipts, tax breakdowns, and draft bills.
-              </p>
+              <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
+                <button
+                  onClick={() => navigateToClientSubTab('ap')}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
+                >
+                  <span>Review Vendor Bills</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="pt-4 mt-2 border-t border-[#E2E8F0]">
-              <button
-                onClick={() => navigateToClientSubTab('ap')}
-                className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E2E8F0] text-xs font-semibold py-2 rounded-lg transition cursor-pointer shadow-xs"
-              >
-                <span>Review Vendor Bills</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+          ) : (
+            <div className="bg-slate-50/70 border border-dashed border-slate-300 rounded-xl p-4 flex flex-col justify-between hover:border-slate-400 transition group">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vendor Expenses</span>
+                  <DollarSign className="w-4 h-4 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-700">Accounts Payable</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Not activated for this organization. Add an AP pipeline stream to ingest vendor bills and expense receipts.
+                </p>
+              </div>
+              <div className="pt-4 mt-2 border-t border-slate-200">
+                <button
+                  onClick={() => {
+                    setEditingPipeline(null);
+                    setWizardDefaultSection('AP');
+                    setIsWizardOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
+                >
+                  <span>Add AP Pipeline</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -876,6 +961,7 @@ export const ClientOverviewTab: React.FC = () => {
         clientName={currentClient.name}
         initialPipeline={editingPipeline}
         targetAccountingSoftware={currentClient.accounting_software}
+        defaultSection={wizardDefaultSection}
       />
 
     </div>

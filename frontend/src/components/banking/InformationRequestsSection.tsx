@@ -94,8 +94,8 @@ const formatPeriodLabel = (ym: string): string => {
 };
 
 export const InformationRequestsSection: React.FC = () => {
-  const { currentClient, clients, setClient } = useClient();
-  const { addLog, setActiveTab, selectedMonth: globalMonth, selectedYear: globalYear } = useAutomation();
+  const { currentClient, clients, setClient, activeSections } = useClient();
+  const { addLog, setActiveTab, setWorkspaceSubTab, selectedMonth: globalMonth, selectedYear: globalYear } = useAutomation();
 
   const platformInfo = ACCOUNTING_PLATFORMS.find((p) => p.id === currentClient?.accounting_software);
   const platformName = platformInfo?.name || 'Accounting';
@@ -440,6 +440,36 @@ export const InformationRequestsSection: React.FC = () => {
     setSelectedTxForQuery(tx);
     setIsQueryModalOpen(true);
   };
+
+  if (activeSections && !activeSections.hasBank) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-200">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-10 text-center max-w-xl mx-auto my-12 space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto">
+            <Landmark className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Banking &amp; Reconciliations Inactive</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+              This organization does not currently have an active Banking pipeline stream configured. To start monitoring bank feeds, MoMo statements, or suspense clearing accounts, activate a Banking pipeline stream.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                setActiveTab('clients');
+                setWorkspaceSubTab('pipelines');
+              }}
+              className="inline-flex items-center gap-2 bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Configure Banking Pipeline</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in">

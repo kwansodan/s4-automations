@@ -39,6 +39,7 @@ class AccountingEntityType(str, Enum):
     # Banking & Treasury
     BANK_STATEMENT = "bank_statement"             # Zoho /banktransactions
     MOMO_STATEMENT = "momo_statement"             # Zoho /banktransactions (MoMo)
+    BANK_FEED = "bank_feed"                       # Live Accounting Bank Feed & Suspense Sync
     
     # General Ledger
     GL_JOURNAL = "gl_journal"                     # Zoho /journalentries

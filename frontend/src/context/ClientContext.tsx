@@ -245,7 +245,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return {
       hasAr: active.some((p: any) => p.section?.toUpperCase() === 'AR' || p.entity_type?.startsWith('ar_') || p.entity_type?.startsWith('pos_')),
       hasAp: active.some((p: any) => p.section?.toUpperCase() === 'AP' || p.entity_type?.startsWith('ap_')),
-      hasBank: active.some((p: any) => p.section?.toUpperCase() === 'BANK' || p.entity_type?.includes('statement') || p.entity_type?.includes('bank') || p.entity_type === 'momo_statement'),
+      hasBank: active.some((p: any) => p.section?.toUpperCase() === 'BANK' || p.entity_type?.includes('statement') || p.entity_type?.includes('bank') || p.entity_type === 'momo_statement' || p.entity_type === 'bank_feed'),
       hasGl: active.some((p: any) => p.section?.toUpperCase() === 'GL' || p.entity_type?.startsWith('gl_')),
       activeCount: active.length,
     };

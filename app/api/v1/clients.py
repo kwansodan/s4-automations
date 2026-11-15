@@ -791,14 +791,106 @@ async def trigger_pipeline_stream(
         auto_post = bool(pipeline.get("auto_post_to_zoho", False) or pipeline.get("auto_post_draft", False))
 
     pipe_type = pipeline.get("pipeline_type") or (
-        "AP"
-        if any(
+        "BANK"
+        if str(pipeline.get("section", "")).upper() == "BANK"
+        or any(
             k in str(pipeline.get("entity_type", "")).lower()
             or k in str(pipeline.get("name", "")).lower()
-            for k in ["ap", "payable", "bill", "vendor", "expense"]
+            for k in ["bank", "statement", "momo"]
         )
-        else "AR"
+        else (
+            "AP"
+            if any(
+                k in str(pipeline.get("entity_type", "")).lower()
+                or k in str(pipeline.get("name", "")).lower()
+                for k in ["ap", "payable", "bill", "vendor", "expense"]
+            )
+            else "AR"
+        )
     )
+
+    # Special execution path for live accounting bank feeds and watched suspense streams
+    if pipe_type == "BANK" and (
+        str(pipeline.get("entity_type", "")).lower() == "bank_feed"
+        or str(pipeline.get("source_type", "")).lower() == "bank_feed"
+    ):
+        try:
+            from app.api.v1.bank_portal import accountant_sync_bank_feeds
+            sync_result = await accountant_sync_bank_feeds(client_id, month=str(month), year=str(year))
+            synced_count = sync_result.get("synced_new_count", 0)
+            reconciled_count = sync_result.get("reconciled_count", 0)
+            msg = sync_result.get("message", f"Synced {synced_count} bank feed transactions.")
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            summary_payload = {
+                "pipeline_id": pipeline_id,
+                "pipeline_name": pipeline.get("name"),
+                "triggered_at": now_iso,
+                "month": month,
+                "year": year,
+                "status": "COMPLETED",
+                "summary_message": msg,
+                "sources_discovered": 1,
+                "duplicates_skipped": reconciled_count,
+                "items_extracted": synced_count,
+                "auto_post": False,
+            }
+
+            if client.pipeline_streams:
+                updated_streams = []
+                for st in client.pipeline_streams:
+                    if st.get("id") == pipeline_id:
+                        st["last_run_summary"] = summary_payload
+                        st["last_run_at"] = now_iso
+                        st["total_runs_count"] = (st.get("total_runs_count") or 0) + 1
+                    updated_streams.append(st)
+                client.pipeline_streams = updated_streams
+                flag_modified(client, "pipeline_streams")
+                db.add(client)
+                db.commit()
+
+            return {
+                "client_id": client_id,
+                "pipeline_id": pipeline_id,
+                "pipeline_name": pipeline.get("name"),
+                "pipeline_type": "BANK",
+                "status": "COMPLETED",
+                "month": month,
+                "year": year,
+                "sources_discovered": 1,
+                "items_extracted": synced_count,
+                "duplicates_skipped": reconciled_count,
+                "summary_message": msg,
+                "documents": {
+                    "discovered": [f"Accounting Bank Feed ({month} {year})"],
+                    "skipped": [],
+                    "extracted": [f"{synced_count} uncategorized transactions"],
+                    "archived": [],
+                },
+                "step_logs": [
+                    f"Connected to {client.accounting_software} bank feeds",
+                    f"Synced {synced_count} uncategorized transactions",
+                    f"Reconciled {reconciled_count} externally mapped transactions",
+                ],
+                "last_run_summary": summary_payload,
+            }
+        except Exception as e:
+            logger.error(f"Bank feed stream '{pipeline_id}' sync failure: {e}")
+            return {
+                "client_id": client_id,
+                "pipeline_id": pipeline_id,
+                "pipeline_name": pipeline.get("name"),
+                "pipeline_type": "BANK",
+                "status": "FAILED",
+                "month": month,
+                "year": year,
+                "sources_discovered": 0,
+                "items_extracted": 0,
+                "duplicates_skipped": 0,
+                "summary_message": f"Bank feed sync failed: {str(e)}",
+                "error_message": str(e),
+                "errors": [str(e)],
+            }
 
     from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
     strategy = DynamicBlueprintStrategy(client)
