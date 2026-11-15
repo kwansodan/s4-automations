@@ -52,8 +52,12 @@ def sanitize_custom_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def dump_sanitized_client(client: ClientOrganization) -> Dict[str, Any]:
-    """Dumps client model dictionary with masked credentials."""
+    """Dumps client model dictionary with masked credentials and synchronized agents/pipelines."""
+    from app.services.agent_comms_service import AgentCommsService
+    synced_agents = AgentCommsService.sync_client_agents_list(client)
     data = client.model_dump()
+    data["agents"] = synced_agents
+    data["pipelines"] = synced_agents
     data["custom_config"] = sanitize_custom_config(client.custom_config)
     return data
 
@@ -75,6 +79,7 @@ class ClientCreatePayload(BaseModel):
     custom_config: Dict[str, Any] = Field(default_factory=dict)
     blueprints: Optional[List[Dict[str, Any]]] = None
     pipelines: Optional[List[Dict[str, Any]]] = None
+    agents: Optional[List[Dict[str, Any]]] = None
     team_members: Optional[List[Dict[str, Any]]] = None
     active_integrations: Optional[List[str]] = None
     organization_id: Optional[str] = Field(default="s4_advisory", description="Parent organization ID (e.g. accounting firm or direct company)")
@@ -491,9 +496,12 @@ async def create_client(
         custom_config=payload.custom_config,
         active_integrations=default_integrations,
         blueprints=default_blueprints,
-        pipelines=payload.pipelines or [],
+        pipelines=payload.agents if payload.agents is not None else (payload.pipelines or []),
+        agents=payload.agents if payload.agents is not None else (payload.pipelines or []),
         team_members=payload.team_members or [],
     )
+    from app.services.agent_comms_service import AgentCommsService
+    AgentCommsService.sync_client_agents_list(new_client)
     db.add(new_client)
     db.commit()
     db.refresh(new_client)
@@ -505,7 +513,7 @@ async def create_client(
     )
 
     logger.info(f"Registered new client organization: {new_client.name} (id: {new_client.id})")
-    return new_client.model_dump()
+    return dump_sanitized_client(new_client)
 
 
 @router.get("/accounting-softwares", summary="List Supported West African Accounting Software Platforms")
@@ -575,6 +583,7 @@ class ClientConfigUpdatePayload(BaseModel):
     source_config: Optional[Dict[str, Any]] = None
     custom_config: Optional[Dict[str, Any]] = None
     pipelines: Optional[List[Dict[str, Any]]] = None
+    agents: Optional[List[Dict[str, Any]]] = None
 
 
 @router.get("/{client_id}/config", summary="Get Isolated Client Configuration")
@@ -593,6 +602,9 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
         except Exception:
             pass
 
+    from app.services.agent_comms_service import AgentCommsService
+    synced_agents = AgentCommsService.sync_client_agents_list(client)
+
     return {
         "client_id": client.id,
         "name": client.name,
@@ -610,7 +622,8 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
         "source_config": client.source_config or {},
         "custom_config": sanitize_custom_config(client.custom_config),
         "active_integrations": client.active_integrations or [],
-        "pipelines": client.pipelines or [],
+        "pipelines": synced_agents,
+        "agents": synced_agents,
         "updated_at": client.updated_at.isoformat() if client.updated_at else None,
     }
 
@@ -661,9 +674,18 @@ async def update_client_config(
             merged_config[k] = v
         client.custom_config = merged_config
         flag_modified(client, "custom_config")
-    if payload.pipelines is not None:
-        client.pipelines = payload.pipelines
+    incoming_agents = payload.agents if payload.agents is not None else payload.pipelines
+    if incoming_agents is not None:
+        from app.services.agent_comms_service import AgentCommsService
+        enriched = [
+            AgentCommsService.enrich_agent_metadata(client.id, item, client.custom_config)
+            for item in incoming_agents
+            if isinstance(item, dict)
+        ]
+        client.pipelines = enriched
+        client.agents = enriched
         flag_modified(client, "pipelines")
+        flag_modified(client, "agents")
 
     client.updated_at = datetime.now(timezone.utc)
     db.add(client)
@@ -679,104 +701,119 @@ async def update_client_config(
     return dump_sanitized_client(client)
 
 
-@router.get("/{client_id}/pipelines", summary="Get Client Ingestion Pipelines")
+@router.get("/{client_id}/agents", summary="Get Client Autonomous Accounting Agents")
+@router.get("/{client_id}/pipelines", summary="Get Client Autonomous Accounting Agents (Legacy Alias)")
 async def get_client_pipelines(client_id: str, db: Session = Depends(get_db_session)) -> List[Dict[str, Any]]:
-    """Returns all active ingestion pipelines configured for this client."""
+    """Returns all active autonomous accounting agents configured for this client."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
-    if client.id == "anr_group" and client.pipelines is None:
+    if client.id == "anr_group" and not client.pipelines and not client.agents:
         client.pipelines = DEFAULT_ANR_PIPELINES
-        try:
-            flag_modified(client, "pipelines")
-            db.add(client)
-            db.commit()
-            db.refresh(client)
-        except Exception:
-            pass
-    return client.pipelines or []
+    from app.services.agent_comms_service import AgentCommsService
+    synced = AgentCommsService.sync_client_agents_list(client)
+    try:
+        flag_modified(client, "pipelines")
+        flag_modified(client, "agents")
+        db.add(client)
+        db.commit()
+        db.refresh(client)
+    except Exception:
+        pass
+    return synced
 
 
-@router.post("/{client_id}/pipelines", summary="Add or Update an Ingestion Pipeline")
+@router.post("/{client_id}/agents", summary="Add or Update an Autonomous Accounting Agent")
+@router.post("/{client_id}/pipelines", summary="Add or Update an Autonomous Accounting Agent (Legacy Alias)")
 async def add_or_update_pipeline(
     client_id: str,
     pipeline_data: Dict[str, Any],
     db: Session = Depends(get_db_session),
 ) -> List[Dict[str, Any]]:
-    """Adds a new named ingestion pipeline or updates existing pipeline for this client."""
+    """Adds a new named autonomous accounting agent or updates an existing agent for this client."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
-    pipe_id = pipeline_data.get("id") or f"pipe_{int(datetime.now(timezone.utc).timestamp())}"
-    pipeline_data["id"] = pipe_id
+    from app.services.agent_comms_service import AgentCommsService
+    enriched_agent = AgentCommsService.enrich_agent_metadata(client_id, pipeline_data, client.custom_config)
+    pipe_id = enriched_agent["id"]
 
-    current_pipes = list(client.pipelines or [])
+    current_pipes = AgentCommsService.sync_client_agents_list(client)
     # Replace if exists, else append
     existing_idx = next((i for i, p in enumerate(current_pipes) if p.get("id") == pipe_id), None)
     if existing_idx is not None:
-        current_pipes[existing_idx] = pipeline_data
+        current_pipes[existing_idx] = enriched_agent
     else:
-        current_pipes.append(pipeline_data)
+        current_pipes.append(enriched_agent)
 
     client.pipelines = current_pipes
+    client.agents = current_pipes
     client.updated_at = datetime.now(timezone.utc)
     flag_modified(client, "pipelines")
+    flag_modified(client, "agents")
     db.add(client)
     db.commit()
     db.refresh(client)
 
     AuditService.log(
         client_id=client_id,
-        action="PIPELINE_SAVED",
-        details={"pipeline_id": pipe_id, "name": pipeline_data.get("name")},
+        action="AGENT_SAVED",
+        details={"agent_id": pipe_id, "pipeline_id": pipe_id, "name": enriched_agent.get("name"), "agent_email": enriched_agent.get("agent_email")},
     )
-    return client.pipelines
+    return client.agents
 
 
-@router.delete("/{client_id}/pipelines/{pipeline_id}", summary="Delete an Ingestion Pipeline")
+@router.delete("/{client_id}/agents/{pipeline_id}", summary="Delete an Autonomous Accounting Agent")
+@router.delete("/{client_id}/pipelines/{pipeline_id}", summary="Delete an Autonomous Accounting Agent (Legacy Alias)")
 async def delete_pipeline(
     client_id: str,
     pipeline_id: str,
     db: Session = Depends(get_db_session),
 ) -> List[Dict[str, Any]]:
-    """Removes a configured ingestion pipeline from the client."""
+    """Removes a configured autonomous accounting agent from the client."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
-    current_pipes = [p for p in (client.pipelines or []) if p.get("id") != pipeline_id]
+    from app.services.agent_comms_service import AgentCommsService
+    current_pipes = [p for p in AgentCommsService.sync_client_agents_list(client) if p.get("id") != pipeline_id]
     client.pipelines = current_pipes
+    client.agents = current_pipes
     client.updated_at = datetime.now(timezone.utc)
     flag_modified(client, "pipelines")
+    flag_modified(client, "agents")
     db.add(client)
     db.commit()
     db.refresh(client)
 
     AuditService.log(
         client_id=client_id,
-        action="PIPELINE_DELETED",
-        details={"pipeline_id": pipeline_id},
+        action="AGENT_DELETED",
+        details={"agent_id": pipeline_id, "pipeline_id": pipeline_id},
     )
-    return client.pipelines
+    return client.agents
 
 
-@router.post("/{client_id}/pipelines/{pipeline_id}/trigger", summary="Trigger a Specific Pipeline Stream")
+@router.post("/{client_id}/agents/{pipeline_id}/trigger", summary="Trigger a Specific Accounting Agent")
+@router.post("/{client_id}/pipelines/{pipeline_id}/trigger", summary="Trigger a Specific Accounting Agent (Legacy Alias)")
 async def trigger_pipeline_stream(
     client_id: str,
     pipeline_id: str,
     payload: Optional[RunStrategyPayload] = None,
     db: Session = Depends(get_db_session),
 ) -> Dict[str, Any]:
-    """Triggers execution for an individual ingestion stream on-demand."""
+    """Triggers execution for an individual accounting agent on-demand."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
-    pipeline = next((p for p in (client.pipelines or []) if p.get("id") == pipeline_id), None)
-    if not pipeline and (client.pipelines or []):
-        # Fallback to first available pipeline if pipeline_id was empty or missing
-        pipeline = client.pipelines[0]
+    from app.services.agent_comms_service import AgentCommsService
+    agents_list = AgentCommsService.sync_client_agents_list(client)
+    pipeline = next((p for p in agents_list if p.get("id") == pipeline_id), None)
+    if not pipeline and agents_list:
+        # Fallback to first available agent if pipeline_id was empty or missing
+        pipeline = agents_list[0]
         pipeline_id = pipeline.get("id", "pipe_0")
     if not pipeline:
         raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found on client '{client_id}'.")
@@ -2892,6 +2929,12 @@ async def bulk_save_customer_mappings(
 
     db.commit()
 
+    try:
+        from app.services.client_knowledge_service import ClientKnowledgeService
+        ClientKnowledgeService.sync_legacy_client_aliases(db, client)
+    except Exception:
+        pass
+
     return {
         "success": True,
         "saved_count": added_count,
@@ -2900,3 +2943,168 @@ async def bulk_save_customer_mappings(
     }
 
 
+# -------------------------------------------------------------------------
+# Client-Specific Knowledge Engine Endpoints
+# -------------------------------------------------------------------------
+
+class KnowledgeEntryPayload(BaseModel):
+    id: Optional[int] = None
+    agent_id: Optional[str] = Field(default="ALL")
+    section: str = Field(default="ALL")
+    category: str = Field(default="DOMAIN_FACT")
+    title: str
+    trigger_pattern: Optional[str] = None
+    target_value: Optional[str] = None
+    rule_content: str
+    structured_data: Optional[Dict[str, Any]] = None
+    confidence: float = Field(default=1.0)
+
+
+class TeachKnowledgePayload(BaseModel):
+    raw_text: Optional[str] = Field(default=None, description="Natural-language instructions, rules, or client onboarding notes")
+    instruction_text: Optional[str] = Field(default=None, description="Alias for raw_text")
+    text: Optional[str] = Field(default=None, description="Alias for raw_text")
+    agent_id: Optional[str] = Field(default="ALL")
+    section: str = Field(default="ALL")
+    source: str = Field(default="MANUAL_UI")
+
+
+@router.get("/{client_id}/knowledge", summary="List Client-Specific Knowledge Base Entries & Summary")
+async def list_client_knowledge(
+    client_id: str,
+    agent_id: Optional[str] = Query(default=None),
+    section: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    active_only: bool = Query(default=False),
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Returns structured client-specific knowledge rules, aliases, COA mappings, and usage telemetry."""
+    from app.services.client_knowledge_service import ClientKnowledgeService
+    client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
+    if client:
+        ClientKnowledgeService.sync_legacy_client_aliases(db, client)
+
+    entries = ClientKnowledgeService.list_knowledge(
+        session=db,
+        client_id=client_id,
+        agent_id=agent_id,
+        section=section,
+        category=category,
+        search=search,
+        active_only=active_only,
+    )
+    summary = ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id, agent_id=agent_id)
+    return {
+        "client_id": client_id,
+        "summary": summary,
+        "entries": [e.model_dump() for e in entries],
+    }
+
+
+@router.post("/{client_id}/knowledge", summary="Create or Update a Client Knowledge Entry")
+async def save_client_knowledge_entry(
+    client_id: str,
+    payload: KnowledgeEntryPayload,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Creates or updates a structured ClientKnowledgeEntry for this client."""
+    from app.services.client_knowledge_service import ClientKnowledgeService
+    entry = ClientKnowledgeService.upsert_knowledge_entry(
+        session=db,
+        client_id=client_id,
+        title=payload.title,
+        rule_content=payload.rule_content,
+        category=payload.category,
+        agent_id=payload.agent_id or "ALL",
+        section=payload.section or "ALL",
+        trigger_pattern=payload.trigger_pattern,
+        target_value=payload.target_value,
+        structured_data=payload.structured_data,
+        source="MANUAL_UI",
+        confidence=payload.confidence,
+        entry_id=payload.id,
+    )
+    return {
+        "success": True,
+        "entry": entry.model_dump(),
+        "summary": ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id),
+    }
+
+
+@router.post("/{client_id}/knowledge/teach", summary="Teach Client Agents from Natural Language Instructions")
+async def teach_client_knowledge_from_text(
+    client_id: str,
+    payload: TeachKnowledgePayload,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Distills natural-language instructions or onboarding notes into structured ClientKnowledgeEntry rules."""
+    from app.services.client_knowledge_service import ClientKnowledgeService
+    effective_text = (payload.raw_text or payload.instruction_text or payload.text or "").strip()
+    learned = await ClientKnowledgeService.teach_from_natural_language(
+        session=db,
+        client_id=client_id,
+        raw_text=effective_text,
+        agent_id=payload.agent_id or "ALL",
+        section=payload.section or "ALL",
+        source=payload.source or "MANUAL_UI",
+    )
+    dumped = [e.model_dump() for e in learned]
+    return {
+        "success": True,
+        "learned_count": len(learned),
+        "learned_entries": dumped,
+        "learned_rules": dumped,
+        "summary": ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id),
+    }
+
+
+@router.patch("/{client_id}/knowledge/{entry_id}/toggle", summary="Toggle Active Status of a Client Knowledge Entry")
+async def toggle_client_knowledge_entry(
+    client_id: str,
+    entry_id: int,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Enables or disables a specific ClientKnowledgeEntry."""
+    from app.models.db_models import ClientKnowledgeEntry
+    from app.services.client_knowledge_service import ClientKnowledgeService
+    ClientKnowledgeService.ensure_table(db)
+    entry = db.exec(
+        select(ClientKnowledgeEntry)
+        .where(ClientKnowledgeEntry.id == entry_id)
+        .where(ClientKnowledgeEntry.client_id == client_id)
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found.")
+    entry.is_active = not bool(entry.is_active)
+    entry.updated_at = datetime.now(timezone.utc)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"success": True, "entry": entry.model_dump()}
+
+
+@router.delete("/{client_id}/knowledge/{entry_id}", summary="Delete a Client Knowledge Entry")
+async def delete_client_knowledge_entry(
+    client_id: str,
+    entry_id: int,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Deletes a specific ClientKnowledgeEntry."""
+    from app.models.db_models import ClientKnowledgeEntry
+    from app.services.client_knowledge_service import ClientKnowledgeService
+    ClientKnowledgeService.ensure_table(db)
+    entry = db.exec(
+        select(ClientKnowledgeEntry)
+        .where(ClientKnowledgeEntry.id == entry_id)
+        .where(ClientKnowledgeEntry.client_id == client_id)
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found.")
+    db.delete(entry)
+    db.commit()
+    return {
+        "success": True,
+        "deleted_id": entry_id,
+        "summary": ClientKnowledgeService.get_knowledge_summary(db, client_id=client_id),
+    }

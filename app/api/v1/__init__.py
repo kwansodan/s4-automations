@@ -18,6 +18,7 @@ from app.api.v1.social import router as social_router
 from app.api.v1.marketing import router as marketing_router
 from app.api.v1.contacts import router as contacts_router
 from app.api.v1.billing import router as billing_router
+from app.api.v1.agents import router as agents_router
 
 api_sub_router = APIRouter()
 
@@ -25,6 +26,7 @@ api_sub_router = APIRouter()
 api_sub_router.include_router(auth_router)
 api_sub_router.include_router(bank_portal_router)
 api_sub_router.include_router(oauth_router)
+api_sub_router.include_router(agents_router)
 
 # 2. Strict Admin-Only Routers (All endpoints globally guarded by require_admin_user)
 admin_deps = [Depends(require_admin_user)]

@@ -326,6 +326,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   // Form State
   const [pipeId, setPipeId] = useState<string>('');
   const [name, setName] = useState<string>('');
+  const [agentEmail, setAgentEmail] = useState<string>('');
+  const [whatsappRoutingTag, setWhatsappRoutingTag] = useState<string>('');
   const [section, setSection] = useState<AccountingSection>('AR');
   const [entityType, setEntityType] = useState<AccountingEntityType>('ar_sales_invoice');
   const [sourceType, setSourceType] = useState<'google_drive' | 'onedrive' | 'email' | 'webhook' | 'whatsapp' | 'manual' | 'bank_feed'>('google_drive');
@@ -522,6 +524,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       if (initialPipeline) {
         setPipeId(initialPipeline.id);
         setName(initialPipeline.name);
+        setAgentEmail(initialPipeline.agent_email || '');
+        setWhatsappRoutingTag(initialPipeline.whatsapp_routing_tag || '');
         setSection(initialPipeline.section);
         setEntityType(initialPipeline.entity_type);
         setSourceType(initialPipeline.source_type as any || 'google_drive');
@@ -585,6 +589,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         const newId = `pipe_${Date.now()}`;
         setPipeId(newId);
         setName('');
+        setAgentEmail('');
+        setWhatsappRoutingTag('');
         const initialSec = defaultSection || 'AR';
         setSection(initialSec);
         if (initialSec === 'BANK') {
@@ -770,6 +776,9 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
       const pipelineData: IngestionPipeline = {
         id: pipeId || `pipe_${Date.now()}`,
         name: name.trim(),
+        agent_email: agentEmail.trim() || undefined,
+        whatsapp_routing_tag: whatsappRoutingTag.trim() || undefined,
+        whatsapp_enabled: true,
         section,
         entity_type: entityType,
         source_type: sourceType,
@@ -835,14 +844,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
 
       onClose();
     } catch (err: any) {
-      addLog('error', `Failed to save pipeline: ${err.message}`);
+      addLog('error', `Failed to save agent: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
   const stepsList = [
-    { num: 1, title: 'Accounting & Entity', icon: SlidersHorizontal },
+    { num: 1, title: 'Agent Identity & Entity', icon: SlidersHorizontal },
     { num: 2, title: 'Channel & Storage', icon: Cloud },
     { num: 3, title: 'AI Simulation & Rules', icon: Sparkles },
     { num: 4, title: 'Trigger & Schedule', icon: Clock },
@@ -856,19 +865,19 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
-              <Zap className="w-5 h-5" />
+              <Bot className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-white tracking-tight">
-                  {initialPipeline ? 'Edit Ingestion Pipeline Stream' : 'Configure New Ingestion Pipeline Stream'}
+                  {initialPipeline ? 'Edit Autonomous Accounting Agent' : 'Configure New Autonomous Accounting Agent'}
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-950 border border-sky-500/40 text-sky-300">
                   {clientName}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Define document classification, dedicated channel source, and automated trigger schedules for this stream.
+                Define agent identity, dedicated email &amp; WhatsApp channels, document classification, and schedule.
               </p>
             </div>
           </div>
@@ -921,16 +930,43 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
             <div className="space-y-4 animate-in fade-in">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Pipeline Stream Name <span className="text-red-400">*</span>
+                  Accounting Agent Name <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Counter Sales Delivery Slips, China Container Bills, MoMo Customer Receipts"
+                  placeholder="e.g. Counter Sales Delivery Slips Agent, Vendor Bills Agent, Treasury Bank Agent"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   required
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Dedicated Agent Email Address (Optional Override)
+                  </label>
+                  <input
+                    type="text"
+                    value={agentEmail}
+                    onChange={(e) => setAgentEmail(e.target.value)}
+                    placeholder="Auto-generated (@agents.s4automations.com)"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-sky-300 font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    WhatsApp Routing Tag (Shared Gateway)
+                  </label>
+                  <input
+                    type="text"
+                    value={whatsappRoutingTag}
+                    onChange={(e) => setWhatsappRoutingTag(e.target.value)}
+                    placeholder={`@${clientId}-${section.toLowerCase()}`}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-emerald-300 font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2545,7 +2581,7 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                 className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer"
               >
                 {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                <span>{initialPipeline ? 'Save Pipeline Changes' : 'Create Ingestion Pipeline'}</span>
+                <span>{initialPipeline ? 'Save Agent Changes' : 'Create Accounting Agent'}</span>
               </button>
             )}
           </div>

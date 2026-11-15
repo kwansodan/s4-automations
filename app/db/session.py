@@ -135,6 +135,7 @@ def run_schema_migrations(active_engine: Engine):
         ("clients", "status_text", "VARCHAR DEFAULT 'In Development'"),
         ("clients", "icon", "VARCHAR DEFAULT '🏢'"),
         ("clients", "pipelines", f"{json_type} DEFAULT '[]'"),
+        ("clients", "agents", f"{json_type} DEFAULT '[]'"),
         ("clients", "team_members", f"{json_type} DEFAULT '[]'"),
         ("clients", "watched_accounts", f"{json_type} DEFAULT '[\"6990\", \"850\", \"suspense\", \"uncategorized\"]'"),
         ("clients", "blueprints", f"{json_type} DEFAULT '[]'"),

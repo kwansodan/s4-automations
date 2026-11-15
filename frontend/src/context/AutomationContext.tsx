@@ -22,7 +22,7 @@ import { parseCurrentRoute, syncUrlWithRoute, initRouteListener } from '../lib/r
 
 export type ActiveTab = 'dashboard' | 'sheets' | 'invoicing' | 'catalog' | 'config' | 'logs' | 'clients' | 'workspace' | 'queries' | 'portal' | 'social' | 'changelog' | 'privacy' | 'contacts' | 'landing-manager' | 'billing';
 
-export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'settings';
+export type WorkspaceSubTab = 'overview' | 'ar' | 'ap' | 'bank' | 'requests' | 'pipelines' | 'agents' | 'settings';
 
 interface AutomationContextType {
   activeTab: ActiveTab;

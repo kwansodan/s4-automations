@@ -46,10 +46,10 @@ export const ROUTE_MAP: Array<{
     aliases: ['/workspace/bank', '/statements'],
   },
   {
-    path: '/pipelines',
+    path: '/agents',
     tab: 'workspace',
     subTab: 'pipelines',
-    aliases: ['/workspace/pipelines', '/streams'],
+    aliases: ['/pipelines', '/workspace/agents', '/workspace/pipelines', '/streams'],
   },
   {
     path: '/settings',

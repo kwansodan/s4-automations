@@ -198,7 +198,8 @@ class ClientOrganization(SQLModel, table=True):
     custom_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     active_integrations: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blueprints: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
-    pipelines: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured multi-pipeline ingestion streams")
+    pipelines: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured autonomous accounting agents (legacy alias: pipelines)")
+    agents: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Configured autonomous accounting agents")
     team_members: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON), description="Organization team members and alert routing")
     watched_accounts: List[str] = Field(default_factory=lambda: ["6990", "850", "suspense", "uncategorized"], sa_column=Column(JSON), description="Watched Chart of Account IDs/codes for uncategorized transactions")
     stats_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
@@ -673,6 +674,52 @@ class PlatformPricingConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=get_utc_now)
 
 
+class ClientKnowledgeEntry(SQLModel, table=True):
+    """Stores structured, client-specific and agent-specific knowledge rules, aliases, COA mappings, and SOPs."""
+    __tablename__ = "client_knowledge_entries"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: str = Field(index=True, description="Client organization slug, e.g. anr_group")
+    agent_id: Optional[str] = Field(default="ALL", index=True, description="Specific agent ID or ALL for client-wide knowledge")
+    section: str = Field(default="ALL", index=True, description="ALL, AR, AP, BANK, GL")
+    category: str = Field(
+        default="DOMAIN_FACT",
+        index=True,
+        description="ENTITY_ALIAS, SKU_PRICING_RULE, COA_MAPPING_RULE, TAX_AND_COMPLIANCE, WORKFLOW_SOP, DOMAIN_FACT",
+    )
+    title: str = Field(index=True, description="Concise summary of the knowledge rule")
+    trigger_pattern: Optional[str] = Field(default=None, index=True, description="Keyword, shorthand, payee, or vendor trigger")
+    target_value: Optional[str] = Field(default=None, description="Resolved entity name, GL account, or unit rate")
+    rule_content: str = Field(description="Natural language rule or context injected into AI prompts")
+    structured_data: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    source: str = Field(
+        default="MANUAL_UI",
+        index=True,
+        description="MANUAL_UI, EMAIL_TEACHING, WHATSAPP_TEACHING, CORRECTION_AUTO_LEARNED, PORTAL_CLARIFICATION, AI_DISTILLED",
+    )
+    confidence: float = Field(default=1.0)
+    usage_count: int = Field(default=0)
+    is_active: bool = Field(default=True, index=True)
+    created_by: str = Field(default="accountant")
+    last_applied_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
+    updated_at: datetime = Field(default_factory=get_utc_now)
 
 
+class AgentMessage(SQLModel, table=True):
+    """Tracks inbound and outbound Email, WhatsApp, and In-App conversations with autonomous accounting agents."""
+    __tablename__ = "agent_messages"
 
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: str = Field(index=True, description="Client organization ID")
+    agent_id: str = Field(index=True, description="Agent instance ID")
+    agent_name: str = Field(default="Accounting Agent")
+    channel: str = Field(default="EMAIL", index=True, description="EMAIL, WHATSAPP, IN_APP")
+    direction: str = Field(default="INBOUND", index=True, description="INBOUND, OUTBOUND")
+    sender_address: str = Field(index=True, description="Sender email, phone number, or user handle")
+    recipient_address: str = Field(index=True, description="Agent email address, WhatsApp number, or recipient")
+    subject: Optional[str] = Field(default=None)
+    body_text: str = Field(description="Plain-text message content")
+    attachments: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    ai_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)

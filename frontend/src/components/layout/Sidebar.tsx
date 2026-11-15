@@ -110,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
   }> = [
-    { sub: 'pipelines', label: 'Pipelines', icon: Layers, badge: `${currentClient?.pipelines?.length || 0}` },
+    { sub: 'pipelines', label: 'Agents', icon: Layers, badge: `${currentClient?.agents?.length || currentClient?.pipelines?.length || 0}` },
     { tab: 'catalog', label: 'Item Catalog', icon: Package },
     { tab: 'contacts', label: 'Contacts', icon: Users },
   ];

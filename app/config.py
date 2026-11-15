@@ -108,6 +108,28 @@ class Settings(BaseSettings):
         description="Public base URL of the frontend application (used for email alerts and magic links)",
     )
 
+    # Multi-Channel Agent Addressing (Email & WhatsApp Gateway)
+    AGENT_EMAIL_DOMAIN: str = Field(
+        default="agents.service4gh.com",
+        description="Domain used for dedicated per-agent inbound email addresses",
+    )
+    WHATSAPP_PLATFORM_NUMBER: str = Field(
+        default="233200000000",
+        description="Platform shared WhatsApp Business gateway number for zero-setup onboarding",
+    )
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = Field(
+        default=None,
+        description="Meta WhatsApp Cloud API Phone Number ID for the platform gateway",
+    )
+    WHATSAPP_ACCESS_TOKEN: Optional[str] = Field(
+        default=None,
+        description="Meta WhatsApp Cloud API System User Access Token",
+    )
+    WHATSAPP_VERIFY_TOKEN: str = Field(
+        default="s4-whatsapp-webhook-verify-2026",
+        description="Default webhook verification token for Meta WhatsApp Cloud API",
+    )
+
     # CORS Allowed Origins
     ALLOWED_ORIGINS: str = Field(
         default="https://aut.service4gh.com,https://autapi.service4gh.com,https://s4automations.service4gh.com,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8000",

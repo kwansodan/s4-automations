@@ -453,6 +453,32 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                         directives_block = "\n[FIELD MAPPING DIRECTIVES]\n" + "\n".join(mapping_clauses)
                         human_instructions = (human_instructions or "") + directives_block
 
+                merged_aliases = dict(self.custom_config.get("customer_mappings") or {})
+                try:
+                    from sqlmodel import Session
+                    from app.db.session import get_engine
+                    from app.services.client_knowledge_service import ClientKnowledgeService
+                    with Session(get_engine()) as kb_session:
+                        kb_prompt = ClientKnowledgeService.build_agent_knowledge_prompt(
+                            session=kb_session,
+                            client_id=self.client_id,
+                            agent_id=doc_pipeline_id,
+                            section=doc_pipeline_type,
+                            record_usage=True,
+                        )
+                        if kb_prompt:
+                            human_instructions = ((human_instructions or "") + "\n\n" + kb_prompt).strip()
+                        kb_aliases = ClientKnowledgeService.get_entity_aliases_dict(
+                            session=kb_session,
+                            client_id=self.client_id,
+                            agent_id=doc_pipeline_id,
+                        )
+                        for k_al, v_al in kb_aliases.items():
+                            if k_al not in merged_aliases:
+                                merged_aliases[k_al] = v_al
+                except Exception as kb_err:
+                    logger.debug(f"ClientKnowledgeService injection notice: {kb_err}")
+
                 accounting_software = (
                     doc.metadata.get("accounting_software")
                     or (pipe_obj.get("accounting_software") if pipe_obj else None)
@@ -492,7 +518,7 @@ class DynamicBlueprintStrategy(BaseAutomationStrategy):
                             client_name=doc.metadata.get("customer_name_hint") or self.client_name,
                             item_catalog=items_catalog,
                             customer_catalog=contacts,
-                            known_aliases=self.custom_config.get("customer_mappings", {}),
+                            known_aliases=merged_aliases,
                         )
                         ext_items = []
                         total_amt = 0.0

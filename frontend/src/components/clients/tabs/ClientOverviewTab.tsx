@@ -351,7 +351,7 @@ export const ClientOverviewTab: React.FC = () => {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 bg-slate-50 border border-[#E2E8F0] px-3 py-1.5 rounded-xl">
             <span className="w-2 h-2 rounded-full bg-[#059669] shadow-[0_0_6px_#10B981] animate-pulse" />
-            <span className="text-xs font-bold text-slate-900 tracking-tight">Active Pipelines Monitor</span>
+            <span className="text-xs font-bold text-slate-900 tracking-tight">Active Agents Monitor</span>
           </div>
 
           <span className="text-xs font-mono font-bold text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-3 py-1 rounded-xl">
@@ -359,7 +359,7 @@ export const ClientOverviewTab: React.FC = () => {
           </span>
 
           <span className="text-xs text-slate-500 hidden lg:inline">
-            • Dynamic orchestration for {activePipelines.length} live stream{activePipelines.length !== 1 ? 's' : ''} &amp; {currentPlatform.name}
+            • Dynamic orchestration for {activePipelines.length} live agent{activePipelines.length !== 1 ? 's' : ''} &amp; {currentPlatform.name}
           </span>
         </div>
 
@@ -395,7 +395,7 @@ export const ClientOverviewTab: React.FC = () => {
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-[#E2E8F0] text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer shadow-xs"
           >
             <Plus className="w-3.5 h-3.5 text-[#0284C7]" />
-            <span>Add Pipeline</span>
+            <span>Add Agent</span>
           </button>
 
           <button
@@ -406,12 +406,12 @@ export const ClientOverviewTab: React.FC = () => {
             {isBatchRunning ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Running Streams...</span>
+                <span>Running Agents...</span>
               </>
             ) : (
               <>
                 <PlayCircle className="w-4 h-4 text-white" />
-                <span>Run All Active Streams</span>
+                <span>Run All Active Agents</span>
               </>
             )}
           </button>
@@ -552,13 +552,13 @@ export const ClientOverviewTab: React.FC = () => {
       {/* 5. Dynamic Multi-Pipeline Operational Metrics Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Metric 1: Configured & Active Streams */}
+        {/* Metric 1: Configured & Active Agents */}
         <div
           onClick={() => navigateToClientSubTab('pipelines')}
           className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#BAE6FD] rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500">Active Pipelines</span>
+            <span className="text-xs font-semibold text-slate-500">Active Agents</span>
             <div className="w-8 h-8 rounded-xl bg-[#F0F9FF] border border-[#BAE6FD] flex items-center justify-center text-[#0284C7] group-hover:scale-105 transition-transform">
               <Layers className="w-4 h-4" />
             </div>
@@ -628,7 +628,7 @@ export const ClientOverviewTab: React.FC = () => {
             </div>
           </div>
           <div className="text-2xl font-bold text-slate-900 tracking-tight tabular-nums">
-            {autoDraftCount} <span className="text-xs font-normal text-slate-500">/ {activePipelines.length} Streams</span>
+            {autoDraftCount} <span className="text-xs font-normal text-slate-500">/ {activePipelines.length} Agents</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5 truncate">
             <span>{currentPlatform.icon}</span>
@@ -637,7 +637,7 @@ export const ClientOverviewTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Metric 4: Ingestion Pipeline Health */}
+        {/* Metric 4: Agent Health */}
         <div
           onClick={() => navigateToClientSubTab('settings')}
           className="bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-amber-300 rounded-2xl p-4.5 shadow-sm transition-all cursor-pointer group"
@@ -686,7 +686,7 @@ export const ClientOverviewTab: React.FC = () => {
             className="flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] hover:bg-[#F0F9FF] px-3.5 py-2 rounded-xl border border-[#BAE6FD] transition cursor-pointer self-start sm:self-auto shadow-xs"
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Manage All Streams ({pipelines.length}) &rarr;</span>
+            <span>Manage All Agents ({pipelines.length}) &rarr;</span>
           </button>
         </div>
 
@@ -724,7 +724,7 @@ export const ClientOverviewTab: React.FC = () => {
                 </div>
                 <h3 className="text-sm font-bold text-slate-700">Bank &amp; Reconciliations</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Not activated for this organization. Add a banking pipeline stream to connect statement parsing or live feeds.
+                  Not activated for this organization. Add a banking agent to connect statement parsing or live feeds.
                 </p>
               </div>
               <div className="pt-4 mt-2 border-t border-slate-200">
@@ -736,7 +736,7 @@ export const ClientOverviewTab: React.FC = () => {
                   }}
                   className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
                 >
-                  <span>Add Bank Pipeline</span>
+                  <span>Add Bank Agent</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -777,7 +777,7 @@ export const ClientOverviewTab: React.FC = () => {
                 </div>
                 <h3 className="text-sm font-bold text-slate-700">Accounts Receivable</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Not activated for this organization. Add an AR pipeline stream to ingest customer sales and delivery slips.
+                  Not activated for this organization. Add an AR agent to ingest customer sales and delivery slips.
                 </p>
               </div>
               <div className="pt-4 mt-2 border-t border-slate-200">
@@ -789,7 +789,7 @@ export const ClientOverviewTab: React.FC = () => {
                   }}
                   className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
                 >
-                  <span>Add AR Pipeline</span>
+                  <span>Add AR Agent</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -828,7 +828,7 @@ export const ClientOverviewTab: React.FC = () => {
                 </div>
                 <h3 className="text-sm font-bold text-slate-700">Accounts Payable</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Not activated for this organization. Add an AP pipeline stream to ingest vendor bills and expense receipts.
+                  Not activated for this organization. Add an AP agent to ingest vendor bills and expense receipts.
                 </p>
               </div>
               <div className="pt-4 mt-2 border-t border-slate-200">
@@ -840,7 +840,7 @@ export const ClientOverviewTab: React.FC = () => {
                   }}
                   className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold py-2 rounded-lg shadow-2xs transition cursor-pointer"
                 >
-                  <span>Add AP Pipeline</span>
+                  <span>Add AP Agent</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -900,7 +900,7 @@ export const ClientOverviewTab: React.FC = () => {
               onClick={() => navigateToClientSubTab('pipelines')}
               className="text-[11px] font-semibold text-[#0284C7] hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <span>Pipelines</span>
+              <span>Agents</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>

@@ -247,7 +247,18 @@ export interface IngestionPipeline {
   missing_cadence?: 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'disabled';
   watched_accounts?: string[];
   last_run_summary?: PipelineRunSummary;
+  agent_email?: string;
+  whatsapp_enabled?: boolean;
+  whatsapp_mode?: 'platform_shared' | 'dedicated_meta' | 'dedicated_twilio';
+  whatsapp_phone_number?: string;
+  whatsapp_phone_number_id?: string;
+  whatsapp_routing_tag?: string;
+  whatsapp_webhook_url?: string;
+  email_webhook_url?: string;
+  persona_instructions?: string;
 }
+
+export type AccountingAgent = IngestionPipeline;
 
 export interface PipelineRunSummary {
   pipeline_id?: string;
@@ -379,6 +390,7 @@ export interface ClientProfile {
   activeIntegrations: string[];
   blueprints: BlueprintStep[];
   pipelines?: IngestionPipeline[];
+  agents?: AccountingAgent[];
   team_members?: OrganizationTeamMember[];
   watched_accounts?: string[];
   sourceConfig?: Record<string, any>;
@@ -697,3 +709,86 @@ export interface CreateInformationRequestPayload {
   general_date?: string;
   party_name?: string;
 }
+
+export type KnowledgeCategory =
+  | 'ENTITY_ALIAS'
+  | 'SKU_PRICING_RULE'
+  | 'COA_MAPPING_RULE'
+  | 'TAX_AND_COMPLIANCE'
+  | 'WORKFLOW_SOP'
+  | 'DOMAIN_FACT';
+
+export interface ClientKnowledgeEntry {
+  id: number;
+  client_id: string;
+  agent_id?: string | null;
+  category: KnowledgeCategory | string;
+  rule_key: string;
+  rule_value: string;
+  natural_language_rule: string;
+  structured_data: Record<string, any>;
+  source: 'MANUAL' | 'ACCOUNTANT_ACTION' | 'EMAIL_INSTRUCTION' | 'WHATSAPP_INSTRUCTION' | 'AUTO_DISCOVERED' | string;
+  confidence: number;
+  is_active: boolean;
+  usage_count: number;
+  last_used_at?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ClientKnowledgeSummary {
+  total_count: number;
+  active_count: number;
+  by_category: Record<string, number>;
+  by_source: Record<string, number>;
+  categories: string[];
+}
+
+export interface ClientKnowledgeResponse {
+  client_id: string;
+  summary: ClientKnowledgeSummary;
+  entries: ClientKnowledgeEntry[];
+}
+
+export interface AgentMessageItem {
+  id: number;
+  client_id: string;
+  agent_id: string;
+  channel: 'EMAIL' | 'WHATSAPP' | 'IN_APP' | string;
+  direction: 'INBOUND' | 'OUTBOUND' | string;
+  sender_address: string;
+  recipient_address: string;
+  subject?: string | null;
+  body_text: string;
+  ai_reasoning?: string | null;
+  knowledge_extracted: Array<{
+    id?: number;
+    category: string;
+    rule_key: string;
+    rule_value: string;
+    natural_language_rule: string;
+    action?: string;
+  }>;
+  status: string;
+  external_message_id?: string | null;
+  metadata_json: Record<string, any>;
+  created_at?: string | null;
+}
+
+export interface TenantWhatsAppConfig {
+  client_id: string;
+  client_name: string;
+  whatsapp_mode: 'platform_shared' | 'dedicated_meta' | 'dedicated_twilio';
+  whatsapp_phone_number: string;
+  whatsapp_phone_number_id: string;
+  whatsapp_waba_id: string;
+  whatsapp_verify_token: string;
+  has_custom_access_token: boolean;
+  twilio_account_sid: string;
+  has_twilio_auth_token: boolean;
+  webhook_url: string;
+  global_webhook_url: string;
+  platform_shared_number: string;
+}
+

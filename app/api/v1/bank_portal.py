@@ -1151,6 +1151,23 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
         session.commit()
         session.refresh(tx)
 
+        learned_entry = None
+        try:
+            from app.services.client_knowledge_service import ClientKnowledgeService
+            learned_entry = ClientKnowledgeService.learn_from_accountant_action(
+                session=session,
+                client_id=tx.client_id,
+                action_type="BANK_CATEGORIZED",
+                details={
+                    "description": tx.description,
+                    "payee_name": tx.payee_name,
+                    "mapped_account_name": tx.mapped_account_name,
+                    "mapped_account_id": tx.mapped_account_id,
+                },
+            )
+        except Exception as kb_err:
+            logger.debug(f"Auto-learn notice on bank categorize: {kb_err}")
+
         AuditService.log(
             client_id=tx.client_id,
             action="BANK_TRANSACTION_CATEGORIZED",
@@ -1165,6 +1182,7 @@ async def accountant_categorize_bank_transaction(tx_id: int, payload: BankTransa
         return {
             "success": True,
             "transaction": tx.model_dump(),
+            "learned_knowledge": learned_entry.model_dump() if learned_entry else None,
             "message": f"Categorized transaction {tx.id} to '{tx.mapped_account_name}'.",
         }
 
@@ -2658,6 +2676,21 @@ async def accountant_resolve_information_requests(payload: ResolveInformationReq
                 flag_modified(btx, "metadata_json")
                 session.add(btx)
                 resolved_count += 1
+                try:
+                    from app.services.client_knowledge_service import ClientKnowledgeService
+                    ClientKnowledgeService.learn_from_accountant_action(
+                        session=session,
+                        client_id=btx.client_id,
+                        action_type="QUERY_RESOLVED",
+                        details={
+                            "description": btx.description,
+                            "client_explanation": btx.client_explanation or note_val,
+                            "pipeline_type": "BANK",
+                            "mapped_account_name": btx.mapped_account_name if payload.resolution_action == "CATEGORIZE_BANK" else None,
+                        },
+                    )
+                except Exception:
+                    pass
 
             elif r_low.startswith("staged:"):
                 s_id = int(req_id.split(":", 1)[1])
@@ -2702,6 +2735,20 @@ async def accountant_resolve_information_requests(payload: ResolveInformationReq
                         row.status = "APPROVED"
                     session.add(row)
                 resolved_count += 1
+                try:
+                    from app.services.client_knowledge_service import ClientKnowledgeService
+                    ClientKnowledgeService.learn_from_accountant_action(
+                        session=session,
+                        client_id=st.client_id,
+                        action_type="QUERY_RESOLVED",
+                        details={
+                            "description": f"{st.source_file_name} ({st.item_or_description})",
+                            "client_explanation": st_meta.get("client_explanation") or note_val,
+                            "pipeline_type": st.pipeline_type or "AR",
+                        },
+                    )
+                except Exception:
+                    pass
 
         session.commit()
 

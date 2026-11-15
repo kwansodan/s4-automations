@@ -807,14 +807,14 @@ export const InformationRequestsControlCenter: React.FC = () => {
       {/* Multi-Dimensional Filter, Grouping & Bulk Action Bar */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-2xs space-y-3">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-          {/* Pipeline Filter Pills */}
+          {/* Agent Filter Pills */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] font-bold text-[#64748B] mr-1 flex items-center gap-1">
               <Filter className="w-3.5 h-3.5 text-[#0284C7]" />
-              Pipeline:
+              Agent:
             </span>
             {[
-              { id: 'ALL' as PipelineFilter, label: 'All Pipelines', count: metrics.total_count },
+              { id: 'ALL' as PipelineFilter, label: 'All Agents', count: metrics.total_count },
               { id: 'AR' as PipelineFilter, label: 'Receivables (AR)', count: metrics.ar_count },
               { id: 'AP' as PipelineFilter, label: 'Payables (AP)', count: metrics.ap_count },
               { id: 'BANK' as PipelineFilter, label: 'Banking', count: metrics.bank_count },
@@ -864,7 +864,7 @@ export const InformationRequestsControlCenter: React.FC = () => {
                 className="bg-transparent text-xs font-bold text-[#0F172A] focus:outline-none cursor-pointer"
               >
                 <option value="PRIORITY">Priority &amp; Status</option>
-                <option value="PIPELINE">Pipeline (AR / AP / Bank)</option>
+                <option value="PIPELINE">Agent (AR / AP / Bank)</option>
                 <option value="RECIPIENT">Recipient Email</option>
                 <option value="CLIENT">Client Organization</option>
               </select>

@@ -88,6 +88,8 @@ interface ClientContextType {
   deleteClient: (clientId: string) => Promise<{ success: boolean; message?: string }>;
   deletePipeline: (clientId: string, pipelineId: string) => Promise<{ success: boolean; message?: string }>;
   savePipeline: (clientId: string, pipelineData: any) => Promise<any[]>;
+  deleteAgent: (clientId: string, agentId: string) => Promise<{ success: boolean; message?: string }>;
+  saveAgent: (clientId: string, agentData: any) => Promise<any[]>;
   isSwitcherOpen: boolean;
   setIsSwitcherOpen: (open: boolean) => void;
   isWizardOpen: boolean;
@@ -156,18 +158,20 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const mapped: ClientProfile[] = dbClients.map((c: any) => {
           const defaultMatch = DEFAULT_CLIENTS.find((dc) => dc.id === c.id);
           const storedPipes = getStoredPipelines(c.id);
-          const rawPipelines = (Array.isArray(c.pipelines) && c.pipelines.length > 0)
-            ? c.pipelines
-            : ((storedPipes && storedPipes.length > 0)
-              ? storedPipes
-              : (defaultMatch?.pipelines || []));
-          const normalizedPipelines = rawPipelines.map((p: any) => ({
+          const rawAgentsOrPipes = (Array.isArray(c.agents) && c.agents.length > 0)
+            ? c.agents
+            : (Array.isArray(c.pipelines) && c.pipelines.length > 0)
+              ? c.pipelines
+              : ((storedPipes && storedPipes.length > 0)
+                ? storedPipes
+                : (defaultMatch?.pipelines || []));
+          const normalizedPipelines = rawAgentsOrPipes.map((p: any) => ({
             ...p,
             is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
             active: p.active !== undefined ? p.active : (p.is_active !== undefined ? p.is_active : true),
           }));
 
-          if (typeof localStorage !== 'undefined' && Array.isArray(c.pipelines) && c.pipelines.length > 0) {
+          if (typeof localStorage !== 'undefined' && normalizedPipelines.length > 0) {
             try {
               localStorage.setItem(`S4_PIPELINES_${c.id}`, JSON.stringify(normalizedPipelines));
             } catch (e) {}
@@ -201,6 +205,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             sourceConfig: c.source_config || {},
             customConfig: c.custom_config || {},
             pipelines: normalizedPipelines,
+            agents: normalizedPipelines,
             team_members: (c.team_members && c.team_members.length > 0) ? c.team_members : (defaultMatch?.team_members || []),
             blueprints: (c.blueprints && c.blueprints.length > 0) ? c.blueprints : (defaultMatch?.blueprints || [
               { title: 'Source Ingestion', desc: `Ingest via ${c.source_type || 'Google Drive'}`, status: 'active' },
@@ -374,6 +379,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return {
           ...c,
           pipelines: pipes,
+          agents: pipes,
           workflowsCount: pipes.length,
         };
       });
@@ -384,7 +390,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return next;
     });
-    return { success: true, message: 'Pipeline stream deleted successfully.' };
+    return { success: true, message: 'Agent deleted successfully.' };
   };
 
   const savePipeline = async (clientId: string, pipelineData: any): Promise<any[]> => {
@@ -395,7 +401,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updatedPipelines = res;
       }
     } catch (err) {
-      console.warn('Backend save pipeline notice:', err);
+      console.warn('Backend save agent notice:', err);
     }
 
     if (!updatedPipelines || updatedPipelines.length === 0) {
@@ -423,6 +429,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return {
           ...c,
           pipelines: updatedPipelines,
+          agents: updatedPipelines,
           workflowsCount: updatedPipelines.length,
         };
       });
@@ -442,7 +449,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!target) return { success: false, message: 'Client not found.' };
 
     if (target.pipelines && target.pipelines.length > 0) {
-      throw new Error(`Cannot delete organisation '${target.name}' because it contains ${target.pipelines.length} active pipeline stream(s). Delete all pipelines first.`);
+      throw new Error(`Cannot delete organisation '${target.name}' because it contains ${target.pipelines.length} active agent(s). Delete all agents first.`);
     }
 
     try {
@@ -480,6 +487,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return {
           ...c,
           pipelines: pipes,
+          agents: pipes,
         };
       });
       if (typeof localStorage !== 'undefined') {
@@ -503,6 +511,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteClient,
         deletePipeline,
         savePipeline,
+        deleteAgent: deletePipeline,
+        saveAgent: savePipeline,
         updatePipelineLastRun,
         refreshClients,
         isSwitcherOpen,

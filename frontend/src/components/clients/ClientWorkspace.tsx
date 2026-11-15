@@ -36,7 +36,7 @@ export const ClientWorkspace: React.FC = () => {
         </div>
       )}
       {workspaceSubTab === 'requests' && <ClientRequestsTab />}
-      {workspaceSubTab === 'pipelines' && <ClientPipelinesTab />}
+      {(workspaceSubTab === 'pipelines' || workspaceSubTab === 'agents') && <ClientPipelinesTab />}
       {workspaceSubTab === 'settings' && <ClientSettingsTab />}
     </div>
   );

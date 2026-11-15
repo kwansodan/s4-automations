@@ -633,37 +633,53 @@ export async function updateClientIngestion(clientId: string, payload: { source_
   return handleResponse<any>(res, `Update ingestion for ${clientId}`);
 }
 
-export async function fetchClientPipelines(clientId: string): Promise<any[]> {
-  const res = await resilientFetch(`/api/clients/${clientId}/pipelines`, {
+export async function fetchClientAgents(clientId: string): Promise<any[]> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/agents`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<any[]>(res, `Fetch pipelines for ${clientId}`);
+  return handleResponse<any[]>(res, `Fetch agents for ${clientId}`);
 }
 
-export async function saveClientPipeline(clientId: string, pipelineData: any): Promise<any[]> {
-  const res = await resilientFetch(`/api/clients/${clientId}/pipelines`, {
+export async function saveClientAgent(clientId: string, agentData: any): Promise<any[]> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/agents`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(pipelineData),
+    body: JSON.stringify(agentData),
   });
-  return handleResponse<any[]>(res, `Save pipeline for ${clientId}`);
+  return handleResponse<any[]>(res, `Save agent for ${clientId}`);
 }
 
-export async function deleteClientPipeline(clientId: string, pipelineId: string): Promise<any[]> {
-  const res = await resilientFetch(`/api/clients/${clientId}/pipelines/${pipelineId}`, {
+export async function deleteClientAgent(clientId: string, agentId: string): Promise<any[]> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/agents/${agentId}`, {
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
-  return handleResponse<any[]>(res, `Delete pipeline ${pipelineId} for ${clientId}`);
+  return handleResponse<any[]>(res, `Delete agent ${agentId} for ${clientId}`);
 }
 
-export async function triggerClientPipeline(clientId: string, pipelineId: string, payload?: any): Promise<any> {
-  const res = await resilientFetch(`/api/clients/${clientId}/pipelines/${pipelineId}/trigger`, {
+export async function triggerClientAgent(clientId: string, agentId: string, payload?: any): Promise<any> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/agents/${agentId}/trigger`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload || {}),
   });
-  return handleResponse<any>(res, `Trigger pipeline ${pipelineId} for ${clientId}`);
+  return handleResponse<any>(res, `Trigger agent ${agentId} for ${clientId}`);
+}
+
+export async function fetchClientPipelines(clientId: string): Promise<any[]> {
+  return fetchClientAgents(clientId);
+}
+
+export async function saveClientPipeline(clientId: string, pipelineData: any): Promise<any[]> {
+  return saveClientAgent(clientId, pipelineData);
+}
+
+export async function deleteClientPipeline(clientId: string, pipelineId: string): Promise<any[]> {
+  return deleteClientAgent(clientId, pipelineId);
+}
+
+export async function triggerClientPipeline(clientId: string, pipelineId: string, payload?: any): Promise<any> {
+  return triggerClientAgent(clientId, pipelineId, payload);
 }
 
 export async function testClientIngestion(clientId: string): Promise<any> {
@@ -2887,6 +2903,185 @@ export async function bulkSaveCustomerMappings(
   });
   return handleResponse(res, 'Bulk Save Customer Mappings');
 }
+
+// -------------------------------------------------------------------------
+// Client Knowledge Base & Multi-Channel Agent Communications Endpoints
+// -------------------------------------------------------------------------
+
+export async function fetchClientKnowledge(
+  clientId: string,
+  params?: { category?: string; agentId?: string; activeOnly?: boolean; search?: string }
+): Promise<import('../types/client').ClientKnowledgeResponse> {
+  const query = new URLSearchParams();
+  if (params?.category) query.set('category', params.category);
+  if (params?.agentId) query.set('agent_id', params.agentId);
+  if (params?.activeOnly !== undefined) query.set('active_only', String(params.activeOnly));
+  if (params?.search) query.set('search', params.search);
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/knowledge${qs}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<import('../types/client').ClientKnowledgeResponse>(res, `Fetch knowledge base for ${clientId}`);
+}
+
+export async function saveClientKnowledgeEntry(
+  clientId: string,
+  payload: {
+    category: string;
+    rule_key: string;
+    rule_value: string;
+    natural_language_rule?: string;
+    agent_id?: string | null;
+    structured_data?: Record<string, any>;
+    source?: string;
+    confidence?: number;
+  }
+): Promise<{
+  success: boolean;
+  action: string;
+  entry: import('../types/client').ClientKnowledgeEntry;
+  summary: import('../types/client').ClientKnowledgeSummary;
+}> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/knowledge`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Save Client Knowledge Entry');
+}
+
+export async function teachClientKnowledge(
+  clientId: string,
+  payload: {
+    instruction_text: string;
+    agent_id?: string | null;
+    source?: string;
+  }
+): Promise<{
+  success: boolean;
+  learned_count: number;
+  learned_rules: Array<any>;
+  summary: import('../types/client').ClientKnowledgeSummary;
+}> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/knowledge/teach`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Teach Client Knowledge');
+}
+
+export async function toggleClientKnowledgeEntry(
+  clientId: string,
+  entryId: number,
+  isActive: boolean
+): Promise<{
+  success: boolean;
+  entry: import('../types/client').ClientKnowledgeEntry;
+  summary: import('../types/client').ClientKnowledgeSummary;
+}> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/knowledge/${entryId}/toggle`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  return handleResponse(res, 'Toggle Knowledge Entry');
+}
+
+export async function deleteClientKnowledgeEntry(
+  clientId: string,
+  entryId: number
+): Promise<{
+  success: boolean;
+  deleted_id: number;
+  summary: import('../types/client').ClientKnowledgeSummary;
+}> {
+  const res = await resilientFetch(`/api/v1/clients/${clientId}/knowledge/${entryId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Delete Knowledge Entry');
+}
+
+export async function fetchAgentMessages(
+  clientId: string,
+  agentId: string,
+  channel?: string
+): Promise<{
+  client_id: string;
+  agent_id: string;
+  count: number;
+  messages: import('../types/client').AgentMessageItem[];
+}> {
+  const qs = channel && channel !== 'ALL' ? `?channel=${encodeURIComponent(channel)}` : '';
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/${agentId}/messages${qs}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, `Fetch messages for agent ${agentId}`);
+}
+
+export async function sendAgentMessage(
+  clientId: string,
+  agentId: string,
+  payload: {
+    message: string;
+    channel?: 'IN_APP' | 'EMAIL' | 'WHATSAPP';
+    sender_address?: string;
+    subject?: string;
+    dispatch_external?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  client_id: string;
+  client_name: string;
+  agent_id: string;
+  agent_name: string;
+  agent_email: string;
+  channel: string;
+  inbound_message: import('../types/client').AgentMessageItem;
+  outbound_message: import('../types/client').AgentMessageItem;
+  reply_text: string;
+  learned_rules: Array<any>;
+  clarifications_updated: number;
+}> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/${agentId}/message`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Send message to agent ${agentId}`);
+}
+
+export async function fetchTenantWhatsAppConfig(
+  clientId: string
+): Promise<import('../types/client').TenantWhatsAppConfig> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/whatsapp-config`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<import('../types/client').TenantWhatsAppConfig>(res, `Fetch WhatsApp config for ${clientId}`);
+}
+
+export async function saveTenantWhatsAppConfig(
+  clientId: string,
+  payload: {
+    whatsapp_mode: 'platform_shared' | 'dedicated_meta' | 'dedicated_twilio';
+    whatsapp_phone_number?: string;
+    whatsapp_phone_number_id?: string;
+    whatsapp_waba_id?: string;
+    whatsapp_access_token?: string;
+    whatsapp_verify_token?: string;
+    twilio_account_sid?: string;
+    twilio_auth_token?: string;
+  }
+): Promise<import('../types/client').TenantWhatsAppConfig & { success: boolean }> {
+  const res = await resilientFetch(`/api/v1/agents/${clientId}/whatsapp-config`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Save WhatsApp config for ${clientId}`);
+}
+
 
 
 
