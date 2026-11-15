@@ -25,14 +25,37 @@ def test_find_best_matching_item(sample_zoho_items):
 
 @pytest.mark.asyncio
 async def test_extract_slip_data_mock(sample_zoho_items):
-    ocr = GeminiOCRService()
-    extraction = await ocr.extract_slip_data(
-        file_bytes=b"mock-content",
-        mime_type="image/jpeg",
-        file_name="slip_001.jpg",
-        client_name="Luxwood",
-        item_catalog=sample_zoho_items,
-    )
+    import json
+    from unittest.mock import patch, MagicMock
+    ocr = GeminiOCRService(api_key="test_gemini_key_123")
+    mock_genai_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "file_name": "slip_001.jpg",
+        "client_name": "Luxwood",
+        "slip_date": "2026-08-15",
+        "slip_type": "DELIVERY",
+        "items": [
+            {
+                "raw_item_name": "Bed Sheet Double",
+                "matched_name": "Bed Sheet (Double / King)",
+                "zoho_item_id": "item_bed_sheet_dbl",
+                "quantity": 10,
+                "pieces_delivered": 10,
+                "confidence": "HIGH",
+            }
+        ],
+    })
+    mock_genai_client.models.generate_content.return_value = mock_response
+
+    with patch("google.genai.Client", return_value=mock_genai_client):
+        extraction = await ocr.extract_slip_data(
+            file_bytes=b"mock-content",
+            mime_type="image/jpeg",
+            file_name="slip_001.jpg",
+            client_name="Luxwood",
+            item_catalog=sample_zoho_items,
+        )
 
     assert extraction.file_name == "slip_001.jpg"
     assert extraction.client_name == "Luxwood"

@@ -1,12 +1,15 @@
 """Microsoft OneDrive & SharePoint Connector via Microsoft Graph API."""
+from __future__ import annotations
 
 import httpx
 import urllib.parse
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from app.config import settings
-from app.strategies.base import SourceDocument, SourceType
 from app.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from app.strategies.base import SourceDocument, SourceType
 
 logger = get_logger("onedrive_service")
 
@@ -208,6 +211,7 @@ class OneDriveService:
             return []
 
         headers = {"Authorization": f"Bearer {token}"}
+        from app.strategies.base import SourceDocument, SourceType
         documents: List[SourceDocument] = []
 
         try:

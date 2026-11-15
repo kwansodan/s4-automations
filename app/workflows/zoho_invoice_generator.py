@@ -288,8 +288,9 @@ async def run_zoho_invoices_core(
                                 tenant_custom_config = dict(t_obj.custom_config or {})
                                 tenant_db_id = t_obj.id
 
+                    is_live = bool(zoho.org_id and zoho.refresh_token and not settings.MOCK_MODE)
                     contact_id = items[0].get("zoho_contact_id")
-                    if not contact_id or not str(contact_id).strip().isdigit():
+                    if not contact_id or (is_live and not str(contact_id).strip().isdigit()):
                         contact_id = ""
 
                     # Check customer_mappings registry in tenant configuration (case-insensitive)
@@ -297,20 +298,20 @@ async def run_zoho_invoices_core(
                         mappings = tenant_custom_config.get("customer_mappings", {})
                         if customer_name in mappings:
                             cand = mappings[customer_name].get("zoho_contact_id")
-                            if cand and str(cand).strip().isdigit():
+                            if cand and (not is_live or str(cand).strip().isdigit()):
                                 contact_id = str(cand).strip()
                         if not contact_id:
                             c_lower = customer_name.strip().lower()
                             for m_key, m_val in mappings.items():
                                 if m_key.strip().lower() == c_lower:
                                     cand = m_val.get("zoho_contact_id")
-                                    if cand and str(cand).strip().isdigit():
+                                    if cand and (not is_live or str(cand).strip().isdigit()):
                                         contact_id = str(cand).strip()
                                         break
 
                     if not contact_id:
                         contact = zoho.find_contact_by_name(customer_name)
-                        if contact and str(contact.contact_id).strip().isdigit():
+                        if contact and (not is_live or str(contact.contact_id).strip().isdigit()):
                             contact_id = str(contact.contact_id).strip()
 
                     if not contact_id:
@@ -385,7 +386,7 @@ async def run_zoho_invoices_core(
 
                         if sku_key not in sku_groups:
                             sku_groups[sku_key] = {
-                                "zoho_item_id": str(raw_sku_id).strip() if (raw_sku_id and str(raw_sku_id).strip().isdigit()) else "",
+                                "zoho_item_id": str(raw_sku_id).strip() if (raw_sku_id and (not is_live or str(raw_sku_id).strip().isdigit())) else "",
                                 "name": item_name,
                                 "unit_rate": float(item.get("unit_rate", 0.0)),
                                 "total_qty": 0,
@@ -411,14 +412,14 @@ async def run_zoho_invoices_core(
                                 desc += f" (Unreturned loss discrepancy: {sku_data['total_loss']} pcs)"
 
                         resolved_item_id = sku_data.get("zoho_item_id", "")
-                        if not resolved_item_id or not str(resolved_item_id).isdigit():
+                        if not resolved_item_id or (is_live and not str(resolved_item_id).isdigit()):
                             custom_item_mappings = (tenant_obj.custom_config or {}).get("item_mappings", {}) if tenant_obj else {}
                             mapped_sku_id = custom_item_mappings.get(sku_data["name"]) or custom_item_mappings.get(sku_key)
-                            if mapped_sku_id and (str(mapped_sku_id).isdigit() or str(mapped_sku_id).startswith("item_")):
+                            if mapped_sku_id and (not is_live or str(mapped_sku_id).isdigit() or str(mapped_sku_id).startswith("item_")):
                                 resolved_item_id = str(mapped_sku_id)
                             else:
                                 matched_item = zoho.find_item_by_name(sku_data["name"])
-                                if matched_item and str(matched_item.item_id).isdigit():
+                                if matched_item and (not is_live or str(matched_item.item_id).isdigit() or str(matched_item.item_id).startswith("item_")):
                                     resolved_item_id = str(matched_item.item_id)
                                 else:
                                     resolved_item_id = ""

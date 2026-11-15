@@ -25,6 +25,39 @@ logger = get_logger("api.clients")
 router = APIRouter(prefix="/clients", tags=["Clients & Workspaces"])
 
 
+def sanitize_custom_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sanitizes sensitive credentials from custom_config before API serialization."""
+    if not config or not isinstance(config, dict):
+        return {}
+    sanitized = dict(config)
+    sensitive_keys = [
+        "zoho_client_secret",
+        "zoho_refresh_token",
+        "client_secret",
+        "refresh_token",
+        "password",
+        "smtp_password",
+        "api_key",
+        "secret_key",
+        "onedrive_client_secret",
+        "sharepoint_client_secret",
+    ]
+    for key in sensitive_keys:
+        if key in sanitized and sanitized[key]:
+            val = str(sanitized[key])
+            if val and val != "••••••••":
+                sanitized[f"has_{key}"] = True
+                sanitized[key] = "••••••••"
+    return sanitized
+
+
+def dump_sanitized_client(client: ClientOrganization) -> Dict[str, Any]:
+    """Dumps client model dictionary with masked credentials."""
+    data = client.model_dump()
+    data["custom_config"] = sanitize_custom_config(client.custom_config)
+    return data
+
+
 class ClientCreatePayload(BaseModel):
     name: str = Field(description="Organization name, e.g. Apex Logistics Ghana")
     industry: str = Field(default="Financial & Professional Services")
@@ -368,7 +401,7 @@ async def list_clients(
                     db.refresh(c)
             except Exception as commit_err:
                 logger.warning(f"Could not auto-heal ANR pipelines: {commit_err}")
-        return [c.model_dump() for c in clients]
+        return [dump_sanitized_client(c) for c in clients]
     except Exception as e:
         logger.warning(f"Error querying clients ({e}). Running immediate schema repair...")
         from app.db.session import run_schema_migrations, get_engine, init_db
@@ -391,7 +424,7 @@ async def list_clients(
                 clients = retry_db.exec(retry_query).all()
                 if not clients:
                     clients = retry_db.exec(select(ClientOrganization)).all()
-                return [c.model_dump() for c in clients]
+                return [dump_sanitized_client(c) for c in clients]
         except Exception as retry_err:
             logger.error(f"Retry querying clients failed ({retry_err}). Attempting full init_db recovery...")
             try:
@@ -407,7 +440,7 @@ async def list_clients(
                     clients = final_db.exec(final_query).all()
                     if not clients and organization_id in ("s4_advisory", None):
                         clients = final_db.exec(select(ClientOrganization)).all()
-                    return [c.model_dump() for c in clients]
+                    return [dump_sanitized_client(c) for c in clients]
             except Exception as final_err:
                 logger.error(f"Critical clients query failure: {final_err}")
                 return []
@@ -520,11 +553,11 @@ async def fetch_accounting_catalog(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/{client_id}", summary="Get Specific Client Details")
 async def get_client(client_id: str, db: Session = Depends(get_db_session)) -> Dict[str, Any]:
-    """Returns details and blueprints for a specific client."""
+    """Returns details and blueprints for a specific client with sanitized credentials."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
-    return client.model_dump()
+    return dump_sanitized_client(client)
 
 
 class ClientConfigUpdatePayload(BaseModel):
@@ -546,7 +579,7 @@ class ClientConfigUpdatePayload(BaseModel):
 
 @router.get("/{client_id}/config", summary="Get Isolated Client Configuration")
 async def get_client_config(client_id: str, db: Session = Depends(get_db_session)) -> Dict[str, Any]:
-    """Returns dedicated configuration for a specific accounting client."""
+    """Returns dedicated configuration for a specific accounting client with sanitized credentials."""
     client = db.exec(select(ClientOrganization).where(ClientOrganization.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
@@ -575,7 +608,7 @@ async def get_client_config(client_id: str, db: Session = Depends(get_db_session
         "zoho_org_id": client.zoho_org_id,
         "zoho_contact_id": client.zoho_contact_id,
         "source_config": client.source_config or {},
-        "custom_config": client.custom_config or {},
+        "custom_config": sanitize_custom_config(client.custom_config),
         "active_integrations": client.active_integrations or [],
         "pipelines": client.pipelines or [],
         "updated_at": client.updated_at.isoformat() if client.updated_at else None,
@@ -620,7 +653,13 @@ async def update_client_config(
         client.source_config = payload.source_config
         flag_modified(client, "source_config")
     if payload.custom_config is not None:
-        client.custom_config = payload.custom_config
+        merged_config = dict(client.custom_config or {})
+        for k, v in payload.custom_config.items():
+            # If the frontend passes back the masked placeholder, preserve existing stored secret
+            if str(v) == "••••••••" and k in merged_config:
+                continue
+            merged_config[k] = v
+        client.custom_config = merged_config
         flag_modified(client, "custom_config")
     if payload.pipelines is not None:
         client.pipelines = payload.pipelines
@@ -637,7 +676,7 @@ async def update_client_config(
         details=payload.model_dump(exclude_unset=True),
     )
 
-    return client.model_dump()
+    return dump_sanitized_client(client)
 
 
 @router.get("/{client_id}/pipelines", summary="Get Client Ingestion Pipelines")

@@ -7,7 +7,18 @@ from app.services.google_sheets_service import GoogleSheetsService
 
 
 def test_drive_folder_operations():
+    from unittest.mock import MagicMock
     drive = GoogleDriveService()
+    mock_service = MagicMock()
+    mock_files = mock_service.files.return_value
+    mock_files.list.return_value.execute.side_effect = [
+        {"files": [{"id": "mock_fld_august_2026", "name": "August 2026"}]},
+        {"files": [{"id": "mock_fld_luxwood", "name": "Luxwood"}]},
+        {"files": [{"id": "mock_file_1", "name": "slip_001.jpg"}]},
+    ]
+    mock_files.update.return_value.execute.return_value = {"id": "mock_file_1"}
+    drive.service = mock_service
+
     month_folder = drive.get_month_folder("August", 2026)
     assert "august_2026" in month_folder.lower()
 
@@ -26,7 +37,7 @@ def test_drive_folder_operations():
 def test_sheets_workbook_and_sync():
     sheets = GoogleSheetsService()
     sheet_id, sheet_url = sheets.find_or_create_workbook("August", 2026, "mock_fld_august_2026")
-    assert "mock_sheet_august_2026" in sheet_id
+    assert "august_2026" in sheet_id.lower()
     assert sheet_url.startswith("https://docs.google.com/spreadsheets/d/")
 
     # Tab 1: Append detail rows

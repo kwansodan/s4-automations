@@ -87,9 +87,11 @@ async def test_daily_billing_pipeline_workflow(monkeypatch):
         ClientFolderInfo(client_name="Kwarleyz", client_slug="anr_group", folder_id="fld_4", processed_folder_id="fld_4_proc"),
         ClientFolderInfo(client_name="Number One", client_slug="anr_group", folder_id="fld_5", processed_folder_id="fld_5_proc"),
     ]
+    unique_fid = f"file_{uuid.uuid4().hex[:6]}"
+    unique_fname = f"slip_{uuid.uuid4().hex[:6]}.jpg"
     mock_drive.find_or_create_folder.return_value = "mock_proc_fld"
     mock_drive.list_unprocessed_slips.return_value = [
-        {"id": "file_1", "name": "slip_1.jpg", "webViewLink": "https://drive.google.com/1"}
+        {"id": unique_fid, "name": unique_fname, "webViewLink": "https://drive.google.com/1"}
     ]
     mock_drive.download_file_bytes.return_value = (b"fake_bytes", "image/jpeg")
     mock_drive.archive_file.return_value = True
@@ -97,7 +99,7 @@ async def test_daily_billing_pipeline_workflow(monkeypatch):
     mock_ocr = MagicMock()
     mock_ocr.extract_slip_data = AsyncMock(
         return_value=OCRSlipExtraction(
-            file_name="slip_1.jpg",
+            file_name=unique_fname,
             client_name="Luxwood",
             slip_date="15/08/2026",
             items=[

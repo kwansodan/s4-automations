@@ -228,7 +228,7 @@ async def get_dashboard_stats(month: Optional[str] = None, year: Optional[int] =
     }
 
 
-@router.get("/audit", summary="Comprehensive System Configuration & Placeholder Audit")
+@router.get("/config/audit", summary="Comprehensive System Configuration & Placeholder Audit")
 async def run_system_audit() -> Dict[str, Any]:
     """
     Performs a deep diagnostic audit of all database records, client organizations,
@@ -356,7 +356,7 @@ async def run_system_audit() -> Dict[str, Any]:
     return audit_report
 
 
-@router.post("/audit/repair", summary="1-Click Auto-Remediation & Placeholder Scrub")
+@router.post("/config/audit/repair", summary="1-Click Auto-Remediation & Placeholder Scrub")
 async def repair_system_placeholders() -> Dict[str, Any]:
     """
     Scans and automatically repairs all legacy dummy placeholder folder IDs in the database,

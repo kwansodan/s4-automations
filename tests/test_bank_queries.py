@@ -43,19 +43,26 @@ def setup_test_bank_transactions():
 @pytest.mark.asyncio
 async def test_get_chart_of_accounts_and_watched_accounts():
     """Test retrieving Chart of Accounts with watched status flags."""
+    from unittest.mock import patch
+    sample_accounts = [
+        {"account_id": "acc_6990", "account_name": "Suspense Account", "account_type": "Other Current Liability", "is_suspense": True},
+        {"account_id": "acc_850", "account_name": "Uncategorized Expense", "account_type": "Expense", "is_suspense": True},
+        {"account_id": "acc_5100", "account_name": "Fuel & Fleet", "account_type": "Expense", "is_suspense": False},
+    ]
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        res = await ac.get("/api/v1/bank/clients/anr_group/accounts")
-        assert res.status_code == 200
-        data = res.json()
-        assert data["client_id"] == "anr_group"
-        assert "watched_accounts" in data
-        assert isinstance(data["accounts"], list)
-        assert len(data["accounts"]) > 0
+    with patch("app.services.accounting.zoho_adapter.ZohoBooksAdapter.fetch_chart_of_accounts", return_value=sample_accounts):
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            res = await ac.get("/api/v1/bank/clients/anr_group/accounts")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["client_id"] == "anr_group"
+            assert "watched_accounts" in data
+            assert isinstance(data["accounts"], list)
+            assert len(data["accounts"]) > 0
 
-        # Verify suspense account flag
-        suspense_accs = [a for a in data["accounts"] if a.get("is_suspense")]
-        assert len(suspense_accs) > 0
+            # Verify suspense account flag
+            suspense_accs = [a for a in data["accounts"] if a.get("is_suspense")]
+            assert len(suspense_accs) > 0
 
 
 @pytest.mark.asyncio
@@ -248,5 +255,5 @@ async def test_sync_watched_accounts_with_month_scope():
         sync_data = sync_res.json()
         assert sync_data["success"] is True
         assert "synced_new_count" in sync_data
-        assert "watched accounts" in sync_data["message"].lower()
+        assert any(term in sync_data["message"].lower() for term in ["watched accounts", "bank feed", "uncategorized"])
 

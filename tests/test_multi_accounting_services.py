@@ -40,23 +40,38 @@ async def test_accounting_adapter_factory_resolution():
     assert sage_adapter.platform_name == "Sage Business Cloud"
 
 
+sample_qbo_customers = [
+    {"contact_id": "QBO_CUST_101", "contact_name": "Kempinski Hotel Gold Coast City", "company_name": "Kempinski", "email": "finance@kempinski.com", "phone": "+233240000000", "currency": "GHS"}
+]
+sample_qbo_items = [
+    {"item_id": "QBO_ITEM_01", "name": "Bedsheet Washing Service", "description": "Commercial Linen Wash", "rate": 25.0, "sku": "BEDSHEET-01", "account_code": "4000"}
+]
+sample_xero_contacts = [
+    {"contact_id": "XERO_CONT_01", "contact_name": "Movenpick Ambassador Hotel", "company_name": "Movenpick", "email": "accounts@movenpick.com", "phone": "+233241111111", "currency": "GHS"}
+]
+sample_xero_items = [
+    {"item_id": "XERO_ITEM_01", "name": "Duvet Cover Laundering", "rate": 35.0, "sku": "DUVET-01", "account_code": "200"}
+]
+
+
 @pytest.mark.asyncio
 async def test_quickbooks_adapter_lifecycle():
     """Verify QuickBooks adapter customer sync, item catalog sync, invoice posting and bills."""
+    from unittest.mock import patch
     adapter = QuickBooksAdapter(
         client_id="anr_ghana",
         config={"accounting_org_id": "9341452891048201", "is_sandbox": True},
     )
 
-    # Fetch contacts
-    contacts = await adapter.fetch_contacts("customer")
-    assert len(contacts) > 0
-    assert any("Kempinski" in c.contact_name for c in contacts)
+    with patch.object(adapter.qbo, "fetch_customers", return_value=sample_qbo_customers), \
+         patch.object(adapter.qbo, "fetch_items", return_value=sample_qbo_items):
+        contacts = await adapter.fetch_contacts("customer")
+        assert len(contacts) > 0
+        assert any("Kempinski" in c.contact_name for c in contacts)
 
-    # Fetch item catalog
-    items = await adapter.fetch_item_catalog()
-    assert len(items) > 0
-    assert any("Bedsheet" in i.name for i in items)
+        items = await adapter.fetch_item_catalog()
+        assert len(items) > 0
+        assert any("Bedsheet" in i.name for i in items)
 
     # Post invoice
     inv_res = await adapter.post_invoice({
@@ -91,20 +106,21 @@ async def test_quickbooks_adapter_lifecycle():
 @pytest.mark.asyncio
 async def test_xero_adapter_lifecycle():
     """Verify Xero adapter contact sync, item catalog sync, invoice posting and bills."""
+    from unittest.mock import patch
     adapter = XeroAdapter(
         client_id="apex_ghana",
         config={"accounting_org_id": "xero_tenant_accra_01"},
     )
 
-    # Fetch contacts
-    contacts = await adapter.fetch_contacts("customer")
-    assert len(contacts) > 0
-    assert any("Movenpick" in c.contact_name for c in contacts)
+    with patch.object(adapter.xero, "fetch_contacts", return_value=sample_xero_contacts), \
+         patch.object(adapter.xero, "fetch_items", return_value=sample_xero_items):
+        contacts = await adapter.fetch_contacts("customer")
+        assert len(contacts) > 0
+        assert any("Movenpick" in c.contact_name for c in contacts)
 
-    # Fetch item catalog
-    items = await adapter.fetch_item_catalog()
-    assert len(items) > 0
-    assert any("Duvet Cover" in i.name for i in items)
+        items = await adapter.fetch_item_catalog()
+        assert len(items) > 0
+        assert any("Duvet Cover" in i.name for i in items)
 
     # Post ACCREC Invoice
     inv_res = await adapter.post_invoice({
@@ -129,37 +145,42 @@ async def test_xero_adapter_lifecycle():
 @pytest.mark.asyncio
 async def test_api_fetch_accounting_catalog_endpoint():
     """Verify POST /api/v1/clients/accounting/fetch-catalog across all platforms."""
+    from unittest.mock import patch
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # 1. Probe QuickBooks Online
-        qbo_resp = await ac.post(
-            "/api/v1/clients/accounting/fetch-catalog",
-            json={"software": "quickbooks_online", "org_id": "9341452891048201"},
-        )
-        assert qbo_resp.status_code == 200
-        qbo_data = qbo_resp.json()
-        assert qbo_data["software"] == "quickbooks_online"
-        assert qbo_data["is_live"] is True
-        assert len(qbo_data["contacts"]) > 0
-        assert len(qbo_data["items"]) > 0
+    with patch.object(QuickBooksService, "fetch_customers", return_value=sample_qbo_customers), \
+         patch.object(QuickBooksService, "fetch_items", return_value=sample_qbo_items), \
+         patch.object(XeroService, "fetch_contacts", return_value=sample_xero_contacts), \
+         patch.object(XeroService, "fetch_items", return_value=sample_xero_items):
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            # 1. Probe QuickBooks Online
+            qbo_resp = await ac.post(
+                "/api/v1/clients/accounting/fetch-catalog",
+                json={"software": "quickbooks_online", "org_id": "9341452891048201"},
+            )
+            assert qbo_resp.status_code == 200
+            qbo_data = qbo_resp.json()
+            assert qbo_data["software"] == "quickbooks_online"
+            assert qbo_data["is_live"] is True
+            assert len(qbo_data["contacts"]) > 0
+            assert len(qbo_data["items"]) > 0
 
-        # 2. Probe Xero
-        xero_resp = await ac.post(
-            "/api/v1/clients/accounting/fetch-catalog",
-            json={"software": "xero", "org_id": "xero_tenant_accra_01"},
-        )
-        assert xero_resp.status_code == 200
-        xero_data = xero_resp.json()
-        assert xero_data["software"] == "xero"
-        assert xero_data["is_live"] is True
-        assert len(xero_data["contacts"]) > 0
+            # 2. Probe Xero
+            xero_resp = await ac.post(
+                "/api/v1/clients/accounting/fetch-catalog",
+                json={"software": "xero", "org_id": "xero_tenant_accra_01"},
+            )
+            assert xero_resp.status_code == 200
+            xero_data = xero_resp.json()
+            assert xero_data["software"] == "xero"
+            assert xero_data["is_live"] is True
+            assert len(xero_data["contacts"]) > 0
 
-        # 3. Probe Zoho Books
-        zoho_resp = await ac.post(
-            "/api/v1/clients/accounting/fetch-catalog",
-            json={"software": "zoho_books", "org_id": "782910482"},
-        )
-        assert zoho_resp.status_code == 200
-        zoho_data = zoho_resp.json()
-        assert zoho_data["software"] == "zoho_books"
-        assert zoho_data["is_live"] is True
+            # 3. Probe Zoho Books
+            zoho_resp = await ac.post(
+                "/api/v1/clients/accounting/fetch-catalog",
+                json={"software": "zoho_books", "org_id": "782910482"},
+            )
+            assert zoho_resp.status_code == 200
+            zoho_data = zoho_resp.json()
+            assert zoho_data["software"] == "zoho_books"
+            assert zoho_data["is_live"] is True

@@ -23,15 +23,22 @@ def test_dashboard_ui_endpoint():
 
 
 
+from unittest.mock import patch, AsyncMock, MagicMock
+
+
 def test_zoho_catalog_endpoint():
-    response = client.get("/api/catalog")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["contacts_count"] > 0
-    assert data["items_count"] > 0
-
-
-from unittest.mock import patch, AsyncMock
+    from app.models.schemas import ZohoContact, ZohoItem
+    mock_instance = MagicMock()
+    mock_instance.org_id = "test_org"
+    mock_instance.refresh_token = "test_refresh"
+    mock_instance.fetch_active_contacts = AsyncMock(return_value=[ZohoContact(contact_id="cnt_1", contact_name="Luxwood")])
+    mock_instance.fetch_item_catalog = AsyncMock(return_value=[ZohoItem(item_id="item_1", name="Bed Sheet Dbl", rate=18.5)])
+    with patch("app.api.v1.catalog.ZohoBooksService.from_client_id", return_value=mock_instance):
+        response = client.get("/api/catalog?client_id=anr_group")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["contacts_count"] > 0
+        assert data["items_count"] > 0
 
 
 def test_trigger_pipeline_endpoint():
@@ -81,22 +88,30 @@ def test_config_connections_endpoint():
 
 
 def test_sheets_review_data_endpoint():
-    res = client.get("/api/sheets/data?month=August&year=2026")
-    assert res.status_code == 200
-    data = res.json()
-    assert "daily_details" in data
-    assert "monthly_summary" in data
-    assert len(data["monthly_summary"]) > 0
+    with patch("app.services.google_sheets_service.GoogleSheetsService.fetch_sheets_review_data") as mock_fetch:
+        mock_fetch.return_value = {
+            "daily_details": [{"item": "Bed Sheet"}],
+            "monthly_summary": [{"item": "Bed Sheet", "total": 50}],
+        }
+        res = client.get("/api/sheets/data?month=August&year=2026")
+        assert res.status_code == 200
+        data = res.json()
+        assert "daily_details" in data
+        assert "monthly_summary" in data
+        assert len(data["monthly_summary"]) > 0
 
 
 def test_toggle_sheet_approval_endpoint():
-    res = client.post("/api/sheets/toggle-approval", json={
-        "row_index": 2,
-        "field": "approved",
-        "value": True,
-    })
-    assert res.status_code == 200
-    assert res.json()["status"] == "SUCCESS"
+    with patch("app.services.google_sheets_service.GoogleSheetsService.toggle_row_field") as mock_toggle:
+        mock_toggle.return_value = True
+        res = client.post("/api/sheets/toggle-approval", json={
+            "spreadsheet_id": "test_sheet_123",
+            "row_index": 2,
+            "field": "approved",
+            "value": True,
+        })
+        assert res.status_code == 200
+        assert res.json()["status"] == "SUCCESS"
 
 
 def test_dashboard_stats_endpoint():
@@ -127,7 +142,7 @@ def test_auth_otp_endpoints_flow():
     # 2. Extract active code from dev_hint
     dev_hint = res1.json().get("dev_hint")
     assert dev_hint is not None
-    active_code = dev_hint.split("Code logged to server: ")[1].strip()
+    active_code = dev_hint.replace("Code: ", "").replace("Code logged to server: ", "").strip()
 
     # 3. Verify OTP
     res2 = client.post("/api/auth/otp/verify", json={
@@ -141,10 +156,17 @@ def test_auth_otp_endpoints_flow():
     token = data2["access_token"]
 
     # 4. Check /api/auth/me with Bearer token
-    res3 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert res3.status_code == 200
-    assert res3.json()["authenticated"] is True
-    assert res3.json()["user"]["email"] == "s4bookkeeping@service4gh.com"
+    from app.main import app
+    from app.api.deps import require_admin_user
+    saved_override = app.dependency_overrides.pop(require_admin_user, None)
+    try:
+        res3 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert res3.status_code == 200
+        assert res3.json()["authenticated"] is True
+        assert res3.json()["user"]["email"] == "s4bookkeeping@service4gh.com"
+    finally:
+        if saved_override is not None:
+            app.dependency_overrides[require_admin_user] = saved_override
 
 
 

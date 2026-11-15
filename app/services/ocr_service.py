@@ -568,7 +568,9 @@ Return strictly valid JSON conforming to the schema.
                     item.unit_rate = 22.00
                 else:
                     item.unit_rate = 14.00
-                item.confidence_score = ConfidenceLevel.MEDIUM
+                item.confidence_score = ConfidenceLevel.LOW
+                if not item.remarks or "unmatched" not in item.remarks.lower():
+                    item.remarks = f"{item.remarks + '; ' if item.remarks else ''}Unmatched SKU"
 
             # Ensure loss qty calculation
             item.unreturned_loss_qty = item.pickup_qty - item.delivery_qty

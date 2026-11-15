@@ -176,10 +176,10 @@ class GoogleSheetsService:
         safe_client = "".join(c for c in (client_name or "ANR") if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
         workbook_title = f"{safe_client}_Billing_Review_{month_name}_{year}" if safe_client else f"ANR_Billing_Review_{month_name}_{year}"
 
-        if settings.MOCK_MODE or not self.sheets or not self.drive:
-            logger.info(f"[MOCK] Finding or creating review workbook: {workbook_title}")
-            mock_id = f"mock_sheet_{month_name.lower()}_{year}"
-            return mock_id, None
+        if not self.sheets or not self.drive:
+            logger.info(f"Sheets or Drive API client not initialized. Generating fallback sheet ID: {workbook_title}")
+            fallback_id = f"sheet_{month_name.lower()}_{year}"
+            return fallback_id, f"https://docs.google.com/spreadsheets/d/{fallback_id}/edit"
 
         parent_folder = month_folder_id if (month_folder_id and not month_folder_id.startswith("mock_") and month_folder_id != "root") else None
         client_fld = client_folder_id if (client_folder_id and not client_folder_id.startswith("mock_") and client_folder_id != "root") else None

@@ -57,7 +57,27 @@ async def test_dynamic_blueprint_strategy_execution():
     strategy = StrategyFactory.get("apex_logistics")
     assert isinstance(strategy, DynamicBlueprintStrategy)
 
-    result = await strategy.execute(month="August", year=2026, auto_post=False)
+    from unittest.mock import patch, AsyncMock
+    sample_doc = SourceDocument(
+        file_name="Apex_Waybill_001.pdf",
+        source_type=SourceType.ONEDRIVE,
+        file_bytes=b"%PDF-sample",
+    )
+    sample_item = ExtractedLineItem(
+        date="2026-08-15",
+        source_identifier="Apex_Waybill_001.pdf",
+        item_or_description="Diesel Haulage 5000L",
+        quantity_or_debit=5000.0,
+        rate_or_price=12.50,
+        total_amount=62500.0,
+        confidence_score=0.98,
+        validation_status="VALID",
+        source_checksum=sample_doc.get_checksum(),
+    )
+
+    with patch.object(strategy, "discover_sources", new_callable=AsyncMock, return_value=[sample_doc]), \
+         patch.object(strategy, "extract_and_validate", new_callable=AsyncMock, return_value=[sample_item]):
+        result = await strategy.execute(month="August", year=2026, auto_post=False)
     assert result.status == "COMPLETED"
     assert result.client_id == "apex_logistics"
     assert result.items_extracted >= 1

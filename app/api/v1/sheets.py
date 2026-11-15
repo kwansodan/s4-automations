@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.services.google_drive_service import GoogleDriveService
 from app.services.google_sheets_service import GoogleSheetsService

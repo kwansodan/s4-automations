@@ -40,6 +40,13 @@ def get_engine() -> Engine:
             candidate_urls.append(cleaned.replace("postgresql://", "postgresql+psycopg2://", 1))
         candidate_urls.append(cleaned)
 
+    # Fast-failover to SQLite when running within test environments
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING") == "True":
+        os.makedirs("data", exist_ok=True)
+        sqlite_url = "sqlite:///data/s4_automations_test.db" if os.environ.get("TESTING") else "sqlite:///data/s4_automations.db"
+        _engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+        return _engine
+
     import time
     for attempt in range(1, 4):
         for db_url in candidate_urls:
@@ -591,7 +598,7 @@ def get_db_session() -> Generator[Session, None, None]:
         except Exception as mig_err:
             logger.warning(f"Lazy schema migration notice: {mig_err}")
 
-    with Session(active_engine) as session:
+    with Session(active_engine, expire_on_commit=False) as session:
         yield session
 
 

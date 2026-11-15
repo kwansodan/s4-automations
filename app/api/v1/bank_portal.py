@@ -225,7 +225,7 @@ async def client_portal_request_otp(payload: PortalOtpRequest) -> Dict[str, Any]
         "client_id": client_org.id,
         "client_name": client_org.name,
         "expires_in_seconds": 900,
-        "dev_hint": f"OTP Code: {otp}" if (settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE) else None,
+        "dev_hint": f"OTP Code: {otp}" if (settings.ENVIRONMENT.lower() in ("development", "test") and settings.MOCK_MODE) else None,
     }
 
 

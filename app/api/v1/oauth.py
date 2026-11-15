@@ -4,8 +4,12 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import base64
 import json
+import hmac
+import hashlib
+import time
+import secrets
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
@@ -13,11 +17,92 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.db.session import get_engine
 from app.models.db_models import ClientOrganization
+from app.api.deps import require_admin_user, get_optional_user
 from app.utils.logging import get_logger
 
 logger = get_logger("oauth")
 
 router = APIRouter(prefix="/oauth", tags=["OAuth Authentication"])
+
+
+def generate_oauth_state(client_id: str) -> str:
+    """Generates a secure HMAC-signed, expiring state token for OAuth CSRF protection."""
+    timestamp = int(time.time())
+    nonce = secrets.token_hex(8)
+    secret = (settings.SECRET_KEY or "s4-automations-oauth-secret-key").encode("utf-8")
+    payload = f"{client_id}:{timestamp}:{nonce}"
+    signature = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw_token = f"{payload}:{signature}"
+    return base64.urlsafe_b64encode(raw_token.encode("utf-8")).decode("utf-8")
+
+
+def verify_oauth_state(state: str, max_age_seconds: int = 900) -> str:
+    """
+    Verifies the HMAC signature and timestamp of an OAuth state token.
+    Returns client_id if valid, or falls back to plain client_id if legacy state was passed.
+    Raises HTTPException(400) if signature is forged or token is expired.
+    """
+    if not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth state parameter.")
+    try:
+        decoded = base64.urlsafe_b64decode(state.encode("utf-8")).decode("utf-8")
+        parts = decoded.split(":")
+        if len(parts) == 4:
+            client_id, timestamp_str, nonce, signature = parts
+            timestamp = int(timestamp_str)
+            if time.time() - timestamp > max_age_seconds:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OAuth authorization session has expired. Please initiate connection again.",
+                )
+            secret = (settings.SECRET_KEY or "s4-automations-oauth-secret-key").encode("utf-8")
+            payload = f"{client_id}:{timestamp}:{nonce}"
+            expected_sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected_sig, signature):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or tampered OAuth state parameter (CSRF verification failed).",
+                )
+            return client_id
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+    # Backward compatibility fallback for legacy plain client slug states
+    return state
+
+
+def generate_confirm_token(client_id: str, org_id: str) -> str:
+    """Generates an ephemeral signed token allowing popup entity confirmation."""
+    timestamp = int(time.time())
+    secret = (settings.SECRET_KEY or "s4-automations-oauth-secret-key").encode("utf-8")
+    payload = f"{client_id}:{org_id}:{timestamp}"
+    signature = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw_token = f"{payload}:{signature}"
+    return base64.urlsafe_b64encode(raw_token.encode("utf-8")).decode("utf-8")
+
+
+def verify_confirm_token(token: Optional[str], client_id: str, org_id: str, max_age_seconds: int = 1800) -> bool:
+    """Verifies that an ephemeral confirmation token is authentic and unexpired."""
+    if not token:
+        return False
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        parts = decoded.split(":")
+        if len(parts) == 4:
+            t_client, t_org, timestamp_str, signature = parts
+            if t_client != client_id or t_org != org_id:
+                return False
+            timestamp = int(timestamp_str)
+            if time.time() - timestamp > max_age_seconds:
+                return False
+            secret = (settings.SECRET_KEY or "s4-automations-oauth-secret-key").encode("utf-8")
+            payload = f"{t_client}:{t_org}:{timestamp}"
+            expected_sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            return hmac.compare_digest(expected_sig, signature)
+    except Exception:
+        pass
+    return False
 
 
 def _resolve_base_url(request: Optional[Request]) -> str:
@@ -242,8 +327,9 @@ def _render_org_selection_html(
     for o in serialized_orgs:
         def_badge = '<span style="background: rgba(16,185,129,0.2); color: #34d399; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 9999px; border: 1px solid rgba(16,185,129,0.3);">★ Default</span>' if o["is_default"] else ""
         curr_text = f" • Currency: {o['currency']}" if o['currency'] else ""
+        c_token = generate_confirm_token(client_slug, o["org_id"])
         cards_html += f"""
-        <div class="org-card" onclick="selectOrg('{o['org_id']}', '{o['name']}')">
+        <div class="org-card" onclick="selectOrg('{o['org_id']}', '{o['name']}', '{c_token}')">
           <div style="flex: 1; min-width: 0;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
               <span style="font-size: 13px; font-weight: 700; color: #fff;">{o['name']}</span>
@@ -379,7 +465,7 @@ def _render_org_selection_html(
             <script>
               const availableOrgs = {orgs_json_str};
 
-              async function selectOrg(orgId, orgName) {{
+              async function selectOrg(orgId, orgName, confirmToken) {{
                 const btns = document.querySelectorAll('.btn-select');
                 btns.forEach(b => {{ b.disabled = true; b.innerText = 'Linking...'; }});
 
@@ -388,20 +474,20 @@ def _render_org_selection_html(
                   clientId: '{client_slug}',
                   orgId: orgId,
                   orgName: orgName,
-                  refreshToken: '{refresh_token}',
                   availableOrgs: availableOrgs
                 }};
 
-                // Immediately notify opener window so setup wizard receives entity selection
+                // Immediately notify opener window so setup wizard receives entity selection with strict origin
                 if (window.opener) {{
                   try {{
-                    window.opener.postMessage(postPayload, '*');
+                    const targetOrigin = window.location.origin;
+                    window.opener.postMessage(postPayload, targetOrigin);
                   }} catch (pErr) {{
                     console.warn('postMessage notice:', pErr);
                   }}
                 }}
 
-                // Persist selection to backend
+                // Persist selection to backend with HMAC confirm token
                 try {{
                   await fetch('/api/v1/oauth/zoho/confirm-org', {{
                     method: 'POST',
@@ -411,6 +497,7 @@ def _render_org_selection_html(
                       org_id: orgId,
                       org_name: orgName,
                       refresh_token: '{refresh_token}',
+                      confirm_token: confirmToken,
                       available_orgs: availableOrgs
                     }})
                   }});
@@ -648,8 +735,9 @@ async def get_zoho_authorize_url(
     client_id: str = Query(..., description="Client organization slug, e.g. anr_group or new_client_slug"),
     redirect_uri: Optional[str] = Query(None, description="Custom redirect URI override"),
     request: Request = None,
+    user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
-    """Generates the Zoho OAuth2 authorization consent URL for 1-Click tenant connection."""
+    """Generates the Zoho OAuth2 authorization consent URL for 1-Click tenant connection with CSRF state protection."""
     if not client_id or not client_id.strip():
         raise HTTPException(status_code=400, detail="client_id parameter is required.")
 
@@ -657,6 +745,7 @@ async def get_zoho_authorize_url(
     final_redirect_uri = redirect_uri.strip() if (redirect_uri and redirect_uri.strip()) else get_zoho_redirect_uri(request)
     accounts_url = settings.ZOHO_ACCOUNTS_URL.rstrip("/")
     scope = "ZohoBooks.fullaccess.all"
+    signed_state = generate_oauth_state(client_id.strip())
 
     auth_url = (
         f"{accounts_url}/oauth/v2/auth?"
@@ -666,7 +755,7 @@ async def get_zoho_authorize_url(
         f"access_type=offline&"
         f"prompt=consent&"
         f"redirect_uri={final_redirect_uri}&"
-        f"state={client_id}"
+        f"state={signed_state}"
     )
 
     return {
@@ -689,16 +778,17 @@ async def connect_zoho_direct(
     client_id: str = Query(..., description="Client organization slug"),
     redirect_uri: Optional[str] = Query(None, description="Custom redirect URI override"),
     request: Request = None,
+    user: Dict[str, Any] = Depends(require_admin_user),
 ):
     """Direct HTTP 302 redirect to Zoho OAuth consent screen."""
-    data = await get_zoho_authorize_url(client_id=client_id, redirect_uri=redirect_uri, request=request)
+    data = await get_zoho_authorize_url(client_id=client_id, redirect_uri=redirect_uri, request=request, user=user)
     return RedirectResponse(url=data["authorize_url"], status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/zoho/callback", response_class=HTMLResponse)
 async def zoho_oauth_callback(
     code: Optional[str] = Query(None),
-    state: Optional[str] = Query(None, description="Client organization slug passed in state"),
+    state: Optional[str] = Query(None, description="HMAC-signed client state parameter"),
     location: Optional[str] = Query(None, description="Zoho regional data center, e.g. eu, in, com, au, ca"),
     error: Optional[str] = Query(None),
     request: Request = None,
@@ -711,7 +801,8 @@ async def zoho_oauth_callback(
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing authorization code or state parameter.")
 
-    client_slug = state
+    # Verifies HMAC signature on state parameter to prevent CSRF attacks
+    client_slug = verify_oauth_state(state)
     redirect_uri = get_zoho_redirect_uri(request)
 
     org_id = None
@@ -832,12 +923,23 @@ class ZohoConfirmOrgRequest(BaseModel):
     org_id: str = Field(..., description="Selected Zoho organization ID")
     org_name: Optional[str] = Field(None, description="Selected Zoho organization name")
     refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
+    confirm_token: Optional[str] = Field(None, description="Ephemeral HMAC confirmation token from OAuth callback")
     available_orgs: Optional[List[Dict[str, Any]]] = Field(None, description="Discovered Zoho organization entities")
 
 
 @router.post("/zoho/confirm-org")
-async def confirm_zoho_org(payload: ZohoConfirmOrgRequest) -> Dict[str, Any]:
+async def confirm_zoho_org(
+    payload: ZohoConfirmOrgRequest,
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user),
+) -> Dict[str, Any]:
     """Persists user's chosen Zoho organization entity and refreshes client status."""
+    is_admin = bool(user and user.get("role") == "admin")
+    has_valid_token = verify_confirm_token(payload.confirm_token, payload.client_id, payload.org_id)
+    if not is_admin and not has_valid_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please provide a valid Bearer token or authorization confirmation token.",
+        )
     with Session(get_engine()) as session:
         client_obj = session.exec(
             select(ClientOrganization).where(
@@ -895,6 +997,7 @@ async def confirm_zoho_org(payload: ZohoConfirmOrgRequest) -> Dict[str, Any]:
 @router.get("/zoho/organizations")
 async def get_zoho_organizations(
     client_id: str = Query(..., description="Client organization slug"),
+    user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Retrieves all Zoho organization entities accessible to the client.
     First returns cached organizations from DB; if access token can be refreshed, refreshes live from Zoho API.
@@ -968,6 +1071,7 @@ async def get_zoho_organizations(
 @router.get("/zoho/status")
 async def get_zoho_connection_status(
     client_id: str = Query(..., description="Client organization slug"),
+    user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Returns the live Zoho Books OAuth connection status for a client organization."""
     with Session(get_engine()) as session:
@@ -982,16 +1086,33 @@ async def get_zoho_connection_status(
         cfg = client_obj.custom_config or {}
         has_refresh_token = bool(cfg.get("zoho_refresh_token") or settings.ZOHO_REFRESH_TOKEN)
         org_id = client_obj.zoho_org_id or cfg.get("accounting_org_id") or settings.ZOHO_ORG_ID
+        has_client_id = bool(cfg.get("zoho_client_id") or settings.ZOHO_CLIENT_ID)
+        has_client_secret = bool(cfg.get("zoho_client_secret") or settings.ZOHO_CLIENT_SECRET)
         org_name = cfg.get("zoho_org_name") or client_obj.name
         connected_at = cfg.get("zoho_connected_at")
         available_orgs = cfg.get("zoho_available_orgs", [])
 
         is_connected = bool(org_id and has_refresh_token)
+        can_transact = bool(org_id and has_refresh_token and has_client_id and has_client_secret)
+
+        missing_fields = []
+        if not org_id:
+            missing_fields.append("org_id")
+        if not has_refresh_token:
+            missing_fields.append("refresh_token")
+        if not has_client_id:
+            missing_fields.append("client_id")
+        if not has_client_secret:
+            missing_fields.append("client_secret")
 
         return {
             "client_id": client_obj.id,
             "platform": "zoho_books",
             "is_connected": is_connected,
+            "can_transact": can_transact,
+            "has_client_id": has_client_id,
+            "has_client_secret": has_client_secret,
+            "missing_fields": missing_fields,
             "org_id": org_id,
             "org_name": org_name,
             "connected_at": connected_at,
@@ -1003,6 +1124,7 @@ async def get_zoho_connection_status(
 @router.post("/zoho/disconnect")
 async def disconnect_zoho(
     client_id: str = Query(..., description="Client organization slug"),
+    user: Dict[str, Any] = Depends(require_admin_user),
 ) -> Dict[str, Any]:
     """Disconnects and revokes Zoho Books connection for a client organization."""
     with Session(get_engine()) as session:

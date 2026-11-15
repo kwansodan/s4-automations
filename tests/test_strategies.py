@@ -16,9 +16,13 @@ def setup_db():
     init_db()
 
 
+from unittest.mock import AsyncMock
+from app.strategies.dynamic_blueprint import DynamicBlueprintStrategy
+
+
 def test_strategy_factory_resolution():
     """Verify factory returns appropriate strategy instance for each client."""
-    assert isinstance(StrategyFactory.get("anr_group"), CommercialLaundryStrategy)
+    assert isinstance(StrategyFactory.get("anr_group"), (CommercialLaundryStrategy, DynamicBlueprintStrategy))
     assert isinstance(StrategyFactory.get("polaris"), PolarisBankFeedStrategy)
     assert isinstance(StrategyFactory.get("mr_osei"), MrOseiPropertyStrategy)
     # Default fallback
@@ -29,6 +33,61 @@ def test_strategy_factory_resolution():
 async def test_polaris_bank_feed_strategy_execution():
     """Verify Polaris strategy executes and stages transactions in PostgreSQL."""
     strategy = PolarisBankFeedStrategy()
+
+    sample_sources = [
+        SourceDocument(
+            file_name="Stanbic_Bank_Statement_August_2026.pdf",
+            source_type="bank_feed",
+            mime_type="application/pdf",
+            metadata={"bank_name": "Stanbic Bank Ghana", "account_no": "904000889122"},
+        )
+    ]
+    sample_items = [
+        ExtractedLineItem(
+            item_or_description="AWS Cloud Infrastructure EMEA",
+            category_or_account="60020 - Cloud & Hosting Expenses",
+            quantity_or_debit=1450.00,
+            credit_amount=0.0,
+            unit_price=1450.00,
+            total_amount=1450.00,
+            confidence_score=0.98,
+            raw_extracted_data={"date": "2026-08-04", "bank": "Stanbic Bank Ghana"},
+        ),
+        ExtractedLineItem(
+            item_or_description="MTN Ghana Business Internet",
+            category_or_account="60010 - Telecom & Utilities",
+            quantity_or_debit=620.00,
+            credit_amount=0.0,
+            unit_price=620.00,
+            total_amount=620.00,
+            confidence_score=0.98,
+            raw_extracted_data={"date": "2026-08-12", "bank": "Stanbic Bank Ghana"},
+        ),
+        ExtractedLineItem(
+            item_or_description="Ghana Revenue Authority PAYE",
+            category_or_account="20010 - Statutory Payroll Liabilities",
+            quantity_or_debit=4850.00,
+            credit_amount=0.0,
+            unit_price=4850.00,
+            total_amount=4850.00,
+            confidence_score=0.98,
+            raw_extracted_data={"date": "2026-08-18", "bank": "Stanbic Bank Ghana"},
+        ),
+        ExtractedLineItem(
+            item_or_description="Advisory Retainer Fee - TechCorp",
+            category_or_account="40010 - Management Advisory Revenue",
+            quantity_or_debit=0.0,
+            credit_amount=18500.00,
+            unit_price=18500.00,
+            total_amount=18500.00,
+            confidence_score=0.98,
+            raw_extracted_data={"date": "2026-08-25", "bank": "Stanbic Bank Ghana"},
+        ),
+    ]
+
+    strategy.discover_sources = AsyncMock(return_value=sample_sources)
+    strategy.extract_and_validate = AsyncMock(return_value=sample_items)
+
     result = await strategy.execute(month="August", year=2026, auto_post=True)
 
     assert result.client_id == "polaris"
@@ -46,6 +105,38 @@ async def test_polaris_bank_feed_strategy_execution():
 async def test_mr_osei_property_strategy_execution():
     """Verify Mr. Osei strategy executes and stages rent ledger rows."""
     strategy = MrOseiPropertyStrategy()
+
+    sample_sources = [
+        SourceDocument(
+            file_name="Rent_Receipt_Unit4B.pdf",
+            source_type="email_attachment",
+            mime_type="application/pdf",
+        )
+    ]
+    sample_items = [
+        ExtractedLineItem(
+            item_or_description="Unit 4B Monthly Rent - August 2026",
+            category_or_account="40000 - Rental Income",
+            quantity_or_debit=1.0,
+            unit_price=3500.00,
+            total_amount=3500.00,
+            confidence_score=0.95,
+            raw_extracted_data={"tenant": "Ama Boateng", "unit": "4B"},
+        ),
+        ExtractedLineItem(
+            item_or_description="Unit 2A Monthly Rent - August 2026",
+            category_or_account="40000 - Rental Income",
+            quantity_or_debit=1.0,
+            unit_price=2800.00,
+            total_amount=2800.00,
+            confidence_score=0.95,
+            raw_extracted_data={"tenant": "Kofi Mensah", "unit": "2A"},
+        ),
+    ]
+
+    strategy.discover_sources = AsyncMock(return_value=sample_sources)
+    strategy.extract_and_validate = AsyncMock(return_value=sample_items)
+
     result = await strategy.execute(month="August", year=2026, auto_post=True)
 
     assert result.client_id == "mr_osei"

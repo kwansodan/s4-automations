@@ -95,7 +95,7 @@ class AuthService:
             "message": f"A 6-digit verification code has been sent to {email}.",
             "email": cleaned_email,
             "expires_in_seconds": OTP_TTL_SECONDS,
-            "dev_hint": f"Code: {otp}" if (settings.ENVIRONMENT.lower() == "development" and settings.MOCK_MODE) else None,
+            "dev_hint": f"Code: {otp}" if (settings.ENVIRONMENT.lower() in ("development", "test") and settings.MOCK_MODE) else None,
         }
 
     @classmethod

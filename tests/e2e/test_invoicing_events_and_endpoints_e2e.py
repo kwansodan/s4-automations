@@ -130,9 +130,15 @@ def test_existing_draft_invoices_no_matches_returns_empty(auth_client: TestClien
 def test_existing_draft_invoices_requires_authentication():
     """F6: Unauthenticated request to /api/v1/invoices/existing returns 401."""
     from app.main import app
-    unauth_client = TestClient(app)
-    res = unauth_client.get("/api/v1/invoices/existing?client_id=commercial_laundry_tenant&month=August&year=2026")
-    assert res.status_code == 401
+    from app.api.deps import require_admin_user
+    saved = app.dependency_overrides.pop(require_admin_user, None)
+    try:
+        unauth_client = TestClient(app)
+        res = unauth_client.get("/api/v1/invoices/existing?client_id=commercial_laundry_tenant&month=August&year=2026")
+        assert res.status_code == 401
+    finally:
+        if saved is not None:
+            app.dependency_overrides[require_admin_user] = saved
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +194,13 @@ def test_existing_invoices_empty_month_parameter(auth_client: TestClient):
 def test_existing_invoices_invalid_token_rejected():
     """F6 (BVA): Malformed Bearer token is rejected with 401."""
     from app.main import app
-    bad_client = TestClient(app)
-    bad_client.headers.update({"Authorization": "Bearer totally_invalid_token_12345"})
-    res = bad_client.get("/api/v1/invoices/existing?client_id=commercial_laundry_tenant")
-    assert res.status_code == 401
+    from app.api.deps import require_admin_user
+    saved = app.dependency_overrides.pop(require_admin_user, None)
+    try:
+        bad_client = TestClient(app)
+        bad_client.headers.update({"Authorization": "Bearer totally_invalid_token_12345"})
+        res = bad_client.get("/api/v1/invoices/existing?client_id=commercial_laundry_tenant&month=August&year=2026")
+        assert res.status_code == 401
+    finally:
+        if saved is not None:
+            app.dependency_overrides[require_admin_user] = saved

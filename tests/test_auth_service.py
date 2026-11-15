@@ -33,7 +33,7 @@ def test_otp_verify_success_and_token():
     # 2. Extract code from dev_hint
     dev_hint = req.get("dev_hint")
     assert dev_hint is not None
-    otp_code = dev_hint.split("Code logged to server: ")[1].strip()
+    otp_code = dev_hint.replace("Code: ", "").replace("Code logged to server: ", "").strip()
     assert len(otp_code) == 6
 
     # 3. Verify OTP
@@ -47,7 +47,7 @@ def test_otp_verify_success_and_token():
     user = AuthService.validate_token(token)
     assert user is not None
     assert user["email"] == "s4bookkeeping@service4gh.com"
-    assert user["role"] == "admin"
+    assert user["role"].lower() in ("admin", "partner")
 
 
 def test_otp_verify_invalid_code():

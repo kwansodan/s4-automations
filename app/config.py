@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     # Authentication & Email OTP
     AUTH_EMAIL: str = Field(default="s4bookkeeping@service4gh.com", description="Admin login email for S4 Automations")
     AUTH_SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens")
+    SECRET_KEY: str = Field(default="s4-bookkeeping-otp-secret-key-2026", description="Secret key for signing auth tokens and OAuth state")
 
     # Mailjet & Email Dispatch Configuration
     MAILJET_API_KEY: Optional[str] = Field(default=None, description="Mailjet Public API Key")

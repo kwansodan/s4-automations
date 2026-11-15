@@ -31,10 +31,27 @@ def test_google_drive_month_aliases_generation():
 
 @pytest.mark.asyncio
 async def test_google_drive_multi_convention_discovery():
+    from unittest.mock import MagicMock
     drive = GoogleDriveService()
+    mock_service = MagicMock()
+    drive.service = mock_service
+
+    def list_side_effect(*args, **kwargs):
+        q = kwargs.get("q", "")
+        mock_exec = MagicMock()
+        if "root_test_folder" in q:
+            mock_exec.execute.return_value = {"files": [{"id": "m_aug_2026", "name": "August 2026", "mimeType": "application/vnd.google-apps.folder"}]}
+        elif "m_aug_2026" in q:
+            mock_exec.execute.return_value = {"files": [{"id": "c_luxwood", "name": "Luxwood Hotel", "mimeType": "application/vnd.google-apps.folder"}]}
+        elif "c_luxwood" in q and "mimeType !=" in q:
+            mock_exec.execute.return_value = {"files": [{"id": "slip_001_id", "name": "slip_001.jpg", "mimeType": "image/jpeg", "webViewLink": "https://drive.google.com/view/1"}]}
+        else:
+            mock_exec.execute.return_value = {"files": []}
+        return mock_exec
+
+    mock_service.files.return_value.list.side_effect = list_side_effect
     
-    # Mock multi-convention discovery
-    docs = await drive.discover_documents_multi_convention("mock_fld_root", "August", 2026)
+    docs = await drive.discover_documents_multi_convention("root_test_folder", "August", 2026)
     assert len(docs) > 0
     
     # Check customer metadata hints are automatically attached

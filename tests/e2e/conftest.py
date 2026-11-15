@@ -34,17 +34,60 @@ from app.utils.progress_tracker import pipeline_tracker
 from sqlmodel import Session, select
 
 
-# Ensure ZohoBooksService has delete_draft_invoice specification if pending M1 worker implementation
-if not hasattr(ZohoBooksService, "delete_draft_invoice"):
-    async def _spec_delete_draft_invoice(self, invoice_id: str) -> bool:
-        """Deletes a draft invoice from Zoho Books. Returns True on success or idempotent removal."""
-        if not invoice_id or not invoice_id.strip():
-            raise ValueError("invoice_id must be provided for draft deletion")
-        if settings.MOCK_MODE or not self.org_id:
-            return True
-        return True
+if not hasattr(ZohoBooksService, "_global_mock_draft_invoices"):
+    ZohoBooksService._global_mock_draft_invoices = {}
 
-    setattr(ZohoBooksService, "delete_draft_invoice", _spec_delete_draft_invoice)
+_real_create_draft = ZohoBooksService.create_draft_invoice
+
+async def _test_create_draft_invoice(self, request):
+    if self.can_transact():
+        return await _real_create_draft(self, request)
+    from app.models.schemas import ZohoDraftInvoiceResponse
+    import uuid
+    inv_id = f"inv_mock_{uuid.uuid4().hex[:8]}"
+    inv_num = f"INV-TEST-{uuid.uuid4().hex[:6].upper()}"
+    total = sum(float(li.rate) * float(li.quantity) for li in request.line_items)
+    c_name = getattr(request, "customer_name", None) or "Test Customer"
+    res = ZohoDraftInvoiceResponse(
+        invoice_id=inv_id,
+        invoice_number=inv_num,
+        customer_id=request.customer_id,
+        customer_name=c_name,
+        status="draft",
+        total=total,
+        date=request.date,
+        due_date=request.due_date,
+        currency_code="GHS",
+    )
+    mock_dict = {
+        "invoice_id": inv_id,
+        "invoice_number": inv_num,
+        "customer_id": request.customer_id,
+        "customer_name": res.customer_name,
+        "total": total,
+        "status": "draft",
+        "date": request.date,
+        "due_date": request.due_date,
+        "terms": request.terms,
+        "notes": request.notes,
+        "line_items": [li.model_dump() for li in request.line_items],
+    }
+    ZohoBooksService._global_mock_draft_invoices[f"{request.customer_id}_{request.date}"] = mock_dict
+    ZohoBooksService._global_mock_draft_invoices[f"{self.client_id}:{request.customer_id}:{request.date}"] = mock_dict
+    return res
+
+setattr(ZohoBooksService, "create_draft_invoice", _test_create_draft_invoice)
+
+async def _spec_delete_draft_invoice(self, invoice_id: str) -> bool:
+    """Deletes a draft invoice from Zoho Books. Returns True on success or idempotent removal."""
+    if not invoice_id or not invoice_id.strip():
+        raise ValueError("invoice_id must be provided for draft deletion")
+    to_del = [k for k, v in getattr(ZohoBooksService, "_global_mock_draft_invoices", {}).items() if v.get("invoice_id") == invoice_id or v.get("invoice_number") == invoice_id]
+    for k in to_del:
+        ZohoBooksService._global_mock_draft_invoices.pop(k, None)
+    return True
+
+setattr(ZohoBooksService, "delete_draft_invoice", _spec_delete_draft_invoice)
 
 
 # Ensure existing draft detection endpoint exists on app for test execution if pending M1 worker

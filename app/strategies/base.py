@@ -99,6 +99,7 @@ class BaseAutomationStrategy(ABC):
         self.client_id = client_id
         self.client_name = client_name
         self.semaphore = asyncio.Semaphore(self.CONCURRENCY_LIMIT)
+        self.execution_warnings: List[str] = []
 
     @abstractmethod
     async def discover_sources(self, month: str, year: int) -> List[SourceDocument]:

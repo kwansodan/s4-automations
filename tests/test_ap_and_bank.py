@@ -44,10 +44,26 @@ async def test_bank_portal_otp_flow():
 
 @pytest.mark.asyncio
 async def test_zoho_vendor_creation():
-    zoho = ZohoBooksService()
-    vendor = await zoho.create_vendor_contact("Golden Detergents Ltd")
-    assert vendor is not None
-    assert vendor.contact_name == "Golden Detergents Ltd"
+    from unittest.mock import patch, AsyncMock, MagicMock
+    zoho = ZohoBooksService(org_id="test_org_123")
+    with patch.object(zoho, "get_access_token", new_callable=AsyncMock) as mock_tok, \
+         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_tok.return_value = "token_123"
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "contact": {
+                "contact_id": "78291048200009999",
+                "contact_name": "Golden Detergents Ltd",
+                "company_name": "Golden Detergents Ltd",
+                "status": "active",
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+        vendor = await zoho.create_vendor_contact("Golden Detergents Ltd")
+        assert vendor is not None
+        assert vendor.contact_name == "Golden Detergents Ltd"
 
 
 @pytest.mark.asyncio

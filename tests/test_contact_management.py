@@ -3,6 +3,36 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.db.session import get_engine
+from app.models.db_models import ClientContact, FirmTeamMember
+from sqlmodel import Session, select
+
+
+@pytest.fixture(autouse=True)
+def seed_test_contact():
+    with Session(get_engine()) as session:
+        existing = session.exec(select(ClientContact).where(ClientContact.email == "test.contact@example.com")).first()
+        if not existing:
+            contact = ClientContact(
+                client_id="anr_group",
+                organization_id="s4_advisory",
+                name="Test Contact",
+                email="test.contact@example.com",
+                role="CFO",
+                portal_status="ACTIVE",
+            )
+            session.add(contact)
+        existing_m = session.exec(select(FirmTeamMember).where(FirmTeamMember.email == "test.staff@example.com")).first()
+        if not existing_m:
+            member = FirmTeamMember(
+                organization_id="s4_advisory",
+                name="Test Staff",
+                email="test.staff@example.com",
+                role="SENIOR_ACCOUNTANT",
+                status="ACTIVE",
+            )
+            session.add(member)
+        session.commit()
 
 
 @pytest.mark.asyncio

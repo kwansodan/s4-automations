@@ -76,7 +76,6 @@ class ZohoBooksService:
     _tenant_sales_accounts: Dict[str, str] = {}
     _tenant_chart_of_accounts: Dict[str, List[Dict[str, Any]]] = {}
     _tenant_chart_of_accounts_time: Dict[str, float] = {}
-    _global_mock_draft_invoices: Dict[str, Dict[str, Any]] = {}
 
     def __init__(
         self,
@@ -108,6 +107,23 @@ class ZohoBooksService:
     def organization_id(self) -> Optional[str]:
         """Accessor for Zoho organization ID."""
         return self.org_id
+
+    def get_missing_credentials(self) -> List[str]:
+        """Returns list of missing credential field names required for transactional operations."""
+        missing = []
+        if not self.org_id:
+            missing.append("org_id")
+        if not self.refresh_token:
+            missing.append("refresh_token")
+        if not self.client_id:
+            missing.append("client_id")
+        if not self.client_secret:
+            missing.append("client_secret")
+        return missing
+
+    def can_transact(self) -> bool:
+        """Returns True if all 4 required credentials are present."""
+        return len(self.get_missing_credentials()) == 0
 
     @classmethod
     def from_client_id(cls, client_id: str) -> "ZohoBooksService":
@@ -821,10 +837,11 @@ class ZohoBooksService:
         self, request: ZohoDraftInvoiceRequest
     ) -> ZohoDraftInvoiceResponse:
         """Creates a Draft Invoice in Zoho Books for approved monthly billing rows."""
-        if not self.org_id or not self.refresh_token or not self.client_id or not self.client_secret:
+        missing = self.get_missing_credentials()
+        if missing:
             raise ValueError(
-                f"Cannot create draft invoice: Zoho Books credentials (refresh token, client ID, client secret, or organization ID) "
-                f"are not configured for org '{self.org_id}'. Please connect Zoho Books under Client Settings > Accounting Platform."
+                f"Cannot create draft invoice: Missing Zoho Books credentials: {', '.join(missing)} for org '{self.org_id}'. "
+                f"Please configure these credentials in Client Settings > Accounting Platform."
             )
 
         access_token = await self.get_access_token()

@@ -21,6 +21,127 @@ def setup_test_db():
     init_db()
 
 
+# ZohoBooksService test harness shims for isolated testing
+from app.services.zoho_service import ZohoBooksService
+from app.models.schemas import ZohoDraftInvoiceResponse
+import uuid
+
+if not hasattr(ZohoBooksService, "_global_mock_draft_invoices"):
+    ZohoBooksService._global_mock_draft_invoices = {}
+
+_real_create_draft = ZohoBooksService.create_draft_invoice
+_real_find_existing = ZohoBooksService.find_existing_draft_invoice
+_real_create_or_append = ZohoBooksService.create_or_append_draft_invoice
+_real_delete_draft = getattr(ZohoBooksService, "delete_draft_invoice", None)
+
+
+async def _test_create_draft_invoice(self, request):
+    if self.can_transact():
+        return await _real_create_draft(self, request)
+    inv_id = f"inv_mock_{uuid.uuid4().hex[:8]}"
+    inv_num = f"INV-TEST-{uuid.uuid4().hex[:6].upper()}"
+    total = sum(float(li.rate) * float(li.quantity) for li in request.line_items)
+    c_name = getattr(request, "customer_name", None) or "Test Customer"
+    res = ZohoDraftInvoiceResponse(
+        invoice_id=inv_id,
+        invoice_number=inv_num,
+        customer_id=request.customer_id,
+        customer_name=c_name,
+        status="draft",
+        total=total,
+        date=request.date,
+        due_date=request.due_date,
+        currency_code="GHS",
+    )
+    mock_dict = {
+        "invoice_id": inv_id,
+        "invoice_number": inv_num,
+        "customer_id": request.customer_id,
+        "customer_name": res.customer_name,
+        "total": total,
+        "status": "draft",
+        "date": request.date,
+        "due_date": request.due_date,
+        "terms": request.terms,
+        "notes": request.notes,
+        "line_items": [li.model_dump() for li in request.line_items],
+    }
+    ZohoBooksService._global_mock_draft_invoices[f"{request.customer_id}_{request.date}"] = mock_dict
+    ZohoBooksService._global_mock_draft_invoices[f"{getattr(self, 'client_id', '')}:{request.customer_id}:{request.date}"] = mock_dict
+    return res
+
+
+async def _test_delete_draft_invoice(self, invoice_id: str) -> bool:
+    if not invoice_id or not str(invoice_id).strip():
+        raise ValueError("invoice_id must be provided for draft deletion")
+    if self.can_transact() and _real_delete_draft:
+        return await _real_delete_draft(self, invoice_id)
+    to_del = [k for k, v in getattr(ZohoBooksService, "_global_mock_draft_invoices", {}).items() if v.get("invoice_id") == invoice_id or v.get("invoice_number") == invoice_id]
+    for k in to_del:
+        ZohoBooksService._global_mock_draft_invoices.pop(k, None)
+    return True
+
+
+async def _test_find_existing_draft_invoice(self, customer_id: str, month: str, year: int):
+    if self.can_transact():
+        return await _real_find_existing(self, customer_id, month, year)
+    for k, v in getattr(ZohoBooksService, "_global_mock_draft_invoices", {}).items():
+        if v.get("customer_id") == customer_id:
+            v_date = str(v.get("date", ""))
+            if month.lower() in str(v).lower() or str(year) in v_date:
+                return v
+    return None
+
+
+async def _test_create_or_append_draft_invoice(self, request, month: str, year: int, due_date=None, terms=None):
+    if due_date:
+        request.due_date = due_date
+    if terms:
+        request.terms = terms
+    if self.can_transact():
+        return await _real_create_or_append(self, request, month, year, due_date=due_date, terms=terms)
+    existing = await self.find_existing_draft_invoice(request.customer_id, month, year)
+    if existing:
+        existing["line_items"].extend([li.model_dump() for li in request.line_items])
+        existing["total"] = sum(float(li.get("rate", 0)) * float(li.get("quantity", 0)) for li in existing["line_items"])
+        if due_date:
+            existing["due_date"] = due_date
+        return ZohoDraftInvoiceResponse(
+            invoice_id=existing["invoice_id"],
+            invoice_number=existing["invoice_number"],
+            customer_id=request.customer_id,
+            customer_name=existing["customer_name"],
+            status="draft",
+            total=existing["total"],
+            date=existing["date"],
+            due_date=due_date or existing.get("due_date"),
+            currency_code="GHS",
+        )
+    return await self.create_draft_invoice(request)
+
+
+setattr(ZohoBooksService, "create_draft_invoice", _test_create_draft_invoice)
+setattr(ZohoBooksService, "delete_draft_invoice", _test_delete_draft_invoice)
+setattr(ZohoBooksService, "find_existing_draft_invoice", _test_find_existing_draft_invoice)
+setattr(ZohoBooksService, "create_or_append_draft_invoice", _test_create_or_append_draft_invoice)
+
+
+@pytest.fixture(autouse=True)
+def override_admin_auth():
+    """Overrides require_admin_user dependency during tests so standard client requests are authorized."""
+    from app.main import app
+    from app.api.deps import require_admin_user
+
+    app.dependency_overrides[require_admin_user] = lambda: {
+        "id": "admin_test",
+        "email": "admin@service4gh.com",
+        "role": "admin",
+        "name": "Test Platform Administrator",
+    }
+    yield
+    app.dependency_overrides.pop(require_admin_user, None)
+
+
 @pytest.fixture
 def sample_zoho_items() -> List[ZohoItem]:
     return [
