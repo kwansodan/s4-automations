@@ -406,3 +406,89 @@ def test_gl_api_endpoints_and_tenant_security(test_db: Session):
     assert forbidden_res.status_code == 403
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_gl_and_fr_policy_opt_in_and_configuration(test_db: Session):
+    """Verify that GL and FR agents are strictly opt-in and extract custom policies."""
+    from app.api.v1.clients import DEFAULT_ANR_PIPELINES
+
+    # 1. Verify default pipeline template contains only operational streams (AR/AP)
+    pipeline_ids = [p["id"] for p in DEFAULT_ANR_PIPELINES]
+    assert "pipe_anr_gl_closing" not in pipeline_ids
+    assert "pipe_anr_financial_reporting" not in pipeline_ids
+    assert "pipe_anr_daily_slips" in pipeline_ids
+    assert "pipe_anr_detergent_bills" in pipeline_ids
+
+    # 2. Client with no GL/FR pipelines returns fallback policies
+    clean_client = ClientOrganization(
+        id="clean_client",
+        name="Clean Client Co",
+        industry="Retail",
+        organization_id="s4_advisory",
+        accounting_software="zoho_books",
+        pipelines=[],
+    )
+    test_db.add(clean_client)
+    test_db.commit()
+
+    policies = GLClosingService.get_client_policies(clean_client)
+    assert policies["reporting_framework"] == "IFRS"
+    assert policies["fixed_asset_useful_years"]["machinery_equipment"] == 5
+
+    # 3. Configure custom GL agent with specific accounting policies
+    gl_pipeline = {
+        "id": "pipe_custom_gl",
+        "name": "Custom GL Closing Agent",
+        "section": "GL",
+        "entity_type": "gl_journal",
+        "source_type": "general_ledger",
+        "is_active": True,
+        "active": True,
+        "gl_policy_config": {
+            "reporting_framework": "US_GAAP",
+            "depreciation_method": "straight_line",
+            "machinery_useful_years": 12,
+            "vehicles_useful_years": 8,
+            "prepayment_amortization": "straight_line",
+            "audit_materiality_threshold": 50.0,
+        },
+    }
+    clean_client.pipelines = [gl_pipeline]
+    test_db.add(clean_client)
+    test_db.commit()
+
+    custom_policies = GLClosingService.get_client_policies(clean_client)
+    assert custom_policies["reporting_framework"] == "US_GAAP"
+    assert custom_policies["fixed_asset_useful_years"]["machinery_equipment"] == 12
+    assert custom_policies["fixed_asset_useful_years"]["vehicles"] == 8
+
+    # 4. Synthesize statement pack with FR agent config
+    fr_pipeline = {
+        "id": "pipe_custom_fr",
+        "name": "Custom Financial Reporting Agent",
+        "section": "FR",
+        "entity_type": "fr_statement_pack",
+        "source_type": "general_ledger",
+        "is_active": True,
+        "active": True,
+        "fr_policy_config": {
+            "reporting_framework": "US_GAAP",
+            "reporting_frequency": "QUARTERLY",
+            "include_notes": True,
+        },
+    }
+    clean_client.pipelines = [gl_pipeline, fr_pipeline]
+    test_db.add(clean_client)
+    test_db.commit()
+
+    report = await FinancialReportingService.synthesize_statement_pack(
+        db=test_db,
+        client=clean_client,
+        period_type="QUARTERLY",
+        period_month="October",
+        period_year=2026,
+    )
+    assert report.reporting_framework == "US_GAAP"
+    assert report.balance_sheet["is_balanced"] is True
+

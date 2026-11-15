@@ -366,30 +366,6 @@ DEFAULT_ANR_PIPELINES: List[Dict[str, Any]] = [
         "is_active": True,
         "active": True,
     },
-    {
-        "id": "pipe_anr_gl_closing",
-        "name": "General Ledger & Closing Accountant",
-        "section": "GL",
-        "entity_type": "gl_journal",
-        "source_type": "general_ledger",
-        "source_identifier": "zoho_books_ledger",
-        "schedule": "Monthly at Period Close",
-        "auto_post_draft": False,
-        "is_active": True,
-        "active": True,
-    },
-    {
-        "id": "pipe_anr_financial_reporting",
-        "name": "Financial Reporting & Disclosures Agent",
-        "section": "FR",
-        "entity_type": "fr_statement_pack",
-        "source_type": "general_ledger",
-        "source_identifier": "financial_statements",
-        "schedule": "Monthly post-closing",
-        "auto_post_draft": False,
-        "is_active": True,
-        "active": True,
-    },
 ]
 
 

@@ -20,7 +20,7 @@ export interface Organization {
   is_primary?: boolean;
 }
 
-export type AccountingSection = 'AR' | 'AP' | 'BANK' | 'GL';
+export type AccountingSection = 'AR' | 'AP' | 'BANK' | 'GL' | 'FR';
 
 export type AccountingEntityType =
   | 'ar_sales_invoice'
@@ -37,7 +37,8 @@ export type AccountingEntityType =
   | 'bank_statement'
   | 'momo_statement'
   | 'bank_feed'
-  | 'gl_journal';
+  | 'gl_journal'
+  | 'fr_statement_pack';
 
 export type AccountingSoftware =
   | 'zoho_books'
@@ -267,6 +268,28 @@ export interface IngestionPipeline {
   auto_apply_knowledge?: boolean;
   auto_query_anomalies?: boolean;
   proactive_SLA_reminders?: boolean;
+  gl_policy_config?: GLAgentPolicyConfig;
+  fr_policy_config?: FRAgentPolicyConfig;
+}
+
+export interface GLAgentPolicyConfig {
+  reporting_framework?: 'IFRS' | 'IFRS_FOR_SMES' | 'GHANA_GAAP' | 'US_GAAP' | string;
+  depreciation_method?: 'straight_line' | 'reducing_balance' | string;
+  machinery_useful_years?: number;
+  vehicles_useful_years?: number;
+  furniture_useful_years?: number;
+  computer_useful_years?: number;
+  buildings_useful_years?: number;
+  prepayment_amortization?: 'monthly_pro_rata' | 'immediate' | string;
+  statutory_tax_rate?: number;
+  fx_revaluation_required?: boolean;
+}
+
+export interface FRAgentPolicyConfig {
+  reporting_framework?: 'IFRS' | 'IFRS_FOR_SMES' | 'GHANA_GAAP' | 'US_GAAP' | string;
+  reporting_frequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' | string;
+  included_statements?: string[];
+  is_audited?: boolean;
 }
 
 export type AgentAutonomyLevel = 'copilot' | 'semi_autonomous' | 'full_autonomous';

@@ -56,6 +56,16 @@ class FinancialReportingService:
         eff_month = period_month or "October"
         currency = getattr(client, "currency", None) or (client.custom_config or {}).get("currency") or "GHS"
 
+        # Check active FR agent framework if not explicitly overridden
+        fr_agent = None
+        for pipe in (client.pipelines or []) + (client.agents or []):
+            if isinstance(pipe, dict) and str(pipe.get("section") or "").upper() == "FR":
+                fr_agent = pipe
+                break
+        if fr_agent and reporting_framework == "IFRS":
+            fr_cfg = fr_agent.get("fr_policy_config") or fr_agent.get("custom_config") or {}
+            reporting_framework = fr_cfg.get("reporting_framework") or reporting_framework
+
         # 1. Fetch base Trial Balance
         tb_data = await GLClosingService.fetch_trial_balance(db, client, month=eff_month, year=eff_year)
         base_accounts = {a["account_id"]: dict(a) for a in tb_data.get("accounts", [])}

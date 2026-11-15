@@ -42,7 +42,19 @@ class GLClosingService:
     def get_client_policies(cls, client: ClientOrganization) -> Dict[str, Any]:
         """Extracts client-specific accounting policies, financial reporting standard, and tax rules."""
         custom_cfg = client.custom_config or {}
-        policies = custom_cfg.get("accounting_policies") or {}
+        policies = dict(custom_cfg.get("accounting_policies") or {})
+
+        # Also inspect active GL agent configuration if present
+        gl_agent = None
+        for pipe in (client.pipelines or []) + (client.agents or []):
+            if isinstance(pipe, dict) and str(pipe.get("section") or "").upper() == "GL":
+                gl_agent = pipe
+                break
+        if gl_agent:
+            agent_cfg = gl_agent.get("gl_policy_config") or gl_agent.get("custom_config") or {}
+            for k, v in agent_cfg.items():
+                if v is not None:
+                    policies[k] = v
         
         # Sane defaults adhering to standard IFRS & Ghana GRA practice
         return {
@@ -58,7 +70,7 @@ class GLClosingService:
             },
             "prepayment_amortization": policies.get("prepayment_amortization", "monthly_pro_rata"),
             "fx_revaluation_required": bool(policies.get("fx_revaluation_required", True)),
-            "elected_currency": policies.get("currency") or getattr(client, "currency", None) or "GHS",
+            "elected_currency": policies.get("currency") or getattr(client, "currency", None) or (client.custom_config or {}).get("currency") or "GHS",
         }
 
     @classmethod

@@ -56,6 +56,8 @@ import {
   RotateCcw,
   Landmark,
   Plus,
+  Scale,
+  BarChart3,
 } from 'lucide-react';
 
 interface PipelineSetupWizardModalProps {
@@ -400,6 +402,31 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
   const [customDueDays, setCustomDueDays] = useState<number>(14);
   const [customTermsNote, setCustomTermsNote] = useState<string>('');
 
+  // GL Closing Policy State
+  const [glReportingFramework, setGlReportingFramework] = useState<string>('IFRS');
+  const [glDepreciationMethod, setGlDepreciationMethod] = useState<string>('straight_line');
+  const [glMachineryUsefulYears, setGlMachineryUsefulYears] = useState<number>(5);
+  const [glVehiclesUsefulYears, setGlVehiclesUsefulYears] = useState<number>(4);
+  const [glFurnitureUsefulYears, setGlFurnitureUsefulYears] = useState<number>(6);
+  const [glComputerUsefulYears, setGlComputerUsefulYears] = useState<number>(3);
+  const [glBuildingsUsefulYears, setGlBuildingsUsefulYears] = useState<number>(25);
+  const [glPrepaymentAmortization, setGlPrepaymentAmortization] = useState<string>('monthly_pro_rata');
+  const [glStatutoryTaxRate, setGlStatutoryTaxRate] = useState<number>(25.0);
+  const [glFxRevaluationRequired, setGlFxRevaluationRequired] = useState<boolean>(true);
+
+  // Financial Reporting Policy State
+  const [frReportingFramework, setFrReportingFramework] = useState<string>('IFRS');
+  const [frReportingFrequency, setFrReportingFrequency] = useState<string>('MONTHLY');
+  const [frIncludedStatements, setFrIncludedStatements] = useState<string[]>([
+    'income_statement',
+    'balance_sheet',
+    'cash_flow_statement',
+    'equity_statement',
+    'notes_to_accounts',
+    'financial_ratios',
+    'executive_commentary',
+  ]);
+
   // Probing State
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{ success: boolean; message: string; details?: any; detected_month_folders?: string[]; suggested_hierarchy?: string } | null>(null);
@@ -597,6 +624,27 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         setPaymentTermsRule(sc.payment_terms_rule || 'NET_14');
         setCustomDueDays(sc.custom_due_days || 14);
         setCustomTermsNote(sc.custom_terms_note || '');
+        if (initialPipeline.gl_policy_config) {
+          const g = initialPipeline.gl_policy_config;
+          setGlReportingFramework(g.reporting_framework || 'IFRS');
+          setGlDepreciationMethod(g.depreciation_method || 'straight_line');
+          setGlMachineryUsefulYears(g.machinery_useful_years || 5);
+          setGlVehiclesUsefulYears(g.vehicles_useful_years || 4);
+          setGlFurnitureUsefulYears(g.furniture_useful_years || 6);
+          setGlComputerUsefulYears(g.computer_useful_years || 3);
+          setGlBuildingsUsefulYears(g.buildings_useful_years || 25);
+          setGlPrepaymentAmortization(g.prepayment_amortization || 'monthly_pro_rata');
+          setGlStatutoryTaxRate(typeof g.statutory_tax_rate === 'number' ? g.statutory_tax_rate * 100 : 25.0);
+          setGlFxRevaluationRequired(g.fx_revaluation_required !== false);
+        }
+        if (initialPipeline.fr_policy_config) {
+          const f = initialPipeline.fr_policy_config;
+          setFrReportingFramework(f.reporting_framework || 'IFRS');
+          setFrReportingFrequency(f.reporting_frequency || 'MONTHLY');
+          if (Array.isArray(f.included_statements)) {
+            setFrIncludedStatements(f.included_statements);
+          }
+        }
         if (initialPipeline.watched_accounts && Array.isArray(initialPipeline.watched_accounts)) {
           const legacyGl = new Set(['6990', '850', '999', 'suspense', 'uncategorized', 'all']);
           const cleaned = initialPipeline.watched_accounts.filter(
@@ -622,6 +670,23 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
           setEntityType('ap_vendor_bill');
           setSourceType('google_drive');
           setDefaultAccountCode('5000 - Cost of Goods Sold (Inventory)');
+        } else if (initialSec === 'GL') {
+          setName('General Ledger & Closing Accountant');
+          setEntityType('gl_journal');
+          setSourceType('manual');
+          setSourceIdentifier('zoho_books_ledger');
+          setDefaultAccountCode('9000 - General Ledger Accruals');
+          setScheduleFrequency('monthly_cutoff');
+          setCronScheduleHuman('Monthly at Period Close');
+        } else if (initialSec === 'FR') {
+          setName('Financial Reporting & Disclosures Agent');
+          setEntityType('fr_statement_pack');
+          setSourceType('manual');
+          setSourceIdentifier('financial_statements');
+          setDefaultAccountCode('9100 - Financial Statement Pack');
+          setAutonomyLevel('copilot');
+          setScheduleFrequency('monthly_cutoff');
+          setCronScheduleHuman('Monthly Post-Closing');
         } else {
           setEntityType('ar_sales_invoice');
           setSourceType('google_drive');
@@ -834,6 +899,24 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
         human_instructions: humanInstructions.trim() || undefined,
         field_mappings: Object.keys(fieldMappings).length > 0 ? fieldMappings : undefined,
         missing_cadence: missingCadence,
+        gl_policy_config: section === 'GL' ? {
+          reporting_framework: glReportingFramework,
+          depreciation_method: glDepreciationMethod,
+          machinery_useful_years: Number(glMachineryUsefulYears),
+          vehicles_useful_years: Number(glVehiclesUsefulYears),
+          furniture_useful_years: Number(glFurnitureUsefulYears),
+          computer_useful_years: Number(glComputerUsefulYears),
+          buildings_useful_years: Number(glBuildingsUsefulYears),
+          prepayment_amortization: glPrepaymentAmortization,
+          statutory_tax_rate: Number(glStatutoryTaxRate) / 100.0,
+          fx_revaluation_required: glFxRevaluationRequired,
+        } : undefined,
+        fr_policy_config: section === 'FR' ? {
+          reporting_framework: frReportingFramework,
+          reporting_frequency: frReportingFrequency,
+          included_statements: frIncludedStatements,
+          is_audited: false,
+        } : undefined,
         source_config: {
           folder_structure: folderStructure,
           enable_lookback_window: enableLookbackWindow,
@@ -1025,10 +1108,18 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                         setSourceType('bank_feed');
                         const defaultBank = accounts.find((a) => (a.account_type || '').toLowerCase().includes('bank') || (a.account_type || '').toLowerCase().includes('current asset'));
                         setDefaultAccountCode(defaultBank ? formatAccountOptionValue(defaultBank) : '1001 - Main Operating Bank Account');
-                      } else {
+                      } else if (sec === 'GL') {
                         setEntityType('gl_journal');
+                        setSourceType('manual');
+                        setSourceIdentifier('zoho_books_ledger');
                         const defaultGl = accounts.find((a) => a.account_code === '9000' || (a.account_type || '').toLowerCase().includes('equity'));
                         setDefaultAccountCode(defaultGl ? formatAccountOptionValue(defaultGl) : '9000 - General Ledger Accruals');
+                      } else if (sec === 'FR') {
+                        setEntityType('fr_statement_pack');
+                        setSourceType('manual');
+                        setSourceIdentifier('financial_statements');
+                        setDefaultAccountCode('9100 - Financial Statement Pack');
+                        setAutonomyLevel('copilot');
                       }
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
@@ -1036,7 +1127,8 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     <option value="AR">🔵 Accounts Receivable (AR) - Revenue &amp; Customer Invoices</option>
                     <option value="AP">🟠 Accounts Payable (AP) - Vendor Bills &amp; Expenses</option>
                     <option value="BANK">🟢 Banking &amp; Treasury (BANK) - Statements &amp; MoMo Feeds</option>
-                    <option value="GL">🟣 General Ledger (GL) - Manual Journal Entries</option>
+                    <option value="GL">🟣 General Ledger (GL) - Closing Accountant &amp; Manual Adjustments</option>
+                    <option value="FR">📊 Financial Reporting (FR) - Statement Pack &amp; Disclosures Synthesizer</option>
                   </select>
                 </div>
 
@@ -1085,11 +1177,14 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                     {section === 'GL' && (
                       <option value="gl_journal">Manual Double-Entry Journal Entry (/journalentries)</option>
                     )}
+                    {section === 'FR' && (
+                      <option value="fr_statement_pack">Financial Statement Pack &amp; Disclosures (/reports)</option>
+                    )}
                   </select>
                 </div>
               </div>
 
-              {entityType !== 'bank_feed' && (
+              {entityType !== 'bank_feed' && entityType !== 'fr_statement_pack' && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold text-slate-300">
@@ -1352,6 +1447,222 @@ export const PipelineSetupWizardModal: React.FC<PipelineSetupWizardModalProps> =
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add Bank</span>
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* General Ledger & Closing Accounting Policies Configuration */}
+              {section === 'GL' && (
+                <div className="p-4 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-3.5 mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-purple-400" />
+                      <label className="text-xs font-semibold text-white">
+                        General Ledger &amp; Closing Accounting Policies
+                      </label>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-950/80 border border-purple-700/50 px-2 py-0.5 rounded-full">
+                      Standards &amp; Statutory Rules
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Configure the accounting standard and statutory policies the GL Accountant Agent applies when reviewing the Trial Balance and formulating manual adjusting journals.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Accounting Standard Framework
+                      </label>
+                      <select
+                        value={glReportingFramework}
+                        onChange={(e) => setGlReportingFramework(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="IFRS">IFRS (Full Standards)</option>
+                        <option value="IFRS_FOR_SMES">IFRS for SMEs</option>
+                        <option value="GHANA_GAAP">Ghana GAAP (GRA Statutory)</option>
+                        <option value="US_GAAP">US GAAP</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Statutory Corporate Tax Rate (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={glStatutoryTaxRate}
+                        onChange={(e) => setGlStatutoryTaxRate(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Ghana GRA standard corporate rate is 25.0% (Act 896).
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Depreciation Method (IAS 16)
+                      </label>
+                      <select
+                        value={glDepreciationMethod}
+                        onChange={(e) => setGlDepreciationMethod(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="straight_line">Straight-Line Depreciation</option>
+                        <option value="reducing_balance">Reducing Balance Method</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Prepayment Amortization (IAS 1)
+                      </label>
+                      <select
+                        value={glPrepaymentAmortization}
+                        onChange={(e) => setGlPrepaymentAmortization(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="monthly_pro_rata">Monthly Pro-Rata Straight-Line</option>
+                        <option value="immediate">Immediate Expense Recognition</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-purple-900/40">
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1.5">
+                      Asset Category Useful Life Schedules (Years)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="p-2 bg-slate-950/80 rounded-lg border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Plant &amp; Machinery</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={glMachineryUsefulYears}
+                          onChange={(e) => setGlMachineryUsefulYears(parseInt(e.target.value) || 5)}
+                          className="w-full bg-transparent text-xs text-white font-mono mt-0.5 focus:outline-none"
+                        />
+                      </div>
+                      <div className="p-2 bg-slate-950/80 rounded-lg border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Motor Vehicles</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          value={glVehiclesUsefulYears}
+                          onChange={(e) => setGlVehiclesUsefulYears(parseInt(e.target.value) || 4)}
+                          className="w-full bg-transparent text-xs text-white font-mono mt-0.5 focus:outline-none"
+                        />
+                      </div>
+                      <div className="p-2 bg-slate-950/80 rounded-lg border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Furniture &amp; Fittings</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          value={glFurnitureUsefulYears}
+                          onChange={(e) => setGlFurnitureUsefulYears(parseInt(e.target.value) || 6)}
+                          className="w-full bg-transparent text-xs text-white font-mono mt-0.5 focus:outline-none"
+                        />
+                      </div>
+                      <div className="p-2 bg-slate-950/80 rounded-lg border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Computers &amp; IT</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={glComputerUsefulYears}
+                          onChange={(e) => setGlComputerUsefulYears(parseInt(e.target.value) || 3)}
+                          className="w-full bg-transparent text-xs text-white font-mono mt-0.5 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <span className="text-slate-300">Month-End Foreign Exchange Revaluation (IAS 21)</span>
+                    <input
+                      type="checkbox"
+                      checked={glFxRevaluationRequired}
+                      onChange={(e) => setGlFxRevaluationRequired(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Financial Reporting & Disclosures Policy Configuration */}
+              {section === 'FR' && (
+                <div className="p-4 bg-sky-950/20 border border-sky-800/40 rounded-xl space-y-3.5 mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-sky-400" />
+                      <label className="text-xs font-semibold text-white">
+                        Financial Reporting &amp; Disclosures Framework
+                      </label>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-sky-300 bg-sky-950/80 border border-sky-700/50 px-2 py-0.5 rounded-full">
+                      Presentation Synthesis
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Configure the financial statement pack standards and reporting cadence. The Financial Reporting Agent is strictly read-only: it synthesizes board-ready presentation packs from the adjusted Trial Balance and does not draft invoices, bills, or mutate the ledger.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Elected Reporting Standard
+                      </label>
+                      <select
+                        value={frReportingFramework}
+                        onChange={(e) => setFrReportingFramework(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                      >
+                        <option value="IFRS">IFRS (International Financial Reporting Standards)</option>
+                        <option value="IFRS_FOR_SMES">IFRS for SMEs</option>
+                        <option value="GHANA_GAAP">Ghana GAAP (GRA Statutory)</option>
+                        <option value="US_GAAP">US GAAP</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Reporting Cycle / Cadence
+                      </label>
+                      <select
+                        value={frReportingFrequency}
+                        onChange={(e) => setFrReportingFrequency(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                      >
+                        <option value="MONTHLY">Monthly Pack</option>
+                        <option value="QUARTERLY">Quarterly Pack</option>
+                        <option value="ANNUAL">Annual Statutory Pack</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                    <span className="font-semibold text-slate-200 block text-[11px]">
+                      Standard Statement Pack Components Included:
+                    </span>
+                    <ul className="grid grid-cols-2 gap-1 text-[11px] text-slate-400">
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Income Statement (P&amp;L)</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Balance Sheet (Assets = Liab + Equity)</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Statement of Cash Flows (IAS 7 Indirect)</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Statement of Changes in Equity</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Statutory Notes to Accounts (Notes 1-5)</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3 h-3 text-sky-400" /> Financial Ratios &amp; Headroom</li>
+                      <li className="flex items-center gap-1.5 col-span-2"><Check className="w-3 h-3 text-sky-400" /> Executive Commentary &amp; Performance Review (MD&amp;A)</li>
+                    </ul>
                   </div>
                 </div>
               )}
