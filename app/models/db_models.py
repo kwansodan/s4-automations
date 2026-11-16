@@ -838,4 +838,39 @@ class FinancialStatementReport(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=get_utc_now)
 
 
+class MonthEndCloseChecklist(SQLModel, table=True):
+    """Persistent Month-End Close Checklist and Runbook for GL Closing Agent."""
+    __tablename__ = "month_end_close_checklists"
 
+    id: Optional[int] = Field(default=None, primary_key=True)
+    checklist_id: str = Field(index=True, unique=True, description="e.g. close_2026_oct_anr")
+    client_id: str = Field(index=True, description="Client organization ID")
+    period_month: str = Field(description="Closing month, e.g. October")
+    period_year: int = Field(index=True, description="Closing fiscal year, e.g. 2026")
+    is_master_template: bool = Field(default=False, description="True if entity master template")
+    status: str = Field(
+        default="DRAFT",
+        index=True,
+        description="DRAFT, PREFLIGHT_COMPLETED, IN_PROGRESS, COMPLETED, EXCEPTION_FLAGGED"
+    )
+    autonomy_level: str = Field(default="semi_autonomous", description="copilot, semi_autonomous, fully_autonomous")
+    total_steps_count: int = Field(default=0)
+    completed_steps_count: int = Field(default=0)
+    exceptions_count: int = Field(default=0)
+    
+    # Structured Closing Steps Array
+    steps: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    
+    # Inter-Agent Subledger Tie-Out Results (AR, AP, Bank)
+    subledger_tie_outs: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    
+    # Pre-Flight Anomaly & Coverage Audit Summary
+    pre_flight_summary: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    
+    # Post-Close ERP Verification Telemetry
+    post_close_verification: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    
+    started_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=get_utc_now, index=True)
+    updated_at: datetime = Field(default_factory=get_utc_now)

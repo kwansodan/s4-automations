@@ -7,7 +7,15 @@ import type { OtpRequestResponse, OtpVerifyResponse, AuthUser } from '../types/a
 import type { DashboardStats, PipelineProgress } from '../types/pipeline';
 import type { SheetsReviewData } from '../types/sheets';
 import type { SystemConfig, DiagnosticsResult } from '../types/config';
-import type { PipelineSimulationResult, BankTransactionRecord } from '../types/client';
+import type {
+  PipelineSimulationResult,
+  BankTransactionRecord,
+  MonthEndCloseChecklist,
+  CloseChecklistItem,
+  SubledgerTieOutSummary,
+  PreFlightDiscoverySummary,
+  PostCloseVerificationSummary,
+} from '../types/client';
 import type {
   ClientContact,
   FirmTeamMember,
@@ -3641,6 +3649,131 @@ export async function approveAndPostJournal(
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
   });
   return handleResponse(res, 'Approve and post journal to ERP');
+}
+
+// ============================================================================
+// Autonomous GL Month-End Close Checklist & Runbook API Functions
+// ============================================================================
+
+export async function fetchPeriodCloseChecklist(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<MonthEndCloseChecklist> {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (year) qs.set('year', String(year));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<MonthEndCloseChecklist>(res, 'Fetch month-end close checklist');
+}
+
+export async function synthesizeBaselineChecklist(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<{ status: string; checklist_id: string; total_steps: number; steps: CloseChecklistItem[] }> {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (year) qs.set('year', String(year));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/synthesize-baseline${query}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(res, 'Study GL/TB and synthesize checklist');
+}
+
+export async function runInterAgentSubledgerTieOut(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<SubledgerTieOutSummary> {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (year) qs.set('year', String(year));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/subledger-tie-out${query}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<SubledgerTieOutSummary>(res, 'Run inter-agent subledger tie-outs');
+}
+
+export async function runPreFlightScan(
+  clientId: string,
+  month?: string,
+  year?: number
+): Promise<PreFlightDiscoverySummary> {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (year) qs.set('year', String(year));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/pre-flight-scan${query}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<PreFlightDiscoverySummary>(res, 'Run pre-flight coverage and anomaly scan');
+}
+
+export async function executeChecklistStep(
+  clientId: string,
+  stepId: string,
+  payload: { checklist_id: string; auto_post?: boolean }
+): Promise<{ step: CloseChecklistItem; checklist_status: string; completed_steps: number; total_steps: number; working_paper_id?: string }> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/steps/${stepId}/execute`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Execute close step ${stepId}`);
+}
+
+export async function executeCloseRunbook(
+  clientId: string,
+  payload: { checklist_id: string; auto_post?: boolean }
+): Promise<{
+  checklist_id: string;
+  period: string;
+  status: string;
+  completed_steps: number;
+  total_steps: number;
+  exceptions_count: number;
+  post_close_verification?: PostCloseVerificationSummary;
+}> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/execute-runbook`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Execute full month-end close runbook');
+}
+
+export async function verifyPostCloseEquilibrium(
+  clientId: string,
+  checklistId: string
+): Promise<PostCloseVerificationSummary> {
+  const qs = new URLSearchParams({ checklist_id: checklistId });
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/post-close-verify?${qs.toString()}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<PostCloseVerificationSummary>(res, 'Verify post-close equilibrium');
+}
+
+export async function dispatchStepInquiry(
+  clientId: string,
+  stepId: string,
+  payload: { checklist_id: string; question_text: string; target_channel?: string }
+): Promise<{ inquiry_id: string; step_id: string; channel: string; status: string; message: string }> {
+  const res = await resilientFetch(`/api/v1/gl/${clientId}/checklist/steps/${stepId}/inquire`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, `Dispatch inquiry for step ${stepId}`);
 }
 
 // ============================================================================

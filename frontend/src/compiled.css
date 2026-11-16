@@ -8,6 +8,7 @@
       "Segoe UI Symbol", "Noto Color Emoji";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
       "Courier New", monospace;
+    --color-red-50: oklch(97.1% 0.013 17.38);
     --color-red-200: oklch(88.5% 0.062 18.334);
     --color-red-300: oklch(80.8% 0.114 19.571);
     --color-red-400: oklch(70.4% 0.191 22.216);
@@ -691,6 +692,9 @@
   }
   .h-10 {
     height: calc(var(--spacing) * 10);
+  }
+  .h-11 {
+    height: calc(var(--spacing) * 11);
   }
   .h-12 {
     height: calc(var(--spacing) * 12);
@@ -1383,9 +1387,6 @@
   .border-\[\#FECDD3\] {
     border-color: #FECDD3;
   }
-  .border-\[\#FEF3C7\] {
-    border-color: #FEF3C7;
-  }
   .border-amber-200 {
     border-color: var(--color-amber-200);
   }
@@ -1646,6 +1647,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-purple-900) 40%, transparent);
     }
+  }
+  .border-red-200 {
+    border-color: var(--color-red-200);
   }
   .border-red-500 {
     border-color: var(--color-red-500);
@@ -2037,9 +2041,6 @@
   .bg-\[\#FFF1F2\]\/60 {
     background-color: color-mix(in oklab, #FFF1F2 60%, transparent);
   }
-  .bg-\[\#FFFBEB\] {
-    background-color: #FFFBEB;
-  }
   .bg-amber-50 {
     background-color: var(--color-amber-50);
   }
@@ -2063,6 +2064,9 @@
   }
   .bg-amber-100 {
     background-color: var(--color-amber-100);
+  }
+  .bg-amber-200 {
+    background-color: var(--color-amber-200);
   }
   .bg-amber-200\/60 {
     background-color: color-mix(in srgb, oklch(92.4% 0.12 95.746) 60%, transparent);
@@ -2243,6 +2247,12 @@
   }
   .bg-emerald-100 {
     background-color: var(--color-emerald-100);
+  }
+  .bg-emerald-200\/60 {
+    background-color: color-mix(in srgb, oklch(90.5% 0.093 164.15) 60%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-emerald-200) 60%, transparent);
+    }
   }
   .bg-emerald-400 {
     background-color: var(--color-emerald-400);
@@ -2441,6 +2451,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-purple-950) 80%, transparent);
     }
+  }
+  .bg-red-50 {
+    background-color: var(--color-red-50);
   }
   .bg-red-500\/15 {
     background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 15%, transparent);
@@ -3204,6 +3217,10 @@
     --tw-gradient-to: var(--color-emerald-400);
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .to-emerald-500 {
+    --tw-gradient-to: var(--color-emerald-500);
+    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+  }
   .to-indigo-50\/60 {
     --tw-gradient-to: color-mix(in srgb, oklch(96.2% 0.018 272.314) 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3948,6 +3965,9 @@
   }
   .text-red-400 {
     color: var(--color-red-400);
+  }
+  .text-red-700 {
+    color: var(--color-red-700);
   }
   .text-rose-200 {
     color: var(--color-rose-200);
@@ -4732,9 +4752,6 @@
     .hover\:border-\[\#0284C7\]:hover {
       border-color: #0284C7;
     }
-    .hover\:border-\[\#0284C7\]\/30:hover {
-      border-color: color-mix(in oklab, #0284C7 30%, transparent);
-    }
     .hover\:border-\[\#A7F3D0\]:hover {
       border-color: #A7F3D0;
     }
@@ -4909,6 +4926,9 @@
     }
     .hover\:bg-amber-200:hover {
       background-color: var(--color-amber-200);
+    }
+    .hover\:bg-amber-300:hover {
+      background-color: var(--color-amber-300);
     }
     .hover\:bg-amber-400:hover {
       background-color: var(--color-amber-400);
@@ -5719,9 +5739,6 @@
     .md\:w-auto {
       width: auto;
     }
-    .md\:flex-initial {
-      flex: 0 auto;
-    }
     .md\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -5739,6 +5756,9 @@
     }
     .md\:items-start {
       align-items: flex-start;
+    }
+    .md\:self-auto {
+      align-self: auto;
     }
   }
   @media (width >= 64rem) {
@@ -5783,6 +5803,9 @@
     }
     .lg\:w-\[65vw\] {
       width: 65vw;
+    }
+    .lg\:w-auto {
+      width: auto;
     }
     .lg\:max-w-\[500px\] {
       max-width: 500px;

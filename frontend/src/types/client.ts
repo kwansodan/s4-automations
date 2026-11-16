@@ -866,3 +866,102 @@ export interface TenantWhatsAppConfig {
   platform_shared_number: string;
 }
 
+export interface CloseChecklistItem {
+  step_id: string;
+  sequence: number;
+  category:
+    | 'SUBLEDGER_TIE_OUT'
+    | 'FIXED_ASSETS'
+    | 'PREPAYMENTS'
+    | 'ACCRUALS_LIABILITIES'
+    | 'TREASURY_FX'
+    | 'TAXATION'
+    | 'EQUITY_RETAINED_EARNINGS'
+    | 'CUSTOM_DISCOVERY';
+  title: string;
+  description: string;
+  accounting_standard: string;
+  target_account_codes: string[];
+  procedure_type: 'AUTOMATED_JOURNAL' | 'RECONCILIATION_TIE_OUT' | 'COMPLIANCE_CHECK' | 'INQUIRY_OUTREACH';
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'EXCEPTION_FLAGGED' | 'SKIPPED';
+  is_dynamically_discovered: boolean;
+  findings_summary: string;
+  working_paper_id?: string | null;
+  inquiry_thread_id?: string | null;
+}
+
+export interface SubledgerTieOutItem {
+  status: 'TIED_OUT' | 'PENDING_APPROVALS' | 'SUSPENSE_BLOCKED' | 'FLAGGED';
+  gl_control_account?: string;
+  gl_balance?: number;
+  gl_cash_balance?: number;
+  pending_customer_items?: number;
+  pending_vendor_items?: number;
+  suspense_account_balance?: number;
+  suspense_cleared?: boolean;
+  message: string;
+}
+
+export interface SubledgerTieOutSummary {
+  evaluated_at?: string;
+  overall_status: 'TIED_OUT' | 'READY_WITH_WARNINGS' | 'BLOCKED';
+  accounts_receivable?: SubledgerTieOutItem;
+  accounts_payable?: SubledgerTieOutItem;
+  bank_reconciliation?: SubledgerTieOutItem;
+}
+
+export interface PreFlightDiscoverySummary {
+  scanned_at?: string;
+  total_gl_accounts_audited: number;
+  uncovered_accounts_found: number;
+  uncovered_accounts?: Array<{
+    account_code: string;
+    account_name: string;
+    account_type?: string;
+    balance: number;
+  }>;
+  contra_anomalies_found: number;
+  contra_anomalies?: Array<{
+    account_code: string;
+    account_name: string;
+    anomaly_type: string;
+    balance: number;
+    description: string;
+  }>;
+  new_steps_integrated: number;
+  coverage_percentage: number;
+  executive_pre_flight_memo?: string;
+}
+
+export interface PostCloseVerificationSummary {
+  certificate_id: string;
+  verified_at: string;
+  period: string;
+  is_balanced: boolean;
+  total_debits: number;
+  total_credits: number;
+  discrepancy: number;
+  suspense_account_balance: number;
+  suspense_cleared: boolean;
+  status: 'VERIFIED' | 'DISCREPANCY_FLAGGED';
+  narrative: string;
+}
+
+export interface MonthEndCloseChecklist {
+  checklist_id: string;
+  client_id: string;
+  period_month: string;
+  period_year: number;
+  status: 'DRAFT' | 'PREFLIGHT_COMPLETED' | 'IN_PROGRESS' | 'COMPLETED' | 'EXCEPTION_FLAGGED';
+  autonomy_level: string;
+  total_steps_count: number;
+  completed_steps_count: number;
+  exceptions_count: number;
+  steps: CloseChecklistItem[];
+  subledger_tie_outs?: SubledgerTieOutSummary;
+  pre_flight_summary?: PreFlightDiscoverySummary;
+  post_close_verification?: PostCloseVerificationSummary;
+  started_at?: string | null;
+  completed_at?: string | null;
+  updated_at: string;
+}
