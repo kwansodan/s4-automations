@@ -732,16 +732,37 @@ async def add_or_update_pipeline(
         raise HTTPException(status_code=404, detail=f"Client '{client_id}' not found.")
 
     from app.services.agent_comms_service import AgentCommsService
-    enriched_agent = AgentCommsService.enrich_agent_metadata(client_id, pipeline_data, client.custom_config)
-    pipe_id = enriched_agent["id"]
+    batch_items = None
+    if "pipelines" in pipeline_data and isinstance(pipeline_data["pipelines"], list):
+        batch_items = pipeline_data["pipelines"]
+    elif "agents" in pipeline_data and isinstance(pipeline_data["agents"], list):
+        batch_items = pipeline_data["agents"]
 
     current_pipes = AgentCommsService.sync_client_agents_list(client)
-    # Replace if exists, else append
-    existing_idx = next((i for i, p in enumerate(current_pipes) if p.get("id") == pipe_id), None)
-    if existing_idx is not None:
-        current_pipes[existing_idx] = enriched_agent
+
+    if batch_items is not None:
+        for item in batch_items:
+            if isinstance(item, dict):
+                enriched = AgentCommsService.enrich_agent_metadata(client_id, item, client.custom_config)
+                p_id = enriched["id"]
+                existing_idx = next((i for i, p in enumerate(current_pipes) if p.get("id") == p_id), None)
+                if existing_idx is not None:
+                    current_pipes[existing_idx] = enriched
+                else:
+                    current_pipes.append(enriched)
+        pipe_id = "batch"
+        agent_name = f"{len(batch_items)} agents configured"
+        agent_email = None
     else:
-        current_pipes.append(enriched_agent)
+        enriched_agent = AgentCommsService.enrich_agent_metadata(client_id, pipeline_data, client.custom_config)
+        pipe_id = enriched_agent["id"]
+        existing_idx = next((i for i, p in enumerate(current_pipes) if p.get("id") == pipe_id), None)
+        if existing_idx is not None:
+            current_pipes[existing_idx] = enriched_agent
+        else:
+            current_pipes.append(enriched_agent)
+        agent_name = enriched_agent.get("name")
+        agent_email = enriched_agent.get("agent_email")
 
     client.pipelines = current_pipes
     client.agents = current_pipes
@@ -755,7 +776,7 @@ async def add_or_update_pipeline(
     AuditService.log(
         client_id=client_id,
         action="AGENT_SAVED",
-        details={"agent_id": pipe_id, "pipeline_id": pipe_id, "name": enriched_agent.get("name"), "agent_email": enriched_agent.get("agent_email")},
+        details={"agent_id": pipe_id, "pipeline_id": pipe_id, "name": agent_name, "agent_email": agent_email},
     )
     return client.agents
 

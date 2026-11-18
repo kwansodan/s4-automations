@@ -1064,6 +1064,14 @@ class GLClosingService:
                 "suspense_cleared": suspense_cleared,
                 "message": bank_msg,
             },
+            "cash_and_bank": {
+                "status": bank_status,
+                "gl_cash_balance": bank_gl_balance,
+                "gl_balance": bank_gl_balance,
+                "suspense_account_balance": suspense_bal,
+                "suspense_cleared": suspense_cleared,
+                "message": bank_msg,
+            },
         }
 
         # Update checklist if one exists
@@ -1217,8 +1225,12 @@ class GLClosingService:
         else:
             memo_lines.append("All General Ledger accounts verified and mapped to closing runbook. Equilibrium confirmed. Ready for autonomous closing.")
 
+        overall_readiness = "ATTENTION_REQUIRED" if contra_anomalies else "CLEAR_TO_CLOSE"
+
         pre_flight_summary = {
             "scanned_at": get_utc_now().isoformat(),
+            "overall_readiness": overall_readiness,
+            "total_accounts_reviewed": len(accounts),
             "total_gl_accounts_audited": len(accounts),
             "uncovered_accounts_found": len(uncovered_accounts),
             "uncovered_accounts": uncovered_accounts,

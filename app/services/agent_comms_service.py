@@ -631,6 +631,7 @@ class AgentCommsService:
             "clarification_updated": clarification_updated,
             "delivery": delivery_info,
             "agent_run": agent_run,
+            "status": "PROCESSED",
         }
 
     @staticmethod
