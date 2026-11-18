@@ -51,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
     setWorkspaceSubTab,
     isSidebarCollapsed: isCollapsed,
     toggleSidebarCollapsed,
+    pipelineProgress,
   } = useAutomation();
 
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
@@ -65,6 +66,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
       }
     }
     setIsMobileOpen(false);
+  };
+
+  const isSectionActive = (sub?: string) => {
+    if (!pipelineProgress?.is_running || !sub) return false;
+    const sec = (pipelineProgress.section || '').toLowerCase();
+    const task = (pipelineProgress.task_name || '').toLowerCase();
+    if (sub === 'gl') return sec === 'gl' || task.includes('gl') || task.includes('close');
+    if (sub === 'fr') return sec === 'fr' || task.includes('report') || task.includes('statement');
+    if (sub === 'ar') return sec === 'ar' || task.includes('invoice') || task.includes('ocr');
+    if (sub === 'ap') return sec === 'ap' || task.includes('bill');
+    if (sub === 'bank') return sec === 'bank' || task.includes('bank');
+    if (sub === 'pipelines') return true;
+    return false;
   };
 
   // Tier 1: Client Daily Bookkeeping Workspace
@@ -278,28 +292,46 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               const Icon = item.icon;
               const isActive = activeTab === 'workspace' && workspaceSubTab === item.sub;
 
+              const isWorking = isSectionActive(item.sub);
+
               return (
                 <button
                   key={item.sub}
                   onClick={() => handleNav('workspace', item.sub)}
-                  title={isCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  title={isCollapsed ? `${item.label}${isWorking ? ' (Agent Active)' : ''}` : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer relative ${
                     isActive
                       ? 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] font-bold shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#0284C7]' : 'text-slate-400'}`} />
+                  <div className="relative shrink-0">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#0284C7]' : 'text-slate-400'}`} />
+                    {isWorking && (
+                      <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </div>
                   {!isCollapsed && (
                     <div className="flex items-center justify-between flex-1 min-w-0">
                       <span className="truncate">{item.label}</span>
-                      {item.badge && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                          isActive ? 'bg-[#0284C7] text-white' : 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]'
-                        }`}>
-                          {item.badge}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isWorking && (
+                          <span className="flex items-center gap-1 text-[9px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Active
+                          </span>
+                        )}
+                        {item.badge && (
+                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                            isActive ? 'bg-[#0284C7] text-white' : 'bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD]'
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </button>

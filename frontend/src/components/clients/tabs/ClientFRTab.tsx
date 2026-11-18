@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useClient } from '../../../context/ClientContext';
+import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchFinancialReports,
   generateFinancialReport,
@@ -26,6 +27,7 @@ import {
 
 export const ClientFRTab: React.FC = () => {
   const { currentClient } = useClient();
+  const { startAgentTask } = useAutomation();
   const [reports, setReports] = useState<FinancialStatementReportItem[]>([]);
   const [selectedReport, setSelectedReport] = useState<FinancialStatementReportItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +62,21 @@ export const ClientFRTab: React.FC = () => {
     if (!currentClient?.id) return;
     setIsGenerating(true);
     setActionNotice(null);
+
+    startAgentTask({
+      taskName: `Financial Statement Synthesis (October 2026)`,
+      agentName: 'Ama',
+      agentRole: 'Statutory Financial Reporting & MD&A Agent',
+      section: 'FR',
+      month: 'October',
+      year: 2026,
+      clientId: currentClient.id,
+      clientName: currentClient.name,
+      collaboratingAgents: ['Kwame (GL Agent)'],
+      initialStep: 'Fetching adjusted trial balance and calculating statement schedules...',
+      totalStages: 4,
+    });
+
     try {
       const res = await generateFinancialReport(currentClient.id, {
         period_type: periodType,

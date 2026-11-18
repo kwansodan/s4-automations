@@ -57,6 +57,27 @@ interface AutomationContextType {
   invoicePreflight: InvoicePreflightAudit | null;
   setInvoicePreflight: (audit: InvoicePreflightAudit | null) => void;
 
+  // Multi-tier Agent Co-Working & Team Room
+  isTeamModalOpen: boolean;
+  setIsTeamModalOpen: (open: boolean) => void;
+  isDockMinimized: boolean;
+  setIsDockMinimized: React.Dispatch<React.SetStateAction<boolean>>;
+  isDockDismissed: boolean;
+  setIsDockDismissed: React.Dispatch<React.SetStateAction<boolean>>;
+  startAgentTask: (params: {
+    taskName: string;
+    agentName?: string;
+    agentRole?: string;
+    section?: 'AR' | 'AP' | 'BANK' | 'GL' | 'FR' | string;
+    month?: string;
+    year?: number;
+    clientId?: string;
+    clientName?: string;
+    collaboratingAgents?: string[];
+    initialStep?: string;
+    totalStages?: number;
+  }) => void;
+
   // Responsive Sidebar State
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: (collapsed: boolean) => void;
@@ -114,6 +135,66 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
   const [invoicePreflight, setInvoicePreflight] = useState<InvoicePreflightAudit | null>(null);
+
+  // Multi-tier Co-Working Dock & Team Room States
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState<boolean>(false);
+  const [isDockMinimized, setIsDockMinimized] = useState<boolean>(false);
+  const [isDockDismissed, setIsDockDismissed] = useState<boolean>(false);
+
+  const startAgentTask = useCallback((params: {
+    taskName: string;
+    agentName?: string;
+    agentRole?: string;
+    section?: 'AR' | 'AP' | 'BANK' | 'GL' | 'FR' | string;
+    month?: string;
+    year?: number;
+    clientId?: string;
+    clientName?: string;
+    collaboratingAgents?: string[];
+    initialStep?: string;
+    totalStages?: number;
+  }) => {
+    setIsDockDismissed(false);
+    setIsDockMinimized(false);
+    const m = params.month || selectedMonth;
+    const y = params.year || selectedYear;
+    const agent = params.agentName || 'Kwame';
+    const role = params.agentRole || 'Autonomous Accounting Agent';
+    const sec = params.section || 'GL';
+
+    setPipelineProgress({
+      is_running: true,
+      status: 'RUNNING',
+      percent: 10,
+      current_step: params.initialStep || `${agent} (${role}) initializing task...`,
+      stage_index: 1,
+      total_stages: params.totalStages || 5,
+      task_name: params.taskName,
+      month: m,
+      year: Number(y),
+      client_id: params.clientId,
+      client_name: params.clientName,
+      agent_id: agent.toLowerCase().replace(/\s+/g, '_'),
+      agent_name: agent,
+      agent_role: role,
+      section: sec,
+      collaborating_agents: params.collaboratingAgents || ['Kwame', 'Ama', 'Kofi', 'Akosua'],
+      recent_logs: [
+        `[${agent}]: Initialized ${params.taskName} for ${m} ${y}`,
+      ],
+      logs: [
+        {
+          level: 'info',
+          message: `${agent}: Started ${params.taskName}`,
+          time: new Date().toLocaleTimeString(),
+        },
+      ],
+      stats: {
+        slips_processed: 0,
+        items_extracted: 0,
+      },
+    });
+  }, [selectedMonth, selectedYear]);
 
   // Responsive Sidebar Collapse State with localStorage persistence
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -505,6 +586,14 @@ export const AutomationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setIsInvoiceModalOpen,
         invoicePreflight,
         setInvoicePreflight,
+
+        isTeamModalOpen,
+        setIsTeamModalOpen,
+        isDockMinimized,
+        setIsDockMinimized,
+        isDockDismissed,
+        setIsDockDismissed,
+        startAgentTask,
 
         isSidebarCollapsed,
         setIsSidebarCollapsed,

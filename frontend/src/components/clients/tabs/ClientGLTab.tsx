@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useClient } from '../../../context/ClientContext';
+import { useAutomation } from '../../../context/AutomationContext';
 import {
   fetchTrialBalance,
   fetchWorkingPapers,
@@ -52,6 +53,7 @@ import {
 
 export const ClientGLTab: React.FC = () => {
   const { currentClient } = useClient();
+  const { startAgentTask } = useAutomation();
   const [tb, setTb] = useState<TrialBalanceResponse | null>(null);
   const [workingPapers, setWorkingPapers] = useState<ManualJournalWorkingPaperItem[]>([]);
   const [checklist, setChecklist] = useState<MonthEndCloseChecklist | null>(null);
@@ -161,6 +163,21 @@ export const ClientGLTab: React.FC = () => {
     if (!currentClient?.id || !checklist?.checklist_id) return;
     setIsExecutingRunbook(true);
     setActionNotice(null);
+
+    startAgentTask({
+      taskName: `Month-End Close (${checklist.period_month} ${checklist.period_year})`,
+      agentName: 'Kwame',
+      agentRole: 'General Ledger & Closing Accountant',
+      section: 'GL',
+      month: checklist.period_month,
+      year: checklist.period_year,
+      clientId: currentClient.id,
+      clientName: currentClient.name,
+      collaboratingAgents: ['Ama (Reporting)', 'Kofi (Bank Recon)', 'Akosua (AR/Billing)'],
+      initialStep: 'Executing tailored Month-End Close procedures and attaching calculation schedules...',
+      totalStages: (checklist.steps?.length || 5) + 2,
+    });
+
     try {
       const res = await executeCloseRunbook(currentClient.id, {
         checklist_id: checklist.checklist_id,

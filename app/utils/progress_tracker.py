@@ -21,6 +21,13 @@ class PipelineProgressTracker:
         self.stage_index: int = 0
         self.total_stages: int = 5
         self.percent: int = 0
+        self.client_id: Optional[str] = None
+        self.client_name: Optional[str] = None
+        self.agent_id: Optional[str] = None
+        self.agent_name: Optional[str] = None
+        self.agent_role: Optional[str] = None
+        self.section: Optional[str] = None  # "AR", "AP", "BANK", "GL", "FR"
+        self.collaborating_agents: List[str] = []
         self.stats: Dict[str, Any] = {
             "customers_total": 0,
             "customers_done": 0,
@@ -38,7 +45,20 @@ class PipelineProgressTracker:
         self.error_message: Optional[str] = None
         self.last_result: Optional[Dict[str, Any]] = None
 
-    def start_pipeline(self, task_name: str, month: str, year: int, total_stages: int = 5):
+    def start_pipeline(
+        self,
+        task_name: str,
+        month: str,
+        year: int,
+        total_stages: int = 5,
+        client_id: Optional[str] = None,
+        client_name: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        agent_role: Optional[str] = None,
+        section: Optional[str] = None,
+        collaborating_agents: Optional[List[str]] = None,
+    ):
         with self._lock:
             self.is_running = True
             self.status = "RUNNING"
@@ -49,6 +69,13 @@ class PipelineProgressTracker:
             self.stage_index = 1
             self.total_stages = total_stages
             self.percent = 5
+            self.client_id = client_id
+            self.client_name = client_name
+            self.agent_id = agent_id
+            self.agent_name = agent_name or "Accounting Agent"
+            self.agent_role = agent_role or "Autonomous Bookkeeper"
+            self.section = section or ("GL" if "GL" in task_name else "FR" if "Report" in task_name else "AR")
+            self.collaborating_agents = list(collaborating_agents or [])
             self.stats = {
                 "customers_total": 0,
                 "customers_done": 0,
@@ -186,6 +213,13 @@ class PipelineProgressTracker:
                 "stage_index": self.stage_index,
                 "total_stages": self.total_stages,
                 "percent": self.percent,
+                "client_id": self.client_id,
+                "client_name": self.client_name,
+                "agent_id": self.agent_id,
+                "agent_name": self.agent_name,
+                "agent_role": self.agent_role,
+                "section": self.section,
+                "collaborating_agents": list(self.collaborating_agents or []),
                 "stats": dict(self.stats),
                 "started_at": self.started_at,
                 "completed_at": self.completed_at,

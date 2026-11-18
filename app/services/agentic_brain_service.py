@@ -2360,6 +2360,159 @@ class AgenticBrainService:
         }
 
     @classmethod
+    async def _tool_run_subledger_tie_out(
+        cls,
+        db: Session,
+        client: ClientOrganization,
+        agent: Dict[str, Any],
+        args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        from app.services.gl_closing_service import GLClosingService
+        month = args.get("month") or "October"
+        year = int(args.get("year") or datetime.now(timezone.utc).year)
+        tie_out = await GLClosingService.run_inter_agent_subledger_tie_out(db, client, month=month, year=year)
+        all_tied = tie_out.get("all_subledgers_tied_out", False)
+        return {
+            "status": "success",
+            "all_subledgers_tied_out": all_tied,
+            "tie_out_summary": tie_out,
+            "message": sanitize_no_em_dash(
+                f"Subledger tie-out for {month} {year}: All Subledgers Tied Out = {all_tied}. "
+                f"AR: {tie_out.get('accounts_receivable', {}).get('status')}, "
+                f"AP: {tie_out.get('accounts_payable', {}).get('status')}, "
+                f"Bank: {tie_out.get('bank_reconciliation', {}).get('status')} "
+                f"(Suspense cleared: {tie_out.get('bank_reconciliation', {}).get('suspense_cleared')})."
+            ),
+        }
+
+    @classmethod
+    async def _tool_run_pre_flight_close_review(
+        cls,
+        db: Session,
+        client: ClientOrganization,
+        agent: Dict[str, Any],
+        args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        from app.services.gl_closing_service import GLClosingService
+        month = args.get("month") or "October"
+        year = int(args.get("year") or datetime.now(timezone.utc).year)
+        review = await GLClosingService.pre_flight_close_review(db, client, month=month, year=year)
+        accounts_audited = int(review.get("total_gl_accounts_audited") or review.get("accounts_audited_count") or 0)
+        uncovered = int(review.get("uncovered_accounts_found") or review.get("uncovered_accounts_count") or 0)
+        anomalies = int(review.get("contra_anomalies_found") or review.get("contra_anomalies_count") or 0)
+        new_steps = int(review.get("new_steps_integrated") or len(review.get("dynamically_added_steps", [])))
+        return {
+            "status": "success",
+            "checklist_id": review.get("checklist_id"),
+            "accounts_audited_count": accounts_audited,
+            "total_gl_accounts_audited": accounts_audited,
+            "uncovered_accounts_count": uncovered,
+            "contra_anomalies_count": anomalies,
+            "dynamically_added_steps": new_steps,
+            "coverage_percentage": review.get("coverage_percentage", 100.0),
+            "message": sanitize_no_em_dash(
+                f"Pre-Flight Discovery Review for {month} {year}: Audited {accounts_audited} accounts. "
+                f"Discovered {uncovered} unmapped accounts and {anomalies} contra-anomalies. "
+                f"Added {new_steps} tailored closing steps."
+            ),
+        }
+
+    @classmethod
+    async def _tool_execute_close_runbook(
+        cls,
+        db: Session,
+        client: ClientOrganization,
+        agent: Dict[str, Any],
+        args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        from app.services.gl_closing_service import GLClosingService
+        month = args.get("month") or "October"
+        year = int(args.get("year") or datetime.now(timezone.utc).year)
+        checklist_id = args.get("checklist_id")
+        if not checklist_id:
+            cl = await GLClosingService.get_or_create_period_checklist(db, client, month, year)
+            checklist_id = cl.checklist_id
+
+        auto_post = bool(args.get("auto_post", False)) or (agent.get("autonomy_level") == "full_autonomous")
+        res = await GLClosingService.execute_close_runbook(db, client, checklist_id, auto_post=auto_post)
+        return {
+            "status": "success",
+            "checklist_id": res.get("checklist_id"),
+            "completed_steps": res.get("completed_steps"),
+            "total_steps": res.get("total_steps"),
+            "exceptions_count": res.get("exceptions_count"),
+            "post_close_verification": res.get("post_close_verification"),
+            "message": sanitize_no_em_dash(
+                f"Executed Month-End Close Runbook '{checklist_id}': {res.get('completed_steps')}/{res.get('total_steps')} steps completed "
+                f"({res.get('exceptions_count')} exceptions). Verification Status: {res.get('post_close_verification', {}).get('status')}."
+            ),
+        }
+
+    @classmethod
+    async def _tool_verify_post_closing_equilibrium(
+        cls,
+        db: Session,
+        client: ClientOrganization,
+        agent: Dict[str, Any],
+        args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        from app.services.gl_closing_service import GLClosingService
+        month = args.get("month") or "October"
+        year = int(args.get("year") or datetime.now(timezone.utc).year)
+        checklist_id = args.get("checklist_id")
+        if not checklist_id:
+            cl = await GLClosingService.get_or_create_period_checklist(db, client, month, year)
+            checklist_id = cl.checklist_id
+
+        res = await GLClosingService.verify_post_posting_equilibrium(db, client, checklist_id)
+        return {
+            "status": "success",
+            "certificate_id": res.get("certificate_id"),
+            "is_balanced": res.get("is_balanced"),
+            "suspense_cleared": res.get("suspense_cleared"),
+            "verification_status": res.get("status"),
+            "message": sanitize_no_em_dash(
+                f"Post-Posting Equilibrium Verification: Certificate {res.get('certificate_id')} - "
+                f"Balanced: {res.get('is_balanced')}, Suspense Cleared: {res.get('suspense_cleared')}. {res.get('narrative')}"
+            ),
+        }
+
+    @classmethod
+    async def _tool_dispatch_controller_inquiry(
+        cls,
+        db: Session,
+        client: ClientOrganization,
+        agent: Dict[str, Any],
+        args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        from app.services.gl_closing_service import GLClosingService
+        checklist_id = args.get("checklist_id")
+        step_id = args.get("step_id") or "step_pre_flight_unmapped"
+        question_text = args.get("question_text") or "Please confirm accounting classification and policy for period-end adjustments."
+        target_channel = args.get("target_channel") or "EMAIL"
+        if not checklist_id:
+            month = args.get("month") or "October"
+            year = int(args.get("year") or datetime.now(timezone.utc).year)
+            cl = await GLClosingService.get_or_create_period_checklist(db, client, month, year)
+            checklist_id = cl.checklist_id
+
+        res = await GLClosingService.dispatch_autonomous_inquiry(
+            db=db,
+            client=client,
+            checklist_id=checklist_id,
+            step_id=step_id,
+            question_text=question_text,
+            target_channel=target_channel,
+        )
+        return {
+            "status": "success",
+            "inquiry": res,
+            "message": sanitize_no_em_dash(
+                f"Dispatched Controller Inquiry via {target_channel} to {res.get('recipient')} for Step '{step_id}'."
+            ),
+        }
+
+    @classmethod
     async def _tool_generate_financial_statement_pack(
         cls,
         db: Session,
@@ -2472,6 +2625,11 @@ class AgenticBrainService:
             "formulate_manual_journal": cls._tool_formulate_manual_journal,
             "attach_working_paper": cls._tool_attach_working_paper,
             "post_approved_journal_to_erp": cls._tool_post_approved_journal_to_erp,
+            "run_subledger_tie_out": cls._tool_run_subledger_tie_out,
+            "run_pre_flight_close_review": cls._tool_run_pre_flight_close_review,
+            "execute_close_runbook": cls._tool_execute_close_runbook,
+            "verify_post_closing_equilibrium": cls._tool_verify_post_closing_equilibrium,
+            "dispatch_controller_inquiry": cls._tool_dispatch_controller_inquiry,
             # Financial Reporting Agent Tools
             "generate_financial_statement_pack": cls._tool_generate_financial_statement_pack,
             "compile_notes_and_disclosures": cls._tool_compile_notes_and_disclosures,
@@ -2609,28 +2767,36 @@ class AgenticBrainService:
         section = str(agent.get("section", "AR")).upper()
 
         if section == "GL":
-            # GL Accountant Agent Plan: Review GL/TB, audit policies, attach working papers
+            # GL Accountant Agent Plan: Full Autonomous Month-End Close Runbook or Specific Action
             steps.append({
                 "thought": f"Pulling General Ledger accounts and Trial Balance for {eff_month or 'closing period'} {eff_year or ''}.",
                 "tool_name": "fetch_trial_balance_and_gl",
                 "tool_input": {"month": eff_month, "year": eff_year},
             })
             steps.append({
-                "thought": f"Auditing closing adjustments (depreciation, prepayments, accruals, FX revaluations, tax provisions) for {eff_month or 'closing period'}.",
-                "tool_name": "audit_closing_adjustments",
+                "thought": f"Cross-checking subledgers (AR Customers, AP Vendors, Bank feed) against control accounts and verifying zero suspense balance.",
+                "tool_name": "run_subledger_tie_out",
                 "tool_input": {"month": eff_month, "year": eff_year},
             })
             steps.append({
-                "thought": "Generating auditable calculation schedules and technical accounting memos ('white papers') for identified adjustments.",
-                "tool_name": "attach_working_paper",
-                "tool_input": {"month": eff_month, "year": eff_year, "auto_approve": ("auto-approve" in low or "approve" in low)},
+                "thought": f"Performing pre-flight close review to audit 100% of GL accounts, identify uncovered balances, and detect contra-anomalies.",
+                "tool_name": "run_pre_flight_close_review",
+                "tool_input": {"month": eff_month, "year": eff_year},
             })
-            if any(k in low for k in ("post", "post to erp", "push to zoho", "post journal")):
-                steps.append({
-                    "thought": "Posting approved balanced manual journal to Zoho Books ERP.",
-                    "tool_name": "post_approved_journal_to_erp",
-                    "tool_input": {},
-                })
+            steps.append({
+                "thought": f"Executing tailored Month-End Close Runbook procedures with calculation schedules and technical white papers.",
+                "tool_name": "execute_close_runbook",
+                "tool_input": {
+                    "month": eff_month,
+                    "year": eff_year,
+                    "auto_post": ("post" in low or agent.get("autonomy_level") == "full_autonomous"),
+                },
+            })
+            steps.append({
+                "thought": "Verifying post-posting equilibrium, zero suspense clearance, and issuing digital verification certificate.",
+                "tool_name": "verify_post_closing_equilibrium",
+                "tool_input": {"month": eff_month, "year": eff_year},
+            })
             return steps
 
         if section == "FR":
@@ -3416,7 +3582,26 @@ Rules:
     ) -> Dict[str, Any]:
         eff_month = month or datetime.now().strftime("%B")
         eff_year = year or datetime.now().year
-        goal = f"Run full autonomous cycle for {agent.get('name', 'Accounting Agent')} ({eff_month} {eff_year}): scan storage, apply learned knowledge rules, auto-approve valid transactions within autonomy policy, handle overdue clarifications, and report ledger status."
+        section = str(agent.get("section") or agent.get("pipeline_type") or "AR").upper()
+        if section == "GL":
+            goal = (
+                f"Run full autonomous month-end close cycle for {agent.get('name', 'GL Accountant Agent')} "
+                f"({eff_month} {eff_year}): cross-check subledgers (AR Customers, AP Vendors, Bank feed), "
+                f"perform pre-flight gap discovery, execute tailored closing runbook steps, verify post-closing equilibrium, "
+                f"and compile closing white papers."
+            )
+        elif section == "FR":
+            goal = (
+                f"Run full autonomous financial reporting cycle for {agent.get('name', 'Financial Reporting Agent')} "
+                f"({eff_month} {eff_year}): synthesize statutory IFRS statement pack (Income Statement, Balance Sheet, "
+                f"Cash Flows, Equity), compile disclosure notes, and compute financial ratios."
+            )
+        else:
+            goal = (
+                f"Run full autonomous cycle for {agent.get('name', 'Accounting Agent')} ({eff_month} {eff_year}): "
+                f"scan storage, apply learned knowledge rules, auto-approve valid transactions within autonomy policy, "
+                f"handle overdue clarifications, and report ledger status."
+            )
         return await cls.plan_and_execute_goal(
             db=db,
             client=client,

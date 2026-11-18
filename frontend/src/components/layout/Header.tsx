@@ -37,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
     refreshAll,
     isLoading,
     pipelineProgress,
+    setIsTeamModalOpen,
+    setIsDockDismissed,
   } = useAutomation();
   const { errors, unreadErrorsCount, openDebugDrawer } = useErrors();
 
@@ -126,12 +128,31 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
             </span>
           )}
 
-          {/* Live Progress Pill */}
+          {/* Interactive Agent Teamwork Ticker (Tier 1: 0% screen blockage) */}
           {pipelineProgress?.is_running && (
-            <span className="flex items-center gap-1.5 text-xs text-[#0284C7] bg-[#F0F9FF] border border-[#BAE6FD] px-2 sm:px-3 py-1 rounded-full animate-pulse font-medium">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span className="font-mono font-bold">{pipelineProgress.percent}% <span className="hidden sm:inline">Processing</span></span>
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDockDismissed(false);
+                setIsTeamModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 text-xs text-[#0284C7] bg-[#F0F9FF] hover:bg-[#E0F2FE] border border-[#BAE6FD] px-2.5 sm:px-3 py-1 rounded-full font-medium transition cursor-pointer active:scale-95 shadow-xs"
+              title="Click to open Autonomous Accounting Team Room or restore dock"
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="font-semibold text-slate-800 hidden xs:inline">
+                {pipelineProgress.agent_name || 'Kwame'}:
+              </span>
+              <span className="font-mono font-bold text-[#0284C7]">
+                {pipelineProgress.percent}%
+              </span>
+              <span className="text-[11px] text-slate-500 hidden lg:inline max-w-[140px] truncate">
+                · {pipelineProgress.current_step || 'Active'}
+              </span>
+            </button>
           )}
 
           {/* Sync Button */}

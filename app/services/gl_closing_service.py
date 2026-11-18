@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlmodel import Session, select, desc
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import settings
 from app.models.db_models import (
@@ -34,6 +35,7 @@ from app.models.schemas import (
 from app.services.audit_service import AuditService
 from app.services.zoho_service import ZohoBooksService
 from app.utils.logging import get_logger
+from app.utils.progress_tracker import pipeline_tracker
 
 logger = get_logger("gl_closing_service")
 
@@ -1429,26 +1431,50 @@ class GLClosingService:
         month = checklist.period_month
         year = checklist.period_year
 
+        is_standalone_pipeline = not pipeline_tracker.is_running
+        if is_standalone_pipeline:
+            pipeline_tracker.start_pipeline(
+                task_name=f"Month-End Close Execution ({month} {year})",
+                month=month,
+                year=year,
+                total_stages=len(checklist.steps or []) + 2,
+                client_id=client.id,
+                client_name=client.name,
+                agent_id="gl_accountant",
+                agent_name="Kwame",
+                agent_role="General Ledger & Closing Accountant",
+                section="GL",
+                collaborating_agents=["Ama (Reporting)", "Kofi (Bank Recon)", "Akosua (AR/Billing)"],
+            )
+
         # Run pre-flight review if not yet executed
         if not checklist.pre_flight_summary:
+            pipeline_tracker.update_step("Running automated pre-flight scan of GL trial balance...", percent=10, stage_index=1)
             await cls.pre_flight_close_review(db, client, month, year)
 
         # Run subledger tie-outs
+        pipeline_tracker.update_step("Cross-checking AR, AP, and Bank subledgers against GL control accounts...", percent=20, stage_index=2)
         await cls.run_inter_agent_subledger_tie_out(db, client, month, year)
 
         executed_steps = []
-        for step in checklist.steps:
+        total_steps = len(checklist.steps or []) or 1
+        for idx, step in enumerate(checklist.steps or []):
             if step.get("status") in ["PENDING", "IN_PROGRESS"]:
+                step_title = step.get("title", f"Step {idx + 1}")
+                calc_percent = min(90, 25 + int(((idx + 1) / total_steps) * 60))
+                pipeline_tracker.update_step(f"Executing procedure: {step_title}", percent=calc_percent, stage_index=idx + 3)
+                pipeline_tracker.add_log("info", f"Kwame (GL Agent): Executing '{step_title}'")
                 res = await cls.execute_checklist_step(db, client, checklist_id, step["step_id"], auto_post=auto_post)
                 executed_steps.append(res)
 
         # Post-Close Verification
+        pipeline_tracker.update_step("Verifying post-posting equilibrium and sealing completion certificate...", percent=95)
         verification = await cls.verify_post_posting_equilibrium(db, client, checklist_id)
 
         # Refresh
         db.refresh(checklist)
 
-        return {
+        result_summary = {
             "checklist_id": checklist.checklist_id,
             "period": f"{month} {year}",
             "status": checklist.status,
@@ -1458,6 +1484,11 @@ class GLClosingService:
             "executed_steps_count": len(executed_steps),
             "post_close_verification": verification,
         }
+
+        if is_standalone_pipeline:
+            pipeline_tracker.complete_pipeline(result_summary)
+
+        return result_summary
 
     @classmethod
     async def verify_post_posting_equilibrium(
@@ -1517,6 +1548,40 @@ class GLClosingService:
             ),
         }
 
+        # Autonomous Reporting Chaining: If verified balanced and client has Financial Reporting active or enabled
+        if is_balanced and suspense_cleared:
+            try:
+                from app.services.financial_reporting_service import FinancialReportingService
+                agents_list = list(client.agents or client.pipelines or [])
+                has_fr_agent = any(
+                    (ag.get("pipeline_type") == "financial_reporting" or ag.get("section") == "FR")
+                    and ag.get("status") in ("active", "live", "configured")
+                    for ag in agents_list
+                )
+                if has_fr_agent or checklist.autonomy_level in ("full_autonomous", "semi_autonomous"):
+                    report = await FinancialReportingService.synthesize_statement_pack(
+                        db=db,
+                        client=client,
+                        period_type="MONTHLY",
+                        period_month=checklist.period_month,
+                        period_year=checklist.period_year,
+                        reporting_framework="IFRS",
+                        prepared_by="autonomous_gl_closing_pipeline",
+                    )
+                    report_meta = {
+                        "report_id": report.report_id,
+                        "report_title": report.report_title,
+                        "net_profit": report.income_statement.get("net_profit_for_period"),
+                        "total_assets": report.balance_sheet.get("total_assets"),
+                        "is_balanced": report.balance_sheet.get("is_balanced"),
+                        "generated_at": get_utc_now().isoformat(),
+                    }
+                    verification["financial_statement_pack"] = report_meta
+                    verification["narrative"] += f" Autonomous Financial Reporting Pack '{report.report_id}' successfully synthesized."
+                    logger.info(f"Sealed month-end verification and generated Financial Statement Pack '{report.report_id}' for {client.id}.")
+            except Exception as fe:
+                logger.warning(f"Notice: Autonomous financial reporting pack generation skipped: {fe}")
+
         checklist.post_close_verification = verification
         checklist.updated_at = get_utc_now()
         db.add(checklist)
@@ -1531,6 +1596,7 @@ class GLClosingService:
                 "is_balanced": is_balanced,
                 "discrepancy": discrepancy,
                 "suspense_cleared": suspense_cleared,
+                "financial_statement_report_id": (verification.get("financial_statement_pack") or {}).get("report_id"),
             },
             source_type="gl_agent",
             source_identifier=f"month_end_close_checklists:{checklist.checklist_id}",
@@ -1547,6 +1613,7 @@ class GLClosingService:
         step_id: str,
         question_text: str,
         target_channel: str = "WHATSAPP",
+        recipient_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Dispatches an autonomous communication inquiry to the client Controller via WhatsApp or Email
@@ -1571,11 +1638,40 @@ class GLClosingService:
         if not target_step:
             raise ValueError(f"Step '{step_id}' not found.")
 
+        # Resolve target recipient
+        recipient = recipient_override
+        if not recipient:
+            team = client.team_members or []
+            controller_member = next(
+                (m for m in team if "controller" in str(m.get("role", "")).lower() or "finance" in str(m.get("role", "")).lower()),
+                None
+            )
+            if controller_member:
+                recipient = controller_member.get("email") if target_channel == "EMAIL" else controller_member.get("phone")
+            if not recipient and target_channel == "EMAIL":
+                recipient = f"controller@{client.id.replace('_', '-')}.com"
+            elif not recipient:
+                recipient = "+233240000000"
+
         msg_id = f"inq_{uuid.uuid4().hex[:8]}"
         target_step["status"] = "IN_PROGRESS"
+        target_step["inquiry_status"] = "SENT"
         target_step["inquiry_thread_id"] = msg_id
-        target_step["findings_summary"] = f"Inquiry dispatched to Controller via {target_channel}: '{question_text}'"
+        target_step["inquiry_question"] = question_text
+        target_step["inquiry_channel"] = target_channel
+        target_step["inquiry_dispatched_at"] = get_utc_now().isoformat()
+        if target_channel == "EMAIL" or (recipient and "@" in recipient):
+            target_step["target_email"] = recipient
+        else:
+            target_step["target_phone"] = recipient
 
+        target_step["findings_summary"] = (
+            f"Inquiry dispatched to Controller ({recipient}) via {target_channel}: '{question_text}'"
+        )
+
+        checklist.steps = [dict(s) for s in checklist.steps]
+        flag_modified(checklist, "steps")
+        checklist.updated_at = get_utc_now()
         db.add(checklist)
         db.commit()
 
@@ -1586,6 +1682,7 @@ class GLClosingService:
             details={
                 "step_id": step_id,
                 "channel": target_channel,
+                "recipient": recipient,
                 "question": question_text,
             },
             source_type="gl_agent",
@@ -1596,6 +1693,7 @@ class GLClosingService:
             "inquiry_id": msg_id,
             "step_id": step_id,
             "channel": target_channel,
+            "recipient": recipient,
             "status": "DISPATCHED",
             "message": question_text,
         }

@@ -28,6 +28,7 @@ from app.models.db_models import (
 from app.services.audit_service import AuditService
 from app.services.gl_closing_service import GLClosingService
 from app.utils.logging import get_logger
+from app.utils.progress_tracker import pipeline_tracker
 
 logger = get_logger("financial_reporting_service")
 
@@ -65,6 +66,25 @@ class FinancialReportingService:
         if fr_agent and reporting_framework == "IFRS":
             fr_cfg = fr_agent.get("fr_policy_config") or fr_agent.get("custom_config") or {}
             reporting_framework = fr_cfg.get("reporting_framework") or reporting_framework
+
+        is_standalone = not pipeline_tracker.is_running
+        if is_standalone:
+            pipeline_tracker.start_pipeline(
+                task_name=f"Financial Statement Synthesis ({eff_month} {eff_year})",
+                month=eff_month,
+                year=eff_year,
+                total_stages=4,
+                client_id=client.id,
+                client_name=client.name,
+                agent_id="fr_accountant",
+                agent_name="Ama",
+                agent_role="Statutory Financial Reporting & MD&A Agent",
+                section="FR",
+                collaborating_agents=["Kwame (GL Agent)"],
+            )
+
+        pipeline_tracker.update_step("Fetching base Trial Balance and incorporating posted manual adjusting journals...", percent=25, stage_index=1)
+        pipeline_tracker.add_log("info", f"Ama (FR Agent): Auditing adjusted ledger balances for {client.name}")
 
         # 1. Fetch base Trial Balance
         tb_data = await GLClosingService.fetch_trial_balance(db, client, month=eff_month, year=eff_year)
@@ -390,5 +410,15 @@ class FinancialReportingService:
             source_type="financial_reporting_agent",
             source_identifier=f"financial_statement_reports:{report_id}",
         )
+
+        if is_standalone:
+            pipeline_tracker.complete_pipeline({
+                "report_id": report.report_id,
+                "report_title": report.report_title,
+                "period": f"{report.period_month} {report.period_year}",
+                "net_profit": net_profit,
+                "total_assets": total_assets,
+                "is_balanced": is_balanced,
+            })
 
         return report

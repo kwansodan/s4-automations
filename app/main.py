@@ -21,6 +21,7 @@ from app.workflows.client_strategy_pipeline import (
 )
 from app.workflows.ap_billing_pipeline import inngest_ap_pipeline_fn
 from app.workflows.bank_statement_pipeline import inngest_bank_statement_fn
+from app.workflows.gl_close_pipeline import inngest_gl_close_fn
 from app.api.v1 import api_v1_router, api_legacy_router
 from app.utils.logging import get_logger
 
@@ -126,6 +127,7 @@ inngest.fast_api.serve(
         inngest_agent_heartbeat_fn,
         inngest_ap_pipeline_fn,
         inngest_bank_statement_fn,
+        inngest_gl_close_fn,
     ],
     enable_unauthed_sync=enable_unauthed_sync,
 )

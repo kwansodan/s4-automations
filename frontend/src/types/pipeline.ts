@@ -33,6 +33,13 @@ export interface PipelineProgress {
   task_name?: string;
   month?: string;
   year?: number;
+  client_id?: string;
+  client_name?: string;
+  agent_id?: string;
+  agent_name?: string;
+  agent_role?: string;
+  section?: 'AR' | 'AP' | 'BANK' | 'GL' | 'FR' | string;
+  collaborating_agents?: string[];
   elapsed_seconds?: number;
   started_at?: string;
   completed_at?: string;

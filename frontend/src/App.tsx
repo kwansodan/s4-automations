@@ -35,6 +35,7 @@ import {
 } from './lib/api';
 import { Eye, LogOut, ShieldAlert } from 'lucide-react';
 import { PipelineFloatingWidget } from './components/common/PipelineFloatingWidget';
+import { AgentTeamRoomModal } from './components/modals/AgentTeamRoomModal';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, isPlatformAdmin, impersonatingOrg, exitImpersonation } = useAuth();
@@ -238,13 +239,14 @@ const MainLayout: React.FC = () => {
       <PipelineModal />
       <InvoiceModal />
       <ClientSetupWizardModal />
+      <AgentTeamRoomModal />
 
       {/* Diagnostics & Debugging Overlays */}
       <ToastContainer />
       <DebugDrawer />
       <DocumentPreviewPane />
 
-      {/* Persistent Background Pipeline Progress Floating Widget */}
+      {/* Multi-Tier Agent Co-Working Dock (0% View Blockage) */}
       {pipelineProgress?.is_running && !isInvoiceModalOpen && (
         <PipelineFloatingWidget />
       )}

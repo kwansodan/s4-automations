@@ -717,6 +717,67 @@ class AgentCommsService:
                 session.commit()
                 return {"item_key": f"BANK:{tx.id}", "description": tx.description, "amount": tx.amount}
 
+        # Check MonthEndCloseChecklist for open controller inquiries
+        from app.models.db_models import MonthEndCloseChecklist
+        checklists = session.exec(
+            select(MonthEndCloseChecklist)
+            .where(MonthEndCloseChecklist.client_id.in_(aliases))
+            .where(MonthEndCloseChecklist.status.in_(["IN_PROGRESS", "NEEDS_REVIEW", "DRAFT", "PREFLIGHT_COMPLETED"]))
+            .order_by(MonthEndCloseChecklist.updated_at.desc())
+        ).all()
+
+        for cl in checklists:
+            steps = list(cl.steps or [])
+            step_modified = False
+            matched_step_title = ""
+            for step in steps:
+                inq_status = step.get("inquiry_status")
+                target_email = str(step.get("target_email") or "").strip().lower()
+                target_phone = str(step.get("target_phone") or "").strip()
+                step_title = str(step.get("title") or "").lower()
+                step_cat = str(step.get("category") or "").lower()
+                step_id = str(step.get("step_id") or "").lower()
+
+                is_sender_match = (
+                    (target_email and target_email == clean_sender)
+                    or (target_phone and normalize_phone(target_phone) == normalize_phone(sender_address))
+                )
+                words = [w for w in re.findall(r"[a-zA-Z]{4,}", step_title) if w not in ("check", "audit", "verify", "reconcile")]
+                is_content_match = (
+                    step_id in body_text.lower()
+                    or any(w in body_text.lower() for w in words[:4])
+                    or (step_cat in body_text.lower())
+                )
+                if inq_status == "SENT" and (is_sender_match or is_content_match or len(steps) == 1):
+                    step["inquiry_status"] = "ANSWERED"
+                    step["inquiry_response"] = body_text
+                    step["inquiry_answered_at"] = now_iso
+                    prev_findings = step.get("findings_summary") or ""
+                    step["findings_summary"] = (
+                        f"{prev_findings}\n\n[Controller Response via {sender_address}]: {body_text}".strip()
+                    )
+                    if step.get("status") == "BLOCKED":
+                        step["status"] = "IN_PROGRESS"
+                    matched_step_title = step.get("title") or step_id
+                    step_modified = True
+                    break
+
+            if step_modified:
+                cl.steps = [dict(s) for s in steps]
+                cl.updated_at = now_utc
+                flag_modified(cl, "steps")
+                session.add(cl)
+                session.commit()
+                session.refresh(cl)
+                logger.info(
+                    f"Controller reply applied to MonthEndCloseChecklist '{cl.checklist_id}' step '{matched_step_title}'."
+                )
+                return {
+                    "item_key": f"GL_CHECKLIST:{cl.checklist_id}",
+                    "description": f"Month-End Close inquiry answered for {cl.period_month} {cl.period_year}: {matched_step_title}",
+                    "amount": 0.0,
+                }
+
         return None
 
     @classmethod
