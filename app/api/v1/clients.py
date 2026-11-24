@@ -1480,7 +1480,80 @@ def heal_staged_transaction_rates_and_metadata(t: StagedTransaction) -> bool:
             t.confidence_score = 0.95
         has_healed = True
 
-    return has_healed
+def prune_duplicate_staged_transactions(db: Session, client_id_aliases: Optional[List[str]] = None) -> int:
+    """
+    Deduplicates staged transactions for the given client aliases (or all clients).
+    Preserves records that are APPROVED, reviewed, or have the highest level of audit completion,
+    and removes superfluous duplicate PENDING records created by past pipeline runs.
+    """
+    from sqlmodel import func
+    query = (
+        select(
+            StagedTransaction.client_id,
+            StagedTransaction.source_file_name,
+            StagedTransaction.item_or_description,
+            func.count(StagedTransaction.id),
+        )
+        .group_by(
+            StagedTransaction.client_id,
+            StagedTransaction.source_file_name,
+            StagedTransaction.item_or_description,
+        )
+        .having(func.count(StagedTransaction.id) > 1)
+    )
+    if client_id_aliases:
+        query = query.where(StagedTransaction.client_id.in_(client_id_aliases))
+
+    duplicate_groups = db.exec(query).all()
+    if not duplicate_groups:
+        return 0
+
+    total_deleted = 0
+    for cid, fname, desc, cnt in duplicate_groups:
+        subquery = (
+            select(StagedTransaction)
+            .where(
+                StagedTransaction.client_id == cid,
+                StagedTransaction.source_file_name == fname,
+                StagedTransaction.item_or_description == desc,
+            )
+            .order_by(
+                StagedTransaction.approved.desc(),
+                StagedTransaction.reviewed.desc(),
+                StagedTransaction.status.desc(),
+                StagedTransaction.id.asc(),
+            )
+        )
+        rows = db.exec(subquery).all()
+        if len(rows) > 1:
+            primary = rows[0]
+            for redundant in rows[1:]:
+                if not primary.source_identifier and redundant.source_identifier:
+                    primary.source_identifier = redundant.source_identifier
+                    db.add(primary)
+                db.delete(redundant)
+                total_deleted += 1
+
+    if total_deleted > 0:
+        db.commit()
+        logger.info(f"Self-healed and pruned {total_deleted} duplicate staged transactions across {len(duplicate_groups)} slip groups.")
+    return total_deleted
+
+
+@router.post("/{client_id}/transactions/deduplicate", summary="Deduplicate Staged Transactions for Client")
+async def deduplicate_client_transactions_endpoint(
+    client_id: str,
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """Prunes redundant duplicate staged transactions while strictly preserving reviewed and approved states."""
+    aliases = get_client_id_aliases(client_id)
+    pruned_count = prune_duplicate_staged_transactions(db, aliases)
+    return {
+        "success": True,
+        "client_id": client_id,
+        "pruned_rows_count": pruned_count,
+        "message": f"Successfully pruned {pruned_count} duplicate staged transaction(s).",
+    }
 
 
 @router.get("/{client_id}/transactions", summary="List Staged Transactions")
@@ -1551,6 +1624,10 @@ async def list_client_transactions(
 
         if has_healed:
             db.commit()
+
+        pruned_count = prune_duplicate_staged_transactions(db, aliases)
+        if pruned_count > 0:
+            transactions = db.exec(query).all()
     except Exception as heal_err:
         logger.warning(f"Notice auto-healing transactions on read: {heal_err}")
         db.rollback()

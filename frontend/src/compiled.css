@@ -1843,12 +1843,6 @@
       border-color: color-mix(in oklab, var(--color-sky-500) 60%, transparent);
     }
   }
-  .border-sky-600\/30 {
-    border-color: color-mix(in srgb, #0284C7 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-sky-600) 30%, transparent);
-    }
-  }
   .border-sky-600\/40 {
     border-color: color-mix(in srgb, #0284C7 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2090,6 +2084,12 @@
     background-color: color-mix(in srgb, oklch(98.7% 0.022 95.277) 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-amber-50) 60%, transparent);
+    }
+  }
+  .bg-amber-50\/70 {
+    background-color: color-mix(in srgb, oklch(98.7% 0.022 95.277) 70%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-amber-50) 70%, transparent);
     }
   }
   .bg-amber-50\/90 {
@@ -2644,6 +2644,12 @@
       background-color: color-mix(in oklab, var(--color-sky-50) 70%, transparent);
     }
   }
+  .bg-sky-50\/80 {
+    background-color: color-mix(in srgb, #F0F9FF 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-sky-50) 80%, transparent);
+    }
+  }
   .bg-sky-100 {
     background-color: var(--color-sky-100);
   }
@@ -2678,12 +2684,6 @@
     background-color: color-mix(in srgb, #0284C7 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-sky-600) 20%, transparent);
-    }
-  }
-  .bg-sky-600\/30 {
-    background-color: color-mix(in srgb, #0284C7 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-sky-600) 30%, transparent);
     }
   }
   .bg-sky-700 {
@@ -4602,8 +4602,11 @@
       --tw-ring-color: color-mix(in oklab, var(--color-sky-400) 40%, transparent);
     }
   }
-  .ring-sky-500 {
-    --tw-ring-color: var(--color-sky-500);
+  .ring-sky-500\/20 {
+    --tw-ring-color: color-mix(in srgb, #0EA5E9 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-ring-color: color-mix(in oklab, var(--color-sky-500) 20%, transparent);
+    }
   }
   .ring-sky-500\/30 {
     --tw-ring-color: color-mix(in srgb, #0EA5E9 30%, transparent);
@@ -4862,6 +4865,9 @@
     }
     .hover\:border-amber-400:hover {
       border-color: var(--color-amber-400);
+    }
+    .hover\:border-amber-500:hover {
+      border-color: var(--color-amber-500);
     }
     .hover\:border-amber-500\/30:hover {
       border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent);
@@ -5199,6 +5205,14 @@
     .hover\:bg-sky-100:hover {
       background-color: var(--color-sky-100);
     }
+    .hover\:bg-sky-100\/80:hover {
+      background-color: color-mix(in srgb, #E0F2FE 80%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-sky-100\/80:hover {
+        background-color: color-mix(in oklab, var(--color-sky-100) 80%, transparent);
+      }
+    }
     .hover\:bg-sky-500:hover {
       background-color: var(--color-sky-500);
     }
@@ -5238,14 +5252,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-sky-900\/50:hover {
         background-color: color-mix(in oklab, var(--color-sky-900) 50%, transparent);
-      }
-    }
-    .hover\:bg-sky-900\/60:hover {
-      background-color: color-mix(in srgb, #0C4A6E 60%, transparent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-sky-900\/60:hover {
-        background-color: color-mix(in oklab, var(--color-sky-900) 60%, transparent);
       }
     }
     .hover\:bg-sky-900\/80:hover {
@@ -5341,14 +5347,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-slate-800\/40:hover {
         background-color: color-mix(in oklab, var(--color-slate-800) 40%, transparent);
-      }
-    }
-    .hover\:bg-slate-800\/80:hover {
-      background-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 80%, transparent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-slate-800\/80:hover {
-        background-color: color-mix(in oklab, var(--color-slate-800) 80%, transparent);
       }
     }
     .hover\:bg-slate-900:hover {

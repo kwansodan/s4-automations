@@ -139,8 +139,9 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
         """Stages extracted line items into PostgreSQL staged_transactions with intelligent customer reconciliation."""
         from app.models.db_models import StagedTransaction, ClientOrganization
         from app.db.session import get_engine
-        from sqlmodel import Session, select
+        from sqlmodel import Session, select, or_
         from app.services.customer_matcher import CustomerMatcher
+        from app.api.v1.clients import get_client_id_aliases
         import uuid
 
         batch_id = f"batch_{self.client_id}_{month.lower()}_{year}_{uuid.uuid4().hex[:6]}"
@@ -163,11 +164,34 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
             logger.debug(f"Could not load customer_mappings for {self.client_id}: {e}")
 
         try:
+            aliases = get_client_id_aliases(self.client_id)
             with Session(get_engine()) as session:
                 for i in items:
                     raw = dict(i.raw_extracted_data or {})
                     file_name = raw.get("file_name") or "slip.jpg"
                     source_identifier = raw.get("source_identifier")
+                    clean_desc = re.sub(r"^[:;\s\-•.]+", "", str(i.item_or_description or "")).strip()
+
+                    # Idempotency and Audit State Preservation Check
+                    existing_staged = session.exec(
+                        select(StagedTransaction).where(
+                            StagedTransaction.client_id.in_(aliases),
+                            or_(
+                                StagedTransaction.source_file_name == str(file_name),
+                                (StagedTransaction.source_identifier == str(source_identifier)) if source_identifier else False,
+                            ),
+                            StagedTransaction.item_or_description == clean_desc,
+                        )
+                    ).first()
+
+                    if existing_staged:
+                        # Existing transaction discovered: preserve operator's audit/approval state
+                        staged_count += 1
+                        if not existing_staged.source_identifier and source_identifier:
+                            existing_staged.source_identifier = str(source_identifier)
+                            session.add(existing_staged)
+                        continue
+
                     tx_date = resolve_transaction_date(
                         extracted_date=raw.get("date"),
                         file_name=file_name,
@@ -215,7 +239,7 @@ class CommercialLaundryStrategy(BaseAutomationStrategy):
                         source_type="google_drive",
                         source_file_name=str(file_name),
                         source_identifier=source_identifier,
-                        item_or_description=re.sub(r"^[:;\s\-•.]+", "", str(i.item_or_description or "")).strip(),
+                        item_or_description=clean_desc,
                         category_or_account=i.category_or_account or "Linen Laundry Service",
                         quantity_or_debit=i.quantity_or_debit,
                         credit_amount=i.credit_amount,

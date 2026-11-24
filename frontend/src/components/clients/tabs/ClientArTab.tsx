@@ -4530,6 +4530,7 @@ export const ClientArTab: React.FC = () => {
                                           items={zohoMasterItems}
                                           selectedItemName={editItemName}
                                           onSelect={handleZohoItemSelect}
+                                          onTextChange={(val) => setEditItemName(val)}
                                           disabled={isSavingTx}
                                         />
                                       </td>
@@ -4776,6 +4777,7 @@ export const ClientArTab: React.FC = () => {
                                       items={zohoMasterItems}
                                       selectedItemName={newItemName}
                                       onSelect={handleZohoNewItemSelect}
+                                      onTextChange={(val) => setNewItemName(val)}
                                       disabled={isAddingItem}
                                     />
                                   </td>
@@ -4975,6 +4977,7 @@ export const ClientArTab: React.FC = () => {
                               items={zohoMasterItems}
                               selectedItemName={editItemName}
                               onSelect={handleZohoItemSelect}
+                              onTextChange={(val) => setEditItemName(val)}
                               disabled={isSavingTx}
                             />
                           </td>

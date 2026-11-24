@@ -171,9 +171,11 @@ async def run_daily_pipeline_core(
                 # Discover existing staged transactions for this client to ensure idempotency
                 existing_staged_files = set()
                 existing_staged_file_ids = set()
-                client_identifiers = {client_slug, client_name}
+                from app.api.v1.clients import get_client_id_aliases
+                client_identifiers = set(get_client_id_aliases(client_slug))
+                client_identifiers.add(client_name)
                 if client_obj and client_obj.id:
-                    client_identifiers.add(client_obj.id)
+                    client_identifiers.update(get_client_id_aliases(client_obj.id))
 
                 try:
                     with Session(get_engine()) as session:
@@ -448,10 +450,27 @@ async def run_daily_pipeline_core(
 
                         # Commit staged transactions to PostgreSQL BEFORE archiving the file
                         if staged_items:
+                            from sqlmodel import or_
                             with Session(get_engine()) as session:
-                                session.add_all(staged_items)
+                                added_count = 0
+                                for st_item in staged_items:
+                                    existing = session.exec(
+                                        select(StagedTransaction).where(
+                                            StagedTransaction.client_id.in_(list(client_identifiers)),
+                                            or_(
+                                                StagedTransaction.source_file_name == st_item.source_file_name,
+                                                (StagedTransaction.source_identifier == st_item.source_identifier) if st_item.source_identifier else False,
+                                            ),
+                                            StagedTransaction.item_or_description == st_item.item_or_description,
+                                        )
+                                    ).first()
+                                    if existing:
+                                        logger.info(f"Preserving existing audited transaction {existing.id} for {st_item.source_file_name} - {st_item.item_or_description}")
+                                        continue
+                                    session.add(st_item)
+                                    added_count += 1
                                 session.commit()
-                            logger.info(f"Committed {len(staged_items)} staged transactions into database for {file_name}")
+                            logger.info(f"Committed {added_count} new staged transactions into database for {file_name}")
 
                         # Update in-memory set to prevent duplicate processing in the same run
                         existing_staged_files.add(file_name)

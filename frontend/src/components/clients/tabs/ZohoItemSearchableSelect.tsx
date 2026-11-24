@@ -192,16 +192,16 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
               inputRef.current?.focus();
             }
           }}
-          className={`flex items-center justify-between gap-1.5 bg-slate-900 border rounded-lg px-2.5 py-1.5 cursor-pointer transition shadow-sm ${
+          className={`flex items-center justify-between gap-1.5 border rounded-lg px-2.5 py-1.5 cursor-pointer transition shadow-xs ${
             isOpen
-              ? 'border-sky-500 ring-1 ring-sky-500 bg-slate-900'
+              ? 'border-sky-500 ring-2 ring-sky-500/20 bg-white'
               : matchedZohoItem
-              ? 'border-slate-700 hover:border-slate-600'
-              : 'border-amber-500/80 bg-amber-950/20 hover:border-amber-400'
+              ? 'bg-white border-[#CBD5E1] hover:border-slate-400'
+              : 'border-amber-400 bg-amber-50/70 hover:border-amber-500'
           }`}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <Search className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <Search className="w-3.5 h-3.5 text-sky-600 shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -216,7 +216,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
               onFocus={handleInputFocus}
               onKeyDown={handleKeyDown}
               placeholder={matchedZohoItem?.name || selectedItemName || 'Search Zoho Books item master...'}
-              className="w-full bg-transparent text-white placeholder-slate-400 text-xs font-medium focus:outline-none"
+              className="w-full bg-transparent text-[#0F172A] placeholder-slate-400 text-xs font-semibold focus:outline-none"
             />
           </div>
 
@@ -227,24 +227,25 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                 onClick={(e) => {
                   e.stopPropagation();
                   setSearchQuery('');
+                  onTextChange?.('');
                   inputRef.current?.focus();
                 }}
-                className="p-0.5 text-slate-400 hover:text-white rounded"
+                className="p-0.5 text-slate-400 hover:text-slate-700 rounded"
                 title="Clear search"
               >
                 <X className="w-3 h-3" />
               </button>
             )}
             <ChevronDown
-              className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-sky-400' : ''}`}
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-sky-600' : ''}`}
             />
           </div>
         </div>
 
         {/* Warning if current item is not found in Zoho Books Item Master */}
         {!matchedZohoItem && selectedItemName && !isOpen && (
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-400 font-medium">
-            <AlertCircle className="w-3 h-3 shrink-0 text-amber-400" />
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 font-medium">
+            <AlertCircle className="w-3 h-3 shrink-0 text-amber-600" />
             <span className="truncate">Not in Zoho Master - custom item active</span>
           </div>
         )}
@@ -252,14 +253,14 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
 
       {/* Dropdown Popover (Strictly Zoho Books Item Master + Custom Item Fallback) */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-80 sm:w-96 max-h-72 bg-slate-900 border border-sky-500/60 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col">
+        <div className="absolute top-full left-0 mt-1 w-80 sm:w-96 max-h-72 bg-white border border-[#CBD5E1] rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col">
           {/* Header Badge */}
-          <div className="bg-slate-950 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-1.5 text-sky-400 font-bold">
-              <Package className="w-3.5 h-3.5" />
+          <div className="bg-slate-50 px-3 py-1.5 border-b border-[#E2E8F0] flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5 text-sky-700 font-bold">
+              <Package className="w-3.5 h-3.5 text-sky-600" />
               <span>Zoho Books Item Master</span>
             </div>
-            <span className="font-mono text-slate-400 text-[10px]">
+            <span className="font-mono text-slate-500 text-[10px]">
               {filteredItems.length} of {activeItems.length} active items
             </span>
           </div>
@@ -276,14 +277,14 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                     status: 'active',
                   })
                 }
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer bg-sky-950/40 hover:bg-sky-900/60 border border-dashed border-sky-500/50 text-sky-200 transition"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer bg-sky-50 hover:bg-sky-100/80 border border-dashed border-sky-300 text-sky-900 transition"
               >
-                <Plus className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <Plus className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <span className="font-semibold text-xs text-sky-300">
+                  <span className="font-semibold text-xs text-sky-900">
                     Use custom item: &ldquo;{searchQuery.trim()}&rdquo;
                   </span>
-                  <span className="block text-[10px] text-slate-400">
+                  <span className="block text-[10px] text-slate-500">
                     Custom item - rate will be set manually
                   </span>
                 </div>
@@ -304,33 +305,33 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                     onMouseEnter={() => setHighlightedIndex(index)}
                     className={`flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition ${
                       isHighlighted
-                        ? 'bg-sky-600/30 text-white border border-sky-500/40'
+                        ? 'bg-sky-50 text-[#0F172A] border border-sky-200'
                         : isSelected
-                        ? 'bg-sky-950/60 text-sky-200 border border-sky-600/30'
-                        : 'hover:bg-slate-800/80 text-slate-200 border border-transparent'
+                        ? 'bg-sky-50/80 text-sky-900 border border-sky-300 font-semibold'
+                        : 'hover:bg-slate-50 text-slate-800 border border-transparent'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-white text-xs truncate">
+                        <span className="font-semibold text-[#0F172A] text-xs truncate">
                           {item.name}
                         </span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
                       </div>
                       {item.description && (
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">
                           {item.description}
                         </p>
                       )}
                       {item.item_id && (
-                        <span className="font-mono text-[9px] text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 inline-block mt-0.5">
+                        <span className="font-mono text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
                           SKU: {item.item_id}
                         </span>
                       )}
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="font-mono text-xs font-bold text-emerald-400 whitespace-nowrap">
+                      <span className="font-mono text-xs font-bold text-emerald-600 whitespace-nowrap">
                         {formatCurrency(item.rate || 0)}
                       </span>
                     </div>
@@ -339,7 +340,7 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
               })
             ) : (
               <div className="py-4 px-3 text-center text-xs">
-                <p className="text-slate-400 font-medium">
+                <p className="text-slate-500 font-medium">
                   {searchQuery ? `No Zoho Books items match "${searchQuery}"` : 'No active items registered in Zoho Books'}
                 </p>
                 {searchQuery.trim() && (
@@ -353,13 +354,13 @@ export const ZohoItemSearchableSelect: React.FC<ZohoItemSearchableSelectProps> =
                         status: 'active',
                       })
                     }
-                    className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Use &ldquo;{searchQuery.trim()}&rdquo; as custom item
                   </button>
                 )}
-                <p className="text-[11px] text-slate-500 mt-2">
+                <p className="text-[11px] text-slate-400 mt-2">
                   You can proceed with this description and set the rate manually.
                 </p>
               </div>
