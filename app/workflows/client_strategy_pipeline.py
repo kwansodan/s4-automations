@@ -1,5 +1,6 @@
 """Inngest Multi-Tenant Client Strategy Execution Workflow."""
 
+import asyncio
 import inngest
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
@@ -208,14 +209,26 @@ async def inngest_agent_heartbeat_fn(ctx: inngest.Context, step: Optional[innges
     year = int(data["year"]) if data.get("year") else None
 
     async def _run_sweep():
-        with Session(get_engine()) as session:
-            return await AgenticBrainService.run_due_agents_heartbeat(
-                db=session,
-                client_id=target_client_id,
-                force=force,
-                month=month,
-                year=year,
+        try:
+            with Session(get_engine()) as session:
+                return await asyncio.wait_for(
+                    AgenticBrainService.run_due_agents_heartbeat(
+                        db=session,
+                        client_id=target_client_id,
+                        force=force,
+                        month=month,
+                        year=year,
+                    ),
+                    timeout=50.0,
+                )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Heartbeat sweep overall timeout (50s) reached. Gracefully completing step to respect Inngest webhook deadline."
             )
+            return {
+                "status": "partial_timeout",
+                "message": "Heartbeat sweep stopped after 50 seconds to respect Inngest webhook deadline.",
+            }
 
     if step:
         return await step.run("agentic-heartbeat-sweep", _run_sweep)

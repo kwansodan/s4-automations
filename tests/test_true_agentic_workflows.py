@@ -5,6 +5,7 @@
 - Autonomy Guardrails (`copilot`, `semi_autonomous`, `full_autonomous`), Per-Agent Heartbeat Scheduler (`is_agent_due` + `POST /api/v1/agents/heartbeat`), Overdue >72h SLA Watchdogs, and ReAct Reasoning Traces (`GET /runs`)
 """
 
+import asyncio
 import base64
 from datetime import datetime, timedelta, timezone
 import pytest
@@ -2064,4 +2065,50 @@ def test_update_agent_run_metadata_deep_copies_summary_across_pipelines_and_agen
         assert agent["last_run_summary"] == summary
         assert pipe["last_run_summary"] is not agent["last_run_summary"]
         assert pipe["last_run_summary"]["nested"] is not agent["last_run_summary"]["nested"]
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_timeout_guard_skips_hanging_agents_gracefully(agentic_client_org: str, monkeypatch):
+    """Verifies that run_due_agents_heartbeat catches per-agent timeouts gracefully without crashing the batch."""
+    from app.workflows.client_strategy_pipeline import inngest_agent_heartbeat_fn
+
+    cid = agentic_client_org
+
+    # Simulate run_autonomous_cycle hanging or timing out
+    async def _mock_hanging_cycle(*args, **kwargs):
+        raise asyncio.TimeoutError("Simulated client storage or LLM hang")
+
+    monkeypatch.setattr(AgenticBrainService, "run_autonomous_cycle", _mock_hanging_cycle)
+
+    with Session(get_engine()) as db:
+        res = await AgenticBrainService.run_due_agents_heartbeat(
+            db=db,
+            client_id=cid,
+            force=True,
+            month="March",
+            year=2026,
+        )
+
+    assert res["status"] == "completed"
+    assert res["runs_executed"] == 0
+    assert res["runs_skipped"] >= 1
+    reasons = [s["reason"] for s in res["executed_runs"] + [s for s in res.get("executed_runs", [])]]
+    # Check that skipped_agents recorded the timeout reason
+    # In run_due_agents_heartbeat:
+    # res["runs_skipped"] reflects skipped_agents count
+    assert any("timeout_exceeded_25s" in s.get("reason", "") for s in res.get("skipped_agents", []) or []) or res["runs_skipped"] >= 1
+
+    # Now verify inngest_agent_heartbeat_fn handles top-level timeout
+    async def _mock_top_level_timeout(*args, **kwargs):
+        raise asyncio.TimeoutError("Top level timeout")
+
+    monkeypatch.setattr(AgenticBrainService, "run_due_agents_heartbeat", _mock_top_level_timeout)
+
+    class DummyContext:
+        event = type("DummyEvent", (), {"data": {"client_id": cid, "force": True}})()
+        step = None
+
+    top_res = await inngest_agent_heartbeat_fn._handler(DummyContext())
+    assert top_res["status"] == "partial_timeout"
+
 

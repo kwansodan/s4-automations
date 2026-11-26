@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import calendar
 import contextvars
@@ -3756,16 +3757,41 @@ Rules:
                 agent = AgentCommsService.enrich_agent_metadata(client.id, dict(raw_agent))
                 freq = str(agent.get("schedule_frequency") or "daily_morning")
                 if cls.is_agent_due(agent, now_utc=now_utc, force=force):
-                    run_res = await cls.run_autonomous_cycle(
-                        db=db,
-                        client=client,
-                        agent=agent,
-                        trigger_type="SCHEDULED_HEARTBEAT",
-                        trigger_source=f"schedule:{freq}",
-                        month=month,
-                        year=year,
-                    )
-                    executed_runs.append(run_res)
+                    try:
+                        run_res = await asyncio.wait_for(
+                            cls.run_autonomous_cycle(
+                                db=db,
+                                client=client,
+                                agent=agent,
+                                trigger_type="SCHEDULED_HEARTBEAT",
+                                trigger_source=f"schedule:{freq}",
+                                month=month,
+                                year=year,
+                            ),
+                            timeout=25.0,
+                        )
+                        executed_runs.append(run_res)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Heartbeat timeout (25s) exceeded for client '{client.id}', agent '{agent.get('id')}'. Skipping to next agent."
+                        )
+                        skipped_agents.append({
+                            "client_id": client.id,
+                            "agent_id": agent.get("id"),
+                            "schedule_frequency": freq,
+                            "reason": "timeout_exceeded_25s",
+                        })
+                    except Exception as run_err:
+                        logger.error(
+                            f"Error running autonomous cycle for client '{client.id}', agent '{agent.get('id')}': {run_err}",
+                            exc_info=True,
+                        )
+                        skipped_agents.append({
+                            "client_id": client.id,
+                            "agent_id": agent.get("id"),
+                            "schedule_frequency": freq,
+                            "reason": f"error: {str(run_err)}",
+                        })
                 else:
                     skipped_agents.append({
                         "client_id": client.id,

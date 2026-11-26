@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlmodel import Session, select
@@ -271,7 +272,7 @@ async def test_unified_information_requests_control_center_and_portal():
             entity_type="invoice_item",
             transaction_date="2026-10-12",
             source_type="google_drive",
-            source_file_name="Labadi_Beach_Hotel_12_10_2026.jpg",
+            source_file_name=f"Labadi_Beach_Hotel_InfoReq_{uuid.uuid4().hex[:8]}.jpg",
             item_or_description="Bed Sheets King Size",
             category_or_account="Sales",
             quantity_or_debit=50.0,
@@ -290,7 +291,7 @@ async def test_unified_information_requests_control_center_and_portal():
             entity_type="vendor_bill",
             transaction_date="2026-10-14",
             source_type="google_drive",
-            source_file_name="ECG_Power_Bill_Oct26.pdf",
+            source_file_name=f"ECG_Power_Bill_InfoReq_{uuid.uuid4().hex[:8]}.pdf",
             item_or_description="Electricity Utility Bill",
             category_or_account="Utilities Expense",
             quantity_or_debit=1.0,

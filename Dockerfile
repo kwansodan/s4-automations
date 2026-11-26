@@ -19,6 +19,8 @@ COPY docker-compose.yml .
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
+ENV WEB_CONCURRENCY=2
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-keep-alive", "75"]

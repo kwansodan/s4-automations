@@ -1479,6 +1479,7 @@ def heal_staged_transaction_rates_and_metadata(t: StagedTransaction) -> bool:
         if t.confidence_score is None or float(t.confidence_score) < 0.8:
             t.confidence_score = 0.95
         has_healed = True
+    return has_healed
 
 def prune_duplicate_staged_transactions(db: Session, client_id_aliases: Optional[List[str]] = None) -> int:
     """
@@ -1526,11 +1527,29 @@ def prune_duplicate_staged_transactions(db: Session, client_id_aliases: Optional
         )
         rows = db.exec(subquery).all()
         if len(rows) > 1:
+            # If a row has an active query in metadata_json, sort it ahead of unqueried rows
+            rows = sorted(
+                rows,
+                key=lambda r: (
+                    1 if r.approved else 0,
+                    1 if r.reviewed else 0,
+                    1 if (r.metadata_json or {}).get("query_status") in ("CLARIFICATION_REQUESTED", "CLIENT_ANSWERED") else 0,
+                    r.id or 0,
+                ),
+                reverse=True,
+            )
             primary = rows[0]
+            p_meta = dict(primary.metadata_json or {})
             for redundant in rows[1:]:
+                r_meta = dict(redundant.metadata_json or {})
                 if not primary.source_identifier and redundant.source_identifier:
                     primary.source_identifier = redundant.source_identifier
-                    db.add(primary)
+                if not p_meta.get("query_status") and r_meta.get("query_status"):
+                    for qk in ("query_status", "accountant_query", "query_date", "query_history", "client_explanation", "recipient_email"):
+                        if r_meta.get(qk):
+                            p_meta[qk] = r_meta[qk]
+                    primary.metadata_json = p_meta
+                db.add(primary)
                 db.delete(redundant)
                 total_deleted += 1
 
